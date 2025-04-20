@@ -6,3 +6,4 @@ services:
     startCommand: "gunicorn fleet_project.wsgi:application"
     staticPublishPath: staticfiles
     autoDeploy: true
+    preDeployCommand: "python manage.py collectstatic --noinput"
