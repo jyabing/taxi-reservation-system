@@ -1,0 +1,44 @@
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% extends 'base.html' %}
+{% block content %}
+<h2>📝 申请预约车辆：{{ vehicle.license_plate }}</h2>
+
+<!-- 消息提示区域 -->
+{% if messages %}
+  <ul class="messages">
+    {% for message in messages %}
+      <li {% if message.tags %} class="{{ message.tags }}" {% endif %}>
+        {{ message }}
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">提交预约</button>
+</form>
+
+<a href="{% url 'vehicle_status' %}">← 返回状态页</a>
+{% endblock %}
+
+<style>
+  .messages { list-style: none; padding: 0; }
+  .messages li.error { color: red; font-weight: bold; }
+  .messages li.success { color: green; font-weight: bold; }
+</style>
+<!-- Flatpickr 脚本 -->
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  flatpickr("input[type='date']", {
+    dateFormat: "Y-m-d"
+  });
+
+  flatpickr("input[type='time']", {
+    enableTime: true,
+    noCalendar: true,
+    dateFormat: "H:i",
+    time_24hr: true
+  });
+</script>

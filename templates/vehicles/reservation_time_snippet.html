@@ -1,0 +1,4 @@
+
+{% comment %} 跨日时间段格式统一显示 {% endcomment %}
+{{ r.date|date:"Y/m/d" }} {{ r.start_time|time:"H:i" }} ~
+{{ r.end_date|default:r.date|date:"Y/m/d" }} {{ r.end_time|time:"H:i" }}

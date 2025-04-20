@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>🚘 所有车辆 {{ selected_date }} 的预约一览</h2>
+
+<table border="1">
+  <tr>
+    <th>车牌号</th>
+    <th>车型</th>
+    <th>预约状态</th>
+    <th>时间段</th>
+    <th>司机</th>
+  </tr>
+
+  {% for row in data %}
+    <tr>
+      <td>{{ row.vehicle.license_plate }}</td>
+      <td>{{ row.vehicle.model }}</td>
+      <td style="color:
+        {% if row.reservation %}
+          {% if row.reservation.status == 'reserved' %}blue
+          {% elif row.reservation.status == 'out' %}orange
+          {% elif row.reservation.status == 'canceled' %}gray
+          {% else %}black
+          {% endif %}
+        {% else %}red
+        {% endif %}
+      ">
+        {% if row.reservation %}
+          {{ row.reservation.get_status_display }}
+        {% else %}
+            <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ selected_date }}">📝 预约</a>
+        {% endif %}
+      </td>
+      <td>
+        {% if row.reservation %}
+          {{ row.reservation.start_time }} - {{ row.reservation.end_time }}
+        {% endif %}
+      </td>
+      <td>
+        {% if row.reservation %}
+          {{ row.reservation.driver.username }}
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+</table>
+
+<p><a href="{% url 'daily_selector' %}">← 返回日期选择</a></p>
+
+{% endblock %}

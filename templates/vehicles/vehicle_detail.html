@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>🚘 车辆详情：{{ vehicle.license_plate }}</h2>
+
+{% if vehicle.photo %}
+  <img src="{{ vehicle.photo.url }}" alt="车辆照片" width="300" style="border:1px solid #ccc;"><br>
+{% else %}
+  <p style="color:gray;">🚫 尚未上传车辆照片</p>
+{% endif %}
+
+<p>车型：{{ vehicle.model }}</p>
+<p>状态：{{ vehicle.get_status_display }}</p>
+<p>车检日期：{{ vehicle.inspection_date }}</p>
+<p>备注：{{ vehicle.notes }}</p>
+
+<h3>最近预约记录</h3>
+<ul>
+  {% for r in reservations %}
+    <li>{{ r.date }} {{ r.start_time }}-{{ r.end_time }} by {{ r.driver.username }}</li>
+  {% empty %}
+    <li>无预约记录</li>
+  {% endfor %}
+</ul>
+
+<a href="{% url 'vehicle_status' %}">← 返回状态页</a>
+{% endblock %}
+
+<style>
+  img {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+  }
+  p {
+    font-size: 1.1rem;
+  }
+</style>

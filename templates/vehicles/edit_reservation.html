@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>✏️ 修改预约</h2>
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">保存修改</button>
+</form>
+
+<a href="{% url 'my_reservations' %}">← 返回预约列表</a>
+{% endblock %}

@@ -1,0 +1,36 @@
+<h2>{{ vehicle.license_plate }} 的预约时间线（{{ selected_date }}）</h2>
+
+<form method="get">
+  选择日期：<input type="date" name="date" value="{{ selected_date }}">
+  <button type="submit">查看</button>
+</form>
+
+<div style="position: relative; border: 1px solid #aaa; height: 50px; width: 100%;">
+  {% for r in reservations %}
+    {% comment %} 把时间转为像素位置：每小时 = 50px（例如） {% endcomment %}
+    {% widthratio r.start_time.hour 24 1000 as left %}
+    {% widthratio r.end_time.hour 24 1000 as right %}
+    {% widthratio right|add:"-left" 1 1 as width %}
+
+    <div style="
+      position: absolute;
+      left: {{ left }}px;
+      width: {{ width }}px;
+      height: 100%;
+      background-color:
+        {% if r.status == 'reserved' %}blue
+        {% elif r.status == 'out' %}orange
+        {% else %}gray
+        {% endif %}
+      ; color: white;
+      text-align: center;
+      font-size: 12px;
+    ">
+      {{ r.driver.username }}<br>{{ r.start_time }}-{{ r.end_time }}
+    </div>
+  {% empty %}
+    <p>暂无预约</p>
+  {% endfor %}
+</div>
+
+<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>

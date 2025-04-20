@@ -1,0 +1,52 @@
+from django.urls import path
+from .views import (
+    vehicle_list,
+    vehicle_status_view,
+    make_reservation_view,
+    reservation_approval_list,  # ← 加这两个
+    approve_reservation,
+    check_out, check_in,
+    vehicle_timeline_view,
+    weekly_overview_view,
+    timeline_selector_view,
+    weekly_selector_view, 
+    daily_selector_view,
+    reservation_dashboard,
+    daily_overview_view,
+    reservation_approval_list, 
+    my_reservations_view,
+    test_email_view, 
+    reservation_detail_view,
+    vehicle_detail_view,
+    edit_reservation_view,
+    delete_reservation_view,
+    confirm_check_io,
+    vehicle_status_with_photo,
+)
+
+urlpatterns = [
+    path('list/', vehicle_list, name='vehicle_list'),
+    path('status/', vehicle_status_view, name='vehicle_status'),
+    path('reserve/<int:vehicle_id>/', make_reservation_view, name='make_reservation'),
+    path('approval/', reservation_approval_list, name='reservation_approval_list'),
+    path('approve/<int:reservation_id>/', approve_reservation, name='approve_reservation'),
+    path('checkout/<int:reservation_id>/', check_out, name='check_out'),
+    path('checkin/<int:reservation_id>/', check_in, name='check_in'),
+    path('timeline/<int:vehicle_id>/', vehicle_timeline_view, name='vehicle_timeline'),
+    path('weekly/', weekly_overview_view, name='weekly_overview'),
+    path('select_timeline/', timeline_selector_view, name='timeline_selector'),
+    path('select_weekly/', weekly_selector_view, name='weekly_selector'),
+    path('select_daily/', daily_selector_view, name='daily_selector'),
+    path('dashboard/', reservation_dashboard, name='reservation_dashboard'),
+    path('daily/', daily_overview_view, name='daily_overview'),
+    path('my_reservations/', my_reservations_view, name='my_reservations'),
+    path('test_email/', test_email_view, name='test_email'),
+    path('reservation/<int:reservation_id>/', reservation_detail_view, name='reservation_detail'),
+    path('vehicle/<int:vehicle_id>/', vehicle_detail_view, name='vehicle_detail'),
+    path('reservation/<int:reservation_id>/edit/', edit_reservation_view, name='edit_reservation'),
+    path('reservation/<int:reservation_id>/delete/', delete_reservation_view, name='delete_reservation'),
+    path('confirm_check_io/', confirm_check_io, name='confirm_check_io'),
+    path('status/photo/', vehicle_status_with_photo, name='vehicle_status_with_photo'),
+
+
+]

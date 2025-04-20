@@ -1,0 +1,4 @@
+
+{% comment %} 跨日时间段统一显示片段 {% endcomment %}
+{{ obj.date|date:"Y/m/d" }} {{ obj.start_time|time:"H:i" }} ~
+{{ obj.end_date|default:obj.date|date:"Y/m/d" }} {{ obj.end_time|time:"H:i" }}

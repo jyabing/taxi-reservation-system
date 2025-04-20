@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>选择日期查看周视图</h2>
+
+<form method="post">
+  {% csrf_token %}
+  <label for="date">选择任意日期（将自动跳转到该周）:</label>
+  <input type="date" name="date" required>
+  <br><br>
+  <button type="submit">查看本周预约情况</button>
+</form>
+
+{% endblock %}
+
+<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>

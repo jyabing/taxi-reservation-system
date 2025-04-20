@@ -1,0 +1,40 @@
+
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>👋 欢迎，{{ user.username }}！</h2>
+<p>身份：
+  {% if user.is_staff %}管理员
+  {% elif user.is_formal %}正式员工
+  {% elif user.is_temporary %}临时工
+  {% else %}普通司机
+  {% endif %}
+</p>
+
+<div style="margin-top: 20px;">
+  <a href="{% url 'reservation_dashboard' %}" class="button">🚗 查看预约菜单</a><br><br>
+  <a href="{% url 'vehicle_status' %}" class="button">📋 查看车辆状态</a><br><br>
+  <a href="{% url 'my_reservations' %}" class="button">📌 我的预约记录</a><br><br>
+
+  <form method="post" action="{% url 'logout' %}" style="display:inline;">
+    {% csrf_token %}
+    <button type="submit" class="button" style="background: #888;">🚪 退出登录</button>
+  </form>
+</div>
+
+<style>
+  .button {
+    display: inline-block;
+    padding: 8px 16px;
+    background: #007bff;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    margin-bottom: 10px;
+  }
+  .button:hover {
+    background: #0056b3;
+  }
+</style>
+
+{% endblock %}

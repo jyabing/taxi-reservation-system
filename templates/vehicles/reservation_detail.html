@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>📄 预约详情</h2>
+
+<ul>
+  <li><strong>车牌：</strong>{{ reservation.vehicle.license_plate }}</li>
+  <li><strong>日期：</strong>{{ reservation.date }}</li>
+  <li><strong>时间段：</strong>{% include 'partials/_time_range_snippet.html' with obj=reservation %}</li>
+  <li><strong>司机：</strong>{{ reservation.driver.username }}</li>
+  <li><strong>状态：</strong>{{ reservation.get_status_display }}</li>
+</ul>
+
+<a href="{% url 'weekly_overview' %}">← 返回周视图</a>
+{% endblock %}

@@ -1,0 +1,63 @@
+
+{% extends 'base.html' %}
+{% block content %}
+
+<h2 style="text-align: center;">🔐 登录</h2>
+
+<div class="login-container">
+  <form method="post">
+    {% csrf_token %}
+    <label for="id_username">用户名：</label>
+    <input type="text" name="username" id="id_username" class="form-control" required>
+
+    <label for="id_password">密码：</label>
+    <input type="password" name="password" id="id_password" class="form-control" required>
+
+    <br>
+    <button type="submit" class="btn btn-primary">登录</button>
+  </form>
+
+<style>
+  .login-container {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #f9f9f9;
+  }
+
+  .login-container form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .login-container input {
+    padding: 8px;
+    font-size: 16px;
+  }
+
+  .login-container button {
+    background-color: #007bff;
+    color: white;
+    padding: 10px;
+    font-size: 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .login-container button:hover {
+    background-color: #0056b3;
+  }
+
+  .error-message {
+    color: red;
+    margin-top: 10px;
+    font-weight: bold;
+  }
+</style>
+
+{% endblock %}

@@ -1,0 +1,20 @@
+<h2>选择车辆和日期</h2>
+
+<form method="post">
+  {% csrf_token %}
+  <label for="vehicle_id">车辆：</label>
+  <select name="vehicle_id" required>
+    {% for vehicle in vehicles %}
+      <option value="{{ vehicle.id }}">{{ vehicle.license_plate }}（{{ vehicle.model }}）</option>
+    {% endfor %}
+  </select>
+
+  <br><br>
+  <label for="date">日期：</label>
+  <input type="date" name="date" required>
+
+  <br><br>
+  <button type="submit">查看预约时间线</button>
+</form>
+
+<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>

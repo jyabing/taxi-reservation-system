@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>🛠️ 管理员后台面板</h2>
+<p>欢迎，{{ user.username }}！您是系统管理员。</p>
+
+<div class="admin-actions">
+  <a class="admin-button" href="/admin/">🔧 进入 Django 后台</a>
+  <a class="admin-button" href="/admin/vehicles/vehicle/">🚗 管理车辆信息</a>
+  <a class="admin-button" href="/admin/vehicles/reservation/">📋 管理预约记录</a>
+  <a class="admin-button" href="/admin/vehicles/carouselimage/">📷 管理轮播图</a>
+</div>
+
+<style>
+  .admin-actions {
+    margin-top: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 300px;
+  }
+  .admin-button {
+    display: block;
+    background-color: #007bff;
+    color: white;
+    padding: 10px;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: bold;
+    transition: background 0.3s;
+  }
+  .admin-button:hover {
+    background-color: #0056b3;
+  }
+</style>
+
+{% endblock %}

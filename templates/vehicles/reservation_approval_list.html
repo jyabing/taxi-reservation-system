@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>待审批预约申请列表</h2>
+
+<table border="1">
+<tr>
+    <th>司机</th><th>车辆</th><th>日期</th><th>时间段</th><th>操作</th>
+</tr>
+{% for r in pending_reservations %}
+<tr>
+    <td>{{ r.driver.username }}</td>
+    <td>{{ r.vehicle.license_plate }}</td>
+    <td>{{ r.date }}</td>
+    <td>{{ r.start_time }} - {{ r.end_time }}</td>
+    <td>
+        <a href="{% url 'approve_reservation' r.id %}">✅ 通过</a>
+    </td>
+</tr>
+{% empty %}
+<tr><td colspan="5">暂无申请</td></tr>
+{% endfor %}
+</table>
+
+{% endblock %}
+
+<a href="{% url 'vehicle_status' %}">← 返回车辆状态页</a>

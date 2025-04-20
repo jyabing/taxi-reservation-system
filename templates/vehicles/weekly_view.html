@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% load custom_filters %}
+{% block content %}
+
+<h2>车辆一周预约概览</h2>
+
+<p>
+  <a href="?offset={{ offset|add:"-1" }}">← 上一周</a> |
+  <a href="?offset=0">本周</a> |
+  <a href="?offset={{ offset|add:"1" }}">下一周 →</a>
+</p>
+
+<table border="1">
+  <thead>
+    <tr>
+      <th>车牌号</th>
+      {% for date in week_dates %}
+        <th>{{ date|date:"m/d (D)" }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in vehicle_data %}
+      <tr>
+        <td>{{ row.vehicle.license_plate }}</td>
+        {% for r in row.days %}
+          <td style="color:
+            {% if r == None %}red
+            {% elif r.status == 'reserved' %}blue
+            {% elif r.status == 'out' %}orange
+            {% elif r.status == 'canceled' %}gray
+            {% else %}black
+            {% endif %}
+          ">
+
+            {% if r %}
+              <a href="{% url 'reservation_detail' r.id %}">
+                {{ r.start_time }} - {{ r.end_time }}<br>{{ r.driver.username }}
+              </a>
+              {% else %}
+                  <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ week_dates|index:forloop.counter0|date:"Y-m-d" }}">
+                📝 空缺
+                  </a>
+              {% endif %}
+
+          </td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
+{% endblock %}

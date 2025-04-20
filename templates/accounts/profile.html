@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>👤 我的资料</h2>
+
+<table border="1" cellpadding="8">
+    <tr>
+      <th>用户名</th>
+      <td>{{ request.user.username }}</td>
+      <td></td>
+    </tr>
+    <tr>
+      <th>邮箱</th>
+      <td>{{ request.user.email }}</td>
+      <td><a href="{% url 'edit_profile' %}">✏️ 修改邮箱</a></td>
+    </tr>
+    <tr>
+      <th>密码</th>
+      <td>********</td>
+      <td><a href="{% url 'change_password' %}">🔐 修改密码</a></td>
+    </tr>
+    <tr>
+      <th>是否正式司机</th>
+      <td>{{ request.user.is_formal }}</td>
+      <td></td>
+    </tr>
+    <tr>
+      <th>是否临时司机</th>
+      <td>{{ request.user.is_temporary }}</td>
+      <td></td>
+    </tr>
+    <tr>
+      <th>注册时间</th>
+      <td>{{ request.user.date_joined }}</td>
+      <td></td>
+    </tr>
+  </table>
+  
+  {% endblock %}
