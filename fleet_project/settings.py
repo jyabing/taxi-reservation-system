@@ -136,8 +136,8 @@ EMAIL_HOST_USER = 'jiabing.msn@gmail.com'        # 发件人邮箱
 EMAIL_HOST_PASSWORD = 'Narnixiq8946'       # 邮箱“应用密码”或授权码
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 LOGIN_REDIRECT_URL = '/accounts/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/success/'
