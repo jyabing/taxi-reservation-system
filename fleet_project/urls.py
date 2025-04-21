@@ -13,5 +13,5 @@ urlpatterns = [
 
 
 # ✅ 添加以下这行！
-if settings.DEBUG:
+#if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
