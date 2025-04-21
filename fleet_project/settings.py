@@ -31,8 +31,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',   # ✅ 添加这一行
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -135,9 +135,6 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'jiabing.msn@gmail.com'        # 发件人邮箱
 EMAIL_HOST_PASSWORD = 'Narnixiq8946'       # 邮箱“应用密码”或授权码
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-
-STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 LOGIN_REDIRECT_URL = '/accounts/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/success/'
