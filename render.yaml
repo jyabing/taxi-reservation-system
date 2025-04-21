@@ -7,4 +7,4 @@ services:
     
     autoDeploy: true
     preDeployCommand: "python manage.py collectstatic --noinput"
-    staticPublishPath: staticfiles
+    #staticPublishPath: staticfiles
