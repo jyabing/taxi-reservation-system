@@ -5,4 +5,5 @@ services:
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn fleet_project.wsgi:application"
     preDeployCommand: "python manage.py collectstatic --noinput"
+    staticPublishPath: staticfiles
     autoDeploy: true
