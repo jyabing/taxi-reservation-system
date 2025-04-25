@@ -1,1 +1,8 @@
-venv/\nenv/\n*.pyc\n__pycache__/\n*.sqlite3\n.DS_Store\n/media/\n
+venv/
+env/
+taxi_env/
+*.pyc
+__pycache__/
+*.sqlite3
+.DS_Store
+/media/
