@@ -84,3 +84,12 @@ class MyPasswordChangeView(PasswordChangeView):
     template_name = 'registration/password_change_form.html'
     success_url = reverse_lazy('profile')  # 修改成功后跳回个人资料页
 
+@login_required
+def login_success_view(request):
+    user = request.user
+    if user.is_superuser:
+        return redirect('/admin/')
+    elif user.is_staff:
+        return redirect('admin_dashboard')
+    else:
+        return redirect('driver_dashboard')
