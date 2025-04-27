@@ -16,24 +16,34 @@ def home_view(request):
     })
 
 def login_view(request):
+    context = {}
+    
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
+        context['username'] = username  # 保持输入的用户名回传给前端
+
         if not username or not password:
             messages.error(request, "请输入用户名和密码")
         else:
-            user = authenticate(request, username=username, password=password)
-            if user is not None:
-                login(request, user)
-                if user.is_superuser:
-                    return redirect('/admin/')
-                elif user.is_staff:
-                    return redirect('admin_dashboard')
-                else:
-                    return redirect('driver_dashboard')
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                messages.error(request, "用户名不存在")
             else:
-                messages.error(request, '用户名或密码错误')
-    return render(request, 'registration/login.html')
+                user = authenticate(request, username=username, password=password)
+                if user is not None:
+                    login(request, user)
+                    if user.is_superuser:
+                        return redirect('/admin/')
+                    elif user.is_staff:
+                        return redirect('admin_dashboard')
+                    else:
+                        return redirect('driver_dashboard')
+                else:
+                    messages.error(request, "密码错误")
+
+    return render(request, 'registration/login.html', context)
         
 @login_required
 def logout_view(request):
