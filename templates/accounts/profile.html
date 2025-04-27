@@ -19,16 +19,22 @@
       <td>********</td>
       <td><a href="{% url 'change_password' %}">🔐 修改密码</a></td>
     </tr>
+    
+    {# 只显示已选的那一项 #}
+    {% if request.user.is_formal %}
     <tr>
-      <th>是否正式司机</th>
-      <td>{{ request.user.is_formal }}</td>
+      <th>员工类型</th>
+      <td>正式司机</td>
       <td></td>
     </tr>
+    {% elif request.user.is_temporary %}
     <tr>
-      <th>是否临时司机</th>
-      <td>{{ request.user.is_temporary }}</td>
+      <th>员工类型</th>
+      <td>临时司机</td>
       <td></td>
     </tr>
+    {% endif %}
+
     <tr>
       <th>注册时间</th>
       <td>{{ request.user.date_joined }}</td>
