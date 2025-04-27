@@ -1,15 +1,15 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from .views import (
-    login_view, logout_view, 
+    login_view, logout_view, login_success_view,
     driver_dashboard, profile_view, edit_profile,
-    admin_dashboard, MyPasswordChangeView, views
+    admin_dashboard, MyPasswordChangeView,
 )
 
 urlpatterns = [
     path('login/', login_view, name='login'),
     path('logout/', logout_view, name='logout'),
-    path('login/success/',    views.login_success_view, name='login_success'),   # ← 这一行必须有
+    path('login/success/', login_success_view, name='login_success'),   # ← 这一行必须有
 
     path('admin_dashboard/', admin_dashboard, name='admin_dashboard'),
     path('dashboard/', driver_dashboard, name='driver_dashboard'),
