@@ -1,4 +1,5 @@
 from django.urls import path
+from . import views
 from .views import (
     vehicle_list,
     vehicle_status_view,
@@ -22,6 +23,7 @@ from .views import (
     delete_reservation_view,
     confirm_check_io,
     vehicle_status_with_photo,
+    vehicle_monthly_gantt_view,
 )
 
 urlpatterns = [
@@ -47,6 +49,6 @@ urlpatterns = [
     path('reservation/<int:reservation_id>/delete/', delete_reservation_view, name='delete_reservation'),
     path('confirm_check_io/', confirm_check_io, name='confirm_check_io'),
     path('status/photo/', vehicle_status_with_photo, name='vehicle_status_with_photo'),
-
+    path('monthly/<int:vehicle_id>/', views.vehicle_monthly_gantt_view, name='vehicle_monthly_gantt'),
 
 ]

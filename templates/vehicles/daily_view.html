@@ -13,37 +13,41 @@
   </tr>
 
   {% for row in data %}
-    <tr>
-      <td>{{ row.vehicle.license_plate }}</td>
-      <td>{{ row.vehicle.model }}</td>
-      <td style="color:
-        {% if row.reservation %}
-          {% if row.reservation.status == 'reserved' %}blue
-          {% elif row.reservation.status == 'out' %}orange
-          {% elif row.reservation.status == 'canceled' %}gray
-          {% else %}black
-          {% endif %}
-        {% else %}red
+  <tr>
+    <td>
+      <a href="{% url 'vehicle_monthly_gantt' row.vehicle.id %}">
+        {{ row.vehicle.license_plate }}
+      </a>
+    </td>
+    <td>{{ row.vehicle.model }}</td>
+    <td style="color:
+      {% if row.reservation %}
+        {% if row.reservation.status == 'reserved' %}blue
+        {% elif row.reservation.status == 'out' %}orange
+        {% elif row.reservation.status == 'canceled' %}gray
+        {% else %}black
         {% endif %}
-      ">
-        {% if row.reservation %}
-          {{ row.reservation.get_status_display }}
-        {% else %}
-            <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ selected_date }}">📝 预约</a>
-        {% endif %}
-      </td>
-      <td>
-        {% if row.reservation %}
-          {{ row.reservation.start_time }} - {{ row.reservation.end_time }}
-        {% endif %}
-      </td>
-      <td>
-        {% if row.reservation %}
-          {{ row.reservation.driver.username }}
-        {% endif %}
-      </td>
-    </tr>
-  {% endfor %}
+      {% else %}red
+      {% endif %}
+    ">
+      {% if row.reservation %}
+        {{ row.reservation.get_status_display }}
+      {% else %}
+        <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ selected_date }}">📝 预约</a>
+      {% endif %}
+    </td>
+    <td>
+      {% if row.reservation %}
+        {{ row.reservation.start_time }} - {{ row.reservation.end_time }}
+      {% endif %}
+    </td>
+    <td>
+      {% if row.reservation %}
+        {{ row.reservation.driver.username }}
+      {% endif %}
+    </td>
+  </tr>
+{% endfor %}
 </table>
 
 <p><a href="{% url 'daily_selector' %}">← 返回日期选择</a></p>

@@ -1,3 +1,7 @@
+{% extends 'base.html' %}
+{% load custom_filters %}
+{% block content %}
+
 <h2>{{ vehicle.license_plate }} 的预约时间线（{{ selected_date }}）</h2>
 
 <form method="get">
@@ -34,3 +38,5 @@
 </div>
 
 <p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
+
+{% endblock %}

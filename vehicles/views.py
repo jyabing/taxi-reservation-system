@@ -1,6 +1,8 @@
+import calendar
+
 from django.utils import timezone
 from django.db.models import Q
-from datetime import datetime, timedelta  # ✅ 一起导入
+from datetime import datetime, timedelta, time, date  # ✅ 一起导入
 
 from django.shortcuts import render, get_object_or_404, redirect  # ✅ 一起导入
 from django.contrib.auth.decorators import login_required
@@ -242,6 +244,59 @@ def weekly_selector_view(request):
         date = request.POST.get('date')
         return redirect(f"/vehicles/weekly/?start={date}")
     return render(request, 'vehicles/weekly_selector.html')
+
+@login_required
+def vehicle_monthly_gantt_view(request, vehicle_id):
+    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+
+    # 本月第一天 / 最后一天
+    today = timezone.localdate()
+    first_day = today.replace(day=1)
+    last_day = today.replace(
+        day=calendar.monthrange(today.year, today.month)[1]
+    )
+
+    # 拉取当月所有该车的预约
+    qs = Reservation.objects.filter(
+        vehicle=vehicle,
+        date__gte=first_day,
+        date__lte=last_day,
+        status__in=['pending','reserved','out']
+    ).order_by('date', 'start_time')
+
+    # 组织前端需要的数据
+    rows = []
+    for r in qs:
+        # 开始、结束的 JS Date 构造参数
+        start = datetime.combine(r.date, r.start_time)
+        # 如果你用了 end_date 字段，请替换下面 r.date 为 r.end_date
+        end = datetime.combine(getattr(r, 'end_date', r.date), r.end_time)
+
+        rows.append({
+            'label': r.driver.username or f"预约#{r.id}",
+            'start': {
+                'year': start.year,
+                'month': start.month - 1,
+                'day': start.day,
+                'hour': start.hour,
+                'min': start.minute,
+            },
+            'end': {
+                'year': end.year,
+                'month': end.month - 1,
+                'day': end.day,
+                'hour': end.hour,
+                'min': end.minute,
+            }
+        })
+
+    context = {
+        'vehicle': vehicle,
+        'first_day': first_day,
+        'last_day': last_day,
+        'rows': rows,
+    }
+    return render(request, 'vehicles/monthly_gantt.html', context)
 
 @login_required
 def daily_selector_view(request):

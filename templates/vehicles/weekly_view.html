@@ -22,27 +22,32 @@
   <tbody>
     {% for row in vehicle_data %}
       <tr>
-        <td>{{ row.vehicle.license_plate }}</td>
+        {# 正确包裹车牌号的链接 #}
+        <td>
+          <a href="{% url 'vehicle_monthly_gantt' row.vehicle.id %}">
+            {{ row.vehicle.license_plate }}
+          </a>
+        </td>
         {% for r in row.days %}
           <td style="color:
-            {% if r == None %}red
+            {% if not r %}red
             {% elif r.status == 'reserved' %}blue
             {% elif r.status == 'out' %}orange
             {% elif r.status == 'canceled' %}gray
             {% else %}black
             {% endif %}
           ">
-
             {% if r %}
               <a href="{% url 'reservation_detail' r.id %}">
                 {{ r.start_time }} - {{ r.end_time }}<br>{{ r.driver.username }}
               </a>
-              {% else %}
-                  <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ week_dates|index:forloop.counter0|date:"Y-m-d" }}">
+            {% else %}
+              {# 使用 custom_filters.index 正确取出当前日期 #}
+              <a href="{% url 'make_reservation' row.vehicle.id %}
+                        ?date={{ week_dates|index:forloop.counter0|date:"Y-m-d" }}">
                 📝 空缺
-                  </a>
-              {% endif %}
-
+              </a>
+            {% endif %}
           </td>
         {% endfor %}
       </tr>
