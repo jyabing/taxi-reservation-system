@@ -1,35 +1,46 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static custom_filters %}   {# 载入我们新写的 to_int #}
 {% block content %}
-<h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} 月度预约甘特图</h2>
+
+<h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} · {{ current_month|date:"Y年n月" }}</h2>
+
+<p>
+  <a href="?date={{ prev_month|date:"Y-m" }}">← 上一月</a>
+  |
+  <a href="?date={{ next_month|date:"Y-m" }}">下一月 →</a>
+</p>
 
 <table class="gantt-table">
-    <thead>
+  <thead>
+    <tr>
+      <th>日期</th>
+-     {% for h in hours %}
+-       <th>{{ h }}时</th>
+-     {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in matrix %}
       <tr>
-        <th>日期</th>
-        {% for h in hours %}
-          <th>{{ h }}时</th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in gantt_data %}
-        <tr>
-          <td>{{ row.date }}</td>
-          {% for h in hours %}
-            {% comment %}
-              判断当前小时 h 是否落在预约区间内
-              row.reservation.start_time.hour <= h < row.reservation.end_time.hour
-            {% endcomment %}
-            {% if row.reservation and row.reservation.start_time.hour <= h < row.reservation.end_time.hour %}
-              <td class="gantt-cell reserved"></td>
-            {% else %}
-              <td class="gantt-cell"></td>
+        <td>{{ row.date|date:"m-d (D)" }}</td>
+        {% with cursor=0 %}
+          {% for seg in row.segments %}
+            {% if seg.start > cursor %}
++               <td colspan="{{ seg.start|floatformat:0 }}" class="gantt-empty"></td>
             {% endif %}
++           <td colspan="{{ seg.length|floatformat:0 }}"
+               class="gantt-seg gantt-{{ seg.status }}"
+               title="{{ seg.label }}">
+            </td>
+            {% with cursor=cursor|add:seg.length %}
+            {% endwith %}
           {% endfor %}
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  
-  {% endblock %}
+          {% if cursor < 24 %}
+-           <td colspan="{{ 24|floatformat:0|add:'-cursor' }}" class="gantt-empty"></td>
+          {% endif %}
+        {% endwith %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

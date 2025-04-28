@@ -1,8 +1,12 @@
+# 虚拟环境
 venv/
 env/
 taxi_env/
+# Python artifacts
 *.pyc
 __pycache__/
+# SQLite 数据库
 *.sqlite3
 .DS_Store
+# Django 上传文件目录
 /media/

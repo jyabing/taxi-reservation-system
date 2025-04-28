@@ -248,34 +248,70 @@ def weekly_selector_view(request):
 @login_required
 def vehicle_monthly_gantt_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
-    # 本月有几天
-    today = date.today()
-    year, month = today.year, today.month
+
+    # 1. 读 ?date=YYYY-MM，否则用今天
+    month_str = request.GET.get('date')  # e.g. "2025-04"
+    if month_str:
+        try:
+            year, month = map(int, month_str.split('-'))
+        except ValueError:
+            today = date.today()
+            year, month = today.year, today.month
+    else:
+        today = date.today()
+        year, month = today.year, today.month
+
+    # 2. 计算本月第一天 和 上／下个月的第一天
+    current_month = date(year, month, 1)
+    if month == 1:
+        prev_month = date(year - 1, 12, 1)
+    else:
+        prev_month = date(year, month - 1, 1)
+    if month == 12:
+        next_month = date(year + 1, 1, 1)
+    else:
+        next_month = date(year, month + 1, 1)
+
+    # 3. 本月天数
     days_in_month = monthrange(year, month)[1]
 
-    # 构造每天的预约（如果当天有多个，取第一个或自定义逻辑）
-    gantt_data = []
-    for day in range(1, days_in_month+1):
+    # 4. 构造甘特图矩阵
+    matrix = []
+    for day in range(1, days_in_month + 1):
         d = date(year, month, day)
-        # 一天之内的预约（假设 start_date/end_date 跨天你已处理好）
-        r = Reservation.objects.filter(
+        qs = Reservation.objects.filter(
             vehicle=vehicle,
             date__lte=d,
             end_date__gte=d,
-            status__in=['pending','reserved','out']
-        ).first()
-        gantt_data.append({
-            'date': d,
-            'reservation': r
-        })
+            status__in=['pending', 'reserved', 'out']
+        ).order_by('start_time')
 
-    # 24 小时列表，用于模板循环
+        segments = []
+        for r in qs:
+            start_dt = max(datetime.combine(r.date, r.start_time),
+                           datetime.combine(d, time.min))
+            end_dt   = min(datetime.combine(r.end_date, r.end_time),
+                           datetime.combine(d, time.max))
+            start_offset = (start_dt - datetime.combine(d, time.min)).total_seconds() / 3600
+            length = (end_dt - start_dt).total_seconds() / 3600
+            segments.append({
+                'start': start_offset,
+                'length': length,
+                'status': r.status,
+                'label': f"{r.driver.username} {r.start_time}-{r.end_time}"
+            })
+
+        matrix.append({'date': d, 'segments': segments})
+
     hours = list(range(24))
 
     return render(request, 'vehicles/monthly_gantt.html', {
         'vehicle': vehicle,
-        'gantt_data': gantt_data,
+        'matrix': matrix,
         'hours': hours,
+        'current_month': current_month,
+        'prev_month': prev_month,
+        'next_month': next_month,
     })
 
 @login_required
