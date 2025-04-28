@@ -5,7 +5,7 @@
   <label for="vehicle_id">车辆：</label>
   <select name="vehicle_id" required>
     {% for vehicle in vehicles %}
-      <option value="{{ vehicle.id }}">{{ vehicle.license_plate }}（{{ vehicle.model }}）</option>
+      <option value="{{ vehicle.id }}">{{ vehicle.license_plate }}({{ vehicle.model }})</option>
     {% endfor %}
   </select>
 

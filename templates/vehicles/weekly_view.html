@@ -44,8 +44,7 @@
               </a>
             {% else %}
               {# 使用 custom_filters.index 正确取出当前日期 #}
-              <a href="{% url 'make_reservation' row.vehicle.id %}
-                        ?date={{ week_dates|index:forloop.counter0|date:"Y-m-d" }}">
+              <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ week_dates|index:forloop.counter0|date:"Y-m-d" }}">
                 📝 空缺
               </a>
             {% endif %}
