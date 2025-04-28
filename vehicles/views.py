@@ -249,52 +249,52 @@ def weekly_selector_view(request):
 def vehicle_monthly_gantt_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
 
-    # 本月第一天 / 最后一天
-    today = timezone.localdate()
-    first_day = today.replace(day=1)
-    last_day = today.replace(
-        day=calendar.monthrange(today.year, today.month)[1]
-    )
+    # 1. 确定展示的年、月（这里默认当前月，可从 GET 拿参数）
+    today = date.today()
+    year, month = today.year, today.month
+    _, days_in_month = calendar.monthrange(year, month)
 
-    # 拉取当月所有该车的预约
-    qs = Reservation.objects.filter(
-        vehicle=vehicle,
-        date__gte=first_day,
-        date__lte=last_day,
-        status__in=['pending','reserved','out']
-    ).order_by('date', 'start_time')
+    # 2. 生成当月每一天的日期列表
+    days = [date(year, month, d) for d in range(1, days_in_month+1)]
 
-    # 组织前端需要的数据
-    rows = []
-    for r in qs:
-        # 开始、结束的 JS Date 构造参数
-        start = datetime.combine(r.date, r.start_time)
-        # 如果你用了 end_date 字段，请替换下面 r.date 为 r.end_date
-        end = datetime.combine(getattr(r, 'end_date', r.date), r.end_time)
+    # 3. 为每一天生成 24 小时的状态列表：None 或 对应 Reservation 对象
+    matrix = []
+    for d in days:
+        # 当天所有对这辆车的预约
+        qs = Reservation.objects.filter(
+            vehicle=vehicle,
+            # 只要预约的 [date, end_date] 区间覆盖当天
+            date__lte=d,
+            end_date__gte=d,
+            status__in=['pending','reserved','out']
+        )
+        # 准备 24 个小时的 placeholder
+        hours = [None] * 24
+        for r in qs:
+            # 算出当天的起止小时：如果预约跨天，就 clamp
+            start_dt = datetime.combine(r.date, r.start_time)
+            end_dt   = datetime.combine(r.end_date, r.end_time)
+            # 当天零点
+            day_start = datetime.combine(d, time.min)
+            # 当天 23:59:59
+            day_end   = datetime.combine(d, time.max)
 
-        rows.append({
-            'label': r.driver.username or f"预约#{r.id}",
-            'start': {
-                'year': start.year,
-                'month': start.month - 1,
-                'day': start.day,
-                'hour': start.hour,
-                'min': start.minute,
-            },
-            'end': {
-                'year': end.year,
-                'month': end.month - 1,
-                'day': end.day,
-                'hour': end.hour,
-                'min': end.minute,
-            }
+            seg_start = max(start_dt, day_start)
+            seg_end   = min(end_dt, day_end)
+            h0 = seg_start.hour
+            # 如果结束时刻正好是整点，比如 15:00，就不包含那一小时
+            h1 = seg_end.hour + (1 if seg_end.minute>0 or seg_end.second>0 else 0)
+            for h in range(h0, min(h1,24)):
+                hours[h] = r
+        matrix.append({
+            'date': d,
+            'hours': hours
         })
 
     context = {
         'vehicle': vehicle,
-        'first_day': first_day,
-        'last_day': last_day,
-        'rows': rows,
+        'matrix': matrix,
+        'hour_labels': list(range(1,25)),  # [1,2,…,24]
     }
     return render(request, 'vehicles/monthly_gantt.html', context)
 

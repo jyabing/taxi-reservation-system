@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block content %}
 <h2>🚘 车辆详情：{{ vehicle.license_plate }}</h2>
 
@@ -23,6 +24,7 @@
 </ul>
 
 <a href="{% url 'vehicle_status' %}">← 返回状态页</a>
+
 {% endblock %}
 
 <style>

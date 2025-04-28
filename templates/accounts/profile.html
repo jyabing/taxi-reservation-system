@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block content %}
 
 <h2>👤 我的资料</h2>
@@ -19,7 +20,7 @@
       <td>********</td>
       <td><a href="{% url 'change_password' %}">🔐 修改密码</a></td>
     </tr>
-    
+
     {# 只显示已选的那一项 #}
     {% if request.user.is_formal %}
     <tr>

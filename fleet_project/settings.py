@@ -4,6 +4,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 STATIC_URL = '/static/'
+STATICFILES_DIRS = [ BASE_DIR / 'static' ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
@@ -27,7 +28,8 @@ MIDDLEWARE = [
 SECRET_KEY = 'django-insecure-2b$rqt-%4iwht4$rb84_(ljv6)1sn0w_!_d74lg7kx=s3=+sfu'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
+#DEBUG = False
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'taxi-reservation-system.onrender.com']
 

@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block content %}
 
 <h2>选择日期查看周视图</h2>
@@ -11,6 +12,6 @@
   <button type="submit">查看本周预约情况</button>
 </form>
 
-{% endblock %}
-
 <p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
+
+{% endblock %}

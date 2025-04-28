@@ -1,49 +1,30 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block content %}
+<h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} 月度预约甘特图</h2>
 
-<h2>🚘 {{ vehicle.license_plate }} — {{ first_day|date:"Y年m月" }} 预约甘特图</h2>
-<div id="timeline" style="height: 600px;"></div>
-<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
-
-<!-- 加载 Google Charts -->
-<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-<script>
-  google.charts.load('current', {'packages':['timeline']});
-  google.charts.setOnLoadCallback(drawChart);
-
-  function drawChart() {
-    var container = document.getElementById('timeline');
-    var chart = new google.visualization.Timeline(container);
-    var dataTable = new google.visualization.DataTable();
-
-    dataTable.addColumn({ type: 'string', id: 'Driver' });
-    dataTable.addColumn({ type: 'string', id: 'Reserv.' });
-    dataTable.addColumn({ type: 'date',   id: 'Start' });
-    dataTable.addColumn({ type: 'date',   id: 'End' });
-
-    // 构造行数据
-    var rows = [
-      {% for r in rows %}
-      [
-        '{{ r.label }}',
-        '{{ r.label }}',
-        new Date({{ r.start.year }}, {{ r.start.month }}, {{ r.start.day }}, {{ r.start.hour }}, {{ r.start.min }}),
-        new Date({{ r.end.year }},   {{ r.end.month }},   {{ r.end.day }},   {{ r.end.hour }},   {{ r.end.min }})
-        ]{% if not forloop.last %},{% endif %}
+<table class="gantt">
+  <thead>
+    <tr>
+      <th>日期</th>
+      {% for h in hour_labels %}
+        <th>{{ h }}时</th>
       {% endfor %}
-    ];
-    dataTable.addRows(rows);
-    chart.draw(dataTable);
-  }
-</script>
-
-<style>
-  /* 确保 Timeline 占满宽度 */
-  #timeline {
-    width: 100%;
-    border: 1px solid #ccc;
-    margin-top: 20px;
-  }
-</style>
-
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in matrix %}
+      <tr>
+        <td>{{ row.date|date:"Y-m-d (D)" }}</td>
+        {% for r in row.hours %}
+          {% if r %}
+            <td class="cell-{{ r.status }}" title="{{ r.get_status_display }}：{{ r.driver.username }} {{ r.start_time }}-{{ r.end_time }}"></td>
+          {% else %}
+            <td></td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

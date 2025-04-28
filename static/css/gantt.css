@@ -1,0 +1,24 @@
+table.gantt {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  table.gantt th,
+  table.gantt td {
+    border: 1px solid #ddd;
+    width: 4%;      /* 100%/25 列大约是 4% */
+    height: 24px;
+    padding: 0;
+  }
+  table.gantt th {
+    background: #f0f0f0;
+    font-size: 12px;
+    text-align: center;
+  }
+  table.gantt td {
+    background: white;
+  }
+  table.gantt td.cell-pending   { background: #ffc107; } /* pending 暖黄 */
+  table.gantt td.cell-reserved  { background: #007bff; } /* reserved 蓝 */
+  table.gantt td.cell-out       { background: #fd7e14; } /* out 橙 */
+  table.gantt td.cell-canceled  { background: #6c757d; } /* canceled 灰 */
+  

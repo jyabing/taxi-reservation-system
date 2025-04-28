@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block content %}
 
 <h2>🚗 预约总览菜单</h2>
@@ -9,6 +10,6 @@
   <li><a href="{% url 'daily_selector' %}">📆 每日预约概览（选择日期）</a></li>
 </ul>
 
-{% endblock %}
-
 <p><a href="{% url 'vehicle_status' %}">← 返回车辆状态页</a></p>
+
+{% endblock %}
