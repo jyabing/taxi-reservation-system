@@ -1,24 +1,21 @@
-table.gantt {
-    width: 100%;
+.gantt-table {
     border-collapse: collapse;
+    width: 100%;
+    font-size: 0.8em;
   }
-  table.gantt th,
-  table.gantt td {
-    border: 1px solid #ddd;
-    width: 4%;      /* 100%/25 列大约是 4% */
-    height: 24px;
-    padding: 0;
-  }
-  table.gantt th {
-    background: #f0f0f0;
-    font-size: 12px;
-    text-align: center;
-  }
-  table.gantt td {
-    background: white;
-  }
-  table.gantt td.cell-pending   { background: #ffc107; } /* pending 暖黄 */
-  table.gantt td.cell-reserved  { background: #007bff; } /* reserved 蓝 */
-  table.gantt td.cell-out       { background: #fd7e14; } /* out 橙 */
-  table.gantt td.cell-canceled  { background: #6c757d; } /* canceled 灰 */
   
+  .gantt-table th,
+  .gantt-table td {
+    border: 1px solid #ccc;
+    padding: 2px;
+    text-align: center;
+    height: 20px;
+  }
+  
+  .gantt-cell {
+    background: #f9f9f9;
+  }
+  
+  .gantt-cell.reserved {
+    background: #007bff;    /* 预约时段的高亮色 */
+  }

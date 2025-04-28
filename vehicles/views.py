@@ -1,5 +1,5 @@
 import calendar
-
+from calendar import monthrange
 from django.utils import timezone
 from django.db.models import Q
 from datetime import datetime, timedelta, time, date  # ✅ 一起导入
@@ -248,55 +248,35 @@ def weekly_selector_view(request):
 @login_required
 def vehicle_monthly_gantt_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
-
-    # 1. 确定展示的年、月（这里默认当前月，可从 GET 拿参数）
+    # 本月有几天
     today = date.today()
     year, month = today.year, today.month
-    _, days_in_month = calendar.monthrange(year, month)
+    days_in_month = monthrange(year, month)[1]
 
-    # 2. 生成当月每一天的日期列表
-    days = [date(year, month, d) for d in range(1, days_in_month+1)]
-
-    # 3. 为每一天生成 24 小时的状态列表：None 或 对应 Reservation 对象
-    matrix = []
-    for d in days:
-        # 当天所有对这辆车的预约
-        qs = Reservation.objects.filter(
+    # 构造每天的预约（如果当天有多个，取第一个或自定义逻辑）
+    gantt_data = []
+    for day in range(1, days_in_month+1):
+        d = date(year, month, day)
+        # 一天之内的预约（假设 start_date/end_date 跨天你已处理好）
+        r = Reservation.objects.filter(
             vehicle=vehicle,
-            # 只要预约的 [date, end_date] 区间覆盖当天
             date__lte=d,
             end_date__gte=d,
             status__in=['pending','reserved','out']
-        )
-        # 准备 24 个小时的 placeholder
-        hours = [None] * 24
-        for r in qs:
-            # 算出当天的起止小时：如果预约跨天，就 clamp
-            start_dt = datetime.combine(r.date, r.start_time)
-            end_dt   = datetime.combine(r.end_date, r.end_time)
-            # 当天零点
-            day_start = datetime.combine(d, time.min)
-            # 当天 23:59:59
-            day_end   = datetime.combine(d, time.max)
-
-            seg_start = max(start_dt, day_start)
-            seg_end   = min(end_dt, day_end)
-            h0 = seg_start.hour
-            # 如果结束时刻正好是整点，比如 15:00，就不包含那一小时
-            h1 = seg_end.hour + (1 if seg_end.minute>0 or seg_end.second>0 else 0)
-            for h in range(h0, min(h1,24)):
-                hours[h] = r
-        matrix.append({
+        ).first()
+        gantt_data.append({
             'date': d,
-            'hours': hours
+            'reservation': r
         })
 
-    context = {
+    # 24 小时列表，用于模板循环
+    hours = list(range(24))
+
+    return render(request, 'vehicles/monthly_gantt.html', {
         'vehicle': vehicle,
-        'matrix': matrix,
-        'hour_labels': list(range(1,25)),  # [1,2,…,24]
-    }
-    return render(request, 'vehicles/monthly_gantt.html', context)
+        'gantt_data': gantt_data,
+        'hours': hours,
+    })
 
 @login_required
 def daily_selector_view(request):

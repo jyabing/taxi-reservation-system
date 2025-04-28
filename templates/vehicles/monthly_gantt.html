@@ -3,28 +3,33 @@
 {% block content %}
 <h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} 月度预约甘特图</h2>
 
-<table class="gantt">
-  <thead>
-    <tr>
-      <th>日期</th>
-      {% for h in hour_labels %}
-        <th>{{ h }}时</th>
-      {% endfor %}
-    </tr>
-  </thead>
-  <tbody>
-    {% for row in matrix %}
+<table class="gantt-table">
+    <thead>
       <tr>
-        <td>{{ row.date|date:"Y-m-d (D)" }}</td>
-        {% for r in row.hours %}
-          {% if r %}
-            <td class="cell-{{ r.status }}" title="{{ r.get_status_display }}：{{ r.driver.username }} {{ r.start_time }}-{{ r.end_time }}"></td>
-          {% else %}
-            <td></td>
-          {% endif %}
+        <th>日期</th>
+        {% for h in hours %}
+          <th>{{ h }}时</th>
         {% endfor %}
       </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endblock %}
+    </thead>
+    <tbody>
+      {% for row in gantt_data %}
+        <tr>
+          <td>{{ row.date }}</td>
+          {% for h in hours %}
+            {% comment %}
+              判断当前小时 h 是否落在预约区间内
+              row.reservation.start_time.hour <= h < row.reservation.end_time.hour
+            {% endcomment %}
+            {% if row.reservation and row.reservation.start_time.hour <= h < row.reservation.end_time.hour %}
+              <td class="gantt-cell reserved"></td>
+            {% else %}
+              <td class="gantt-cell"></td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  
+  {% endblock %}
