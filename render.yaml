@@ -4,9 +4,13 @@ services:
     env: python
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn fleet_project.wsgi:application --bind 0.0.0.0:8000"
-    preDeployCommand: "python manage.py collectstatic --noinput"
-    staticPublishPath: staticfiles
+    # 先执行 migrate 再 collectstatic
+    preDeployCommand: |
+      python manage.py migrate --noinput
+      python manage.py collectstatic --noinput
+    startCommand: "gunicorn fleet_project.wsgi:application"
     autoDeploy: true
+    staticPublishPath: staticfiles
     envVars:
       - key: PYTHON_VERSION
         value: 3.11
