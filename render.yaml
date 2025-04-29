@@ -11,6 +11,3 @@ services:
     startCommand: "gunicorn fleet_project.wsgi:application"
     autoDeploy: true
     staticPublishPath: staticfiles
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11
