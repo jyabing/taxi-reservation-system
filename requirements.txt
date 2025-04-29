@@ -1,5 +1,20 @@
-asgiref==3.8.1
+# Django 核心
 Django==5.1.2
-pillow==11.2.1
+
+# 数据库字段 SQL 解析
 sqlparse==0.5.3
-whitenoise==6.9.0
+
+# 异步支持（Django 自带，但 pin 一个版本更稳定）
+asgiref==3.8.1
+
+# 图像处理（Pillow）
+Pillow==11.2.1
+
+# 时区／日期运算
+python-dateutil==2.8.2
+
+# 静态文件压缩与服务
+whitenoise==6.5.0
+
+# 生产环境 WSGI 服务器
+gunicorn==23.0.0
