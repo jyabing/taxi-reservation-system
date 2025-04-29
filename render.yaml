@@ -2,12 +2,10 @@ services:
   - type: web
     name: taxi-reservation-system
     env: python
+    # 先安装依赖
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn fleet_project.wsgi:application --bind 0.0.0.0:8000"
-    # 先执行 migrate 再 collectstatic
-    preDeployCommand: |
-      python manage.py migrate --noinput
-      python manage.py collectstatic --noinput
+    # 部署前先执行 migrate 和 collectstatic
+    preDeployCommand: "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
     startCommand: "gunicorn fleet_project.wsgi:application"
-    autoDeploy: true
     staticPublishPath: staticfiles
+    autoDeploy: true
