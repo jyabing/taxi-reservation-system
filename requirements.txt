@@ -18,3 +18,6 @@ whitenoise==6.5.0
 
 # 生产环境 WSGI 服务器
 gunicorn==23.0.0
+mysqlclient>=2.1.1
+dj-database-url>=1.0.0
+python-dotenv>=1.0.0
