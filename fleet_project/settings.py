@@ -33,7 +33,7 @@ SECRET_KEY = 'django-insecure-2b$rqt-%4iwht4$rb84_(ljv6)1sn0w_!_d74lg7kx=s3=+sfu
 #DEBUG = True  # # 仅用于开发环境
 DEBUG = False 
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'taxi-reservation-system.onrender.com']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'taxi-reservation-system.onrender.com','.onrender.com']
 
 
 # Application definition
@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'accounts',
     'vehicles',
+    'main',
 ]
 
 
