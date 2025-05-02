@@ -1,10 +1,20 @@
 services:
   - type: web
-    name: taxi-reservation-system
+    name: taxi-reservation
     env: python
-    buildCommand: "pip install -r requirements.txt"
-    # 先跑 migrate，再收集静态文件
-    preDeployCommand: "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
+    plan: free
+    buildCommand: "./build.sh"
     startCommand: "gunicorn fleet_project.wsgi:application"
-    staticPublishPath: staticfiles
-    autoDeploy: true
+    envVars:
+      - key: SECRET_KEY
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
