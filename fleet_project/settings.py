@@ -27,7 +27,7 @@ MIDDLEWARE = [
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-2b$rqt-%4iwht4$rb84_(ljv6)1sn0w_!_d74lg7kx=s3=+sfu'
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = True  # # 仅用于开发环境
