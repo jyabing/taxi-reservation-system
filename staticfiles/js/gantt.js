@@ -24,5 +24,3 @@ gantt.parse({
         {id:3, text:"任务 B",   start_date:"2025-05-03 09:00", duration:1, progress:0.8, parent:1}
     ]
 });
-
-console.log("Gantt.js loaded");
