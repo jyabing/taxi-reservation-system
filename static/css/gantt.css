@@ -41,3 +41,20 @@
   left: 0;
   z-index: 10;
 }
+
+/* 以下为 JS 甘特图用的 dhtmlx 样式定制 */
+.gantt_task_line {
+  background-color: #5cb85c; /* 默认绿色条 */
+}
+.gantt_task_line.gantt_critical {
+  background-color: #d9534f; /* 关键路径任务红色 */
+}
+.gantt_grid_head_cell,
+.gantt_grid_data {
+  font-size: 14px;
+}
+
+/* 为时间列添加垂直分割线 */
+.gantt-table td:not(:first-child) {
+  border-left: 1px solid #ddd;
+}
