@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% load custom_filters %}
 {% load static %}
+
 {% block content %}
 
 <h2>{{ vehicle.license_plate }} 的预约时间线（{{ selected_date }}）</h2>
@@ -10,9 +11,11 @@
   <button type="submit">查看</button>
 </form>
 
-<div style="position: relative; border: 1px solid #aaa; height: 50px; width: 100%;">
+<div style="position: relative; border: 1px solid #aaa; height: 50px; width: 100%;" class="timeline-container">
+  <!-- ✅ 加入 Canvas 画布，用于绘制每小时线 -->
+  <canvas id="gantt-grid-overlay" style="position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none;"></canvas>
+
   {% for r in reservations %}
-    {% comment %} 把时间转为像素位置：每小时 = 50px（例如） {% endcomment %}
     {% widthratio r.start_time.hour 24 1000 as left %}
     {% widthratio r.end_time.hour 24 1000 as right %}
     {% widthratio right|add:"-left" 1 1 as width %}
@@ -30,6 +33,7 @@
       ; color: white;
       text-align: center;
       font-size: 12px;
+      z-index: 2;
     ">
       {{ r.driver.username }}<br>{{ r.start_time }}-{{ r.end_time }}
     </div>
@@ -37,6 +41,36 @@
     <p>暂无预约</p>
   {% endfor %}
 </div>
+
+<!-- ✅ 引入绘图脚本 -->
+<script>
+window.addEventListener("load", function () {
+  const container = document.querySelector(".timeline-container");
+  const canvas = document.getElementById("gantt-grid-overlay");
+
+  if (!container || !canvas) return;
+
+  setTimeout(() => {
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+
+    const ctx = canvas.getContext("2d");
+    const hourWidth = rect.width / 24;
+
+    ctx.strokeStyle = "#ccc";
+    ctx.lineWidth = 1;
+
+    for (let i = 1; i < 24; i++) {
+      const x = hourWidth * i;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, rect.height);
+      ctx.stroke();
+    }
+  }, 100);  // 延迟绘图，确保 DOM 已完全渲染
+});
+</script>
 
 <p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
 

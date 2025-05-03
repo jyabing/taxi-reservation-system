@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% load static custom_filters %}   {# 载入我们新写的 to_int #}
+{% block content %}
+
+<h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} · {{ current_month|date:"Y年n月" }}</h2>
+
+<p>
+  <a href="?date={{ prev_month|date:"Y-m" }}">← 上一月</a>
+  |
+  <a href="?date={{ next_month|date:"Y-m" }}">下一月 →</a>
+</p>
+
+<!-- ✅ 包裹整个甘特图 -->
+<div id="gantt-container" style="position: relative;">
+  <!-- ✅ Canvas 用于绘制垂直时间线 -->
+  <canvas id="gantt-grid-overlay" style="position:absolute; top:0; left:0; pointer-events:none;"></canvas>
+<table class="gantt-table">
+  <thead>
+    <tr>
+      <th>日期</th>
+-     {% for h in hours %}
+-       <th>{{ h }}时</th>
+-     {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in matrix %}
+      <tr>
+        <td>{{ row.date|date:"m-d (D)" }}</td>
+        {% with cursor=0 %}
+          {% for seg in row.segments %}
+            {% if seg.start > cursor %}
++               <td colspan="{{ seg.start|floatformat:0 }}" class="gantt-empty"></td>
+            {% endif %}
++           <td colspan="{{ seg.length|floatformat:0 }}"
+               class="gantt-seg gantt-{{ seg.status }}"
+               title="{{ seg.label }}">
+            </td>
+            {% with cursor=cursor|add:seg.length %}
+            {% endwith %}
+          {% endfor %}
+          {% if cursor < 24 %}
+-           <td colspan="{{ 24|floatformat:0|add:'-cursor' }}" class="gantt-empty"></td>
+          {% endif %}
+        {% endwith %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+  
+</div>
+{% endblock %}
