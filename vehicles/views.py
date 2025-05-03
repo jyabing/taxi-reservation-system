@@ -8,10 +8,10 @@ from django.shortcuts import render, get_object_or_404, redirect  # ✅ 一起�
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect,  JsonResponse
 from django.core.mail import send_mail
 
-from .models import Vehicle, Reservation
+from .models import Vehicle, Reservation, Task
 from .forms import ReservationForm
 from django.views.decorators.http import require_POST
 #把 import 语句分类整理在一起，是一个非常好的编码习惯，不仅让代码更清晰，也能减少重复导入或顺序错误的情况。
@@ -488,6 +488,20 @@ def vehicle_status_with_photo(request):
         'selected_date': selected_date,
         'status_map': status_map
     })
+
+@login_required
+def gantt_data(request):
+    data = []
+    for task in Task.objects.all():
+        data.append({
+            "id": task.id,
+            "text": task.name,
+            "start_date": task.start_date.strftime('%Y-%m-%d %H:%M'),
+            "duration": task.duration,
+            "progress": task.progress,
+            "parent": task.parent_id
+        })
+    return JsonResponse({"data": data})
 
 def home_view(request):
     return render(request, 'home.html')

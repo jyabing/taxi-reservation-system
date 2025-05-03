@@ -24,6 +24,7 @@ from .views import (
     confirm_check_io,
     vehicle_status_with_photo,
     vehicle_monthly_gantt_view,
+    gantt_data,
 )
 
 urlpatterns = [
@@ -50,5 +51,5 @@ urlpatterns = [
     path('confirm_check_io/', confirm_check_io, name='confirm_check_io'),
     path('status/photo/', vehicle_status_with_photo, name='vehicle_status_with_photo'),
     path('monthly/<int:vehicle_id>/', views.vehicle_monthly_gantt_view, name='vehicle_monthly_gantt'),
-
+    path('gantt/data/', views.gantt_data, name='gantt_data'),
 ]

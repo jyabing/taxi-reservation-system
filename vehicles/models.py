@@ -63,3 +63,13 @@ class CarouselImage(models.Model):
         verbose_name = "轮播图"
         verbose_name_plural = "轮播图管理"
         ordering = ['order']
+
+class Task(models.Model):
+    name = models.CharField(max_length=100)
+    start_date = models.DateTimeField()
+    duration = models.IntegerField()  # 持续天数
+    progress = models.FloatField(default=0.0)  # 0~1
+    parent = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL)
+
+    def __str__(self):
+        return self.name

@@ -16,6 +16,9 @@ gantt.config.columns = [
 // 初始化
 gantt.init("gantt_here");
 
+// 从后端动态加载数据
+gantt.load("/gantt/data/");  // 这里的路径要与你urls.py一致
+
 // 加载任务数据（示例使用静态数据）
 gantt.parse({
     data:[
@@ -25,4 +28,38 @@ gantt.parse({
     ]
 });
 
-console.log("Gantt.js loaded");
+window.addEventListener("load", function () {
+    const table = document.querySelector(".gantt-table");
+    const canvas = document.getElementById("gantt-grid-overlay");
+  
+    if (!table || !canvas) return;
+  
+    const rect = table.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+  
+    canvas.style.position = "absolute";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+    canvas.style.pointerEvents = "none";
+  
+    const ctx = canvas.getContext("2d");
+    const headerCells = table.querySelectorAll("thead th:not(:first-child)");
+    const offsets = [];
+  
+    headerCells.forEach(cell => {
+      offsets.push(cell.offsetLeft + cell.offsetWidth);
+    });
+  
+    ctx.strokeStyle = "#ccc";
+    ctx.lineWidth = 1;
+  
+    offsets.forEach(x => {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    });
+  });
+  
+  console.log("Gantt grid overlay loaded");

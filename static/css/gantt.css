@@ -55,6 +55,16 @@
 }
 
 /* 为时间列添加垂直分割线 */
-.gantt-table td:not(:first-child) {
-  border-left: 1px solid #ddd;
+
+
+.gantt-table tbody tr {
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent 39px,
+    #ddd 40px
+  );
+  background-size: 40px 100%;
+  background-repeat: repeat;
+  background-position: left top;
 }
