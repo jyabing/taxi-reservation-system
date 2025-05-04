@@ -32,9 +32,13 @@
     ">
       {% if row.reservation %}
         {{ row.reservation.get_status_display }}
-      {% else %}
-        <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ selected_date }}">📝 预约</a>
-      {% endif %}
+        {% else %}
+            {% if row.is_past %}
+               <span style="color: gray;">🕒 空缺（已过期）</span>
+            {% else %}
+               <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ selected_date }}">📝 预约</a>
+            {% endif %}
+        {% endif %}
     </td>
     <td>
       {% if row.reservation %}

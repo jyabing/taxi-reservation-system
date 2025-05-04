@@ -11,6 +11,13 @@
   <button type="submit">查看</button>
 </form>
 
+<!-- 小时刻度行 -->
+<div style="display: flex; justify-content: space-between; font-size: 10px; width: 100%;">
+  {% for h in 0|to:24 %}
+    <div style="flex: 1; text-align: center;">{{ h }}时</div>
+  {% endfor %}
+</div>
+
 <div style="position: relative; border: 1px solid #aaa; height: 50px; width: 100%;" class="timeline-container">
   <!-- ✅ 加入 Canvas 画布，用于绘制每小时线 -->
   <canvas id="gantt-grid-overlay" style="position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none;"></canvas>
@@ -42,6 +49,14 @@
   {% endfor %}
 </div>
 
+{% if not is_past or request.user.is_staff %}
+  <p>
+    <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}">📝 新增预约</a>
+  </p>
+{% else %}
+  <p style="color:gray;">⚠️ 当前时间已超过可预约时间。</p>
+{% endif %}
+
 <!-- ✅ 引入绘图脚本 -->
 <script>
 window.addEventListener("load", function () {
@@ -71,6 +86,31 @@ window.addEventListener("load", function () {
   }, 100);  // 延迟绘图，确保 DOM 已完全渲染
 });
 </script>
+
+<!-- ✅ 添加当前时间红线 -->
+<script>
+  window.addEventListener("load", function () {
+    const container = document.querySelector(".timeline-container");
+    const indicator = document.createElement("div");
+    indicator.id = "now-indicator";
+    indicator.style.position = "absolute";
+    indicator.style.top = "0";
+    indicator.style.bottom = "0";
+    indicator.style.width = "2px";
+    indicator.style.backgroundColor = "red";
+    indicator.style.zIndex = "3";
+  
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    const percent = minutes / (24 * 60);
+  
+    const containerWidth = container.offsetWidth;
+    const left = percent * containerWidth;
+    indicator.style.left = `${left}px`;
+  
+    container.appendChild(indicator);
+  });
+  </script>
 
 <p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
 

@@ -1,4 +1,3 @@
-
 from django import template
 
 register = template.Library()
@@ -10,6 +9,10 @@ def index(sequence, position):
         return sequence[position]
     except (IndexError, TypeError):
         return ''
+
+@register.filter
+def to(start, end):
+    return range(start, end)
 
 @register.filter
 def to_int(value):

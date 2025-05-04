@@ -12,6 +12,8 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.http import HttpResponseRedirect,  JsonResponse
 from django.core.mail import send_mail
 
+from django.utils.timezone import make_aware
+
 from .models import Vehicle, Reservation, Task
 from .forms import ReservationForm
 from django.views.decorators.http import require_POST
@@ -61,14 +63,20 @@ def vehicle_timeline_view(request, vehicle_id):
         selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
     else:
         selected_date = timezone.localdate()
+    # 1. 获取当前时间
+    now = timezone.localtime()
+    is_today = selected_date == timezone.localdate()
+    is_past = is_today and timezone.localtime().time() > time(0, 30)
+    # 0:30之后不允许新预约
 
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
     reservations = Reservation.objects.filter(vehicle=vehicle, date=selected_date).order_by('start_time')
-
+    
     return render(request, 'vehicles/timeline_view.html', {
         'vehicle': vehicle,
         'selected_date': selected_date,
         'reservations': reservations,
+        'is_past': is_past,  # ✅ 传入模板
     })
 
 @login_required
@@ -327,7 +335,7 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
         d = date(year, month, day)
 
             # ⏰ 关键：是否为过去时间（当天 23:59:59 之前）
-        is_past = datetime.combine(d, time.max) < timezone.now()
+        is_past = make_aware(datetime.combine(d, time.max)) < timezone.now()
 
         qs = Reservation.objects.filter(
             vehicle=vehicle,
@@ -395,9 +403,7 @@ def daily_overview_view(request):
     else:
         selected_date = timezone.localdate()
 
-    today = timezone.localdate()
-    now_time = timezone.localtime().time()
-
+    now_time = timezone.localtime()
     vehicles = Vehicle.objects.all()
     reservations = Reservation.objects.filter(date=selected_date)
 
@@ -405,21 +411,20 @@ def daily_overview_view(request):
     for vehicle in vehicles:
         r = reservations.filter(vehicle=vehicle).first()
 
-        if request.user.is_staff:
-            is_past = False
+        if r:
+            item = {'vehicle': vehicle, 'reservation': r}
         else:
-            if selected_date < today:
-                is_past = True
-            elif selected_date == today and now_time >= time(hour=23, minute=30):
-                is_past = True
-            else:
+            # 判断当前空缺是否已经过去
+            is_today = selected_date == now.date()
+            is_past = is_today and now.time() > time(0, 30)  # 0:30之后不允许新预约
+            
+            # ✅ 管理员可预约所有时间，不视为 is_past
+            if request.user.is_staff:
                 is_past = False
+            
+            item = {'vehicle': vehicle, 'reservation': None, 'is_past': is_past}
 
-        data.append({
-            'vehicle': vehicle,
-            'reservation': r,
-            'is_past': is_past
-        })
+        data.append(item)
 
     return render(request, 'vehicles/daily_view.html', {
         'selected_date': selected_date,
