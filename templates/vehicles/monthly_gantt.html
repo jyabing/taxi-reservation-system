@@ -26,7 +26,15 @@
     <tbody>
       {% for row in matrix %}
         <tr>
-          <td>{{ row.date|date:"m-d (D)" }}</td>
+          <td>
+            {{ row.date|date:"m-d (D)" }}
+            <br>
+            {% if not row.is_past %}
+              <a href="{% url 'make_reservation' vehicle.id %}?date={{ row.date|date:'Y-m-d' }}">📝</a>
+            {% else %}
+              <span style="color: #ccc;">空缺</span>
+            {% endif %}
+          </td>
           {% with cursor=0 %}
             {% for seg in row.segments %}
               {% if seg.start > cursor %}

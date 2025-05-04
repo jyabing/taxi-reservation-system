@@ -223,15 +223,15 @@ def weekly_overview_view(request):
     today = timezone.localdate()
     now_time = timezone.localtime().time()
 
-    # 获取本周开始日期（周一）
-    weekday = today.weekday()  # 0: Monday
+    # 获取当前周的开始日期（周一）
+    weekday = today.weekday()
     monday = today - timedelta(days=weekday)
 
-    # 支持前后切换周
+    # 支持切换周视图
     offset = int(request.GET.get('offset', 0))
     monday += timedelta(weeks=offset)
 
-    # 构造一周日期列表
+    # 一周日期列表
     week_dates = [monday + timedelta(days=i) for i in range(7)]
 
     vehicles = Vehicle.objects.all()
@@ -243,13 +243,17 @@ def weekly_overview_view(request):
         for d in week_dates:
             res = reservations.filter(vehicle=vehicle, date=d).first()
 
-            # 判断是否为“过去时间”
-            if d < today:
-                is_past = True
-            elif d == today and now_time >= time(hour=23, minute=30):  # 今日过了 23:30
-                is_past = True
-            else:
+            # ✅ 管理员可以预约任何时间
+            if request.user.is_staff:
                 is_past = False
+            else:
+                # 非管理员：限制只能预约当前时间之后
+                if d < today:
+                    is_past = True
+                elif d == today and now_time >= time(hour=23, minute=30):
+                    is_past = True
+                else:
+                    is_past = False
 
             row['days'].append({
                 'date': d,
@@ -316,8 +320,15 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
 
     # 4. 构造甘特图矩阵
     matrix = []
+    today = timezone.localdate()
+    now_time = timezone.localtime().time()
+
     for day in range(1, days_in_month + 1):
         d = date(year, month, day)
+
+            # ⏰ 关键：是否为过去时间（当天 23:59:59 之前）
+        is_past = datetime.combine(d, time.max) < timezone.now()
+
         qs = Reservation.objects.filter(
             vehicle=vehicle,
             date__lte=d,
@@ -339,8 +350,19 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
                 'status': r.status,
                 'label': f"{r.driver.username} {r.start_time}-{r.end_time}"
             })
+        matrix.append({'date': d, 'segments': segments, 'is_past': is_past})
+        # 👉 是否是过去时间（普通用户不能预约）
+        if request.user.is_staff:
+            is_past = False
+        else:
+            if d < today:
+                is_past = True
+            elif d == today and now_time >= time(hour=23, minute=30):
+                is_past = True
+            else:
+                is_past = False
 
-        matrix.append({'date': d, 'segments': segments})
+        matrix.append({'date': d, 'segments': segments, 'is_past': is_past})
 
     hours = list(range(24))
 
@@ -351,6 +373,8 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
         'current_month': current_month,
         'prev_month': prev_month,
         'next_month': next_month,
+        'now': timezone.now(),
+        'is_admin': request.user.is_staff,
     })
 
 @login_required
@@ -371,13 +395,31 @@ def daily_overview_view(request):
     else:
         selected_date = timezone.localdate()
 
+    today = timezone.localdate()
+    now_time = timezone.localtime().time()
+
     vehicles = Vehicle.objects.all()
     reservations = Reservation.objects.filter(date=selected_date)
 
     data = []
     for vehicle in vehicles:
         r = reservations.filter(vehicle=vehicle).first()
-        data.append({'vehicle': vehicle, 'reservation': r})
+
+        if request.user.is_staff:
+            is_past = False
+        else:
+            if selected_date < today:
+                is_past = True
+            elif selected_date == today and now_time >= time(hour=23, minute=30):
+                is_past = True
+            else:
+                is_past = False
+
+        data.append({
+            'vehicle': vehicle,
+            'reservation': r,
+            'is_past': is_past
+        })
 
     return render(request, 'vehicles/daily_view.html', {
         'selected_date': selected_date,
