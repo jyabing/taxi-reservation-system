@@ -1,6 +1,7 @@
 import calendar
 from calendar import monthrange
 from django.utils import timezone
+from django.utils.timezone import now
 from django.db.models import Q
 from datetime import datetime, timedelta, time, date  # ✅ 一起导入
 
@@ -15,6 +16,8 @@ from .models import Vehicle, Reservation, Task
 from .forms import ReservationForm
 from django.views.decorators.http import require_POST
 #把 import 语句分类整理在一起，是一个非常好的编码习惯，不仅让代码更清晰，也能减少重复导入或顺序错误的情况。
+
+min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
 def vehicle_list(request):
     vehicles = Vehicle.objects.all()
@@ -72,6 +75,9 @@ def vehicle_timeline_view(request, vehicle_id):
 def make_reservation_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
 
+    # ✅ 添加：限制当前时间之后30分钟的时间
+    min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
+
     if request.method == 'POST':
         form = ReservationForm(request.POST)
         if form.is_valid():
@@ -81,13 +87,15 @@ def make_reservation_view(request, vehicle_id):
 
             if end_dt <= start_dt:
                 messages.error(request, "结束时间必须晚于开始时间（请检查跨日设置）")
-                return render(request, 'vehicles/reservation_form.html', {'vehicle': vehicle, 'form': form})
+                return render(request, 'vehicles/reservation_form.html', {
+                    'vehicle': vehicle,
+                    'form': form,
+                    'min_time': min_time,  # ✅ 传入模板
+                })
             else:
-                # === 前后缓冲时间段 ===
                 buffer_start = start_dt - timedelta(minutes=30)
                 buffer_end = end_dt + timedelta(minutes=30)
 
-                # === 1. 检查：车辆在该时间段是否已有预约 ===
                 conflict = Reservation.objects.filter(
                     vehicle=vehicle,
                     date__lte=cleaned['end_date'],
@@ -100,7 +108,6 @@ def make_reservation_view(request, vehicle_id):
                 if conflict:
                     messages.error(request, "该时间段内该车辆已有预约，不能重复申请")
                 else:
-                    # === 2. 检查：同一人预约不同车辆是否间隔 ≥10小时 ===
                     other_reservations = Reservation.objects.filter(
                         driver=request.user,
                         date__lte=cleaned['end_date'],
@@ -111,19 +118,16 @@ def make_reservation_view(request, vehicle_id):
                         r_start = datetime.combine(r.date, r.start_time)
                         r_end = datetime.combine(r.end_date, r.end_time)
 
-                        # 1. 判断时间段是否重叠
                         if (start_dt < r_end and end_dt > r_start):
                             messages.error(request, "您在此时间段已预约了其他车辆，不能重叠预约。")
                             break
 
-                        # 2. 判断是否间隔不足10小时
                         gap_start = abs((start_dt - r_end).total_seconds())
                         gap_end = abs((end_dt - r_start).total_seconds())
                         if gap_start < 10 * 3600 or gap_end < 10 * 3600:
                             messages.error(request, "您预约了多辆车，间隔必须至少 10 小时。")
                             break
                     else:
-                        # === 保存预约 ===
                         new_reservation = form.save(commit=False)
                         new_reservation.vehicle = vehicle
                         new_reservation.driver = request.user
@@ -132,7 +136,6 @@ def make_reservation_view(request, vehicle_id):
                         messages.success(request, "已提交申请，等待审批")
                         return redirect('vehicle_status')
     else:
-        # === 预填表单参数 ===
         initial = {
             'date': request.GET.get('date', ''),
             'start_time': request.GET.get('start', ''),
@@ -143,7 +146,8 @@ def make_reservation_view(request, vehicle_id):
 
     return render(request, 'vehicles/reservation_form.html', {
         'vehicle': vehicle,
-        'form': form
+        'form': form,
+        'min_time': min_time,  # ✅ 加入 min_time 到模板
     })
 
 @staff_member_required  # 限制管理员访问
@@ -160,6 +164,25 @@ def approve_reservation(request, reservation_id):
     reservation.save()
     messages.success(request, f"预约 {reservation} 审批通过")
     return redirect('reservation_approval_list')
+
+@staff_member_required
+def create_reservation(request, vehicle_id):
+    vehicle = Vehicle.objects.get(id=vehicle_id)
+    min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')  # 注意格式
+
+    if request.method == 'POST':
+        form = ReservationForm(request.POST)
+        if form.is_valid():
+            form.save()
+            # 重定向成功页
+    else:
+        form = ReservationForm()
+
+    return render(request, 'vehicles/reservation_form.html', {
+        'form': form,
+        'vehicle': vehicle,
+        'min_time': min_time,  # 传入模板
+    })
 
 @login_required
 def check_out(request, reservation_id):
@@ -198,25 +221,41 @@ def check_in(request, reservation_id):
 @login_required
 def weekly_overview_view(request):
     today = timezone.localdate()
+    now_time = timezone.localtime().time()
 
-    # 获取当前周的开始日期（周一）
+    # 获取本周开始日期（周一）
     weekday = today.weekday()  # 0: Monday
     monday = today - timedelta(days=weekday)
 
-    # 支持切换周
+    # 支持前后切换周
     offset = int(request.GET.get('offset', 0))
     monday += timedelta(weeks=offset)
 
+    # 构造一周日期列表
     week_dates = [monday + timedelta(days=i) for i in range(7)]
+
     vehicles = Vehicle.objects.all()
     reservations = Reservation.objects.filter(date__in=week_dates)
 
     data = []
     for vehicle in vehicles:
         row = {'vehicle': vehicle, 'days': []}
-        for date in week_dates:
-            r = reservations.filter(vehicle=vehicle, date=date).first()
-            row['days'].append(r)
+        for d in week_dates:
+            res = reservations.filter(vehicle=vehicle, date=d).first()
+
+            # 判断是否为“过去时间”
+            if d < today:
+                is_past = True
+            elif d == today and now_time >= time(hour=23, minute=30):  # 今日过了 23:30
+                is_past = True
+            else:
+                is_past = False
+
+            row['days'].append({
+                'date': d,
+                'reservation': res,
+                'is_past': is_past,
+            })
         data.append(row)
 
     return render(request, 'vehicles/weekly_view.html', {

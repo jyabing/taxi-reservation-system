@@ -1,5 +1,9 @@
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 {% extends 'base.html' %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
+
 {% block content %}
 <h2>📝 申请预约车辆：{{ vehicle.license_plate }}</h2>
 
@@ -28,17 +32,18 @@
   .messages li.error { color: red; font-weight: bold; }
   .messages li.success { color: green; font-weight: bold; }
 </style>
-<!-- Flatpickr 脚本 -->
+
+<!-- Flatpickr 样式与脚本 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
-  flatpickr("input[type='date']", {
-    dateFormat: "Y-m-d"
-  });
+  // 获取从后端传入的 min_time（例如 2025-05-04T11:30）
+  const minTime = "{{ min_time }}";
 
-  flatpickr("input[type='time']", {
+  flatpickr("input[name='start_time']", {
     enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true
+    dateFormat: "Y-m-d H:i",
+    time_24hr: true,
+    minDate: minTime
   });
 </script>

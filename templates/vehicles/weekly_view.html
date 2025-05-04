@@ -22,36 +22,36 @@
   </thead>
   <tbody>
     {% for row in vehicle_data %}
-      <tr>
-        {# 正确包裹车牌号的链接 #}
-        <td>
-          <a href="{% url 'vehicle_monthly_gantt' row.vehicle.id %}">
-            {{ row.vehicle.license_plate }}
-          </a>
+    <tr>
+      <td>
+        <a href="{% url 'vehicle_monthly_gantt' row.vehicle.id %}">
+          {{ row.vehicle.license_plate }}
+        </a>
+      </td>
+      {% for cell in row.days %}
+        <td style="color:
+          {% if not cell.reservation %}red
+          {% elif cell.reservation.status == 'reserved' %}blue
+          {% elif cell.reservation.status == 'out' %}orange
+          {% elif cell.reservation.status == 'canceled' %}gray
+          {% else %}black
+          {% endif %}
+        ">
+          {% if cell.reservation %}
+            <a href="{% url 'reservation_detail' cell.reservation.id %}">
+              {{ cell.reservation.start_time }} - {{ cell.reservation.end_time }}<br>{{ cell.reservation.driver.username }}
+            </a>
+          {% elif not cell.is_past %}
+            <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
+              📝 空缺
+            </a>
+          {% else %}
+            <span style="color: #aaa;">不可约</span>
+          {% endif %}
         </td>
-        {% for r in row.days %}
-          <td style="color:
-            {% if not r %}red
-            {% elif r.status == 'reserved' %}blue
-            {% elif r.status == 'out' %}orange
-            {% elif r.status == 'canceled' %}gray
-            {% else %}black
-            {% endif %}
-          ">
-            {% if r %}
-              <a href="{% url 'reservation_detail' r.id %}">
-                {{ r.start_time }} - {{ r.end_time }}<br>{{ r.driver.username }}
-              </a>
-            {% else %}
-              {# 使用 custom_filters.index 正确取出当前日期 #}
-              <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ week_dates|index:forloop.counter0|date:"Y-m-d" }}">
-                📝 空缺
-              </a>
-            {% endif %}
-          </td>
-        {% endfor %}
-      </tr>
-    {% endfor %}
+      {% endfor %}
+    </tr>
+  {% endfor %}
   </tbody>
 </table>
 

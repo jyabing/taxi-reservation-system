@@ -43,6 +43,10 @@ class Reservation(models.Model):
         default='pending',
         verbose_name="状态"
     )
+
+ # ✅ 添加这个字段
+    purpose = models.CharField(max_length=200, blank=True, verbose_name="用途说明")
+
     actual_departure = models.DateTimeField(null=True, blank=True, verbose_name="实际出库时间")
     actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际还车时间")
 
