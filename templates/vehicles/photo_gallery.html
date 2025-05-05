@@ -6,12 +6,12 @@
     {% endfor %}
   </div>
   
-  <!-- 弹出层 -->
+  <!-- 放大图模态框 -->
   <div id="imageModal" class="modal">
     <span class="close" onclick="hideModal()">&times;</span>
+    <span class="prev" onclick="prevImage()">&#10094;</span>
+    <span class="next" onclick="nextImage()">&#10095;</span>
     <img class="modal-content" id="modalImage">
-    <a class="prev" onclick="prevImage()">&#10094;</a>
-    <a class="next" onclick="nextImage()">&#10095;</a>
   </div>
   
   <style>
@@ -71,6 +71,13 @@
   }
   .prev { left: 40px; }
   .next { right: 40px; }
+
+  @media (max-width: 600px) {
+    .thumbnail {
+      width: 80px;
+      height: 60px;
+    }
+  }
   </style>
   
   <script>

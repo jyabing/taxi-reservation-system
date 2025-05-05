@@ -1,30 +1,45 @@
 {% load static %}
 {% load static custom_filters %}
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
+  <meta charset="UTF-8">
   <title>自主配车系统</title>
+
+  <!-- ✅ 移动端支持：viewport 设置 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <link rel="stylesheet" href="{% static 'css/gantt.css' %}">
   <script src="{% static 'js/gantt.js' %}"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
   {% block extra_head %}{% endblock %}
+
   <style>
     body {
       font-family: sans-serif;
       padding: 1em;
       margin: 0;
+      font-size: 16px;
     }
+
     nav {
       background-color: #f8f8f8;
       padding: 10px 20px;
       border-bottom: 1px solid #ccc;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
     }
+
     nav a, nav button {
       margin-right: 15px;
       text-decoration: none;
       color: #333;
       font-weight: bold;
+      font-size: 1rem;
     }
+
     nav button {
       background: none;
       border: none;
@@ -32,15 +47,53 @@
       font: inherit;
       padding: 0;
     }
+
     nav button:hover, nav a:hover {
       color: #007bff;
     }
+
     .container {
       padding: 20px;
     }
+
+    /* ✅ 响应式：小屏幕适配 */
+    @media (max-width: 768px) {
+      body {
+        font-size: 15px;
+        padding: 0.5em;
+      }
+
+      nav {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 10px;
+      }
+
+      nav a, nav button {
+        margin: 5px 0;
+        font-size: 1rem;
+      }
+
+      .container {
+        padding: 10px;
+      }
+
+      h1, h2 {
+        font-size: 1.2rem;
+      }
+
+      table {
+        font-size: 0.9rem;
+      }
+
+      .thumbnail {
+        width: 100% !important;
+        height: auto !important;
+      }
+    }
   </style>
-  
 </head>
+
 <body>
   <nav>
     {% if user.is_authenticated %}
@@ -70,6 +123,7 @@
     {% block content %}
     {% endblock %}
   </div>
+
   {% block extra_js %}{% endblock %}
 </body>
 </html>
