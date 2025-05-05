@@ -14,7 +14,6 @@ class Vehicle(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available', verbose_name="状态")
 
     # ✅ 新增字段
-    photo = models.ImageField(upload_to='vehicle_photos/', blank=True, null=True, verbose_name="车辆照片")
     inspection_date = models.DateField(blank=True, null=True, verbose_name="车检日期")
     notes = models.TextField(blank=True, verbose_name="备注")
 
@@ -24,6 +23,12 @@ class Vehicle(models.Model):
         verbose_name = "车辆"
         verbose_name_plural = "车辆"
 
+class VehicleImage(models.Model):
+    vehicle = models.ForeignKey(Vehicle, related_name='images', on_delete=models.CASCADE)
+    image = models.ImageField(upload_to='vehicle_photos/', verbose_name="车辆照片")
+
+    def __str__(self):
+        return f"{self.vehicle.license_plate} 的照片"
 
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")

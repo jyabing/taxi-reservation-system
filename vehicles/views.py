@@ -1,7 +1,7 @@
 import calendar
 from calendar import monthrange
 from django.utils import timezone
-from django.utils.timezone import now
+from django.utils.timezone import now, make_aware
 from django.db.models import Q
 from datetime import datetime, timedelta, time, date  # ✅ 一起导入
 
@@ -9,10 +9,11 @@ from django.shortcuts import render, get_object_or_404, redirect  # ✅ 一起�
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.http import HttpResponseRedirect,  JsonResponse
+from django.http import HttpResponseRedirect, JsonResponse
 from django.core.mail import send_mail
 
-from django.utils.timezone import make_aware
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from .models import Vehicle, Reservation, Task
 from .forms import ReservationForm
@@ -21,10 +22,21 @@ from django.views.decorators.http import require_POST
 
 min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
+@login_required
+def vehicle_detail(request, pk):
+    vehicle = get_object_or_404(Vehicle.objects.prefetch_related('images'), pk=pk)
+    reservations = Reservation.objects.filter(vehicle=vehicle).order_by('-date')[:5]
+    return render(request, 'vehicles/vehicle_detail.html', {
+        'vehicle': vehicle,
+        'reservations': reservations,
+    })
+
+@login_required
 def vehicle_list(request):
     vehicles = Vehicle.objects.all()
     return render(request, 'vehicles/vehicle_list.html', {'vehicles': vehicles})
 
+@login_required
 def vehicle_status_view(request):
     date_str = request.GET.get('date')
     if date_str:
@@ -591,3 +603,18 @@ def gantt_data(request):
 
 def home_view(request):
     return render(request, 'home.html')
+
+def vehicle_image_list_view(request, vehicle_id):
+    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    images = vehicle.images.all()
+    data = [{'url': img.image.url} for img in images]
+    return JsonResponse({'images': data})
+
+def vehicle_image_delete_view(request, vehicle_id, index):
+    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    images = list(vehicle.images.all())
+
+    if 0 <= index < len(images):
+        images[index].delete()
+        return JsonResponse({'status': 'deleted'})
+    return JsonResponse({'status': 'invalid_index'}, status=400)

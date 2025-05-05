@@ -1,0 +1,99 @@
+{% extends "admin/change_list.html" %}
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .modal-bg {
+    position: fixed;
+    z-index: 9999;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-content {
+    max-width: 80%; max-height: 80%;
+    border-radius: 8px;
+    position: relative;
+  }
+  .modal-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: white; font-size: 40px;
+    cursor: pointer;
+    padding: 20px;
+    user-select: none;
+  }
+  .modal-nav.left { left: 0; }
+  .modal-nav.right { right: 0; }
+  .modal-close {
+    position: absolute;
+    top: 10px; right: 20px;
+    font-size: 30px; color: white;
+    cursor: pointer;
+  }
+  .modal-delete {
+    position: absolute;
+    bottom: 10px; right: 20px;
+    background: red; color: white;
+    padding: 5px 10px; border-radius: 4px;
+    cursor: pointer;
+  }
+</style>
+<script>
+let currentImages = [];
+let currentIndex = 0;
+let currentVehicleId = 0;
+
+function openImageModal(vehicleId, index) {
+  fetch(`/admin/vehicles/vehicle/${vehicleId}/images/`).then(r => r.json()).then(data => {
+    currentImages = data.images;
+    currentIndex = index;
+    currentVehicleId = vehicleId;
+    showImage();
+    document.querySelector('.modal-bg').style.display = 'flex';
+  });
+}
+
+function showImage() {
+  const img = document.getElementById('modal-img');
+  if (currentImages.length > 0) {
+    img.src = currentImages[currentIndex];
+  }
+}
+
+function nextImage() {
+  currentIndex = (currentIndex + 1) % currentImages.length;
+  showImage();
+}
+function prevImage() {
+  currentIndex = (currentIndex - 1 + currentImages.length) % currentImages.length;
+  showImage();
+}
+function closeModal() {
+  document.querySelector('.modal-bg').style.display = 'none';
+}
+function deleteImage() {
+  const url = `/admin/vehicles/vehicle/${currentVehicleId}/delete_image/${currentIndex}/`;
+  fetch(url, { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} })
+    .then(() => location.reload());
+}
+function getCookie(name) {
+  let cookie = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return cookie ? cookie.pop() : '';
+}
+</script>
+{% endblock %}
+
+{% block content %}
+{{ block.super }}
+<div class="modal-bg" onclick="closeModal()">
+  <span class="modal-close" onclick="closeModal()">×</span>
+  <span class="modal-nav left" onclick="event.stopPropagation(); prevImage()">❮</span>
+  <img id="modal-img" class="modal-content" onclick="event.stopPropagation()" />
+  <span class="modal-nav right" onclick="event.stopPropagation(); nextImage()">❯</span>
+  <div class="modal-delete" onclick="event.stopPropagation(); deleteImage()">🗑 删除</div>
+</div>
+{% endblock %}

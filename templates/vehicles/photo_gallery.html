@@ -1,0 +1,100 @@
+<!-- vehicles/photo_gallery.html -->
+
+<div class="thumbnail-gallery">
+    {% for img in vehicle.images.all %}
+      <img src="{{ img.image.url }}" alt="车辆照片" class="thumbnail" onclick="showModal({{ forloop.counter0 }})">
+    {% endfor %}
+  </div>
+  
+  <!-- 弹出层 -->
+  <div id="imageModal" class="modal">
+    <span class="close" onclick="hideModal()">&times;</span>
+    <img class="modal-content" id="modalImage">
+    <a class="prev" onclick="prevImage()">&#10094;</a>
+    <a class="next" onclick="nextImage()">&#10095;</a>
+  </div>
+  
+  <style>
+  .thumbnail-gallery {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+  }
+  .thumbnail {
+    width: 100px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid #ccc;
+  }
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    padding-top: 60px;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.9);
+  }
+  .modal-content {
+    display: block;
+    margin: auto;
+    max-width: 90%;
+    max-height: 80%;
+    border-radius: 8px;
+  }
+  .close {
+    position: absolute;
+    top: 30px;
+    right: 40px;
+    color: #fff;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .prev, .next {
+    position: absolute;
+    top: 50%;
+    font-size: 40px;
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 50%;
+    transform: translateY(-50%);
+  }
+  .prev { left: 40px; }
+  .next { right: 40px; }
+  </style>
+  
+  <script>
+    const images = [{% for img in vehicle.images.all %}"{{ img.image.url }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+    let currentIndex = 0;
+  
+    function showModal(index) {
+      currentIndex = index;
+      document.getElementById("modalImage").src = images[currentIndex];
+      document.getElementById("imageModal").style.display = "block";
+    }
+  
+    function hideModal() {
+      document.getElementById("imageModal").style.display = "none";
+    }
+  
+    function prevImage() {
+      currentIndex = (currentIndex - 1 + images.length) % images.length;
+      document.getElementById("modalImage").src = images[currentIndex];
+    }
+  
+    function nextImage() {
+      currentIndex = (currentIndex + 1) % images.length;
+      document.getElementById("modalImage").src = images[currentIndex];
+    }
+  </script>
+  

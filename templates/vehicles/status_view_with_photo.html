@@ -1,51 +1,44 @@
-{% extends 'base.html' %}
-{% load static %}
+{% extends "base.html" %}
 {% block content %}
-
-{% include 'vehicles/status_tab_navigation.html' %}  {# 插入 Tab 按钮 #}
-
-<h2>🚘 车辆预约状态一览（{{ selected_date }}）</h2>
+<h2>🚗 车辆预约状态一览({{ selected_date }})</h2>
 
 <form method="get">
   选择日期：<input type="date" name="date" value="{{ selected_date }}">
   <button type="submit">查询</button>
 </form>
 
-<table border="1">
+<table border="1" cellspacing="0" cellpadding="5">
   <tr>
-    <th>车辆</th><th>状态</th><th>操作</th>
+    <th>照片</th>  <!-- ✅ 新增照片列 -->
+    <th>车牌号</th>
+    <th>车型</th>
+    <th>状态</th>
   </tr>
   {% for vehicle, info in status_map.items %}
   <tr>
     <td>
-      <strong>{{ vehicle.license_plate }}</strong><br>
-      <span style="color:gray;">{{ vehicle.model }}</span><br>
-      {% if vehicle.photo %}
-        <img src="{{ vehicle.photo.url }}" width="120" style="margin-top:5px; border:1px solid #ccc;"><br>
+      {% if vehicle.images.all %}
+        <img src="{{ vehicle.images.first.image.url }}" width="60" height="45" style="object-fit:cover; border-radius:4px;">
       {% else %}
-        <span style="color:gray;">无照片</span>
+        <span style="color:gray;">无</span>
       {% endif %}
     </td>
-    <td style="color:
-      {% if info.status == 'available' %}red
-      {% elif info.status == 'reserved' %}blue
-      {% elif info.status == 'out' %}orange
-      {% elif info.status == 'canceled' %}gray
-      {% endif %}
-    ">
-      {{ info.status|title }}
-    </td>
+    <td><a href="{% url 'vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a></td>
+    <td>{{ vehicle.model }}</td>
     <td>
-      {% if info.status == 'available' %}
-        <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}">📝 申请预约</a>
-      {% elif info.user_reservation %}
-        {% if not info.user_reservation.actual_departure %}
-          <a href="{% url 'check_out' info.user_reservation.id %}">🚗 出库</a>
-        {% elif not info.user_reservation.actual_return %}
-          <a href="{% url 'check_in' info.user_reservation.id %}">🅿️ 入库</a>
-        {% else %}
-          ✅ 已完成
+      {% if info.status == "available" %}
+        <span style="color:blue;">可预约</span>
+        {% if not info.user_reservation %}
+          <br><a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red;">点此预约</a>
         {% endif %}
+      {% elif info.status == "pending" %}
+        <span style="color:orange;">申请中</span>
+      {% elif info.status == "reserved" %}
+        <span style="color:purple;">已预约</span>
+      {% elif info.status == "out" %}
+        <span style="color:red;">🚗 出库</span>
+      {% elif info.status == "maintenance" %}
+        <span style="color:gray;">🔧 维修中</span>
       {% endif %}
     </td>
   </tr>

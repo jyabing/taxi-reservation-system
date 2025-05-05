@@ -1,0 +1,107 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+#imageGalleryModal {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: rgba(0,0,0,0.9);
+}
+#imageGalleryModal img {
+  display: block;
+  margin: auto;
+  max-width: 90%;
+  max-height: 80%;
+  margin-top: 60px;
+  border-radius: 8px;
+}
+.modal-controls {
+  text-align: center;
+  margin-top: 10px;
+}
+.modal-controls button {
+  margin: 0 10px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+</style>
+{% endblock %}
+
+{% block footer %}
+{{ block.super }}
+
+<div id="imageGalleryModal" onclick="hideImageModal()">
+  <img id="adminModalImage" src="" />
+  <div class="modal-controls">
+    <button onclick="prevImage(event)">← 上一张</button>
+    <button onclick="nextImage(event)">下一张 →</button>
+    <button onclick="deleteImage(event)">🗑 删除</button>
+  </div>
+</div>
+
+<script>
+let imageMap = {};  // vehicle_id: [img1_url, img2_url, ...]
+let currentVehicleId = null;
+let currentIndex = 0;
+
+// 可选：Django admin 页面加载后从隐藏的 JSON 中注入 imageMap
+document.addEventListener('DOMContentLoaded', () => {
+  fetch('/admin/vehicles/image_map/')  // 你要定义这个view
+    .then(res => res.json())
+    .then(data => imageMap = data);
+});
+
+function showImageModal(vehicleId) {
+  currentVehicleId = vehicleId;
+  currentIndex = 0;
+  updateModalImage();
+  document.getElementById("imageGalleryModal").style.display = "block";
+}
+
+function hideImageModal() {
+  document.getElementById("imageGalleryModal").style.display = "none";
+}
+
+function updateModalImage() {
+  const url = imageMap[currentVehicleId][currentIndex];
+  document.getElementById("adminModalImage").src = url;
+}
+
+function prevImage(event) {
+  event.stopPropagation();
+  currentIndex = (currentIndex - 1 + imageMap[currentVehicleId].length) % imageMap[currentVehicleId].length;
+  updateModalImage();
+}
+function nextImage(event) {
+  event.stopPropagation();
+  currentIndex = (currentIndex + 1) % imageMap[currentVehicleId].length;
+  updateModalImage();
+}
+function deleteImage(event) {
+  event.stopPropagation();
+  const url = imageMap[currentVehicleId][currentIndex];
+  if (!confirm("确定要删除这张图片吗？")) return;
+  fetch('/admin/vehicles/delete_image/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+    },
+    body: JSON.stringify({ vehicle_id: currentVehicleId, image_url: url })
+  }).then(() => {
+    imageMap[currentVehicleId].splice(currentIndex, 1);
+    if (imageMap[currentVehicleId].length === 0) {
+      hideImageModal();
+    } else {
+      currentIndex = currentIndex % imageMap[currentVehicleId].length;
+      updateModalImage();
+    }
+  });
+}
+</script>
+{% endblock %}
