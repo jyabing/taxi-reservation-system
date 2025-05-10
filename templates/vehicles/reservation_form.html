@@ -7,7 +7,6 @@
 {% block content %}
 <h2>📝 申请预约车辆：{{ vehicle.license_plate }}</h2>
 
-<!-- 消息提示区域 -->
 {% if messages %}
   <ul class="messages">
     {% for message in messages %}
@@ -27,23 +26,27 @@
 <a href="{% url 'vehicle_status' %}">← 返回状态页</a>
 {% endblock %}
 
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  flatpickr(".flat-date", {
+    dateFormat: "Y-m-d"
+  });
+
+  flatpickr(".flat-time", {
+    enableTime: true,
+    noCalendar: true,
+    dateFormat: "H:i",
+    time_24hr: true,
+    {% if min_time %}
+    minTime: "{{ min_time|slice:'11:16' }}"  // 提取 "HH:MM" 部分
+    {% endif %}
+  });
+</script>
+{% endblock %}
+
 <style>
   .messages { list-style: none; padding: 0; }
   .messages li.error { color: red; font-weight: bold; }
   .messages li.success { color: green; font-weight: bold; }
 </style>
-
-<!-- Flatpickr 样式与脚本 -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script>
-  // 获取从后端传入的 min_time（例如 2025-05-04T11:30）
-  const minTime = "{{ min_time }}";
-
-  flatpickr("input[name='start_time']", {
-    enableTime: true,
-    dateFormat: "Y-m-d H:i",
-    time_24hr: true,
-    minDate: minTime
-  });
-</script>
