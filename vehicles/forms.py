@@ -8,7 +8,7 @@ class ReservationForm(forms.ModelForm):
         model = Reservation
         fields = ['date', 'start_time', 'end_date', 'end_time', 'purpose']
         widgets = {
-            'date': forms.DateInput(attrs={'type': 'date', 'class': 'flat-date'}),
+            'date': forms.DateInput(attrs={'type': 'text', 'class': 'flat-date'}),
             'end_date': forms.DateInput(attrs={'type': 'date', 'class': 'flat-date'}),
             'start_time': forms.TimeInput(attrs={'type': 'time', 'class': 'flat-time'}),
             'end_time': forms.TimeInput(attrs={'type': 'time', 'class': 'flat-time'}),

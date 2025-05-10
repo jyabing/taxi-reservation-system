@@ -1,5 +1,9 @@
 {% extends 'base.html' %}
 {% load static %}
+{% block extra_head %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
+
 {% block content %}
 <h2>✏️ 修改预约</h2>
 
@@ -10,4 +14,30 @@
 </form>
 
 <a href="{% url 'my_reservations' %}">← 返回预约列表</a>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    flatpickr("input[name='date']", {
+      dateFormat: "Y-m-d",
+      minDate: "today"
+    });
+    flatpickr("input[name='end_date']", {
+      dateFormat: "Y-m-d",
+      minDate: "today"
+    });
+    flatpickr("input[name='start_time']", {
+      enableTime: true,
+      noCalendar: true,
+      dateFormat: "H:i",
+      time_24hr: true
+    });
+    flatpickr("input[name='end_time']", {
+      enableTime: true,
+      noCalendar: true,
+      dateFormat: "H:i",
+      time_24hr: true
+    });
+  </script>
 {% endblock %}

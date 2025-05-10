@@ -39,7 +39,7 @@
         ">
           {% if cell.reservation %}
             <a href="{% url 'reservation_detail' cell.reservation.id %}">
-              {{ cell.reservation.start_time }} - {{ cell.reservation.end_time }}<br>{{ cell.reservation.driver.username }}
+              {{ cell.reservation.start_time|time:"H:i" }} - {{ cell.reservation.end_time|time:"H:i" }}<br>{{ cell.reservation.driver.username }}
             </a>
           {% elif not cell.is_past %}
             <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">

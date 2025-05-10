@@ -5,7 +5,7 @@
 
 <ul>
   <li><strong>车牌：</strong>{{ reservation.vehicle.license_plate }}</li>
-  <li><strong>日期：</strong>{{ reservation.date }}</li>
+  <li><strong>日期：</strong>{{ reservation.date|date:"Y-m-d (D)" }}</li>
   <li><strong>时间段：</strong>{% include 'partials/_time_range_snippet.html' with obj=reservation %}</li>
   <li><strong>司机：</strong>{{ reservation.driver.username }}</li>
   <li><strong>状态：</strong>{{ reservation.get_status_display }}</li>
@@ -13,3 +13,20 @@
 
 <a href="{% url 'weekly_overview' %}">← 返回周视图</a>
 {% endblock %}
+
+<style>
+  ul {
+    padding-left: 1em;
+    font-size: 1rem;
+  }
+
+  li {
+    margin-bottom: 0.5em;
+    word-break: break-word;
+  }
+
+  @media (max-width: 600px) {
+    h2 { font-size: 1.3em; }
+    li { font-size: 0.95em; }
+  }
+</style>
