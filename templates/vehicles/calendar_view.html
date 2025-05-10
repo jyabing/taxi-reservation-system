@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<h2>📅 配车系统日历：{{ current_month|date:"Y年n月" }}</h2>
+
+<div style="margin-bottom: 1em;">
+  <a href="?year={{ prev_year }}&month={{ prev_month }}">← 上月</a> |
+  <a href="?year={{ next_year }}&month={{ next_month }}">下月 →</a>
+</div>
+
+<table class="calendar-table">
+  <thead>
+    <tr>
+      <th>日</th><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for week in calendar_matrix %}
+      <tr>
+        {% for day in week %}
+          {% if day %}
+            <td class="calendar-day {% if day == today %}today{% endif %}" data-date="{{ day }}">{{ day|date:"j" }}</td>
+          {% else %}
+            <td></td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ✅ 弹窗结构 -->
+<div id="salesModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="hideModal()">&times;</span>
+    <h3>🧾 売上详情：<span id="modalDate"></span></h3>
+    <div id="modalBody">加载中...</div>
+  </div>
+</div>
+{% endblock %}
+
+<style>
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  font-size: 16px;
+}
+.calendar-table th, .calendar-table td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  height: 60px;
+}
+.calendar-day {
+  cursor: pointer;
+}
+.calendar-day.today {
+  background-color: #ffeeba;
+  font-weight: bold;
+}
+
+/* modal */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  overflow: auto;
+  background-color: rgba(0,0,0,0.5);
+}
+.modal-content {
+  background-color: #fff;
+  margin: 10% auto;
+  padding: 20px;
+  width: 90%;
+  max-width: 500px;
+  border-radius: 8px;
+}
+.close {
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+}
+</style>
+
+<script>
+// 模态框逻辑
+function showModal(id) {
+  document.getElementById(id).style.display = "block";
+}
+function hideModal() {
+  document.getElementById("salesModal").style.display = "none";
+}
+
+// 点击每个日期发请求
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.calendar-day').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const date = cell.getAttribute('data-date');
+      fetch(`/employees/api/daily-sales/?date=${date}`, {
+        credentials: 'include'
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('modalDate').textContent = date;
+        if (data.error) {
+          document.getElementById('modalBody').innerText = data.error;
+        } else {
+          let html = '<table class="table">';
+          for (const [k, v] of Object.entries(data)) {
+            html += `<tr><th>${k}</th><td>${v}</td></tr>`;
+          }
+          html += '</table>';
+          document.getElementById('modalBody').innerHTML = html;
+        }
+        showModal('salesModal');
+      })
+      .catch(err => {
+        document.getElementById('modalBody').innerText = '请求失败';
+        showModal('salesModal');
+      });
+    });
+  });
+});
+</script>
+<script>
+  function hideModal() {
+    document.getElementById("salesModal").style.display = "none";
+  }
+  </script>
+  <script>
+    function showModal(id) {
+      document.getElementById(id).style.display = "block";
+    }
+    
+    function hideModal() {
+      document.getElementById("salesModal").style.display = "none";
+    }
+    </script>

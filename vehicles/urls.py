@@ -26,7 +26,7 @@ from .views import (
     vehicle_monthly_gantt_view,
     gantt_data, 
     vehicle_image_list_view,
-    vehicle_image_delete_view,
+
 )
 
 urlpatterns = [
@@ -56,4 +56,6 @@ urlpatterns = [
     path('gantt/data/', views.gantt_data, name='gantt_data'),
     path('admin/vehicle/<int:vehicle_id>/images/', views.vehicle_image_list_view, name='vehicle_image_list'),
     path('admin/vehicle/<int:vehicle_id>/delete_image/<int:index>/', views.vehicle_image_delete_view, name='vehicle_image_delete'),
+    path('calendar/', views.calendar_view, name='calendar_view'),
+    path('api/daily-sales/', views.api_daily_sales_mock, name='api_daily_sales'),
 ]

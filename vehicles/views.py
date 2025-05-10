@@ -415,7 +415,7 @@ def daily_overview_view(request):
     else:
         selected_date = timezone.localdate()
 
-    now_time = timezone.localtime()
+    now_dt = timezone.localtime()  # ✅ 改名避免与函数 now 冲突
     vehicles = Vehicle.objects.all()
     reservations = Reservation.objects.filter(date=selected_date)
 
@@ -426,14 +426,12 @@ def daily_overview_view(request):
         if r:
             item = {'vehicle': vehicle, 'reservation': r}
         else:
-            # 判断当前空缺是否已经过去
-            is_today = selected_date == now.date()
-            is_past = is_today and now.time() > time(0, 30)  # 0:30之后不允许新预约
-            
-            # ✅ 管理员可预约所有时间，不视为 is_past
+            is_today = selected_date == now_dt.date()
+            is_past = is_today and now_dt.time() > time(0, 30)
+
             if request.user.is_staff:
                 is_past = False
-            
+
             item = {'vehicle': vehicle, 'reservation': None, 'is_past': is_past}
 
         data.append(item)
@@ -618,3 +616,54 @@ def vehicle_image_delete_view(request, vehicle_id, index):
         images[index].delete()
         return JsonResponse({'status': 'deleted'})
     return JsonResponse({'status': 'invalid_index'}, status=400)
+
+@login_required
+def calendar_view(request):
+    today = timezone.localdate()
+    year = int(request.GET.get('year', today.year))
+    month = int(request.GET.get('month', today.month))
+    current_month = date(year, month, 1)
+
+    cal = calendar.Calendar(firstweekday=6)  # 周日开始
+    month_days = cal.itermonthdates(year, month)
+    calendar_matrix = []
+    week = []
+    for d in month_days:
+        if d.month != month:
+            week.append(None)
+        else:
+            week.append(d)
+        if len(week) == 7:
+            calendar_matrix.append(week)
+            week = []
+
+    # 计算上下月
+    prev_month = (current_month.replace(day=1) - timedelta(days=1)).replace(day=1)
+    next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    return render(request, 'vehicles/calendar_view.html', {
+        'current_month': current_month,
+        'calendar_matrix': calendar_matrix,
+        'today': today,
+        'prev_year': prev_month.year,
+        'prev_month': prev_month.month,
+        'next_year': next_month.year,
+        'next_month': next_month.month,
+    })
+
+@login_required
+def api_daily_sales_mock(request):  #一个假的销售数据接口以便调试
+    target_date = request.GET.get('date')
+    if not target_date:
+        return JsonResponse({'error': '缺少日期参数'}, status=400)
+
+    # 模拟当前用户是司机 hikari9706，返回随机数据
+    return JsonResponse({
+        'date': target_date,
+        'ながし現金': 13450,
+        '貸切現金': 4600,
+        'ETC 空車': 720,
+        'ETC 乗車': 1600,
+        'uberプロモーション': 980,
+        '备注': '已完成夜班'
+    })
