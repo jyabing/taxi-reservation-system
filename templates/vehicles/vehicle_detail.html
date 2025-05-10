@@ -15,7 +15,11 @@
 <h3>最近预约记录</h3>
 <ul>
   {% for r in reservations %}
-    <li>{{ r.date }} {{ r.start_time }}-{{ r.end_time }} by {{ r.driver.username }}</li>
+  <li>
+    {{ r.date|date:"Y-m-d" }}
+    {{ r.start_time|time:"H:i" }} - {{ r.end_time|time:"H:i" }}
+    by {{ r.driver.username }}
+  </li>
   {% empty %}
     <li>无预约记录</li>
   {% endfor %}

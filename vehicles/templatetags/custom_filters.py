@@ -23,3 +23,7 @@ def to_int(value):
         return int(float(value))
     except (ValueError, TypeError):
         return 0
+
+@register.filter
+def display_datetime(value):
+    return value.strftime('%Y-%m-%d %H:%M')
