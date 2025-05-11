@@ -3,14 +3,13 @@
 
 {% block content %}
 
-<h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} · {{ current_month|date:"Y年n月" }}</h2>
+<h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} ＋ {{ current_month|date:"Y年n月" }}</h2>
 
 <p>
   <a href="?date={{ prev_month|date:"Y-m" }}">← 上一月</a> |
   <a href="?date={{ next_month|date:"Y-m" }}">下一月 →</a>
 </p>
 
-<!-- 包裹表格与 canvas -->
 <div class="gantt-wrapper">
   <canvas id="gantt-grid-overlay"></canvas>
 
@@ -27,8 +26,7 @@
       {% for row in matrix %}
         <tr>
           <td>
-            {{ row.date|date:"m-d (D)" }}
-            <br>
+            {{ row.date|date:"m-d (D)" }}<br>
             {% if not row.is_past %}
               <a href="{% url 'make_reservation' vehicle.id %}?date={{ row.date|date:'Y-m-d' }}">📝</a>
             {% else %}
@@ -41,13 +39,11 @@
                 <td colspan="{{ seg.start|floatformat:0|add:'-cursor' }}" class="gantt-empty"></td>
               {% endif %}
               <td colspan="{{ seg.length|floatformat:0 }}"
-                 class="gantt-seg gantt-{{ seg.status }}"
-                 title="{{ seg.label }}"
-                 onclick="showReservationModal(`{{ seg.label|escapejs }}`)">
-               <span>{{ seg.label }}</span>
+                  class="gantt-seg gantt-{{ seg.status }}"
+                  title="{{ seg.label }}"
+                  onclick="showReservationDetail('{{ seg.label }}')">
               </td>
-              {% with cursor=cursor|add:seg.length %}
-              {% endwith %}
+              {% with cursor=cursor|add:seg.length %}{% endwith %}
             {% endfor %}
             {% if cursor < 24 %}
               <td colspan="{{ 24|floatformat:0|add:'-cursor' }}" class="gantt-empty"></td>
@@ -59,11 +55,15 @@
   </table>
 </div>
 
-<!-- 样式增强 -->
+<!-- 跳出详情模态框 -->
+<div id="detailModal" class="modal" onclick="hideDetailModal()">
+  <div class="modal-content">
+    <span class="close">×</span>
+    <div id="modalText">加载中…</div>
+  </div>
+</div>
+
 <style>
-.gantt-table tr:hover {
-  background-color: #f9f9f9;
-}
 .gantt-wrapper {
   position: relative;
 }
@@ -91,6 +91,7 @@
 }
 .gantt-seg {
   position: relative;
+  cursor: pointer;
 }
 .gantt-pending { background: #ffc107; }
 .gantt-reserved { background: #007bff; }
@@ -110,111 +111,78 @@
   left: 0;
   z-index: 10;
 }
-.gantt-seg span {
-  display: block;
-  width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 10px;
-  color: white;
-  padding: 0 2px;
-}
-</style>
-
-<!-- 绘制垂直小时线 -->
-<script>
-  function drawGridLines() {
-    const table = document.querySelector(".gantt-table");
-    const canvas = document.getElementById("gantt-grid-overlay");
-    if (!table || !canvas) return;
-
-    const tableRect = table.getBoundingClientRect();
-    canvas.width = tableRect.width;
-    canvas.height = tableRect.height;
-    canvas.style.width = tableRect.width + "px";
-    canvas.style.height = tableRect.height + "px";
-
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);  // 清除旧线
-    ctx.strokeStyle = "#ccc";
-    ctx.lineWidth = 1;
-
-    const headers = table.querySelectorAll("thead th:not(:first-child)");
-    headers.forEach((th) => {
-      const thRect = th.getBoundingClientRect();
-      const relativeLeft = thRect.left - tableRect.left + th.offsetWidth;
-      ctx.beginPath();
-      ctx.moveTo(relativeLeft, 0);
-      ctx.lineTo(relativeLeft, canvas.height);
-      ctx.stroke();
-    });
-
-    console.log("Canvas grid re-rendered");
-  }
-
-  // 页面加载后绘制一次
-  window.addEventListener("load", () => {
-    setTimeout(drawGridLines, 100);  // 延迟，等待表格完全渲染
-  });
-
-  // 每次窗口变化重新绘制
-  let resizeTimeout;
-  window.addEventListener("resize", () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {  // 延迟，避免频繁重绘
-      drawGridLines();
-    }, 150);
-  });
-</script>
-
-<!-- 弹窗：预约详情 -->
-<div id="reservationModal" class="modal" style="display:none;">
-  <div class="modal-content">
-    <span class="close" onclick="hideModal()">&times;</span>
-    <h3>预约详情</h3>
-    <div id="modalBody">加载中...</div>
-  </div>
-</div>
-
-<style>
 .modal {
   display: none;
   position: fixed;
-  z-index: 10000;
+  z-index: 9999;
   left: 0;
   top: 0;
   width: 100%;
   height: 100%;
   overflow: auto;
-  background-color: rgba(0,0,0,0.6);
+  background-color: rgba(0,0,0,0.7);
 }
 .modal-content {
-  background-color: #fff;
   margin: 10% auto;
   padding: 20px;
-  width: 80%;
-  max-width: 400px;
+  background-color: #fff;
+  width: 300px;
   border-radius: 8px;
 }
-.close {
+.modal .close {
   float: right;
   font-size: 24px;
-  font-weight: bold;
   cursor: pointer;
 }
 </style>
 
 <script>
-  function showReservationModal(text) {
-    const modal = document.getElementById("reservationModal");
-    const body = document.getElementById("modalBody");
-    body.innerText = text;
-    modal.style.display = "block";
-  }
-  function hideModal() {
-    document.getElementById("reservationModal").style.display = "none";
-  }
-  </script>
+function drawGridLines() {
+  const table = document.querySelector(".gantt-table");
+  const canvas = document.getElementById("gantt-grid-overlay");
+  if (!table || !canvas) return;
+
+  const tableRect = table.getBoundingClientRect();
+  canvas.width = tableRect.width;
+  canvas.height = tableRect.height;
+  canvas.style.width = tableRect.width + "px";
+  canvas.style.height = tableRect.height + "px";
+
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "#ccc";
+  ctx.lineWidth = 1;
+
+  const headers = table.querySelectorAll("thead th:not(:first-child)");
+  headers.forEach((th) => {
+    const thRect = th.getBoundingClientRect();
+    const relativeLeft = thRect.left - tableRect.left + th.offsetWidth;
+    ctx.beginPath();
+    ctx.moveTo(relativeLeft, 0);
+    ctx.lineTo(relativeLeft, canvas.height);
+    ctx.stroke();
+  });
+}
+
+function showReservationDetail(text) {
+  document.getElementById("modalText").innerText = text;
+  document.getElementById("detailModal").style.display = "block";
+}
+
+function hideDetailModal() {
+  document.getElementById("detailModal").style.display = "none";
+}
+
+window.addEventListener("load", () => {
+  setTimeout(drawGridLines, 100);
+});
+let resizeTimeout;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    drawGridLines();
+  }, 150);
+});
+</script>
 
 {% endblock %}

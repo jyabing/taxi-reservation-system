@@ -27,3 +27,16 @@ def to_int(value):
 @register.filter
 def display_datetime(value):
     return value.strftime('%Y-%m-%d %H:%M')
+
+register = template.Library()
+
+@register.filter
+def cutover(value, max_value):
+    try:
+        return min(float(value), float(max_value))
+    except:
+        return value
+
+@register.filter
+def make_range(start, end):
+    return range(start, end)

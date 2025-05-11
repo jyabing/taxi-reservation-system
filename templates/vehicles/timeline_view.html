@@ -13,7 +13,7 @@
 
 <!-- 小时刻度行 -->
 <div style="display: flex; justify-content: space-between; font-size: 10px; width: 100%;">
-  {% for h in 0|to:24 %}
+  {% for h in hours %}
     <div style="flex: 1; text-align: center;">{{ h }}时</div>
   {% endfor %}
 </div>

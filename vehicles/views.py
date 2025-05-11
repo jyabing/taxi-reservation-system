@@ -89,6 +89,7 @@ def vehicle_timeline_view(request, vehicle_id):
         'selected_date': selected_date,
         'reservations': reservations,
         'is_past': is_past,  # ✅ 传入模板
+        'hours': range(24),  # ✅ 加上这行
     })
 
 @login_required
@@ -312,44 +313,33 @@ def weekly_selector_view(request):
 def vehicle_monthly_gantt_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
 
-    # 1. 读 ?date=YYYY-MM，否则用今天
-    month_str = request.GET.get('date')  # e.g. "2025-04"
+    # 1. 读取当前月份参数或默认今天
+    month_str = request.GET.get('date')  # 例：2025-05
     if month_str:
         try:
             year, month = map(int, month_str.split('-'))
         except ValueError:
-            today = date.today()
+            today = timezone.localdate()
             year, month = today.year, today.month
     else:
-        today = date.today()
+        today = timezone.localdate()
         year, month = today.year, today.month
 
-    # 2. 计算本月第一天 和 上／下个月的第一天
+    # 2. 获取当月第一天、上下月跳转
     current_month = date(year, month, 1)
-    if month == 1:
-        prev_month = date(year - 1, 12, 1)
-    else:
-        prev_month = date(year, month - 1, 1)
-    if month == 12:
-        next_month = date(year + 1, 1, 1)
-    else:
-        next_month = date(year, month + 1, 1)
-
-    # 3. 本月天数
+    prev_month = (current_month - timedelta(days=1)).replace(day=1)
+    next_month = (current_month + timedelta(days=32)).replace(day=1)
     days_in_month = monthrange(year, month)[1]
 
-    # 4. 构造甘特图矩阵
     matrix = []
-    today = timezone.localdate()
-    now_time = timezone.localtime().time()
+    now = timezone.localtime()
 
     for day in range(1, days_in_month + 1):
         d = date(year, month, day)
+        is_past = make_aware(datetime.combine(d, time.max)) < now
 
-            # ⏰ 关键：是否为过去时间（当天 23:59:59 之前）
-        is_past = make_aware(datetime.combine(d, time.max)) < timezone.now()
-
-        qs = Reservation.objects.filter(
+        # 获取本日涉及的预约（包含跨日的）
+        reservations = Reservation.objects.filter(
             vehicle=vehicle,
             date__lte=d,
             end_date__gte=d,
@@ -357,43 +347,46 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
         ).order_by('start_time')
 
         segments = []
-        for r in qs:
-            start_dt = max(datetime.combine(r.date, r.start_time),
-                           datetime.combine(d, time.min))
-            end_dt   = min(datetime.combine(r.end_date, r.end_time),
-                           datetime.combine(d, time.max))
-            start_offset = (start_dt - datetime.combine(d, time.min)).total_seconds() / 3600
-            length = (end_dt - start_dt).total_seconds() / 3600
-            segments.append({
-                'start': start_offset,
-                'length': length,
-                'status': r.status,
-                'label': f"{r.driver.username} {r.start_time}-{r.end_time}"
-            })
-        matrix.append({'date': d, 'segments': segments, 'is_past': is_past})
-        # 👉 是否是过去时间（普通用户不能预约）
+        for r in reservations:
+            start_dt = max(datetime.combine(r.date, r.start_time), datetime.combine(d, time.min))
+            end_dt = min(datetime.combine(r.end_date, r.end_time), datetime.combine(d, time.max))
+
+            start_offset = max((start_dt - datetime.combine(d, time.min)).total_seconds() / 3600, 0)
+            end_offset = min((end_dt - datetime.combine(d, time.min)).total_seconds() / 3600, 24)
+            length = max(end_offset - start_offset, 0.1)  # 避免 0 长度
+
+            if length > 0:
+                segments.append({
+                    'start': start_offset,
+                    'length': length,
+                    'status': r.status,
+                    'label': f"{r.driver.username} {r.start_time.strftime('%H:%M')}-{r.end_time.strftime('%H:%M')}"
+                })
+
+        # 非管理员不可预约过去
         if request.user.is_staff:
             is_past = False
+        elif d < today:
+            is_past = True
+        elif d == today and now.time() >= time(23, 30):
+            is_past = True
         else:
-            if d < today:
-                is_past = True
-            elif d == today and now_time >= time(hour=23, minute=30):
-                is_past = True
-            else:
-                is_past = False
+            is_past = False
 
-        matrix.append({'date': d, 'segments': segments, 'is_past': is_past})
-
-    hours = list(range(24))
+        matrix.append({
+            'date': d,
+            'segments': segments,
+            'is_past': is_past
+        })
 
     return render(request, 'vehicles/monthly_gantt.html', {
         'vehicle': vehicle,
         'matrix': matrix,
-        'hours': hours,
+        'hours': list(range(24)),
         'current_month': current_month,
         'prev_month': prev_month,
         'next_month': next_month,
-        'now': timezone.now(),
+        'now': now,
         'is_admin': request.user.is_staff,
     })
 
@@ -667,3 +660,40 @@ def api_daily_sales_mock(request):  #一个假的销售数据接口以便调试
         'uberプロモーション': 980,
         '备注': '已完成夜班'
     })
+
+def build_vehicle_gantt_matrix(vehicle, year, month):
+    current_month = date(year, month, 1)
+    days_in_month = monthrange(year, month)[1]
+
+    matrix = []
+    hours = list(range(24))
+    today = timezone.localdate()
+    now_time = timezone.localtime().time()
+
+    for day in range(1, days_in_month + 1):
+        d = date(year, month, day)
+        is_past = make_aware(datetime.combine(d, time.max)) < timezone.now()
+
+        reservations = vehicle.reservation_set.filter(
+            date__lte=d,
+            end_date__gte=d,
+            status__in=['pending', 'reserved', 'out']
+        ).order_by('start_time')
+
+        segments = []
+        for r in reservations:
+            start_dt = max(datetime.combine(r.date, r.start_time), datetime.combine(d, time.min))
+            end_dt = min(datetime.combine(r.end_date, r.end_time), datetime.combine(d, time.max))
+            start_offset = (start_dt - datetime.combine(d, time.min)).total_seconds() / 3600
+            length = (end_dt - start_dt).total_seconds() / 3600
+
+            segments.append({
+                'start': start_offset,
+                'length': length,
+                'status': r.status,
+                'label': f"{r.driver.username} {r.start_time.strftime('%H:%M')}-{r.end_time.strftime('%H:%M')}"
+            })
+
+        matrix.append({'date': d, 'segments': segments, 'is_past': is_past})
+
+    return matrix, hours, current_month
