@@ -20,18 +20,26 @@
         <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
         <a href="{% url 'delete_reservation' r.id %}">❌ 删除</a>
     
-      {% elif r.status == 'reserved' and r.date == today %}
-        {% if now.time >= r.start_time and now.time <= r.end_time %}
-          {% if not r.actual_departure %}
-            <button onclick="openTimePopup('{{ r.id }}', 'departure')">🚗 出库</button>
-          {% elif not r.actual_return %}
-            <button onclick="openTimePopup('{{ r.id }}', 'return')">🅿️ 入库</button>
+      {% elif r.status == 'reserved' %}
+        {% with start_ts=r.date|stringformat:"s" %}  {# 起始时间戳字符串（秒） #}
+        {% with end_ts=r.end_date|stringformat:"s" %} {# 结束时间戳字符串（秒） #}
+    
+        {% if not r.actual_departure %}
+          {% if today == r.date and now.time >= r.start_time %}
+            <button onclick="openTimePopup('{{ r.id }}', 'departure')">🚗 出库</button><br>
+            <span style="color:gray;">⚠️ 一小时内不点击将自动取消</span>
           {% else %}
-            ✅ 出入库完成
+            <span style="color:gray;">⏳ 等待出车时间</span>
           {% endif %}
+        {% elif not r.actual_return %}
+          <button onclick="openTimePopup('{{ r.id }}', 'return')">🅿️ 入库</button><br>
+          <span style="color:gray;">⚠️ 超过30分钟未入库将自动延长</span>
         {% else %}
-          <span style="color:gray;">⏳ 等待时间到达</span>
+          ✅ 出入库完成
         {% endif %}
+    
+        {% endwith %}
+        {% endwith %}
     
       {% elif r.status == 'out' %}
         {% if not r.actual_return %}
@@ -40,6 +48,8 @@
           ✅ 完成
         {% endif %}
     
+      {% elif r.status == 'canceled' %}
+        ❌ 已取消
       {% else %}
         -
       {% endif %}
@@ -48,7 +58,7 @@
   {% endfor %}
 </table>
 <!-- 弹窗：出入库时间确认 -->
-<div id="popup" style="display:none; position:fixed; top:30%; left:35%; background:#fff; border:1px solid #ccc; padding:20px;">
+<div id="popup" style="display:none; position:fixed; top:30%; left:35%; background:#fff; border:1px solid #ccc; padding:20px; z-index:1000;">
   <form method="post" action="{% url 'confirm_check_io' %}">
     {% csrf_token %}
     <input type="hidden" name="reservation_id" id="popup_reservation_id">

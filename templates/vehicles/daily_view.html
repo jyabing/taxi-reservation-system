@@ -42,7 +42,8 @@
     </td>
     <td>
       {% if row.reservation %}
-        {{ row.reservation.start_time|time:"H:i" }} - {{ row.reservation.end_time|time:"H:i" }}
+        {{ row.reservation.date|date:"m/d" }} {{ row.reservation.start_time|time:"H:i" }} ~
+        {{ row.reservation.end_date|default:row.reservation.date|date:"m/d" }} {{ row.reservation.end_time|time:"H:i" }}
       {% endif %}
     </td>
     <td>
