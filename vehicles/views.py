@@ -538,9 +538,15 @@ def confirm_check_io(request):
 
     if action_type == 'departure' and not reservation.actual_departure:
         reservation.actual_departure = dt
+        reservation.status = 'out'  # ✅ 更新状态为出库中
+        reservation.vehicle.status = 'out'
+        reservation.vehicle.save()
         messages.success(request, "🚗 实际出库时间已登记")
     elif action_type == 'return' and not reservation.actual_return:
         reservation.actual_return = dt
+        reservation.status = '已入库'  # 可选标记完成
+        reservation.vehicle.status = 'available'
+        reservation.vehicle.save()
         messages.success(request, "🅿️ 实际入库时间已登记")
     else:
         messages.warning(request, "该操作已执行过或无效")
