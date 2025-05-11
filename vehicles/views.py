@@ -12,12 +12,13 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.http import HttpResponseRedirect, JsonResponse
 from django.core.mail import send_mail
 
+from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from .models import Vehicle, Reservation, Task
 from .forms import ReservationForm
-from django.views.decorators.http import require_POST
+
 #把 import 语句分类整理在一起，是一个非常好的编码习惯，不仅让代码更清晰，也能减少重复导入或顺序错误的情况。
 
 min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
@@ -540,9 +541,9 @@ def confirm_check_io(request):
         messages.success(request, "🚗 实际出库时间已登记")
     elif action_type == 'return' and not reservation.actual_return:
         reservation.actual_return = dt
-        messages.success(request, "🅿️ 实际还车时间已登记")
+        messages.success(request, "🅿️ 实际入库时间已登记")
     else:
-        messages.warning(request, "无法处理该操作")
+        messages.warning(request, "该操作已执行过或无效")
 
     reservation.save()
     return redirect('my_reservations')

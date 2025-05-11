@@ -1,13 +1,19 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load custom_filters %}
+
 {% block content %}
 
 <h2>📋 我的预约记录</h2>
 
 <table border="1">
   <tr>
-    <th>车辆</th><th>日期</th><th>时间段</th><th>状态</th>
+    <th>车辆</th>
+    <th>时间段</th>
+    <th>状态</th>
+    <th>操作</th>
   </tr>
+
   {% for r in reservations %}
   <tr>
     <td>{{ r.vehicle.license_plate }}</td>
@@ -19,11 +25,8 @@
       {% if r.status == 'pending' %}
         <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
         <a href="{% url 'delete_reservation' r.id %}">❌ 删除</a>
-    
+
       {% elif r.status == 'reserved' %}
-        {% with start_ts=r.date|stringformat:"s" %}  {# 起始时间戳字符串（秒） #}
-        {% with end_ts=r.end_date|stringformat:"s" %} {# 结束时间戳字符串（秒） #}
-    
         {% if not r.actual_departure %}
           {% if today == r.date and now.time >= r.start_time %}
             <button onclick="openTimePopup('{{ r.id }}', 'departure')">🚗 出库</button><br>
@@ -37,33 +40,38 @@
         {% else %}
           ✅ 出入库完成
         {% endif %}
-    
-        {% endwith %}
-        {% endwith %}
-    
+
       {% elif r.status == 'out' %}
         {% if not r.actual_return %}
           <button onclick="openTimePopup('{{ r.id }}', 'return')">🅿️ 入库</button>
         {% else %}
           ✅ 完成
         {% endif %}
-    
+
       {% elif r.status == 'canceled' %}
         ❌ 已取消
+
       {% else %}
         -
       {% endif %}
     </td>
   </tr>
+  {% empty %}
+  <tr>
+    <td colspan="4">暂无预约记录</td>
+  </tr>
   {% endfor %}
 </table>
+
+<p><a href="{% url 'reservation_dashboard' %}">← 返回预约菜单</a></p>
+
 <!-- 弹窗：出入库时间确认 -->
 <div id="popup" style="display:none; position:fixed; top:30%; left:35%; background:#fff; border:1px solid #ccc; padding:20px; z-index:1000;">
   <form method="post" action="{% url 'confirm_check_io' %}">
     {% csrf_token %}
     <input type="hidden" name="reservation_id" id="popup_reservation_id">
     <input type="hidden" name="action_type" id="popup_action_type">
-    <label>选择实际时间：</label>
+    <label>实际时间：</label>
     <input type="datetime-local" name="actual_time" required>
     <br><br>
     <button type="submit">确认</button>
@@ -72,13 +80,11 @@
 </div>
 
 <script>
-  function openTimePopup(reservationId, actionType) {
-    document.getElementById('popup_reservation_id').value = reservationId;
-    document.getElementById('popup_action_type').value = actionType;
-    document.getElementById('popup').style.display = 'block';
-  }
+function openTimePopup(reservationId, actionType) {
+  document.getElementById('popup_reservation_id').value = reservationId;
+  document.getElementById('popup_action_type').value = actionType;
+  document.getElementById('popup').style.display = 'block';
+}
 </script>
 
 {% endblock %}
-
-<p><a href="{% url 'reservation_dashboard' %}">← 返回预约菜单</a></p>

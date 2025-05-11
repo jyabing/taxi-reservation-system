@@ -31,16 +31,19 @@
       🟥 空缺（点此预约）
     </a>
   {% else %}
-    {{ vehicle.get_status_display }}
-
-    {% if info.status == 'reserved' and info.user_reservation %}
+  {{ vehicle.get_status_display }}
+  {% if info.status == 'reserved' and info.user_reservation %}
+    <div style="margin-top: 5px;">
+      <span style="color: blue;">🧍 我的预约</span><br>
+      🕒 {{ info.user_reservation.start_time|time:"H:i" }} ~ {{ info.user_reservation.end_time|time:"H:i" }}
       {% if not info.user_reservation.actual_departure %}
-        <br><a href="{% url 'check_out' info.user_reservation.id %}">🚗 出库</a>
+        <br><button onclick="openTimePopup('{{ info.user_reservation.id }}', 'departure')">🚗 出库</button>
       {% elif not info.user_reservation.actual_return %}
-        <br><a href="{% url 'check_in' info.user_reservation.id %}">🅿️ 还车</a>
+        <br><button onclick="openTimePopup('{{ info.user_reservation.id }}', 'return')">🅿️ 入库</button>
       {% else %}
         <br>✅ 已完成出入库
       {% endif %}
+    </div>
     {% endif %}
   {% endif %}
 </td>
@@ -48,3 +51,17 @@
 {% endfor %}
 </table>
 {% endblock %}
+
+<!-- 出入库时间弹窗 -->
+<div id="popup" style="display:none; position:fixed; top:30%; left:35%; background:#fff; border:1px solid #ccc; padding:20px;">
+  <form method="post" action="{% url 'confirm_check_io' %}">
+    {% csrf_token %}
+    <input type="hidden" name="reservation_id" id="popup_reservation_id">
+    <input type="hidden" name="action_type" id="popup_action_type">
+    <label>选择实际时间：</label>
+    <input type="datetime-local" name="actual_time" required>
+    <br><br>
+    <button type="submit">确认</button>
+    <button type="button" onclick="document.getElementById('popup').style.display='none'">取消</button>
+  </form>
+</div>
