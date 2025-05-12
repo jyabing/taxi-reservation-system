@@ -50,7 +50,7 @@ urlpatterns = [
     path('vehicle/<int:vehicle_id>/', vehicle_detail_view, name='vehicle_detail'),
     path('reservation/<int:reservation_id>/edit/', edit_reservation_view, name='edit_reservation'),
     path('reservation/<int:reservation_id>/delete/', delete_reservation_view, name='delete_reservation'),
-    path('confirm_check_io/', confirm_check_io, name='confirm_check_io'),
+    path('confirm_check_io/', views.confirm_check_io, name='confirm_check_io'),
     path('status/photo/', vehicle_status_with_photo, name='vehicle_status_with_photo'),
     path('monthly/<int:vehicle_id>/', views.vehicle_monthly_gantt_view, name='vehicle_monthly_gantt'),
     path('gantt/data/', views.gantt_data, name='gantt_data'),
@@ -58,4 +58,7 @@ urlpatterns = [
     path('admin/vehicle/<int:vehicle_id>/delete_image/<int:index>/', views.vehicle_image_delete_view, name='vehicle_image_delete'),
     path('calendar/', views.calendar_view, name='calendar_view'),
     path('api/daily-sales/', views.api_daily_sales_mock, name='api_daily_sales'),
+
+    
 ]
+

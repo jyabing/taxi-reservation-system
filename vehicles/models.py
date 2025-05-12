@@ -44,6 +44,7 @@ class Reservation(models.Model):
             ('reserved', '已预约'),
             ('out', '已出库'),
             ('canceled', '已取消'),
+            ('completed', '已完成'),    # ← 新增
         ],
         default='pending',
         verbose_name="状态"
@@ -53,7 +54,7 @@ class Reservation(models.Model):
     purpose = models.CharField(max_length=200, blank=True, verbose_name="用途说明")
 
     actual_departure = models.DateTimeField(null=True, blank=True, verbose_name="实际出库时间")
-    actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际还车时间")
+    actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际入库时间")
 
     def __str__(self):
         return f"{self.vehicle} {self.date} ~ {self.end_date} {self.start_time}-{self.end_time}"

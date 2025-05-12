@@ -2,71 +2,75 @@
 {% load static %}
 {% block content %}
 
-{% include 'vehicles/status_tab_navigation.html' %}  {# 插入 Tab 按钮 #}
+{% include 'vehicles/status_tab_navigation.html' %}
 
-<h2>车辆预约状态一览({{ selected_date }})</h2>
+<h2>车辆预约状态一览（{{ selected_date }}）</h2>
 
 <form method="get">
-    选择日期：<input type="date" name="date" value="{{ selected_date }}">
-    <button type="submit">查询</button>
+  选择日期：<input type="date" name="date" value="{{ selected_date }}">
+  <button type="submit">查询</button>
 </form>
 
 <table border="1">
-<tr>
-    <th>车牌号</th><th>车型</th><th>状态</th>
-</tr>
-{% for vehicle, info in status_map.items %}
-<tr>
-  <td><a href="{% url 'vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a></td>
-  <td>{{ vehicle.model }}</td>
-  <td style="color:
-  {% if info.status == 'available' %}red
-  {% elif info.status == 'reserved' %}blue
-  {% elif info.status == 'out' %}orange
-  {% elif info.status == 'canceled' %}gray
-  {% endif %}
-">
-  {% if info.status == 'available' %}
-    <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}">
-      🟥 空缺（点此预约）
-    </a>
-  {% else %}
-    {% if info.status == 'out' %}
-      <span style="color: orange; font-weight: bold;">🟧 出库中</span>
-    {% else %}
-      {{ vehicle.get_status_display }}
-    {% endif %}
-    
-  {% if info.status == 'reserved' and info.user_reservation %}
-    <div style="margin-top: 5px;">
-      <span style="color: blue;">🧍 我的预约</span><br>
-      🕒 {{ info.user_reservation.start_time|time:"H:i" }} ~ {{ info.user_reservation.end_time|time:"H:i" }}
-      {% if not info.user_reservation.actual_departure %}
-        <br><button onclick="openTimePopup('{{ info.user_reservation.id }}', 'departure')">🚗 出库</button>
-      {% elif not info.user_reservation.actual_return %}
-        <br><button onclick="openTimePopup('{{ info.user_reservation.id }}', 'return')">🅿️ 入库</button>
-      {% else %}
-        <br>✅ 已完成出入库
+  <tr>
+    <th>车牌号</th>
+    <th>车型</th>
+    <th>状态</th>
+  </tr>
+  {% for vehicle, info in status_map.items %}
+  <tr>
+    <td>
+      <a href="{% url 'vehicle_detail' vehicle.id %}">
+        {{ vehicle.license_plate }}
+      </a>
+    </td>
+    <td>{{ vehicle.model }}</td>
+    <td style="color:
+      {% if info.status == 'available' %}red
+      {% elif info.status == 'reserved'  %}blue
+      {% elif info.status == 'out'       %}orange
+      {% elif info.status == 'canceled'  %}gray
       {% endif %}
-    </div>
-    {% endif %}
-  {% endif %}
-</td>
-</tr>
-{% endfor %}
-</table>
-{% endblock %}
+    ">
+      {% if info.status == 'available' %}
+        <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}">
+          🟥 空缺（点此预约）
+        </a>
+      {% else %}
+        {% if info.status == 'out' %}
+          <span style="color:orange; font-weight:bold;">🟧 出库中</span>
+        {% else %}
+          {{ vehicle.get_status_display }}
+        {% endif %}
 
-<!-- 出入库时间弹窗 -->
-<div id="popup" style="display:none; position:fixed; top:30%; left:35%; background:#fff; border:1px solid #ccc; padding:20px;">
-  <form method="post" action="{% url 'confirm_check_io' %}">
-    {% csrf_token %}
-    <input type="hidden" name="reservation_id" id="popup_reservation_id">
-    <input type="hidden" name="action_type" id="popup_action_type">
-    <label>选择实际时间：</label>
-    <input type="datetime-local" name="actual_time" required>
-    <br><br>
-    <button type="submit">确认</button>
-    <button type="button" onclick="document.getElementById('popup').style.display='none'">取消</button>
-  </form>
-</div>
+        {% if info.user_reservation %}
+        <div style="margin-top:5px;">
+          <span style="color:blue;">🧍 我的预约</span><br>
+          🕒 {{ info.user_reservation.start_time|time:"H:i" }}
+            ~ {{ info.user_reservation.end_time|time:"H:i" }}
+
+          {% if not info.user_reservation.actual_departure %}
+            <br>
+            <button onclick="openTimePopup('{{ info.user_reservation.id }}','departure')">
+              🚗 出库
+            </button>
+          {% elif not info.user_reservation.actual_return %}
+            <br>
+            <button onclick="openTimePopup('{{ info.user_reservation.id }}','return')">
+              🅿️ 入库
+            </button>
+          {% else %}
+            <br>✅ 已完成出入库
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+{# 只在页面底部 include 弹窗模板 #}
+{% include 'partials/_check_io_popup.html' %}
+
+{% endblock %}

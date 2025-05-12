@@ -3,7 +3,6 @@
 {% load custom_filters %}
 
 {% block content %}
-
 <h2>📋 我的预约记录</h2>
 
 <table border="1">
@@ -20,13 +19,7 @@
     <td>
       {% include 'partials/_time_range_snippet.html' with obj=r %}
     </td>
-    <td>
-      {% if r.status == 'out' %}
-        🟧 出库中
-      {% else %}
-        {{ r.get_status_display }}
-      {% endif %}
-    </td>
+    <td>{{ r.get_status_display }}</td>
     <td>
       {% if r.status == 'pending' %}
         <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
@@ -34,22 +27,32 @@
 
       {% elif r.status == 'reserved' %}
         {% if not r.actual_departure %}
-          {% if today == r.date and now.time >= r.start_time %}
-            <button onclick="openTimePopup('{{ r.id }}', 'departure')">🚗 出库</button><br>
-            <span style="color:gray;">⚠️ 一小时内不点击将自动取消</span>
+          {% if today == r.date %}
+            <button onclick="openTimePopup('{{ r.id }}', 'departure')">
+              🚗 出库
+            </button><br>
+            <span style="color:gray;">
+              ⚠️ 未出库的预约将在开始后一小时自动取消
+            </span>
           {% else %}
-            <span style="color:gray;">⏳ 等待出车时间</span>
+            <span style="color:gray;">⏳ 等待预约日期</span>
           {% endif %}
         {% elif not r.actual_return %}
-          <button onclick="openTimePopup('{{ r.id }}', 'return')">🅿️ 入库</button><br>
-          <span style="color:gray;">⚠️ 超过30分钟未入库将自动延长</span>
+          <button onclick="openTimePopup('{{ r.id }}', 'return')">
+            🅿️ 入库
+          </button><br>
+          <span style="color:gray;">
+            ⚠️ 超过30分钟未入库将自动延长
+          </span>
         {% else %}
           ✅ 出入库完成
         {% endif %}
 
       {% elif r.status == 'out' %}
         {% if not r.actual_return %}
-          <button onclick="openTimePopup('{{ r.id }}', 'return')">🅿️ 入库</button>
+          <button onclick="openTimePopup('{{ r.id }}', 'return')">
+            🅿️ 入库
+          </button>
         {% else %}
           ✅ 完成
         {% endif %}
@@ -69,28 +72,8 @@
   {% endfor %}
 </table>
 
+{# 只在页面底部 include 一次 popup partial #}
+{% include 'partials/_check_io_popup.html' %}
+
 <p><a href="{% url 'reservation_dashboard' %}">← 返回预约菜单</a></p>
-
-<!-- 弹窗：出入库时间确认 -->
-<div id="popup" style="display:none; position:fixed; top:30%; left:35%; background:#fff; border:1px solid #ccc; padding:20px; z-index:1000;">
-  <form method="post" action="{% url 'confirm_check_io' %}">
-    {% csrf_token %}
-    <input type="hidden" name="reservation_id" id="popup_reservation_id">
-    <input type="hidden" name="action_type" id="popup_action_type">
-    <label>实际时间：</label>
-    <input type="datetime-local" name="actual_time" required>
-    <br><br>
-    <button type="submit">确认</button>
-    <button type="button" onclick="document.getElementById('popup').style.display='none'">取消</button>
-  </form>
-</div>
-
-<script>
-function openTimePopup(reservationId, actionType) {
-  document.getElementById('popup_reservation_id').value = reservationId;
-  document.getElementById('popup_action_type').value = actionType;
-  document.getElementById('popup').style.display = 'block';
-}
-</script>
-
 {% endblock %}

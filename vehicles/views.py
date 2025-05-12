@@ -1,19 +1,23 @@
+# 标准库
 import calendar
 from calendar import monthrange
+from datetime import datetime, timedelta, time, date
+
+# Django 常用工具
+from django.shortcuts import render, get_object_or_404, redirect
+from django.http import HttpResponseRedirect, JsonResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.utils.timezone import now, make_aware
-from django.db.models import Q
-from datetime import datetime, timedelta, time, date  # ✅ 一起导入
-
-from django.shortcuts import render, get_object_or_404, redirect  # ✅ 一起导入
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
-from django.http import HttpResponseRedirect, JsonResponse
-from django.core.mail import send_mail
-
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib import messages
+from django.core.mail import send_mail
+
+from django.db.models import Q
+
+# 自己的模型和表单
 from django.utils.decorators import method_decorator
 
 from .models import Vehicle, Reservation, Task
@@ -516,41 +520,48 @@ def delete_reservation_view(request, reservation_id):
         'reservation': reservation
     })
 
+
 @require_POST
 @login_required
 def confirm_check_io(request):
+    # 1. 从 POST 里拿到三个参数
     reservation_id = request.POST.get('reservation_id')
-    action_type = request.POST.get('action_type')  # 'departure' or 'return'
-    actual_time = request.POST.get('actual_time')
+    action = request.POST.get('action_type')       # 'departure' 或 'return'
+    actual_time = request.POST.get('actual_time')  # ISO 格式字符串，例：'2025-05-13T05:12'
 
+    # 2. 找到这条仅属于当前用户、ID 匹配的预约
     reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
 
-    # 必须是状态为已预约才能登记出入库
-    if reservation.status != 'reserved':
-        return HttpResponseForbidden("当前预约不允许操作出入库")
-
+    # 3. 解析时间
     try:
         dt = timezone.datetime.fromisoformat(actual_time)
         dt = timezone.make_aware(dt) if timezone.is_naive(dt) else dt
-    except Exception as e:
+    except Exception:
         messages.error(request, "时间格式错误")
         return redirect('my_reservations')
 
-    if action_type == 'departure' and not reservation.actual_departure:
+    # 4. 根据 action 分情况处理
+    if action == 'departure':
+        # 只有 status == 'reserved' 时才允许出库
+        if reservation.status != 'reserved':
+            return HttpResponseForbidden("当前预约不允许出库登记")
         reservation.actual_departure = dt
-        reservation.status = 'out'  # ✅ 更新状态为出库中
+        reservation.status = 'out'
         reservation.vehicle.status = 'out'
-        reservation.vehicle.save()
-        messages.success(request, "🚗 实际出库时间已登记")
-    elif action_type == 'return' and not reservation.actual_return:
+        messages.success(request, "🚗 实际出库时间已登记，状态更新为“出库中”")
+    elif action == 'return':
+        # 只有 status == 'out' 时才允许入库
+        if reservation.status != 'out':
+            return HttpResponseForbidden("当前预约不允许入库登记")
         reservation.actual_return = dt
-        reservation.status = '已入库'  # 可选标记完成
+        reservation.status = 'completed'
         reservation.vehicle.status = 'available'
-        reservation.vehicle.save()
-        messages.success(request, "🅿️ 实际入库时间已登记")
+        messages.success(request, "🅿️ 实际入库时间已登记，预约完成，车辆空闲中，状态恢复“可预约”")
     else:
-        messages.warning(request, "该操作已执行过或无效")
+        return HttpResponseForbidden("未知的操作类型")
 
+    # 5. 保存并跳回列表
+    reservation.vehicle.save()
     reservation.save()
     return redirect('my_reservations')
 
