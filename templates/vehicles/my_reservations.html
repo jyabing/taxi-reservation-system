@@ -20,7 +20,13 @@
     <td>
       {% include 'partials/_time_range_snippet.html' with obj=r %}
     </td>
-    <td>{{ r.get_status_display }}</td>
+    <td>
+      {% if r.status == 'out' %}
+        🟧 出库中
+      {% else %}
+        {{ r.get_status_display }}
+      {% endif %}
+    </td>
     <td>
       {% if r.status == 'pending' %}
         <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
