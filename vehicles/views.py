@@ -247,7 +247,7 @@ def check_in(request, reservation_id):
 @login_required
 def weekly_overview_view(request):
     today = timezone.localdate()
-    now_time = timezone.localtime().time()
+    now_dt = timezone.localtime()
 
     # 获取当前周的开始日期（周一）
     weekday = today.weekday()
@@ -261,29 +261,42 @@ def weekly_overview_view(request):
     week_dates = [monday + timedelta(days=i) for i in range(7)]
 
     vehicles = Vehicle.objects.all()
+
+    # 一次性拉出这一周所有预约
     reservations = Reservation.objects.filter(date__in=week_dates)
+
+    # 取出用户今天所有“已预约”或“出库中”预约，找最大的 end datetime
+    user_res_today = Reservation.objects.filter(
+        driver=request.user,
+        date=today,
+        status__in=['reserved','out']
+    )
+    cooldown_end = None
+    if user_res_today.exists():
+        last = user_res_today.order_by('-end_date','-end_time').first()
+        end_dt = datetime.combine(last.end_date, last.end_time)
+        # 本来用 make_aware，但这里我们和 now_dt 同时比较都用 naive/local 也行
+        cooldown_end = end_dt + timedelta(hours=10)
 
     data = []
     for vehicle in vehicles:
         row = {'vehicle': vehicle, 'days': []}
         for d in week_dates:
-            res = reservations.filter(vehicle=vehicle, date=d).first()
-
-            # ✅ 管理员可以预约任何时间
+            # 筛选这辆车、这一天的所有预约
+            day_reservations = reservations.filter(vehicle=vehicle, date=d).order_by('start_time')
+            
+             # 管理员不受限制，否则过去时间不可约
             if request.user.is_staff:
                 is_past = False
             else:
-                # 非管理员：限制只能预约当前时间之后
-                if d < today:
-                    is_past = True
-                elif d == today and now_time >= time(hour=23, minute=30):
+                if d < today or (d == today and now_time >= time(hour=23, minute=30)):
                     is_past = True
                 else:
                     is_past = False
 
             row['days'].append({
                 'date': d,
-                'reservation': res,
+                'reservations': day_reservations,
                 'is_past': is_past,
             })
         data.append(row)
@@ -292,6 +305,8 @@ def weekly_overview_view(request):
         'week_dates': week_dates,
         'vehicle_data': data,
         'offset': offset,
+        'now_dt': now_dt,
+        'cooldown_end': cooldown_end,
     })
 
 @login_required
