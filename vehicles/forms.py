@@ -17,22 +17,38 @@ class ReservationForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        driver = self.instance.driver or self.initial.get('driver')
         date = cleaned.get('date')
-        start = cleaned.get('start_time')
         end_date = cleaned.get('end_date')
-        end = cleaned.get('end_time')
+        start_time = cleaned.get('start_time')
+        end_time = cleaned.get('end_time')
 
-        if not all([date, start, end_date, end]):
+        if not all([driver, date, end_date, start_time, end_time]):
             return cleaned
 
-        start_dt = timezone.make_aware(datetime.combine(date, start))
-        end_dt = timezone.make_aware(datetime.combine(end_date, end))
-        now = timezone.localtime()
+        # 1. 本次预约的开始/结束 datetime
+        start_dt = datetime.combine(date, start_time)
+        end_dt   = datetime.combine(end_date, end_time)
 
-        if start_dt < now + timedelta(minutes=30):
-            self.add_error('start_time', "开始时间必须晚于当前时间 30 分钟之后。")
+        # 2. 找出同司机当日所有「已预约」和「已出库」记录
+        qs = Reservation.objects.filter(
+            driver=driver,
+            date__lte=end_date,
+            end_date__gte=date,
+        ).exclude(pk=self.instance.pk)
 
-        if end_dt <= start_dt:
-            self.add_error('end_time', "结束时间必须晚于开始时间。")
+        # 3. 重叠判断
+        for r in qs:
+            r_start = datetime.combine(r.date, r.start_time)
+            r_end   = datetime.combine(r.end_date, r.end_time)
+            # 时间段重叠
+            if start_dt < r_end and end_dt > r_start:
+                raise forms.ValidationError("您在该时间段已有预约，不能重叠。")
+
+            # 10 小时冷却判断
+            # 如果 new_start 在旧 end 的后 10h 之前，报错
+            gap = (start_dt - r_end).total_seconds() / 3600
+            if 0 < gap < 10:
+                raise forms.ValidationError("两次预约必须间隔至少 10 小时。")
 
         return cleaned

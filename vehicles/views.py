@@ -106,6 +106,10 @@ def make_reservation_view(request, vehicle_id):
 
     if request.method == 'POST':
         form = ReservationForm(request.POST)
+        # 关键：先给 form.instance 绑上 driver，供 clean() 使用
+        # ← 关键：先给 form.instance.driver 赋值
+        form.instance.driver = request.user
+        
         if form.is_valid():
             cleaned = form.cleaned_data
             start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
@@ -113,69 +117,29 @@ def make_reservation_view(request, vehicle_id):
 
             if end_dt <= start_dt:
                 messages.error(request, "结束时间必须晚于开始时间（请检查跨日设置）")
-                return render(request, 'vehicles/reservation_form.html', {
-                    'vehicle': vehicle,
-                    'form': form,
-                    'min_time': min_time,  # ✅ 传入模板
-                })
             else:
-                buffer_start = start_dt - timedelta(minutes=30)
-                buffer_end = end_dt + timedelta(minutes=30)
-
-                conflict = Reservation.objects.filter(
-                    vehicle=vehicle,
-                    date__lte=cleaned['end_date'],
-                    end_date__gte=cleaned['date'],
-                    start_time__lt=cleaned['end_time'],
-                    end_time__gt=cleaned['start_time'],
-                    status__in=['pending', 'reserved', 'out']
-                ).exists()
-
-                if conflict:
-                    messages.error(request, "该时间段内该车辆已有预约，不能重复申请")
-                else:
-                    other_reservations = Reservation.objects.filter(
-                        driver=request.user,
-                        date__lte=cleaned['end_date'],
-                        end_date__gte=cleaned['date'],
-                    ).exclude(vehicle=vehicle)
-
-                    for r in other_reservations:
-                        r_start = datetime.combine(r.date, r.start_time)
-                        r_end = datetime.combine(r.end_date, r.end_time)
-
-                        if (start_dt < r_end and end_dt > r_start):
-                            messages.error(request, "您在此时间段已预约了其他车辆，不能重叠预约。")
-                            break
-
-                        gap_start = abs((start_dt - r_end).total_seconds())
-                        gap_end = abs((end_dt - r_start).total_seconds())
-                        if gap_start < 10 * 3600 or gap_end < 10 * 3600:
-                            messages.error(request, "您预约了多辆车，间隔必须至少 10 小时。")
-                            break
-                    else:
-                        new_reservation = form.save(commit=False)
-                        new_reservation.vehicle = vehicle
-                        new_reservation.driver = request.user
-                        new_reservation.status = 'pending'
-                        new_reservation.save()
-                        messages.success(request, "已提交申请，等待审批")
-                        return redirect('vehicle_status')
+                # … 你后续对冲突、冷却等的检查 …
+                new_res = form.save(commit=False)
+                new_res.vehicle = vehicle
+                new_res.status  = 'pending'
+                new_res.save()
+                messages.success(request, "已提交申请，等待审批")
+                return redirect('vehicle_status')
     else:
         initial = {
-            'date': request.GET.get('date', ''),
+            'date':      request.GET.get('date', ''),
             'start_time': request.GET.get('start', ''),
-            'end_date': request.GET.get('end_date', ''),
-            'end_time': request.GET.get('end', ''),
+            'end_date':  request.GET.get('end_date', ''),
+            'end_time':  request.GET.get('end', ''),
         }
         form = ReservationForm(initial=initial)
 
     return render(request, 'vehicles/reservation_form.html', {
         'vehicle': vehicle,
-        'form': form,
-        'min_time': min_time,  # ✅ 加入 min_time 到模板
+        'form':    form,
+        'min_time': min_time,
     })
-
+    
 @staff_member_required  # 限制管理员访问
 def reservation_approval_list(request):
     pending_reservations = Reservation.objects.filter(status='pending').order_by('date', 'start_time')
@@ -287,7 +251,7 @@ def weekly_overview_view(request):
             # 筛选这辆车、这一天的所有预约
             day_reservations = reservations.filter(vehicle=vehicle, date=d).order_by('start_time')
             
-             # 管理员不受限制，否则过去时间不可约
+            # 管理员不受限制，否则过去时间不可约
             if request.user.is_staff:
                 is_past = False
             else:
@@ -305,6 +269,7 @@ def weekly_overview_view(request):
             })
         data.append(row)
 
+    # 然后把 cooldown_end 和 now_dt 一起传给模板
     return render(request, 'vehicles/weekly_view.html', {
         'week_dates': week_dates,
         'vehicle_data': data,
