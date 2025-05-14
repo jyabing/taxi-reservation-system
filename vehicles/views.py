@@ -247,7 +247,9 @@ def check_in(request, reservation_id):
 @login_required
 def weekly_overview_view(request):
     today = timezone.localdate()
+    # 当前本地时间（HH:MM:SS）
     now_dt = timezone.localtime()
+    now_time = now_dt.time()
 
     # 获取当前周的开始日期（周一）
     weekday = today.weekday()
@@ -289,7 +291,9 @@ def weekly_overview_view(request):
             if request.user.is_staff:
                 is_past = False
             else:
-                if d < today or (d == today and now_time >= time(hour=23, minute=30)):
+                if d < today:
+                    is_past = True
+                elif d == today and now_time < time(hour=0, minute=30):
                     is_past = True
                 else:
                     is_past = False
@@ -306,6 +310,7 @@ def weekly_overview_view(request):
         'vehicle_data': data,
         'offset': offset,
         'now_dt': now_dt,
+        'now_time': now_time,
         'cooldown_end': cooldown_end,
     })
 
