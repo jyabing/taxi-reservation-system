@@ -1,3 +1,4 @@
+{# templates/vehicles/weekly_view.html #}
 {% extends 'base.html' %}
 {% load static %}
 
@@ -8,7 +9,6 @@
   <a href="?offset=0">本周</a> |
   <a href="?offset={{ offset|add:"1" }}">下一周 →</a>
 </p>
-
 <table border="1">
   <thead>
     <tr>
@@ -21,60 +21,56 @@
   <tbody>
     {% for row in vehicle_data %}
       <tr>
-        <td>
-          <a href="{% url 'vehicle_monthly_gantt' row.vehicle.id %}">
-            {{ row.vehicle.license_plate }}
-          </a>
-        </td>
+        <td>{{ row.vehicle.license_plate }}</td>
         {% for cell in row.days %}
-        <td style="vertical-align: top; {% if cell.is_past %}color: #aaa;{% endif %}">
-
-          {% if cell.reservations %}
-            {# 列出这一天所有已有的预约 #}
-            {% for res in cell.reservations %}
-              <div>
-                <a href="{% url 'reservation_detail' res.id %}">
-                  {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }} {{ res.driver.username }}
-                </a>
-              </div>
-
-              {# 如果是最后一条预约，就在它后面判断空缺 #}
-              {% if forloop.last %}
-                {# 当天未过 且 结束时间 < 23:59 且 (无冷却期 OR 已过冷却期) #}
-                {% if not cell.is_past and res.end_time < "23:59"|time %} 
-                  {# 冷却检查（只要不是冷却或已过冷却期都能约） #}
-                  {% if not cooldown_end or now_dt > cooldown_end %}
-                    <div style="margin-top:4px;">
-                      {# 拼接 url 和查询参数 #}
-                      <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}&start={{ res.end_time|time:'H:i' }}" style="font-size:0.9em;">📝 空缺</a>
-                    </div>
+          <td style="vertical-align:top; {% if cell.is_past %}color:#aaa;{% endif %}">
+            {% if cell.reservations %}
+              {% for res in cell.reservations %}
+                <div>
+                  <a href="{% url 'reservation_detail' res.id %}">
+                    {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }}
+                    {{ res.driver.username }}
+                  </a>
+                </div>
+                {% if forloop.last %}
+                  {% comment %}第一层：当天未过{% endcomment %}
+                  {% if not cell.is_past %}
+                    {% comment %}第二层：无冷却或冷却已过{% endcomment %}
+                    {% if not cooldown_end %}
+                      {% include 'vehicles/weekly_empty_after.html' %}
+                    {% else %}
+                      {% if now_dt > cooldown_end %}
+                        {% include 'vehicles/weekly_empty_after.html' %}
+                      {% endif %}
+                    {% endif %}
                   {% endif %}
                 {% endif %}
-              {% endif %}
-            {% endfor %}
-          {% else %}
-            {# 整天空缺时 #}
-            {% if not cell.is_past %}
-              {% if cell.date == now_dt.date %}
-                {% if not cooldown_end or now_dt > cooldown_end %}
-                  <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">📝 空缺</a>
+              {% endfor %}
+            {% else %}
+              {# 整天空缺 #}
+              {% if not cell.is_past %}
+                {% if not cooldown_end %}
+                  <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
+                    📝 空缺
+                  </a>
                 {% else %}
-                  <span title="距离上次预约结束+10h前仍不可再约">🔒 冷却中</span>
+                  {% if now_dt > cooldown_end %}
+                    <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
+                      📝 空缺
+                    </a>
+                  {% else %}
+                    <span title="距离上次预约结束+10h 前不可再约">🔒 冷却中</span>
+                  {% endif %}
                 {% endif %}
               {% else %}
-                <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">📝 空缺</a>
+                空缺
               {% endif %}
-            {% else %}
-              空缺
             {% endif %}
-          {% endif %}
-
-        </td>
+          </td>
         {% endfor %}
       </tr>
     {% endfor %}
   </tbody>
 </table>
-
 <p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
 {% endblock %}
