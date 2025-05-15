@@ -25,7 +25,7 @@ class Vehicle(models.Model):
 
 class VehicleImage(models.Model):
     vehicle = models.ForeignKey(Vehicle, related_name='images', on_delete=models.CASCADE)
-    image = models.ImageField(upload_to='vehicle_photos/', verbose_name="车辆照片")
+    image = models.ImageField(upload_to='vehicle_photos/%Y/%m/%d/', verbose_name="车辆照片")
 
     def __str__(self):
         return f"{self.vehicle.license_plate} 的照片"
