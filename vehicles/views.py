@@ -101,6 +101,11 @@ def vehicle_timeline_view(request, vehicle_id):
 def make_reservation_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
 
+    # —— 全局状态检查 —— #
+    if vehicle.status != 'available':
+        messages.error(request, "当前车辆状态不可预约")
+        return redirect('vehicle_status')
+
     # ✅ 添加：限制当前时间之后30分钟的时间
     min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 

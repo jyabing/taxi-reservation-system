@@ -30,12 +30,24 @@
       {% elif info.status == 'reserved'  %}blue
       {% elif info.status == 'out'       %}orange
       {% elif info.status == 'canceled'  %}gray
+      {% elif info.status == 'maintenance'  %}purple
       {% endif %}
     ">
+
+      {# 1. 车辆本身维护中优先拦截 #}
+      {% if vehicle.status == 'maintenance' %}
+        <span style="color:purple;">🛠️ 维修中</span>
+
+      {% else %}
+      {# 2. 再根据“当天预约状态”info.status 来显示 #}
       {% if info.status == 'available' %}
         <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}">
           🟥 空缺（点此预约）
         </a>
+
+      {% elif info.status == 'maintenance' %}
+        <span>🛠️ 维修中</span>
+
       {% else %}
         {% if info.status == 'out' %}
           <span style="color:orange; font-weight:bold;">🟧 出库中</span>
@@ -65,6 +77,7 @@
         </div>
         {% endif %}
       {% endif %}
+    {% endif %}
     </td>
   </tr>
   {% endfor %}

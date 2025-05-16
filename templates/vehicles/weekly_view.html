@@ -24,9 +24,13 @@
         <td>{{ row.vehicle.license_plate }}</td>
         {% for cell in row.days %}
           <td style="vertical-align:top; {% if cell.is_past %}color:#aaa;{% endif %}">
-            
-            {# —— 已有预约，就列出它们，然后在最后一条后判断“空缺” —— #}
-            {% if cell.reservations %}
+
+            {# —— 1. 全局状态：维修中 🔧 —— #}
+            {% if row.vehicle.status == 'maintenance' %}
+              <span>🛠️ 维修中</span>
+
+            {# —— 2. 已有预约 —— #}
+            {% elif cell.reservations %}
               {% for res in cell.reservations %}
                 <div>
                   <a href="{% url 'reservation_detail' res.id %}">
@@ -35,31 +39,35 @@
                   </a>
                 </div>
                 {% if forloop.last %}
+                  {# 只有当天未过才可能继续开空缺 #}
                   {% if not cell.is_past %}
-                    {# 只有今天才检查冷却，否则未来日期直接 allow —— #}
-                    {% if cell.date == today %}
+                    {% if cell.date == now_dt.date %}
+                      {# 今天：检查冷却结束后才能约 #}
                       {% if not cooldown_end or now_dt > cooldown_end %}
                         {% include 'vehicles/weekly_empty_after.html' %}
                       {% endif %}
                     {% else %}
+                      {# 未来任一天：直接显示空缺 #}
                       {% include 'vehicles/weekly_empty_after.html' %}
                     {% endif %}
                   {% endif %}
                 {% endif %}
               {% endfor %}
-            
-            {# —— 整天空缺 —— #}
+
+            {# —— 3. 整天空缺 —— #}
             {% else %}
               {% if not cell.is_past %}
-                {# 今天：要检查冷却 #}
-                {% if cell.date == today %}
+                {% if cell.date == now_dt.date %}
+                  {# 今天：先看冷却 #}
                   {% if not cooldown_end or now_dt > cooldown_end %}
-                    <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">📝 空缺</a>
+                    <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
+                      📝 空缺
+                    </a>
                   {% else %}
                     <span title="上次入库后10h内不可再约">🔒 冷却中</span>
                   {% endif %}
-                {# 未来任一天：直接允许预约 #}
                 {% else %}
+                  {# 明天及以后：直接可约 #}
                   <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
                     📝 空缺
                   </a>
@@ -68,7 +76,7 @@
                 空缺
               {% endif %}
             {% endif %}
-          
+
           </td>
         {% endfor %}
       </tr>
