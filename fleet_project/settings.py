@@ -156,3 +156,5 @@ TIME_FORMAT = "H:i"              # 例如：14:30
 DATETIME_FORMAT = "Y-m-d H:i"    # 例如：2025-05-08 14:30
 
 USE_L10N = False  # 禁用本地化，以便使用上面自定义格式
+
+LEDGER_API_HOST = os.getenv('LEDGER_API_HOST', 'taxi-reservation.onrender.com')

@@ -2,26 +2,31 @@
 import calendar
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
+from django import forms
+import requests
 
 # Django 常用工具
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import HttpResponseRedirect, JsonResponse, HttpResponseForbidden
 from django.utils import timezone
 from django.utils.timezone import now, make_aware
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.core.mail import send_mail
+from django.conf import settings
 
-from django.db.models import Q
+from django.db.models import Q, F, Count, ExpressionWrapper, DurationField, Sum
 
 # 自己的模型和表单
 from django.utils.decorators import method_decorator
 
 from .models import Vehicle, Reservation, Task
-from .forms import ReservationForm
+from .forms import ReservationForm, MonthForm
+from requests.exceptions import RequestException
 
 #把 import 语句分类整理在一起，是一个非常好的编码习惯，不仅让代码更清晰，也能减少重复导入或顺序错误的情况。
 
@@ -705,3 +710,86 @@ def build_vehicle_gantt_matrix(vehicle, year, month):
         matrix.append({'date': d, 'segments': segments, 'is_past': is_past})
 
     return matrix, hours, current_month
+
+class MonthForm(forms.Form):
+    month = forms.DateField(
+        label="统计月份",
+        widget=forms.DateInput(attrs={'type': 'month'}),
+        input_formats=['%Y-%m'],    # ← 一定要支持 YYYY-MM
+    )
+
+@login_required
+def my_stats_view(request):
+
+    # 1) 先统一初始化 month_date 和 form
+    today = timezone.localdate()
+    default_month = today.replace(day=1)
+
+    if request.method == 'POST':
+        form = MonthForm(request.POST)
+        if form.is_valid():
+            # 用户点了「查询」，用用户选的月份
+            month_date = form.cleaned_data['month']
+        else:
+            # 表单无效就退回当月第一天
+            month_date = default_month
+
+    else:
+        # 表单无效就退回当月第一天
+        month_date = default_month
+        form = MonthForm(initial={'month': default_month})
+
+    # 2) 计算本月第一天/最后一天
+    year, month = month_date.year, month_date.month
+    first_day = month_date.replace(day=1)
+    last_day = first_day.replace(day=calendar.monthrange(year, month)[1])
+
+    # 3) 拉出「出库中(out)」「已完成(completed)」的记录
+    qs = Reservation.objects.filter(
+        driver=request.user,
+        actual_departure__date__gte=first_day,
+        actual_departure__date__lte=last_day,
+        status__in=['out', 'completed'],
+    )
+
+    # 4) 出入库次数
+    total_checkouts = qs.count()
+
+    # 5) 出入库总时长
+    duration_expr = ExpressionWrapper(
+        F('actual_return') - F('actual_departure'),
+        output_field=DurationField()
+    )
+    agg = qs.annotate(interval=duration_expr).aggregate(total_duration=Sum('interval'))
+    total_duration = agg['total_duration'] or timedelta()
+
+    # 6) 调用外部 API 拿売上，主机名从 settings 里读
+    sales_data = 0
+    try:
+        # 假设你配置了 settings.LEDGER_API_HOST
+        host = getattr(settings, 'LEDGER_API_HOST', 'taxi-reservation.onrender.com')
+        url = f"https://{host}/api/sales/"
+        resp = requests.get(url, params={
+            'driver': request.user.username,
+            'start': first_day.isoformat(),
+            'end': last_day.isoformat(),
+        }, timeout=5)
+        resp.raise_for_status()
+        sales_data = resp.json().get('total_sales', 0)
+    except RequestException:
+        messages.warning(request, "无法获取外部销售数据，已显示为 0。")
+
+    # 7) 假设抽成 70%
+    take_home = sales_data * 0.7
+
+    #month_display = first_day.strftime('%Y年%m月')
+    
+    return render(request, 'vehicles/my_stats.html', {
+        'form':             form,
+        'month_display': first_day.strftime('%Y年%m月'),
+        
+        'total_checkouts':  total_checkouts,
+        'total_duration':   total_duration,
+        'sales_data':       sales_data,
+        'take_home':        take_home,
+    })

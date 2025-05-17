@@ -25,7 +25,8 @@ from .views import (
     vehicle_status_with_photo,
     vehicle_monthly_gantt_view,
     gantt_data, 
-    vehicle_image_list_view,
+    vehicle_image_list_view, 
+    my_stats_view
 
 )
 
@@ -58,6 +59,7 @@ urlpatterns = [
     path('admin/vehicle/<int:vehicle_id>/delete_image/<int:index>/', views.vehicle_image_delete_view, name='vehicle_image_delete'),
     path('calendar/', views.calendar_view, name='calendar_view'),
     path('api/daily-sales/', views.api_daily_sales_mock, name='api_daily_sales'),
+    path('my_stats/', views.my_stats_view, name='my_stats'),
 
     
 ]

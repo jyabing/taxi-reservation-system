@@ -1,3 +1,4 @@
+import calendar
 from django import forms
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -52,3 +53,10 @@ class ReservationForm(forms.ModelForm):
                 raise forms.ValidationError("两次预约必须间隔至少 10 小时。")
 
         return cleaned
+
+class MonthForm(forms.Form):
+    month = forms.DateField(
+        label="统计月份",
+        widget=forms.DateInput(attrs={'type': 'month'}),
+        input_formats=['%Y-%m'],    # ← 新增：告诉它识别 YYYY-MM 格式
+    )
