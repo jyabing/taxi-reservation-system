@@ -75,5 +75,51 @@
 {# 只在页面底部 include 一次 popup partial #}
 {% include 'partials/_check_io_popup.html' %}
 
+<style>
+  .pagination {
+    margin-top: 20px;
+    text-align: center;
+  }
+  .pagination .step-links a,
+  .pagination .step-links span {
+    display: inline-block;
+    margin: 0 5px;
+    padding: 6px 12px;
+    text-decoration: none;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    color: #333;
+    background-color: #f9f9f9;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  .pagination .step-links a:hover {
+    background-color: #4CAF50;
+    color: white;
+    border-color: #4CAF50;
+  }
+  .pagination .current-page {
+    background-color: #4CAF50;
+    color: white;
+    font-weight: bold;
+    border-color: #4CAF50;
+  }
+</style>
+
+<div class="pagination">
+  <span class="step-links">
+    {% if page_obj.has_previous %}
+      <a href="?page=1">&laquo; 第一页</a>
+      <a href="?page={{ page_obj.previous_page_number }}">上一页</a>
+    {% endif %}
+
+    <span class="current-page">第 {{ page_obj.number }} 页 / 共 {{ page_obj.paginator.num_pages }} 页</span>
+
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}">下一页</a>
+      <a href="?page={{ page_obj.paginator.num_pages }}">最后一页 &raquo;</a>
+    {% endif %}
+  </span>
+</div>
+
 <p><a href="{% url 'reservation_dashboard' %}">← 返回预约菜单</a></p>
 {% endblock %}

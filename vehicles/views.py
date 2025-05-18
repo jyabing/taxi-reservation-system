@@ -17,7 +17,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.core.mail import send_mail
 from django.conf import settings
-from django.core.paginator import Paginator
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 
 from django.db.models import Q, F, Count, ExpressionWrapper, DurationField, Sum
 
@@ -441,13 +441,26 @@ def reservation_dashboard(request):
 
 @login_required
 def my_reservations_view(request):
-    reservations = Reservation.objects.filter(driver=request.user).order_by('-date')
-    today = timezone.localdate()
-    now = timezone.localtime()  # ✅ 当前时间（包含小时分钟）
+    all_reservations = Reservation.objects.filter(
+        driver=request.user
+    ).order_by('-date', '-start_time')
+
+    # 每页显示 10 条
+    paginator = Paginator(all_reservations, 10)
+    page_number = request.GET.get('page', 1)
+
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
     return render(request, 'vehicles/my_reservations.html', {
-        'reservations': reservations,
-        'today': today,
-        'now': now
+        'page_obj': page_obj,
+        'reservations': page_obj,  # 新增这行
+        'today': timezone.localdate(),
+        'now': timezone.localtime(),
     })
 
 @login_required 
