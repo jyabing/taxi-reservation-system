@@ -3,6 +3,7 @@ from django import forms
 from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import Reservation
+from accounts.models import DriverUser
 
 class ReservationForm(forms.ModelForm):
     class Meta:
@@ -60,3 +61,18 @@ class MonthForm(forms.Form):
         widget=forms.DateInput(attrs={'type': 'month'}),
         input_formats=['%Y-%m'],    # ← 新增：告诉它识别 YYYY-MM 格式
     )
+
+class AdminStatsForm(forms.Form):
+    driver = forms.ChoiceField(label="司机", required=False)
+    month  = forms.DateField(
+        label="统计月份",
+        widget=forms.DateInput(attrs={'type': 'month'}),
+        initial=timezone.localdate().replace(day=1)
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = [('', '—— 全部司机 ——')] + [
+            (u.id, u.username) for u in DriverUser.objects.filter(is_staff=False)
+        ]
+        self.fields['driver'].choices = choices

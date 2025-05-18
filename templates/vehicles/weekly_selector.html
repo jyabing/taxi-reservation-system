@@ -4,10 +4,12 @@
 
 <h2>选择日期查看周视图</h2>
 
+<!-- 这里只用GET请求，无需CSRF Token 
 <form method="post">
-  {% csrf_token %}
+  {% csrf_token %}-->
+<form method="get" action="{% url 'weekly_overview' %}">
   <label for="date">选择任意日期（将自动跳转到该周）:</label>
-  <input type="date" name="date" required>
+  <input type="date" name="date" required value="{{ selected_date|default:'' }}">
   <br><br>
   <button type="submit">查看本周预约情况</button>
 </form>

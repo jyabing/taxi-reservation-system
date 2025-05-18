@@ -1,9 +1,8 @@
 # 标准库
-import calendar
+import calendar, requests
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from django import forms
-import requests
 
 # Django 常用工具
 from django.shortcuts import render, get_object_or_404, redirect
@@ -25,8 +24,9 @@ from django.db.models import Q, F, Count, ExpressionWrapper, DurationField, Sum
 from django.utils.decorators import method_decorator
 
 from .models import Vehicle, Reservation, Task
-from .forms import ReservationForm, MonthForm
+from .forms import ReservationForm, MonthForm, AdminStatsForm
 from requests.exceptions import RequestException
+from accounts.models import DriverUser
 
 #把 import 语句分类整理在一起，是一个非常好的编码习惯，不仅让代码更清晰，也能减少重复导入或顺序错误的情况。
 
@@ -221,47 +221,48 @@ def check_in(request, reservation_id):
 @login_required
 def weekly_overview_view(request):
     today = timezone.localdate()
-    # 当前本地时间（HH:MM:SS）
     now_dt = timezone.localtime()
     now_time = now_dt.time()
 
-    # 获取当前周的开始日期（周一）
-    weekday = today.weekday()
-    monday = today - timedelta(days=weekday)
-
-    # 支持切换周视图
+    # 支持跳任意日期所在周
+    date_str = request.GET.get('date')
     offset = int(request.GET.get('offset', 0))
-    monday += timedelta(weeks=offset)
 
-    # 一周日期列表
+    # 判断是选择了日期还是仅用 offset
+    if date_str:
+        try:
+            chosen_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            chosen_date = today
+        base_date = chosen_date
+    else:
+        base_date = today
+
+    # 得到该周周一
+    weekday = base_date.weekday()  # 0 = Monday
+    monday = base_date - timedelta(days=weekday) + timedelta(weeks=offset)
     week_dates = [monday + timedelta(days=i) for i in range(7)]
 
     vehicles = Vehicle.objects.all()
-
-    # 一次性拉出这一周所有预约
     reservations = Reservation.objects.filter(date__in=week_dates)
 
-    # 取出用户今天所有“已预约”或“出库中”预约，找最大的 end datetime
+    # 本日“已预约”或“出库中”的最大结束时间（冷却期用）
     user_res_today = Reservation.objects.filter(
         driver=request.user,
         date=today,
-        status__in=['reserved','out']
+        status__in=['reserved', 'out']
     )
     cooldown_end = None
     if user_res_today.exists():
-        last = user_res_today.order_by('-end_date','-end_time').first()
+        last = user_res_today.order_by('-end_date', '-end_time').first()
         end_dt = datetime.combine(last.end_date, last.end_time)
-        # 本来用 make_aware，但这里我们和 now_dt 同时比较都用 naive/local 也行
         cooldown_end = end_dt + timedelta(hours=10)
 
     data = []
     for vehicle in vehicles:
         row = {'vehicle': vehicle, 'days': []}
         for d in week_dates:
-            # 筛选这辆车、这一天的所有预约
             day_reservations = reservations.filter(vehicle=vehicle, date=d).order_by('start_time')
-            
-            # 管理员不受限制，否则过去时间不可约
             if request.user.is_staff:
                 is_past = False
             else:
@@ -271,7 +272,6 @@ def weekly_overview_view(request):
                     is_past = True
                 else:
                     is_past = False
-
             row['days'].append({
                 'date': d,
                 'reservations': day_reservations,
@@ -279,7 +279,6 @@ def weekly_overview_view(request):
             })
         data.append(row)
 
-    # 然后把 cooldown_end 和 now_dt 一起传给模板
     return render(request, 'vehicles/weekly_view.html', {
         'week_dates': week_dates,
         'vehicle_data': data,
@@ -287,6 +286,7 @@ def weekly_overview_view(request):
         'now_dt': now_dt,
         'now_time': now_time,
         'cooldown_end': cooldown_end,
+        'selected_date': date_str if date_str else today.strftime("%Y-%m-%d"),
     })
 
 @login_required
@@ -792,4 +792,75 @@ def my_stats_view(request):
         'total_duration':   total_duration,
         'sales_data':       sales_data,
         'take_home':        take_home,
+    })
+
+@staff_member_required
+def admin_stats_view(request):
+    form = AdminStatsForm(request.GET or None)
+
+    # 默认：本月、全部司机
+    if form.is_valid():
+        driver_id = form.cleaned_data['driver']
+        month_date = form.cleaned_data['month']
+    else:
+        month_date = timezone.localdate().replace(day=1)
+        driver_id = ''
+
+    year, month = month_date.year, month_date.month
+    first_day = month_date
+    last_day  = first_day.replace(day=calendar.monthrange(year, month)[1])
+
+    # 基础 QuerySet：当月「已出库(out)」或「已完成(completed)」
+    qs = Reservation.objects.filter(
+        actual_departure__date__gte=first_day,
+        actual_departure__date__lte=last_day,
+        status__in=['out', 'completed'],
+    )
+    # 如果选了某个司机，就再加 filter
+    if driver_id:
+        qs = qs.filter(driver_id=driver_id)
+
+    # 出入库次数
+    checkout_count = qs.count()
+
+    # 总时长
+    duration_expr = ExpressionWrapper(
+        F('actual_return') - F('actual_departure'),
+        output_field=DurationField()
+    )
+    dur_agg = qs.annotate(interval=duration_expr).aggregate(total_duration=Sum('interval'))
+    total_duration = dur_agg['total_duration'] or timezone.timedelta()
+
+    # 调用外部「员工手帐」API 拿売上
+    # （根据你们接口调整 URL、参数和解析逻辑）
+    params = {
+        'start': first_day.isoformat(),
+        'end':   last_day.isoformat(),
+    }
+    if driver_id:
+        user = DriverUser.objects.get(id=driver_id)
+        params['driver'] = user.username
+        # 实际情况你需要写自己正确的API地址
+    try:
+        # 实际情况你需要写自己正确的API地址
+        resp = requests.get('http://localhost:8001/api/sales/', params=params, timeout=5)
+        if resp.ok and 'total_sales' in resp.json():
+            total_sales = resp.json()['total_sales']
+        else:
+            total_sales = 0
+    except Exception as e:
+        # 可以打印日志，防止崩溃
+        print('売上接口异常:', e)
+        total_sales = 0
+
+    # 示例：抽成比例 70%
+    take_home = total_sales * 0.7
+
+    return render(request, 'vehicles/admin_stats.html', {
+        'form': form,
+        'checkout_count': checkout_count,
+        'total_duration': total_duration,
+        'total_sales': total_sales,
+        'take_home': take_home,
+        'month_display': first_day.strftime('%Y年%m月'),
     })

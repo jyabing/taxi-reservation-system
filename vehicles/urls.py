@@ -60,6 +60,7 @@ urlpatterns = [
     path('calendar/', views.calendar_view, name='calendar_view'),
     path('api/daily-sales/', views.api_daily_sales_mock, name='api_daily_sales'),
     path('my_stats/', views.my_stats_view, name='my_stats'),
+    path('admin_stats/', views.admin_stats_view, name='admin_stats'),
 
     
 ]

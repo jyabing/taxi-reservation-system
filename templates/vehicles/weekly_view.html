@@ -5,9 +5,9 @@
 {% block content %}
 <h2>车辆一周预约概览</h2>
 <p>
-  <a href="?offset={{ offset|add:"-1" }}">← 上一周</a> |
-  <a href="?offset=0">本周</a> |
-  <a href="?offset={{ offset|add:"1" }}">下一周 →</a>
+  <a href="?date={{ selected_date }}&offset={{ offset|add:"-1" }}">← 上一周</a> |
+  <a href="?date={{ selected_date }}&offset=0">本周</a> |
+  <a href="?date={{ selected_date }}&offset={{ offset|add:"1" }}">下一周 →</a>
 </p>
 <table border="1">
   <thead>
