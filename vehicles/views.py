@@ -12,11 +12,12 @@ from django.utils.timezone import now, make_aware
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.core.mail import send_mail
 from django.conf import settings
+from django.core.paginator import Paginator
 
 from django.db.models import Q, F, Count, ExpressionWrapper, DurationField, Sum
 
@@ -794,73 +795,78 @@ def my_stats_view(request):
         'take_home':        take_home,
     })
 
-@staff_member_required
+# 売上API数据（伪代码）
+def fetch_sales(user, start_date, end_date):
+    # 本地查询/外部API，简写示例
+    return 0  # 替换为真实売上金额
+
+def is_admin(user):
+    return user.is_staff
+
+@login_required
+@user_passes_test(is_admin)
 def admin_stats_view(request):
-    form = AdminStatsForm(request.GET or None)
-
-    # 默认：本月、全部司机
-    if form.is_valid():
-        driver_id = form.cleaned_data['driver']
-        month_date = form.cleaned_data['month']
-    else:
-        month_date = timezone.localdate().replace(day=1)
-        driver_id = ''
-
-    year, month = month_date.year, month_date.month
-    first_day = month_date
-    last_day  = first_day.replace(day=calendar.monthrange(year, month)[1])
-
-    # 基础 QuerySet：当月「已出库(out)」或「已完成(completed)」
-    qs = Reservation.objects.filter(
-        actual_departure__date__gte=first_day,
-        actual_departure__date__lte=last_day,
-        status__in=['out', 'completed'],
-    )
-    # 如果选了某个司机，就再加 filter
-    if driver_id:
-        qs = qs.filter(driver_id=driver_id)
-
-    # 出入库次数
-    checkout_count = qs.count()
-
-    # 总时长
-    duration_expr = ExpressionWrapper(
-        F('actual_return') - F('actual_departure'),
-        output_field=DurationField()
-    )
-    dur_agg = qs.annotate(interval=duration_expr).aggregate(total_duration=Sum('interval'))
-    total_duration = dur_agg['total_duration'] or timezone.timedelta()
-
-    # 调用外部「员工手帐」API 拿売上
-    # （根据你们接口调整 URL、参数和解析逻辑）
-    params = {
-        'start': first_day.isoformat(),
-        'end':   last_day.isoformat(),
-    }
-    if driver_id:
-        user = DriverUser.objects.get(id=driver_id)
-        params['driver'] = user.username
-        # 实际情况你需要写自己正确的API地址
+    # 获取月份（默认本月）
+    month_str = request.GET.get('month')
     try:
-        # 实际情况你需要写自己正确的API地址
-        resp = requests.get('http://localhost:8001/api/sales/', params=params, timeout=5)
-        if resp.ok and 'total_sales' in resp.json():
-            total_sales = resp.json()['total_sales']
-        else:
-            total_sales = 0
-    except Exception as e:
-        # 可以打印日志，防止崩溃
-        print('売上接口异常:', e)
-        total_sales = 0
+        query_month = datetime.strptime(month_str, "%Y-%m") if month_str else datetime.now()
+    except:
+        query_month = datetime.now()
+    month_start = query_month.replace(day=1)
+    next_month = (month_start + timedelta(days=32)).replace(day=1)
+    month_end = next_month - timedelta(days=1)
 
-    # 示例：抽成比例 70%
-    take_home = total_sales * 0.7
+    # 司机筛选
+    driver_id = request.GET.get('driver')
+    drivers = DriverUser.objects.filter(is_active=True).order_by('username')
+    if driver_id and driver_id != "all":
+        drivers = drivers.filter(id=driver_id)
 
-    return render(request, 'vehicles/admin_stats.html', {
-        'form': form,
-        'checkout_count': checkout_count,
-        'total_duration': total_duration,
-        'total_sales': total_sales,
-        'take_home': take_home,
-        'month_display': first_day.strftime('%Y年%m月'),
-    })
+    # 分页设置
+    page_num = int(request.GET.get("page", 1))
+    paginator = Paginator(drivers, 20)  # 每页20人
+    page_obj = paginator.get_page(page_num)
+
+    stats_list = []
+    for driver in page_obj.object_list:
+        # 该司机本月所有预约
+        reservations = Reservation.objects.filter(
+            driver=driver,
+            date__gte=month_start.date(),
+            end_date__lte=month_end.date(),
+            status__in=['reserved', 'out', 'completed']
+        )
+
+        # 出入库总次数
+        count = reservations.count()
+
+        # 出入库总时长
+        total_seconds = 0
+        for r in reservations:
+            start_dt = datetime.combine(r.date, r.start_time)
+            end_dt = datetime.combine(r.end_date, r.end_time)
+            total_seconds += (end_dt - start_dt).total_seconds()
+        total_hours = total_seconds // 3600
+        total_days = total_seconds // 86400
+        total_time_str = f"{int(total_days)}天, {int(total_hours % 24)}:{int((total_seconds % 3600) // 60):02d}"
+
+        # 売上与工资（示例：本地API或外部API获取）
+        sales = fetch_sales(driver, month_start.date(), month_end.date())
+        salary = round(sales * 0.7, 2)
+
+        stats_list.append({
+            "driver": driver,
+            "count": count,
+            "total_time": total_time_str,
+            "sales": sales,
+            "salary": salary,
+        })
+
+    context = {
+        "page_obj": page_obj,
+        "stats_list": stats_list,
+        "month": month_start.strftime("%Y-%m"),
+        "driver_id": driver_id or "all",
+        "drivers": DriverUser.objects.all(),
+    }
+    return render(request, "vehicles/admin_stats.html", context)

@@ -1,20 +1,49 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% block content %}
-<h2>📊 管理员月度考勤统计</h2>
-
-<form method="get" style="margin-bottom:1em;">
-    {{ form.driver.label_tag }} {{ form.driver }}
-    {{ form.month.label_tag }}  {{ form.month }}
-    <button type="submit">查询</button>
+<h2>管理员月度考勤统计</h2>
+<form method="get">
+  司机:
+  <select name="driver">
+    <option value="all">全部司机</option>
+    {% for d in drivers %}
+      <option value="{{ d.id }}" {% if driver_id == d.id|stringformat:"s" %}selected{% endif %}>{{ d.username }}</option>
+    {% endfor %}
+  </select>
+  统计月份:
+  <input type="month" name="month" value="{{ month }}">
+  <button type="submit">查询</button>
 </form>
 
-<h3>{{ month_display }} {{ form.driver.value|default:"全部司机" }} 统计</h3>
-<ul>
-    <li>📥 出入库总次数：<strong>{{ checkout_count }}</strong></li>
-    <li>⏱️ 出入库总时长：<strong>{{ total_duration }}</strong></li>
-    <li>💰 本月总売上：<strong>{{ total_sales }}</strong> 元</li>
-    <li>🏠 预计到手工资（70%）：<strong>{{ take_home|floatformat:2 }}</strong> 元</li>
-</ul>
+<table border="1">
+  <tr>
+    <th>司机</th>
+    <th>出入库总次数</th>
+    <th>出入库总时长</th>
+    <th>本月总売上</th>
+    <th>预计到手工资 (70%)</th>
+  </tr>
+  {% for s in stats_list %}
+  <tr>
+    <td>{{ s.driver.username }}</td>
+    <td>{{ s.count }}</td>
+    <td>{{ s.total_time }}</td>
+    <td>{{ s.sales|default_if_none:"0" }}元</td>
+    <td>{{ s.salary|floatformat:2 }}元</td>
+  </tr>
+  {% empty %}
+    <tr><td colspan="5">无数据</td></tr>
+  {% endfor %}
+</table>
 
+{# 分页 #}
+<div>
+  {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}&month={{ month }}&driver={{ driver_id }}">上一页</a>
+  {% endif %}
+  第 {{ page_obj.number }} 页 / 共 {{ page_obj.paginator.num_pages }} 页
+  {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}&month={{ month }}&driver={{ driver_id }}">下一页</a>
+  {% endif %}
+</div>
 <p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
 {% endblock %}
