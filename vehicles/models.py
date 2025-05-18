@@ -83,3 +83,11 @@ class Task(models.Model):
 
     def __str__(self):
         return self.name
+
+class Tip(models.Model):
+    content = models.TextField("提示内容")
+    is_active = models.BooleanField("是否启用", default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.content[:30]  # 预览前30个字符

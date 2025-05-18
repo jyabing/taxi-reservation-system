@@ -1,5 +1,5 @@
 # 标准库
-import calendar, requests
+import calendar, requests, random
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from django import forms
@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib import messages
+from django.contrib import messages, admin
 from django.core.mail import send_mail
 from django.conf import settings
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
@@ -24,7 +24,7 @@ from django.db.models import Q, F, Count, ExpressionWrapper, DurationField, Sum
 # 自己的模型和表单
 from django.utils.decorators import method_decorator
 
-from .models import Vehicle, Reservation, Task
+from .models import Vehicle, Reservation, Task, Tip
 from .forms import ReservationForm, MonthForm, AdminStatsForm
 from requests.exceptions import RequestException
 from accounts.models import DriverUser
@@ -456,11 +456,16 @@ def my_reservations_view(request):
     except EmptyPage:
         page_obj = paginator.page(paginator.num_pages)
 
+    # 随机抽取一个启用中的 tip
+    tips = list(Tip.objects.filter(is_active=True).values('content'))
+    #random_tip = random.choice(list(tips)) if tips.exists() else None
+
     return render(request, 'vehicles/my_reservations.html', {
         'page_obj': page_obj,
         'reservations': page_obj,  # 新增这行
         'today': timezone.localdate(),
         'now': timezone.localtime(),
+        'tips': tips,  # ✅ 所有提示
     })
 
 @login_required 

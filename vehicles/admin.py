@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from .models import Vehicle, Reservation, CarouselImage, VehicleImage
 from django.utils.html import format_html
 from django.urls import reverse
+from .models import Tip
 
 # ✅ 自定义内联表单验证器
 class VehicleImageInlineFormSet(BaseInlineFormSet):
@@ -64,3 +65,9 @@ class VehicleAdmin(admin.ModelAdmin):
             )
         return "-"
     image_preview_column.short_description = "照片"
+
+@admin.register(Tip)
+class TipAdmin(admin.ModelAdmin):
+    list_display = ('content', 'is_active', 'created_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('content',)
