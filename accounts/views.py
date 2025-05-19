@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import PasswordChangeView
 from django.urls import reverse_lazy
-from vehicles.models import CarouselImage
+from vehicles.models import CarouselImage, Tip
 
 User = get_user_model()
 
@@ -58,6 +58,7 @@ def admin_dashboard(request):
 def driver_dashboard(request):
     user = request.user
     staff_type = "正式员工" if user.is_formal else "临时工" if user.is_temporary else "未知身份"
+    tips = list(Tip.objects.filter(is_active=True).values('content'))
     return render(request, 'accounts/dashboard.html', {
         'user': user,
         'staff_type': staff_type,

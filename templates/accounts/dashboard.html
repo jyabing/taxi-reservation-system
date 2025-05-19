@@ -1,9 +1,15 @@
 {% extends 'base.html' %}
 {% block content %}
+
 <style>
   .dashboard-container {
+    max-width: 800px;
+    margin: 40px auto;
     text-align: left;
-    margin-top: 40px;
+  }
+
+  .tip-area {
+    margin-bottom: 20px;
   }
 
   .welcome {
@@ -15,15 +21,15 @@
   .identity {
     font-size: 18px;
     color: #666;
-    margin-bottom: 30px;
+    margin-left: 10px;
   }
 
   .btn-group {
     display: flex;
     flex-direction: column;
-    align-items: left;
+    align-items: flex-start;
     gap: 12px;
-    margin-bottom: 30px;
+    margin-top: 30px;
   }
 
   .btn-dashboard {
@@ -50,6 +56,7 @@
     font-size: 14px;
     cursor: pointer;
     transition: background-color 0.3s;
+    margin-top: 20px;
   }
 
   .btn-logout:hover {
@@ -58,8 +65,11 @@
 </style>
 
 <div class="dashboard-container">
+
+
   <div class="welcome">
-    👋 欢迎，{{ user.username }}！<span class="identity">
+    👋 欢迎，{{ user.username }}！
+    <span class="identity">
       （
       {% if user.is_staff %}管理员
       {% elif user.is_formal %}正式员工
@@ -70,16 +80,17 @@
     </span>
   </div>
 
-<div class="btn-group">
-  <a href="{% url 'reservation_dashboard' %}" class="btn-dashboard">🚗 查看预约菜单</a><br><br>
-  <a href="{% url 'vehicle_status' %}" class="btn-dashboard">📋 查看车辆状态</a><br><br>
-  <a href="{% url 'my_reservations' %}" class="btn-dashboard">📌 我的预约记录</a><br><br>
+  <div class="btn-group">
+    <a href="{% url 'reservation_dashboard' %}" class="btn-dashboard">🚗 查看预约菜单</a>
+    <a href="{% url 'vehicle_status' %}" class="btn-dashboard">📋 查看车辆状态</a>
+    <a href="{% url 'my_reservations' %}" class="btn-dashboard">📌 我的预约记录</a>
 
-  <form method="post" action="{% url 'logout' %}">
-    {% csrf_token %}
-    <button type="submit" class="btn-logout">🚪 退出登录</button>
-  </form>
+    <form method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-logout">🚪 退出登录</button>
+    </form>
+  </div>
+
 </div>
-
 
 {% endblock %}

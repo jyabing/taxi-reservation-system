@@ -1,0 +1,45 @@
+{% if tips %}
+  <div id="tip-box" style="background-color:#fff3cd; padding:10px; border:1px solid #ffeeba; border-radius:5px; margin-bottom:15px;">
+    💡 使用小贴士：<span id="tip-text"></span>
+  </div>
+
+  {{ tips|json_script:"tips-data" }}
+
+  <style>
+    #tip-text {
+      display: inline-block;
+      opacity: 1;
+      transition: opacity 0.5s ease-in-out;
+    }
+    .fade-out { opacity: 0; }
+    .fade-in { opacity: 1; }
+  </style>
+
+  <script>
+    const tips = JSON.parse(document.getElementById('tips-data').textContent);
+    let currentIndex = 0;
+
+    function rotateTips() {
+      const tipText = document.getElementById("tip-text");
+      if (!tipText || tips.length === 0) return;
+
+      tipText.classList.add("fade-out");
+      setTimeout(() => {
+        tipText.innerText = tips[currentIndex].content;
+        tipText.classList.remove("fade-out");
+        tipText.classList.add("fade-in");
+
+        setTimeout(() => {
+          tipText.classList.remove("fade-in");
+        }, 500);
+
+        currentIndex = (currentIndex + 1) % tips.length;
+      }, 500);
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      rotateTips();
+      setInterval(rotateTips, 5000);
+    });
+  </script>
+{% endif %}

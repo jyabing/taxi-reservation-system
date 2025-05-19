@@ -21,9 +21,9 @@
     </td>
     <td>{{ r.get_status_display }}</td>
     <td>
-      {% if r.status == 'pending' %}
+      {% if r.status == 'pending' or r.status == 'reserved' and not r.actual_departure %}
         <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
-        <a href="{% url 'delete_reservation' r.id %}">❌ 删除</a>
+        <a href="{% url 'delete_reservation' r.id %}">❌ 取消</a>
 
       {% elif r.status == 'reserved' %}
         {% if not r.actual_departure %}
@@ -137,46 +137,6 @@
 
 <p><a href="{% url 'reservation_dashboard' %}">← 返回预约菜单</a></p>
 
-{% if tips %}
-  <div id="tip-box" style="background-color: #fff3cd; padding: 10px; border: 1px solid #ffeeba; border-radius: 5px; margin-bottom: 15px;">
-    💡 使用小贴士：<span id="tip-text"></span>
-  </div>
-
-  <!-- 正确嵌入 tips 数据 -->
-  {{ tips|json_script:"tips-data" }}
-
-<!-- 正确获取 tips 数据 -->
-<script>
-  const tips = JSON.parse(document.getElementById('tips-data').textContent);
-  let currentIndex = 0;
-
-  function rotateTips() {
-    const tipText = document.getElementById("tip-text");
-    if (!tipText || tips.length === 0) return;
-
-    // 添加淡出动画
-    tipText.classList.add("fade-out");
-
-    // 在淡出结束后更换内容并淡入
-    setTimeout(() => {
-      tipText.innerText = tips[currentIndex].content;
-      tipText.classList.remove("fade-out");
-      tipText.classList.add("fade-in");
-
-      // 在下一轮淡出前去掉 fade-in（否则无法重复淡入）
-      setTimeout(() => {
-        tipText.classList.remove("fade-in");
-      }, 500);
-
-      currentIndex = (currentIndex + 1) % tips.length;
-    }, 500);
-  }
-
-  window.addEventListener("DOMContentLoaded", () => {
-    rotateTips();
-    setInterval(rotateTips, 5000); // 每 5 秒切换
-  });
-</script>
-{% endif %}
+{% include 'partials/tip_box.html' %}
 
 {% endblock %}
