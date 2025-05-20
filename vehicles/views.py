@@ -62,7 +62,8 @@ def vehicle_status_view(request):
 
     for vehicle in vehicles:
         # 该车的所有预约记录
-        r = reservations.filter(vehicle=vehicle).first()
+        #r = reservations.filter(vehicle=vehicle).first()
+        r = reservations.filter(vehicle=vehicle,status__in=['pending', 'reserved', 'out']).first()
         status = r.status if r else 'available'
 
         # 当前用户自己的预约（如果有）

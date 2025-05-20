@@ -25,60 +25,54 @@
       </a>
     </td>
     <td>{{ vehicle.model }}</td>
-    <td style="color:
-      {% if info.status == 'available' %}red
-      {% elif info.status == 'reserved'  %}blue
-      {% elif info.status == 'out'       %}orange
-      {% elif info.status == 'canceled'  %}gray
-      {% elif info.status == 'maintenance'  %}purple
-      {% endif %}
-    ">
+<td>
+  {# 1. 车辆状态为维修中，直接显示，无需看预约 #}
+  {% if vehicle.status == 'maintenance' %}
+    <span style="color:purple; font-weight:bold;">🛠️ 维修中</span>
 
-      {# 1. 车辆本身维护中优先拦截 #}
-      {% if vehicle.status == 'maintenance' %}
-        <span style="color:purple;">🛠️ 维修中</span>
+  {# 2. 空缺状态可预约 #}
+  {% elif info.status == 'available' %}
+    <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red; font-weight:bold;">
+      🟥 空缺（点击预约）
+    </a>
 
+  {# 3. 出库中 #}
+  {% elif info.status == 'out' %}
+    <span style="color:orange; font-weight:bold;">🟧 出库中</span>
+
+  {# 4. 有预约（但未出库） #}
+  {% elif info.status == 'reserved' %}
+    <span style="color:blue; font-weight:bold;">🟦 有预约（但未出库）</span>
+
+  {# 5. 其他（备用） #}
+  {% else %}
+    <span style="color:gray;">-</span>
+  {% endif %}
+
+  {# 6. 如果当前用户有预约，显示详情与出入库按钮 #}
+  {% if info.user_reservation %}
+    <div style="margin-top:5px;">
+      <span style="color:blue;">🧍 我的预约</span><br>
+      🕒 {{ info.user_reservation.start_time|time:"H:i" }}
+         ~ {{ info.user_reservation.end_time|time:"H:i" }}
+
+      {% if not info.user_reservation.actual_departure %}
+        <br>
+        <button onclick="openTimePopup('{{ info.user_reservation.id }}','departure')">
+          🚗 出库
+        </button>
+      {% elif not info.user_reservation.actual_return %}
+        <br>
+        <button onclick="openTimePopup('{{ info.user_reservation.id }}','return')">
+          🅿️ 入库
+        </button>
       {% else %}
-      {# 2. 再根据“当天预约状态”info.status 来显示 #}
-      {% if info.status == 'available' %}
-        <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}">
-          🟥 空缺（点此预约）
-        </a>
-
-      {% elif info.status == 'maintenance' %}
-        <span>🛠️ 维修中</span>
-
-      {% else %}
-        {% if info.status == 'out' %}
-          <span style="color:orange; font-weight:bold;">🟧 出库中</span>
-        {% else %}
-          {{ vehicle.get_status_display }}
-        {% endif %}
-
-        {% if info.user_reservation %}
-        <div style="margin-top:5px;">
-          <span style="color:blue;">🧍 我的预约</span><br>
-          🕒 {{ info.user_reservation.start_time|time:"H:i" }}
-            ~ {{ info.user_reservation.end_time|time:"H:i" }}
-
-          {% if not info.user_reservation.actual_departure %}
-            <br>
-            <button onclick="openTimePopup('{{ info.user_reservation.id }}','departure')">
-              🚗 出库
-            </button>
-          {% elif not info.user_reservation.actual_return %}
-            <br>
-            <button onclick="openTimePopup('{{ info.user_reservation.id }}','return')">
-              🅿️ 入库
-            </button>
-          {% else %}
-            <br>✅ 已完成出入库
-          {% endif %}
-        </div>
-        {% endif %}
+        <br>✅ 已完成出入库
       {% endif %}
-    {% endif %}
-    </td>
+    </div>
+  {% endif %}
+</td>
+
   </tr>
   {% endfor %}
 </table>
