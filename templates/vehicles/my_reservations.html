@@ -21,9 +21,9 @@
     </td>
     <td>{{ r.get_status_display }}</td>
     <td>
-      {% if r.status == 'pending' or r.status == 'reserved' and not r.actual_departure %}
+      {% if r.status == 'pending' %}
         <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
-        <a href="{% url 'delete_reservation' r.id %}">❌ 取消</a>
+        <a href="{% url 'delete_reservation' r.id %}">❌ 删除</a>
 
       {% elif r.status == 'reserved' %}
         {% if not r.actual_departure %}
