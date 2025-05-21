@@ -33,10 +33,16 @@
             {% elif cell.reservations %}
               {% for res in cell.reservations %}
                 <div>
-                  <a href="{% url 'reservation_detail' res.id %}">
-                    {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }}
-                    {{ res.driver.username }}
-                  </a>
+                  {% if res.status == 'canceled' %}
+                    <span style="color:gray;">
+                      ❌ {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }} {{ res.driver.username }}（取消）
+                    </span>
+                  {% else %}
+                    <a href="{% url 'reservation_detail' res.id %}">
+                      {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }}
+                      {{ res.driver.username }}
+                    </a>
+                  {% endif %}
                 </div>
                 {% if forloop.last %}
                   {# 只有当天未过才可能继续开空缺 #}
