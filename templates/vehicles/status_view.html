@@ -33,7 +33,7 @@
   {# 2. 空缺状态可预约 #}
   {% elif info.status == 'available' %}
     <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red; font-weight:bold;">
-      🟥 空缺（点击预约）
+      🟥 可预约（点击预约）
     </a>
 
   {# 3. 出库中 #}
@@ -43,6 +43,9 @@
   {# 4. 有预约（但未出库） #}
   {% elif info.status == 'reserved' %}
     <span style="color:blue; font-weight:bold;">🟦 有预约（但未出库）</span>
+
+  {% elif info.status == 'canceled' %}
+  <span style="color:gray;">❌ 已自动取消</span>
 
   {# 5. 其他（备用） #}
   {% else %}

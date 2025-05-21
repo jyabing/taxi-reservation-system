@@ -55,21 +55,37 @@ def vehicle_status_view(request):
     else:
         selected_date = timezone.localdate()
 
+    # 1. 取出当天所有预约
     reservations = Reservation.objects.filter(date=selected_date)
     vehicles = Vehicle.objects.all()
 
     status_map = {}
 
     for vehicle in vehicles:
-        # 该车的所有预约记录
-        #r = reservations.filter(vehicle=vehicle).first()
-        r = reservations.filter(vehicle=vehicle,status__in=['pending', 'reserved', 'out']).first()
-        status = r.status if r else 'available'
+        # 2. 查找该车有效预约
+        r = reservations.filter(vehicle=vehicle, status__in=['pending', 'reserved']).first()
+        status = 'available'
 
-        # 当前用户自己的预约（如果有）
+        if r:
+            # 3. 判断是否超时未出库
+            if r.status == 'reserved' and not r.actual_departure:
+                start_dt = timezone.make_aware(datetime.combine(r.date, r.start_time))
+                expire_dt = start_dt + timedelta(hours=1)
+                if timezone.now() > expire_dt:
+                    r.status = 'canceled'
+                    r.save()
+                    status = 'canceled'
+                else:
+                    status = 'reserved'
+            else:
+                status = r.status
+        else:
+            status = 'available'
+
+        # 4. 当前用户自己的预约（如果有）
         user_res = reservations.filter(vehicle=vehicle, driver=request.user).first()
 
-        # 保存状态和用户预约记录
+        # 5. 写入 status_map
         status_map[vehicle] = {
             'status': status,
             'user_reservation': user_res,
