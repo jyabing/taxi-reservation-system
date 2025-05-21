@@ -124,20 +124,25 @@ def vehicle_timeline_view(request, vehicle_id):
 def make_reservation_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
 
-    # —— 全局状态检查 —— #
-    if vehicle.status != 'available':
-        messages.error(request, "当前车辆状态不可预约")
-        return redirect('vehicle_status')
-
     # ✅ 添加：限制当前时间之后30分钟的时间
     min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
+    # ✅ 如果车辆维修中，直接禁止进入表单
+    if vehicle.status == 'maintenance':
+        messages.error(request, "维修中车辆不可预约")
+        return redirect('vehicle_status')
+
+    # ✅ 标记是否允许提交预约（仅当车辆状态为 available 时）
+    allow_submit = vehicle.status == 'available'
+
     if request.method == 'POST':
+        if not allow_submit:
+            messages.error(request, "当前车辆状态不可预约，请选择其他车辆")
+            return redirect('vehicle_status')
+
         form = ReservationForm(request.POST)
-        # 关键：先给 form.instance 绑上 driver，供 clean() 使用
-        # ← 关键：先给 form.instance.driver 赋值
         form.instance.driver = request.user
-        
+
         if form.is_valid():
             cleaned = form.cleaned_data
             start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
@@ -146,26 +151,26 @@ def make_reservation_view(request, vehicle_id):
             if end_dt <= start_dt:
                 messages.error(request, "结束时间必须晚于开始时间（请检查跨日设置）")
             else:
-                # … 你后续对冲突、冷却等的检查 …
                 new_res = form.save(commit=False)
                 new_res.vehicle = vehicle
-                new_res.status  = 'pending'
+                new_res.status = 'pending'
                 new_res.save()
                 messages.success(request, "已提交申请，等待审批")
                 return redirect('vehicle_status')
     else:
         initial = {
-            'date':      request.GET.get('date', ''),
+            'date': request.GET.get('date', ''),
             'start_time': request.GET.get('start', ''),
-            'end_date':  request.GET.get('end_date', ''),
-            'end_time':  request.GET.get('end', ''),
+            'end_date': request.GET.get('end_date', ''),
+            'end_time': request.GET.get('end', ''),
         }
         form = ReservationForm(initial=initial)
 
     return render(request, 'vehicles/reservation_form.html', {
         'vehicle': vehicle,
-        'form':    form,
+        'form': form,
         'min_time': min_time,
+        'allow_submit': allow_submit,  # ✅ 提供模板中是否允许提交的判断
     })
     
 @staff_member_required  # 限制管理员访问

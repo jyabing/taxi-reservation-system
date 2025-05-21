@@ -61,7 +61,7 @@
                   {# 今天：先看冷却 #}
                   {% if not cooldown_end or now_dt > cooldown_end %}
                     <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
-                      📝 空缺
+                      📝 申请预约
                     </a>
                   {% else %}
                     <span title="上次入库后10h内不可再约">🔒 冷却中</span>
@@ -69,7 +69,7 @@
                 {% else %}
                   {# 明天及以后：直接可约 #}
                   <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
-                    📝 空缺
+                    📝 申请预约
                   </a>
                 {% endif %}
               {% else %}

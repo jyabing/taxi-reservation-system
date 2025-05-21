@@ -26,38 +26,37 @@
     </td>
     <td>{{ vehicle.model }}</td>
 <td>
-  {# 1. 车辆状态为维修中，直接显示，无需看预约 #}
   {% if vehicle.status == 'maintenance' %}
     <span style="color:purple; font-weight:bold;">🛠️ 维修中</span>
-
-  {# 2. 空缺状态可预约 #}
-  {% elif info.status == 'available' %}
-    <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red; font-weight:bold;">
-      🟥 可预约（点击预约）
-    </a>
-
-  {# 3. 出库中 #}
-  {% elif info.status == 'out' %}
-    <span style="color:orange; font-weight:bold;">🟧 出库中</span>
-
-  {# 4. 有预约（但未出库） #}
-  {% elif info.status == 'reserved' %}
-    <span style="color:blue; font-weight:bold;">🟦 有预约（但未出库）</span>
-
-  {% elif info.status == 'canceled' %}
-  <span style="color:gray;">❌ 已自动取消</span>
-
-  {# 5. 其他（备用） #}
   {% else %}
-    <span style="color:gray;">-</span>
+    {% if info.status == 'available' or not info.status %}
+      <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red; font-weight:bold;">
+        🟥 可预约（点击预约）
+      </a>
+    {% else %}
+      {% if info.status == 'out' %}
+        <span style="color:orange; font-weight:bold;">🟧 出库中</span>
+      {% else %}
+        {% if info.status == 'reserved' %}
+          <span style="color:blue; font-weight:bold;">🟦 有预约（但未出库）</span>
+        {% else %}
+          {% if info.status == 'canceled' %}
+            <span style="color:gray;">❌ 已自动取消</span>
+          {% else %}
+            <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red; font-weight:bold;">
+              🟥 可预约（点击预约）
+            </a>
+          {% endif %}
+        {% endif %}
+      {% endif %}
+    {% endif %}
   {% endif %}
 
-  {# 6. 如果当前用户有预约，显示详情与出入库按钮 #}
+  {# 我的预约详情/出入库操作不变 #}
   {% if info.user_reservation %}
     <div style="margin-top:5px;">
       <span style="color:blue;">🧍 我的预约</span><br>
-      🕒 {{ info.user_reservation.start_time|time:"H:i" }}
-         ~ {{ info.user_reservation.end_time|time:"H:i" }}
+      🕒 {{ info.user_reservation.start_time|time:"H:i" }} ~ {{ info.user_reservation.end_time|time:"H:i" }}
 
       {% if not info.user_reservation.actual_departure %}
         <br>
