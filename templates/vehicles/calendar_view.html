@@ -2,7 +2,10 @@
 {% load static %}
 
 {% block content %}
+
 <h2>📅 配车系统日历：{{ current_month|date:"Y年n月" }}</h2>
+
+{% include 'partials/_messages.html' %}
 
 <div style="margin-bottom: 1em;">
   <a href="?year={{ prev_year }}&month={{ prev_month }}">← 上月</a> |

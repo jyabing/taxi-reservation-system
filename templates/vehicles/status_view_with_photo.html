@@ -2,6 +2,8 @@
 {% block content %}
 <h2>🚗 车辆预约状态一览({{ selected_date }})</h2>
 
+{% include 'partials/_messages.html' %}
+
 <form method="get">
   选择日期：<input type="date" name="date" value="{{ selected_date }}">
   <button type="submit">查询</button>

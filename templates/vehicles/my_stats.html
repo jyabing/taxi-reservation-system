@@ -1,6 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
 
+{% include 'partials/_messages.html' %}
+
 <h2>📊 {{ month_display }} 月度统计</h2>
 <form method="post" style="margin-bottom:1em;">
     {% csrf_token %}
@@ -11,8 +13,26 @@
 <ul>
     <li>📥 出入库总次数：<strong>{{ total_checkouts }}</strong></li>
     <li>⏱️ 出入库总时长：<strong>{{ total_duration }}</strong></li>
-    <li>💰 本月总売上：<strong>{{ sales_data }}</strong> 元</li>
-    <li>🏠 预计到手工资（70%）：<strong>{{ take_home|floatformat:2 }}</strong> 元</li>
+    <li>
+      💰 本月总売上：
+      <strong>
+        {% if sales_data and sales_data > 0 %}
+          {{ sales_data }} 元
+        {% else %}
+          🛠️ 正在开发中
+        {% endif %}
+      </strong>
+    </li>
+    <li>
+      🏠 预计到手工资（70%）：
+      <strong>
+        {% if take_home and take_home > 0 %}
+          {{ take_home|floatformat:2 }} 元
+        {% else %}
+          🛠️ 正在开发中
+        {% endif %}
+      </strong>
+    </li>
 </ul>
 
 <p><a href="{% url 'profile' %}">← 返回我的资料</a></p>

@@ -4,6 +4,9 @@
 {% endblock %}
 
 {% block content %}
+
+{% include 'partials/_messages.html' %}
+
 <h2>📝 申请预约车辆：{{ vehicle.license_plate }}</h2>
 
 {% if messages %}

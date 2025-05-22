@@ -60,6 +60,7 @@ def vehicle_status_view(request):
     vehicles = Vehicle.objects.all()
 
     status_map = {}
+    canceled_any = False
 
     for vehicle in vehicles:
         # 2. 查找该车有效预约
@@ -75,6 +76,10 @@ def vehicle_status_view(request):
                     r.status = 'canceled'
                     r.save()
                     status = 'canceled'
+
+                    # ✅ 添加提示给当前用户
+                    if r.driver == request.user:
+                        messages.warning(request, f"你对 {vehicle.license_plate} 的预约因超时未出库已被自动取消，请重新预约。")
                 else:
                     status = 'reserved'
             else:
@@ -94,6 +99,7 @@ def vehicle_status_view(request):
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
+        'canceled_any': canceled_any,
     })
 
 @login_required
@@ -251,7 +257,6 @@ def weekly_overview_view(request):
     date_str = request.GET.get('date')
     offset = int(request.GET.get('offset', 0))
 
-    # 判断是选择了日期还是仅用 offset
     if date_str:
         try:
             chosen_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -261,16 +266,28 @@ def weekly_overview_view(request):
     else:
         base_date = today
 
-    # 得到该周周一
-    weekday = base_date.weekday()  # 0 = Monday
+    weekday = base_date.weekday()
     monday = base_date - timedelta(days=weekday) + timedelta(weeks=offset)
     week_dates = [monday + timedelta(days=i) for i in range(7)]
 
     vehicles = Vehicle.objects.all()
     reservations = Reservation.objects.filter(date__in=week_dates)
 
+    # ✅ 自动取消过期未出库预约，并记录当前用户的被取消记录
+    canceled = []
+    for r in reservations.filter(status='reserved', actual_departure__isnull=True):
+        start_dt = make_aware(datetime.combine(r.date, r.start_time))
+        if timezone.now() > start_dt + timedelta(hours=1):
+            r.status = 'canceled'
+            r.save()
+            if r.driver == request.user:
+                canceled.append(r)
+
+    if canceled:
+        messages.warning(request, f"你有 {len(canceled)} 条预约因超过1小时未出库已被自动取消，请重新预约。")
+
     # 本日“已预约”或“出库中”的最大结束时间（冷却期用）
-    user_res_today = Reservation.objects.filter(
+    user_res_today = reservations.filter(
         driver=request.user,
         date=today,
         status__in=['reserved', 'out']
@@ -467,27 +484,31 @@ def my_reservations_view(request):
         driver=request.user
     ).order_by('-date', '-start_time')
 
-    # 每页显示 10 条
+    # ✅ 处理“超时未出库”的预约
+    canceled_any = False
+    for r in all_reservations:
+        if r.status == 'reserved' and not r.actual_departure:
+            start_dt = timezone.make_aware(datetime.combine(r.date, r.start_time))
+            expire_dt = start_dt + timedelta(hours=1)
+            if timezone.now() > expire_dt:
+                r.status = 'canceled'
+                r.save()
+                canceled_any = True
+
+    # 分页
     paginator = Paginator(all_reservations, 10)
     page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
 
-    try:
-        page_obj = paginator.page(page_number)
-    except PageNotAnInteger:
-        page_obj = paginator.page(1)
-    except EmptyPage:
-        page_obj = paginator.page(paginator.num_pages)
-
-    # 随机抽取一个启用中的 tip
     tips = list(Tip.objects.filter(is_active=True).values('content'))
-    #random_tip = random.choice(list(tips)) if tips.exists() else None
 
     return render(request, 'vehicles/my_reservations.html', {
         'page_obj': page_obj,
-        'reservations': page_obj,  # 新增这行
+        'reservations': page_obj,
         'today': timezone.localdate(),
         'now': timezone.localtime(),
-        'tips': tips,  # ✅ 所有提示
+        'tips': tips,
+        'canceled_any': canceled_any,  # ✅ 传给模板
     })
 
 @login_required 

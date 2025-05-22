@@ -107,6 +107,7 @@
       <a href="{% url 'vehicle_status' %}">🚗 车辆状态页</a>
       <a href="{% url 'my_reservations' %}">📋 我的预约</a>
       <a href="{% url 'profile' %}">👤 我的资料</a>
+      <a href="{% url 'weekly_overview' %}">⬅️车辆一周预约概览</a>
       {% if request.user.is_staff %}
         <a href="{% url 'reservation_approval_list' %}">🛠️ 审批面板</a>
         <a href="{% url 'admin_stats' %}" style="color:purple;">📊 管理员统计报表</a>

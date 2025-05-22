@@ -2,9 +2,9 @@
 {% load static %}
 {% block content %}
 
-{% include 'vehicles/status_tab_navigation.html' %}
-
 <h2>车辆预约状态一览（{{ selected_date }}）</h2>
+
+{% include 'partials/_messages.html' %}
 
 <form method="get">
   选择日期：<input type="date" name="date" value="{{ selected_date }}">
@@ -54,25 +54,28 @@
 
   {# 我的预约详情/出入库操作不变 #}
   {% if info.user_reservation %}
-    <div style="margin-top:5px;">
-      <span style="color:blue;">🧍 我的预约</span><br>
-      🕒 {{ info.user_reservation.start_time|time:"H:i" }} ~ {{ info.user_reservation.end_time|time:"H:i" }}
+  <div style="margin-top:5px;">
+    <span style="color:blue;">🧍 我的预约</span><br>
+    🕒 {{ info.user_reservation.start_time|time:"H:i" }} ~ {{ info.user_reservation.end_time|time:"H:i" }}
 
-      {% if not info.user_reservation.actual_departure %}
-        <br>
-        <button onclick="openTimePopup('{{ info.user_reservation.id }}','departure')">
-          🚗 出库
-        </button>
-      {% elif not info.user_reservation.actual_return %}
-        <br>
-        <button onclick="openTimePopup('{{ info.user_reservation.id }}','return')">
-          🅿️ 入库
-        </button>
-      {% else %}
-        <br>✅ 已完成出入库
-      {% endif %}
-    </div>
-  {% endif %}
+    {% if info.user_reservation.status == 'canceled' %}
+      <br>
+      <span style="color:gray;">⚠️ 你的预约已因超时未出库被系统自动取消，请重新预约</span>
+    {% elif not info.user_reservation.actual_departure %}
+      <br>
+      <button onclick="openTimePopup('{{ info.user_reservation.id }}','departure')">
+        🚗 出库
+      </button>
+    {% elif not info.user_reservation.actual_return %}
+      <br>
+      <button onclick="openTimePopup('{{ info.user_reservation.id }}','return')">
+        🅿️ 入库
+      </button>
+    {% else %}
+      <br>✅ 已完成出入库
+    {% endif %}
+  </div>
+{% endif %}
 </td>
 
   </tr>

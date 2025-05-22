@@ -1,0 +1,8 @@
+{# templates/partials/_messages.html #}
+{% if messages %}
+  <ul style="background:#fff3cd; border:1px solid #ffeeba; padding:10px; color:#856404; list-style:none; margin-bottom:20px;">
+    {% for message in messages %}
+      <li>{{ message }}</li>
+    {% endfor %}
+  </ul>
+{% endif %}

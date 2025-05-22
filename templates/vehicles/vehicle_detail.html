@@ -4,6 +4,8 @@
 {% block content %}
 <h2>🚘 车辆详情：{{ vehicle.license_plate }}</h2>
 
+{% include 'partials/_messages.html' %}
+
 <!-- ✅ 车辆照片缩略图 -->
 {% include 'vehicles/photo_gallery.html' %}
 

@@ -4,6 +4,8 @@
 
 <h2>🚗 预约总览菜单</h2>
 
+{% include 'partials/_messages.html' %}
+
 <ul style="line-height: 2;">
   <li><a href="{% url 'timeline_selector' %}">🔎 时间线视图（选择车辆+日期）</a></li>
   <li><a href="{% url 'weekly_selector' %}">📅 周视图（选择日期查看全车预约）</a></li>

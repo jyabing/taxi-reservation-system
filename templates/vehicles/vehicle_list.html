@@ -1,4 +1,10 @@
+{% extends 'base.html' %}
+{% block content %}
+
 <h1>车辆列表</h1>
+
+{% include 'partials/_messages.html' %}
+
 <table border="1">
 <tr><th>车牌号</th><th>车型</th><th>状态</th></tr>
 {% for v in vehicles %}
@@ -9,3 +15,5 @@
 </tr>
 {% endfor %}
 </table>
+
+{% endblock %}

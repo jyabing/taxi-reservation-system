@@ -5,6 +5,8 @@
 
 <h2>🚘 {{ vehicle.license_plate }} — {{ vehicle.model }} ＋ {{ current_month|date:"Y年n月" }}</h2>
 
+{% include 'partials/_messages.html' %}
+
 <p>
   <a href="?date={{ prev_month|date:"Y-m" }}">← 上一月</a> |
   <a href="?date={{ next_month|date:"Y-m" }}">下一月 →</a>
