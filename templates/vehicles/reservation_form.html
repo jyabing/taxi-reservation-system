@@ -29,22 +29,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<script>
-  flatpickr(".flat-date", {
-    dateFormat: "Y-m-d"
-  });
 
-  flatpickr(".flat-time", {
-    enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true,
-    {% if min_time %}
-    minTime: "{{ min_time|slice:'11:16' }}"  // 提取 "HH:MM" 部分
-    {% endif %}
-  });
-</script>
+
 {% endblock %}
 
 <style>
