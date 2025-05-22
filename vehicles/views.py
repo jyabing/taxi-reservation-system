@@ -55,52 +55,61 @@ def vehicle_status_view(request):
     else:
         selected_date = timezone.localdate()
 
-    # 1. 取出当天所有预约
     reservations = Reservation.objects.filter(date=selected_date)
     vehicles = Vehicle.objects.all()
-
     status_map = {}
-    canceled_any = False
+    now = timezone.localtime()
 
     for vehicle in vehicles:
-        # 2. 查找该车有效预约
-        r = reservations.filter(vehicle=vehicle, status__in=['pending', 'reserved']).first()
+        res_list = reservations.filter(vehicle=vehicle).order_by('start_time')
         status = 'available'
+        user_reservation = None
 
-        if r:
-            # 3. 判断是否超时未出库
-            if r.status == 'reserved' and not r.actual_departure:
+        # ✅ 1. 是否出库中（优先级最高）
+        active = res_list.filter(
+            status='out',
+            actual_departure__isnull=False,
+            actual_return__isnull=True
+        )
+        if active.exists():
+            status = 'out'
+
+        else:
+            # ✅ 2. 检查未出库的预约是否超时
+            future_reserved = res_list.filter(
+                status='reserved',
+                actual_departure__isnull=True
+            )
+
+            for r in future_reserved:
                 start_dt = timezone.make_aware(datetime.combine(r.date, r.start_time))
                 expire_dt = start_dt + timedelta(hours=1)
-                if timezone.now() > expire_dt:
+
+                if now > expire_dt:
+                    # 自动取消
                     r.status = 'canceled'
                     r.save()
-                    status = 'canceled'
 
-                    # ✅ 添加提示给当前用户
                     if r.driver == request.user:
                         messages.warning(request, f"你对 {vehicle.license_plate} 的预约因超时未出库已被自动取消，请重新预约。")
                 else:
                     status = 'reserved'
-            else:
-                status = r.status
-        else:
-            status = 'available'
+                    break  # 有有效预约，不必继续判断
 
-        # 4. 当前用户自己的预约（如果有）
-        user_res = reservations.filter(vehicle=vehicle, driver=request.user).first()
+        # ✅ 3. 当前用户是否也预约了这辆车
+        user_reservation = res_list.filter(driver=request.user).first()
 
-        # 5. 写入 status_map
+        # ✅ 4. 写入映射
         status_map[vehicle] = {
             'status': status,
-            'user_reservation': user_res,
+            'user_reservation': user_reservation,
         }
 
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
-        'canceled_any': canceled_any,
     })
+
 
 @login_required
 def vehicle_timeline_view(request, vehicle_id):
