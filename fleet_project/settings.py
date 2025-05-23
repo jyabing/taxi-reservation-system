@@ -1,3 +1,4 @@
+from supabase import create_client, Client
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -148,8 +149,8 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 LOGIN_REDIRECT_URL = '/accounts/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/success/'
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = ''
+MEDIA_ROOT = None  # 不再用本地 media
 
 DATE_FORMAT = "Y-m-d"            # 例如：2025-05-08
 TIME_FORMAT = "H:i"              # 例如：14:30
@@ -158,3 +159,4 @@ DATETIME_FORMAT = "Y-m-d H:i"    # 例如：2025-05-08 14:30
 USE_L10N = False  # 禁用本地化，以便使用上面自定义格式
 
 LEDGER_API_HOST = os.getenv('LEDGER_API_HOST', 'taxi-reservation.onrender.com')
+

@@ -24,7 +24,7 @@ from .views import (
     confirm_check_io,
     vehicle_status_with_photo,
     vehicle_monthly_gantt_view,
-    gantt_data, 
+    #gantt_data, 
     vehicle_image_list_view, 
     my_stats_view
 
@@ -54,7 +54,7 @@ urlpatterns = [
     path('confirm_check_io/', views.confirm_check_io, name='confirm_check_io'),
     path('status/photo/', vehicle_status_with_photo, name='vehicle_status_with_photo'),
     path('monthly/<int:vehicle_id>/', views.vehicle_monthly_gantt_view, name='vehicle_monthly_gantt'),
-    path('gantt/data/', views.gantt_data, name='gantt_data'),
+    #path('gantt/data/', views.gantt_data, name='gantt_data'),
     path('admin/vehicle/<int:vehicle_id>/images/', views.vehicle_image_list_view, name='vehicle_image_list'),
     path('admin/vehicle/<int:vehicle_id>/delete_image/<int:index>/', views.vehicle_image_delete_view, name='vehicle_image_delete'),
     path('calendar/', views.calendar_view, name='calendar_view'),

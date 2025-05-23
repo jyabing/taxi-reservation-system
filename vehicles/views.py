@@ -24,7 +24,7 @@ from django.db.models import Q, F, Count, ExpressionWrapper, DurationField, Sum
 # 自己的模型和表单
 from django.utils.decorators import method_decorator
 
-from .models import Vehicle, Reservation, Task, Tip
+from .models import Vehicle, Reservation, Tip
 from .forms import ReservationForm, MonthForm, AdminStatsForm
 from requests.exceptions import RequestException
 from accounts.models import DriverUser
@@ -58,14 +58,12 @@ def vehicle_status_view(request):
     reservations = Reservation.objects.filter(date=selected_date)
     vehicles = Vehicle.objects.all()
     status_map = {}
-    now = timezone.localtime()
+    now_dt = timezone.localtime()
 
     for vehicle in vehicles:
         res_list = reservations.filter(vehicle=vehicle).order_by('start_time')
         status = 'available'
-        user_reservation = None
-
-        # ✅ 1. 是否出库中（优先级最高）
+        # 1. 是否出库中
         active = res_list.filter(
             status='out',
             actual_departure__isnull=False,
@@ -73,43 +71,27 @@ def vehicle_status_view(request):
         )
         if active.exists():
             status = 'out'
-
         else:
-            # ✅ 2. 检查未出库的预约是否超时
-            future_reserved = res_list.filter(
-                status='reserved',
-                actual_departure__isnull=True
-            )
-
+            # 2. 检查“已预约”但未出库且超时未出车 → 自动取消
+            future_reserved = res_list.filter(status='reserved', actual_departure__isnull=True)
             for r in future_reserved:
-                start_dt = timezone.make_aware(datetime.combine(r.date, r.start_time))
+                start_dt = make_aware(datetime.combine(r.date, r.start_time))
                 expire_dt = start_dt + timedelta(hours=1)
-
-                if now > expire_dt:
-                    # 自动取消
-                    r.status = 'canceled'
-                    r.save()
-
+                if now_dt > expire_dt:
+                    r.status = 'canceled'; r.save()
                     if r.driver == request.user:
                         messages.warning(request, f"你对 {vehicle.license_plate} 的预约因超时未出库已被自动取消，请重新预约。")
                 else:
                     status = 'reserved'
-                    break  # 有有效预约，不必继续判断
-
-        # ✅ 3. 当前用户是否也预约了这辆车
+                    break
+        # 3. 当前用户是否也预约了
         user_reservation = res_list.filter(driver=request.user).first()
-
-        # ✅ 4. 写入映射
-        status_map[vehicle] = {
-            'status': status,
-            'user_reservation': user_reservation,
-        }
+        status_map[vehicle] = {'status': status, 'user_reservation': user_reservation}
 
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
     })
-
 
 @login_required
 def vehicle_timeline_view(request, vehicle_id):
@@ -661,20 +643,6 @@ def vehicle_status_with_photo(request):
         'selected_date': selected_date,
         'status_map': status_map
     })
-
-@login_required
-def gantt_data(request):
-    data = []
-    for task in Task.objects.all():
-        data.append({
-            "id": task.id,
-            "text": task.name,
-            "start_date": task.start_date.strftime('%Y-%m-%d %H:%M'),
-            "duration": task.duration,
-            "progress": task.progress,
-            "parent": task.parent_id
-        })
-    return JsonResponse({"data": data})
 
 def home_view(request):
     return render(request, 'home.html')
