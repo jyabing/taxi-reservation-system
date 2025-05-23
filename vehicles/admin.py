@@ -19,7 +19,8 @@ class VehicleImageInlineFormSet(BaseInlineFormSet):
 class VehicleImageInline(admin.TabularInline):
     model = VehicleImage
     # 1️⃣ 把 image_url 换成 image
-    fields = ('image', 'preview',)
+    #fields = ('image', 'preview',)
+    fields = ('preview', 'image')
     readonly_fields = ('preview',)
 
     def preview(self, obj):
