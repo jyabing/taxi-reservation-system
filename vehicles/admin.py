@@ -34,7 +34,8 @@ class VehicleAdmin(admin.ModelAdmin):
     list_display = (
         'id',
         'license_plate',   # ← 把 'name' 换成真实字段
-        'first_preview'
+        'first_preview', 
+        'notes'
     )
 
     def first_preview(self, obj):

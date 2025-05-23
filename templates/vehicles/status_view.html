@@ -16,6 +16,8 @@
     <th>车牌号</th>
     <th>车型</th>
     <th>状态</th>
+    <th>车检日期</th>
+    <th>备注</th>    
   </tr>
   {% for vehicle, info in status_map.items %}
   <tr>
@@ -61,7 +63,12 @@
   {% endif %}
 </td>
 
-  </tr>
+    {# 新增：车检日期 #}
+    <td>{{ vehicle.inspection_date|default:"—" }}</td>
+    {# 新增：备注 #}
+    <td>{{ vehicle.notes|default:"—" }}</td>  
+
+</tr>
   {% endfor %}
 </table>
 
