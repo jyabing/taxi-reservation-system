@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.html import format_html
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 class Vehicle(models.Model):
     STATUS_CHOICES = [
@@ -24,18 +25,19 @@ class Vehicle(models.Model):
         verbose_name_plural = "车辆"
 
 class VehicleImage(models.Model):
-    vehicle = models.ForeignKey(Vehicle, related_name='images', on_delete=models.CASCADE)
-    image_url = models.URLField("车辆图片链接", blank=True, null=True)
+    vehicle = models.ForeignKey(
+        Vehicle,
+        on_delete=models.CASCADE,
+        related_name='images',
+        verbose_name=_("车辆")
+    )
+    image = models.ImageField(
+        upload_to='vehicles/%Y/%m/%d/',  # 上传到 Cloudinary 时也会保留这个目录结构
+        verbose_name=_("图片文件")
+    )
 
     def __str__(self):
-        return f"{self.vehicle.license_plate} 的图片"
-
-    def image_preview(self):
-        if self.image_url:
-            return format_html('<img src="{}" style="max-height:100px;" />', self.image_url)
-        return "-"
-    image_preview.short_description = "图片预览"
-    image_preview.allow_tags = True
+        return f"{self.vehicle} - {self.image.name}"
 
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")

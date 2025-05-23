@@ -18,27 +18,31 @@ class VehicleImageInlineFormSet(BaseInlineFormSet):
 
 class VehicleImageInline(admin.TabularInline):
     model = VehicleImage
-    formset = VehicleImageInlineFormSet
-    extra = 1
-    max_num = 5
-    fields = ['image_url']
+    # 1️⃣ 把 image_url 换成 image
+    fields = ('image', 'preview',)
+    readonly_fields = ('preview',)
+
+    def preview(self, obj):
+        if obj.image:
+            return format_html('<img src="{}" style="height:50px;"/>', obj.image.url)
+        return ""
+    preview.short_description = "图片预览"
 
 @admin.register(Vehicle)
 class VehicleAdmin(admin.ModelAdmin):
     inlines = [VehicleImageInline]
-    list_display = ('license_plate', 'model', 'status', 'inspection_date', 'image_preview_column')
-    list_display_links = ('license_plate',)
+    list_display = (
+        'id',
+        'license_plate',   # ← 把 'name' 换成真实字段
+        'first_preview'
+    )
 
-    def image_preview_column(self, obj):
-        if obj.images.exists():
-            first = obj.images.first()
-            if first.image_url:
-                return format_html(
-                    '<a href="{0}" target="_blank"><img src="{0}" style="width:60px;height:45px;object-fit:cover;" /></a>',
-                    first.image_url
-                )
-        return "-"
-    image_preview_column.short_description = "照片"
+    def first_preview(self, obj):
+        first = obj.images.first()
+        if first and first.image:
+            return format_html('<img src="{}" style="height:40px;"/>', first.image.url)
+        return ""
+    first_preview.short_description = "封面缩略"
 
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
