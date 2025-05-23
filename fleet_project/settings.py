@@ -160,8 +160,8 @@ CLOUDINARY_STORAGE = {
     "API_SECRET": "nDqtZSVKhqyWv1w2fwhpNwXTrCw",
 }
 
-MEDIA_URL = ''
-MEDIA_ROOT = None  # 不再用本地 media
+MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = '/media/'
 
 DATE_FORMAT = "Y-m-d"            # 例如：2025-05-08
 TIME_FORMAT = "H:i"              # 例如：14:30
