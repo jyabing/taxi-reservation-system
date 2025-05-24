@@ -1,5 +1,5 @@
 # 标准库
-import calendar, requests, random
+import calendar, requests, random, cloudinary.uploader
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from django import forms
@@ -695,6 +695,13 @@ def calendar_view(request):
         'next_year': next_month.year,
         'next_month': next_month.month,
     })
+
+@csrf_exempt
+def upload_vehicle_image(request):
+    if request.method == 'POST' and request.FILES.get('file'):
+        result = cloudinary.uploader.upload(request.FILES['file'])
+        return JsonResponse({'url': result['secure_url']})
+    return JsonResponse({'error': 'Invalid request'}, status=400)
 
 @login_required
 def api_daily_sales_mock(request):  #一个假的销售数据接口以便调试

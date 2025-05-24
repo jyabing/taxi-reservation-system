@@ -2,8 +2,27 @@ from django.contrib import admin
 from django.forms.models import BaseInlineFormSet
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html
+from django import forms
+from django.utils.safestring import mark_safe
 from .models import Vehicle, Reservation, CarouselImage, VehicleImage, Tip
 
+# 🚗 自定义 Inline 表单（隐藏 image 输入框）
+class VehicleImageForm(forms.ModelForm):
+    class Meta:
+        model = VehicleImage
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['image'].widget = forms.HiddenInput()
+
+    class Media:
+        js = (
+            'https://code.jquery.com/jquery-3.6.0.min.js',
+            '/static/js/image_upload.js',  # 你需将该 JS 文件放到 static/js 下
+        )
+
+# 🚗 限制车辆照片数量：至少 1 张，最多 5 张
 class VehicleImageInlineFormSet(BaseInlineFormSet):
     def clean(self):
         super().clean()
@@ -16,35 +35,38 @@ class VehicleImageInlineFormSet(BaseInlineFormSet):
         if total > 5:
             raise ValidationError("最多只能上传 5 张车辆照片。")
 
+# 🚗 车辆图片内联表格（上传按钮 + 缩略图 + 隐藏字段）
 class VehicleImageInline(admin.TabularInline):
     model = VehicleImage
-    # 1️⃣ 把 image_url 换成 image
-    fields = ('preview', 'image')
-    readonly_fields = ('preview',)
+    form = VehicleImageForm
+    formset = VehicleImageInlineFormSet
+    fields = ('preview', 'upload_button', 'image')
+    readonly_fields = ('preview', 'upload_button')
 
     def preview(self, obj):
         if obj.image:
-            return format_html('<img src="{}" style="height:50px;"/>', obj.image)
+            return format_html('<img src="{}" style="height:50px;" />', obj.image)
         return ""
-    preview.short_description = "图片预览"
 
+    def upload_button(self, obj):
+        return mark_safe(
+            '<input type="file" class="upload-btn" accept="image/*"><br><span class="upload-status"></span>'
+        )
+
+# ✅ 车辆管理页（包含缩略图预览 + 图片上传）
 @admin.register(Vehicle)
 class VehicleAdmin(admin.ModelAdmin):
     inlines = [VehicleImageInline]
-    list_display = (
-        'id',
-        'license_plate',   # ← 把 'name' 换成真实字段
-        'first_preview', 
-        'notes'
-    )
+    list_display = ('id', 'license_plate', 'first_preview', 'notes')
 
     def first_preview(self, obj):
         first = obj.images.first()
         if first and first.image:
-            return format_html('<img src="{}" style="height:40px;"/>', first.image)
+            return format_html('<img src="{}" style="height:40px;" />', first.image)
         return ""
     first_preview.short_description = "封面缩略"
 
+# ✅ 预约管理
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
     list_display = ('vehicle', 'driver', 'date', 'start_time', 'end_time', 'status')
@@ -56,6 +78,7 @@ class ReservationAdmin(admin.ModelAdmin):
         updated = queryset.filter(status='pending').update(status='reserved')
         self.message_user(request, f"{updated} 条预约已成功通过。")
 
+# ✅ 轮播图管理
 @admin.register(CarouselImage)
 class CarouselImageAdmin(admin.ModelAdmin):
     list_display = ['title', 'order', 'is_active', 'preview']
@@ -67,6 +90,7 @@ class CarouselImageAdmin(admin.ModelAdmin):
         return "-"
     preview.short_description = "预览"
 
+# ✅ 使用提示管理
 @admin.register(Tip)
 class TipAdmin(admin.ModelAdmin):
     list_display = ('content', 'is_active', 'created_at')
