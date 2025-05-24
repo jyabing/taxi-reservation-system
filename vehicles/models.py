@@ -31,8 +31,8 @@ class VehicleImage(models.Model):
         related_name='images',
         verbose_name=_("车辆")
     )
-    image = models.ImageField(
-        upload_to='vehicles/%Y/%m/%d/',  # 上传到 Cloudinary 时也会保留这个目录结构
+    image = models.URLField(
+        #upload_to='vehicles/%Y/%m/%d/',   上传到 Cloudinary 时也会保留这个目录结构
         verbose_name=_("图片文件")
     )
 
