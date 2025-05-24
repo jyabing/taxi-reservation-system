@@ -37,7 +37,7 @@ class VehicleImage(models.Model):
     )
 
     def __str__(self):
-        return f"{self.vehicle} - {self.image.name}"
+        return f"{self.vehicle} - {self.image}"
 
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")
