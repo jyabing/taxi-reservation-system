@@ -19,13 +19,12 @@ class VehicleImageInlineFormSet(BaseInlineFormSet):
 class VehicleImageInline(admin.TabularInline):
     model = VehicleImage
     # 1️⃣ 把 image_url 换成 image
-    #fields = ('image', 'preview',)
     fields = ('preview', 'image')
     readonly_fields = ('preview',)
 
     def preview(self, obj):
         if obj.image:
-            return format_html('<img src="{}" style="height:50px;"/>', obj.image.url)
+            return format_html('<img src="{}" style="height:50px;"/>', obj.url)
         return ""
     preview.short_description = "图片预览"
 
