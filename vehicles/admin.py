@@ -24,7 +24,7 @@ class VehicleImageInline(admin.TabularInline):
 
     def preview(self, obj):
         if obj.image:
-            return format_html('<img src="{}" style="height:50px;"/>', obj.url)
+            return format_html('<img src="{}" style="height:50px;"/>', obj.image)
         return ""
     preview.short_description = "图片预览"
 
