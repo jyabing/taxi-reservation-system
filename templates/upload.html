@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>图片上传测试</title>
+</head>
+<body>
+  <h2>测试上传接口</h2>
+
+  {% if message %}
+    <p style="color: green;">{{ message }}</p>
+  {% endif %}
+  {% if image_url %}
+    <img src="{{ image_url }}" style="height:100px;"><br>
+    <p>图片地址：<a href="{{ image_url }}" target="_blank">{{ image_url }}</a></p>
+  {% endif %}
+
+  <form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="file" name="file" required>
+    <button type="submit">上传</button>
+  </form>
+</body>
+</html>

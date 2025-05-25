@@ -936,4 +936,4 @@ def test_upload_view(request):
             return render(request, 'upload.html', {
                 'message': f'上传失败：{str(e)}'
             })
-    return render(request, 'upload.html')
+    return render(request, 'vehicles/upload.html')
