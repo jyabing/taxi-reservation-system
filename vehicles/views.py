@@ -4,6 +4,8 @@ from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from django import forms
 from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import render
+from django.http import JsonResponse
 
 # Django 常用工具
 from django.shortcuts import render, get_object_or_404, redirect
@@ -920,9 +922,18 @@ def admin_stats_view(request):
     }
     return render(request, "vehicles/admin_stats.html", context)
 
-@login_required
+@csrf_exempt
 def test_upload_view(request):
     if request.method == 'POST' and request.FILES.get('file'):
-        result = cloudinary.uploader.upload(request.FILES['file'])
-        return JsonResponse({'url': result['secure_url']})
-    return render(request, 'vehicles/upload.html')
+        try:
+            result = cloudinary.uploader.upload(request.FILES['file'])
+            image_url = result['secure_url']
+            return render(request, 'upload.html', {
+                'message': '上传成功！',
+                'image_url': image_url
+            })
+        except Exception as e:
+            return render(request, 'upload.html', {
+                'message': f'上传失败：{str(e)}'
+            })
+    return render(request, 'upload.html')
