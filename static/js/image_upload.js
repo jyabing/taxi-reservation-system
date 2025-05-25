@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const formData = new FormData();
       formData.append("file", file);
 
-      fetch("/vehicles/upload_vehicle_image/", {
+      fetch("/vehicles/admin/vehicle/upload_image/", {
         method: "POST",
         body: formData,
       })
