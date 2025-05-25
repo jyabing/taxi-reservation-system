@@ -36,6 +36,12 @@ from accounts.models import DriverUser
 
 min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
+# ✅ 明确配置签名上传（有 API_SECRET）
+cloudinary.config(
+    cloud_name = "db2wbgbij",
+    api_key = "218267819313689",
+    api_secret = "nDqtZSVKhqyWv1w2fwhpNwXTrCw"
+
 @login_required
 def vehicle_detail(request, pk):
     vehicle = get_object_or_404(Vehicle.objects.prefetch_related('images'), pk=pk)
