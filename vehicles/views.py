@@ -919,4 +919,7 @@ def admin_stats_view(request):
 
 @login_required
 def test_upload_view(request):
-    return render(request, "test_upload.html")
+    if request.method == 'POST' and request.FILES.get('file'):
+        result = cloudinary.uploader.upload(request.FILES['file'])
+        return JsonResponse({'url': result['secure_url']})
+    return render(request, 'vehicles/upload.html')

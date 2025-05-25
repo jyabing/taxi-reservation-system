@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>测试上传</title>
+</head>
+<body>
+  <h2>图片上传测试</h2>
+  <form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="file" name="file">
+    <button type="submit">上传</button>
+  </form>
+</body>
+</html>
