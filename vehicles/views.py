@@ -43,6 +43,7 @@ cloudinary.config(
     cloud_name = "db2wbgbij",
     api_key = "218267819313689",
     api_secret = "nDqtZSVKhqyWv1w2fwhpNwXTrCw"
+)
 
 @login_required
 def vehicle_detail(request, pk):
@@ -937,8 +938,8 @@ def test_upload_view(request):
         try:
             result = unsigned_upload(
                 request.FILES['file'],
-                upload_preset='taxi-reservation',       # ✅ 你的 unsigned preset 名称
-                cloud_name='db2wbgbij'                  # ✅ 你的 cloud name，不能省略！
+                upload_preset='your_unsigned_preset',   # 你在 Cloudinary 设置里的 unsigned preset 名
+                cloud_name='db2wbgbij'                  # 你的 cloud name
             )
             context['image_url'] = result['secure_url']
             context['message'] = "✅ 上传成功"
