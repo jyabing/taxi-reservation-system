@@ -38,14 +38,12 @@ class VehicleImageInlineFormSet(BaseInlineFormSet):
 # 🚗 车辆图片内联表格（上传按钮 + 缩略图 + 隐藏字段）
 class VehicleImageInline(admin.TabularInline):
     model = VehicleImage
-    form = VehicleImageForm
-    formset = VehicleImageInlineFormSet
-    fields = ('preview', 'upload_button', 'image')
-    readonly_fields = ('preview', 'upload_button')
+    fields = ('preview', 'image')
+    readonly_fields = ('preview',)
 
     def preview(self, obj):
         if obj.image:
-            return format_html('<img src="{}" style="height:50px;" />', obj.image)
+            return format_html('<img src="{}" style="height:50px;" />', obj.image.url)
         return ""
 
     def upload_button(self, obj):

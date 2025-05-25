@@ -39,6 +39,13 @@ class VehicleImage(models.Model):
     def __str__(self):
         return f"{self.vehicle} - {self.image.url if self.image else '无图片'}"
 
+    def preview(self):
+        if self.image:
+            return format_html('<img src="{}" style="height:50px;" />', self.image.url)
+        return "-"
+    preview.short_description = "预览图"
+    preview.allow_tags = True
+
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")
     vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE, verbose_name="车辆")
