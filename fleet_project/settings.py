@@ -142,7 +142,7 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
 EMAIL_HOST_USER = 'jiabing.msn@gmail.com'        # 发件人邮箱
-EMAIL_HOST_PASSWORD = 'Narnixiq8946'       # 邮箱“应用密码”或授权码
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')       # 邮箱“应用密码”或授权码
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 LOGIN_REDIRECT_URL = '/accounts/dashboard/'
