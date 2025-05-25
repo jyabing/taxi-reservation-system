@@ -26,7 +26,8 @@ from .views import (
     vehicle_monthly_gantt_view,
     #gantt_data, 
     vehicle_image_list_view, 
-    my_stats_view
+    my_stats_view,
+
 
 )
 
