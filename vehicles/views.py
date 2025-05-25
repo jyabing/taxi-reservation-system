@@ -926,7 +926,10 @@ def admin_stats_view(request):
 def test_upload_view(request):
     context = {}
     if request.method == 'POST' and request.FILES.get('file'):
-        result = cloudinary.uploader.upload(request.FILES['file'])
-        context['image_url'] = result['secure_url']
-        context['message'] = "上传成功 ✅"
+        try:
+            result = cloudinary.uploader.upload(request.FILES['file'])  # ✅ signed 上传
+            context['image_url'] = result['secure_url']
+            context['message'] = "✅ 上传成功"
+        except Exception as e:
+            context['message'] = f"❌ 上传失败: {e}"
     return render(request, 'vehicles/upload.html', context)
