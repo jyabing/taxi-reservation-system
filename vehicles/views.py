@@ -924,16 +924,9 @@ def admin_stats_view(request):
 
 @csrf_exempt
 def test_upload_view(request):
+    context = {}
     if request.method == 'POST' and request.FILES.get('file'):
-        try:
-            result = cloudinary.uploader.upload(request.FILES['file'])
-            image_url = result['secure_url']
-            return render(request, 'upload.html', {
-                'message': '上传成功！',
-                'image_url': image_url
-            })
-        except Exception as e:
-            return render(request, 'upload.html', {
-                'message': f'上传失败：{str(e)}'
-            })
-    return render(request, 'vehicles/upload.html')
+        result = cloudinary.uploader.upload(request.FILES['file'])
+        context['image_url'] = result['secure_url']
+        context['message'] = "上传成功 ✅"
+    return render(request, 'vehicles/upload.html', context)
