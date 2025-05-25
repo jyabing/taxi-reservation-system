@@ -700,8 +700,11 @@ def calendar_view(request):
 @csrf_exempt
 def upload_vehicle_image(request):
     if request.method == 'POST' and request.FILES.get('file'):
-        result = cloudinary.uploader.upload(request.FILES['file'])
-        return JsonResponse({'url': result['secure_url']})
+        try:
+            result = cloudinary.uploader.upload(request.FILES['file'])
+            return JsonResponse({'url': result['secure_url']})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
 @login_required
