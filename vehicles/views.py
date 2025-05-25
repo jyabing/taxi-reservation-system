@@ -1,5 +1,5 @@
 # 标准库
-import calendar, requests, random, cloudinary.uploader
+import calendar, requests, random, cloudinary.uploader, cloudinary
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from django import forms
