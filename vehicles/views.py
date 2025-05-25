@@ -935,7 +935,7 @@ def test_upload_view(request):
         try:
             result = cloudinary.uploader.upload(
                 request.FILES['file'],
-                #upload_preset='taxi-reservation',  # ✅ 显式指定 preset 名称
+                upload_preset='taxi-reservation',  # ✅ 显式指定 preset 名称
                 use_filename=True,
                 unique_filename=False
             )
