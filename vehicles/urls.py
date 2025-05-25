@@ -27,8 +27,8 @@ from .views import (
     #gantt_data, 
     vehicle_image_list_view, 
     my_stats_view,
-
-
+    upload_vehicle_image
+    
 )
 
 urlpatterns = [
@@ -62,7 +62,7 @@ urlpatterns = [
     path('api/daily-sales/', views.api_daily_sales_mock, name='api_daily_sales'),
     path('my_stats/', views.my_stats_view, name='my_stats'),
     path('admin_stats/', views.admin_stats_view, name='admin_stats'),
-    path('upload_vehicle_image/', upload_vehicle_image, name='upload_vehicle_image'),
+    path('upload_vehicle_image/', upload_vehicle_image, name='upload_vehicle_image')
     
 ]
 

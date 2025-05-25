@@ -22,7 +22,8 @@ document.addEventListener("DOMContentLoaded", function () {
             statusSpan.innerText = "上传失败";
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("上传失败:", err);
           statusSpan.innerText = "上传失败";
         });
     });
