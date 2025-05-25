@@ -933,7 +933,12 @@ def test_upload_view(request):
     context = {}
     if request.method == 'POST' and request.FILES.get('file'):
         try:
-            result = cloudinary.uploader.upload(request.FILES['file'])  # ✅ signed 上传
+            # ✅ 注意：不要传入 upload_preset！
+            result = cloudinary.uploader.upload(
+                request.FILES['file'],
+                use_filename=True,  # 可选：使用原始文件名
+                unique_filename=False  # 可选：不加随机串
+            )
             context['image_url'] = result['secure_url']
             context['message'] = "✅ 上传成功"
         except Exception as e:

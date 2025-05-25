@@ -1,20 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>测试上传接口</title>
 </head>
 <body>
   <h2>测试上传接口</h2>
   {% if message %}
-    <p style="color: {% if "成功" in message %}green{% else %}red{% endif %};">
+    <p style="color: {% if '成功' in message %}green{% else %}red{% endif %};">
       {{ message }}
     </p>
+    {% if image_url %}
+      <img src="{{ image_url }}" style="max-height: 150px;">
+    {% endif %}
   {% endif %}
-
-  {% if image_url %}
-    <img src="{{ image_url }}" style="max-width: 200px;">
-  {% endif %}
-
   <form method="POST" enctype="multipart/form-data">
     {% csrf_token %}
     <input type="file" name="file">
