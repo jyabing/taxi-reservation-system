@@ -935,9 +935,11 @@ def test_upload_view(request):
         try:
             result = cloudinary.uploader.unsigned_upload(
                 request.FILES['file'],
-                upload_preset='taxi-reservation',  # ✅ unsigned 模式 preset 名称
-                cloud_name='db2wbgbij'
-            )
+                upload_preset='taxi-reservation',
+                cloud_name='db2wbgbij',
+                use_filename=True,
+                unique_filename=False
+    )
             context['image_url'] = result['secure_url']
             context['message'] = "✅ 上传成功"
         except Exception as e:
