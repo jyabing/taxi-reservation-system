@@ -8,5 +8,3 @@ sqlparse==0.5.3
 whitenoise==6.9.0
 psycopg2-binary
 requests>=2.0.0
-cloudinary>=1.37.0   # ✅ 添加这一行
-django-cloudinary-storage>=0.3.0

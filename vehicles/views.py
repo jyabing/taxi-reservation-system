@@ -1,13 +1,11 @@
 # 标准库
-import calendar, requests, random, cloudinary.uploader, cloudinary, os
+import calendar, requests, random, os
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from django import forms
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
 from django.http import JsonResponse
-from cloudinary.uploader import unsigned_upload  # ← 就加在这里
-from cloudinary.utils import cloudinary_url
 
 # Django 常用工具
 from django.shortcuts import render, get_object_or_404, redirect
@@ -705,8 +703,10 @@ def calendar_view(request):
 def upload_vehicle_image(request):
     if request.method == 'POST' and request.FILES.get('file'):
         try:
-            result = cloudinary.uploader.upload(request.FILES['file'])
-            return JsonResponse({'url': result['secure_url']})
+            file_obj = request.FILES['file']
+            filename = default_storage.save(f'vehicle_photos/{file_obj.name}', ContentFile(file_obj.read()))
+            file_url = default_storage.url(filename)
+            return JsonResponse({'url': file_url})
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
     return JsonResponse({'error': 'Invalid request'}, status=400)

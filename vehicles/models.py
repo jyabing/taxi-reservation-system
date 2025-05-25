@@ -31,13 +31,13 @@ class VehicleImage(models.Model):
         related_name='images',
         verbose_name=_("车辆")
     )
-    image = models.URLField(
-        #upload_to='vehicles/%Y/%m/%d/',   上传到 Cloudinary 时也会保留这个目录结构
+    image = models.ImageField(
+        upload_to='vehicles/%Y/%m/%d/',  # ✅ 图片将保存到 media/vehicle_photos/
         verbose_name=_("图片文件")
     )
 
     def __str__(self):
-        return f"{self.vehicle} - {self.image}"
+        return f"{self.vehicle} - {self.image.url if self.image else '无图片'}"
 
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")

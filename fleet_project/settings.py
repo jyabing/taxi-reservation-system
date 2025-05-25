@@ -148,18 +148,6 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 LOGIN_REDIRECT_URL = '/accounts/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/success/'
 
-INSTALLED_APPS += ["cloudinary_storage", "cloudinary"]
-
-# 指定所有 Media 上传都走 Cloudinary
-DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
-
-# Cloudinary 账户信息
-CLOUDINARY_STORAGE = {
-    "CLOUD_NAME": "db2wbgbij",
-    "API_KEY":    "218267819313689",
-    "API_SECRET": "nDqtZSVKhqyWv1w2fwhpNwXTrCw",
-}
-
 MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media/'
 
