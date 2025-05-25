@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>测试图片上传</title>
+</head>
+<body>
+  <h2>测试上传接口</h2>
+  <input type="file" id="fileInput">
+  <button onclick="upload()">上传</button>
+  <p id="result"></p>
+
+  <script>
+    function upload() {
+      const input = document.getElementById("fileInput");
+      const file = input.files[0];
+      if (!file) return alert("请选择图片");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      fetch("/vehicles/admin/vehicle/upload_image/", {
+        method: "POST",
+        body: formData
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.url) {
+            document.getElementById("result").innerHTML =
+              `✅ 上传成功：<a href="${data.url}" target="_blank">${data.url}</a>`;
+          } else {
+            document.getElementById("result").innerText = "❌ 上传失败：" + JSON.stringify(data);
+          }
+        })
+        .catch(err => {
+          document.getElementById("result").innerText = "❌ 请求错误：" + err;
+        });
+    }
+  </script>
+</body>
+</html>

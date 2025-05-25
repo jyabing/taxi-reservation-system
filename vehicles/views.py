@@ -3,6 +3,7 @@ import calendar, requests, random, cloudinary.uploader
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from django import forms
+from django.views.decorators.csrf import csrf_exempt
 
 # Django 常用工具
 from django.shortcuts import render, get_object_or_404, redirect
@@ -915,3 +916,7 @@ def admin_stats_view(request):
         "drivers": DriverUser.objects.all(),
     }
     return render(request, "vehicles/admin_stats.html", context)
+
+@login_required
+def test_upload_view(request):
+    return render(request, "test_upload.html")
