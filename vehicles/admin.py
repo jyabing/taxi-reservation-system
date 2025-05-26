@@ -42,7 +42,7 @@ class VehicleImageInline(admin.TabularInline):
     readonly_fields = ('preview',)
 
     def preview(self, obj):
-        if obj.image:
+        if obj.image and hasattr(obj.image, 'url'):
             return format_html('<img src="{}" style="height:50px;" />', obj.image.url)
         return ""
 
@@ -59,7 +59,7 @@ class VehicleAdmin(admin.ModelAdmin):
 
     def first_preview(self, obj):
         first = obj.images.first()
-        if first and first.image:
+        if first and first.image and hasattr(first.image, 'url'):
             return format_html('<img src="{}" style="height:40px;" />', first.image.url)
         return ""
     first_preview.short_description = "封面缩略"
