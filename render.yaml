@@ -3,19 +3,16 @@ services:
     name: taxi-reservation
     env: python
     plan: free
-    # 在 build 里顺便收集一次静态文件
     buildCommand: |
       ./build.sh
       python manage.py collectstatic --noinput
     startCommand: "gunicorn fleet_project.wsgi:application"
 
-    # —— 下面这两段用来把 staticfiles/ 和 media/ 分别挂到 /static 和 /media —— #
+    # ✅ 仅保留 static 静态路径（media 改为用挂载磁盘）
     staticPublishPath: staticfiles
     staticRoutes:
       - path: /static
         publishPath: staticfiles
-      - path: /media
-        publishPath: media
 
     envVars:
       - key: SECRET_KEY
