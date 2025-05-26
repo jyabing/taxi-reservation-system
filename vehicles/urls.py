@@ -28,7 +28,7 @@ from .views import (
     vehicle_image_list_view, 
     my_stats_view,
     upload_vehicle_image,
-    test_upload_view
+    test_notify_admin_email
     
 )
 
@@ -64,6 +64,7 @@ urlpatterns = [
     path('my_stats/', views.my_stats_view, name='my_stats'),
     path('admin_stats/', views.admin_stats_view, name='admin_stats'),
     path('admin/vehicle/upload_image/', upload_vehicle_image, name='upload_vehicle_image'),
-    path('test_upload/', test_upload_view, name='test_upload'),
+    path('test-notify/', test_notify_admin_email, name='test_notify_admin_email'),
+    
 ]
 

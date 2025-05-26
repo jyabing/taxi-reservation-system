@@ -9,7 +9,7 @@ from django.http import JsonResponse
 
 # Django 常用工具
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import HttpResponseRedirect, JsonResponse, HttpResponseForbidden
+from django.http import HttpResponseRedirect, JsonResponse, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
 from django.utils.timezone import now, make_aware
 from django.urls import reverse
@@ -155,6 +155,7 @@ def make_reservation_view(request, vehicle_id):
                 new_res.vehicle = vehicle
                 new_res.status = 'pending'
                 new_res.save()
+                notify_admin_about_new_reservation(new_res)  # ✅ 发邮件通知管理员
                 messages.success(request, "已提交申请，等待审批")
                 return redirect('vehicle_status')
     else:
@@ -924,18 +925,28 @@ def admin_stats_view(request):
     }
     return render(request, "vehicles/admin_stats.html", context)
 
-@csrf_exempt
-def test_upload_view(request):
-    context = {}
-    if request.method == 'POST' and request.FILES.get('file'):
-        try:
-            result = unsigned_upload(
-                request.FILES['file'],
-                upload_preset='unsigned-upload',  # 👈 新创建的 unsigned preset 名
-                cloud_name='db2wbgbij'            # 👈 你的 Cloud name
-            )
-            context['image_url'] = result['secure_url']
-            context['message'] = "✅ 上传成功"
-        except Exception as e:
-            context['message'] = f"❌ 上传失败：{e}"
-    return render(request, 'vehicles/upload.html', context)
+def test_notify_admin_email(request):
+    admins = DriverUser.objects.filter(is_staff=True).exclude(notification_email__isnull=True).exclude(notification_email='')
+    recipient_list = [admin.notification_email for admin in admins]
+
+    if not recipient_list:
+        return HttpResponse("❌ 没有可用的管理员通知邮箱")
+
+    send_mail(
+        subject="【测试通知】新预约提醒",
+        message="这是一封测试邮件，用于验证通知邮箱功能是否正常。",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=recipient_list,
+        fail_silently=False,
+    )
+
+    return HttpResponse(f"✅ 邮件已发送至：{', '.join(recipient_list)}")
+
+def get_system_notification_recipients():
+    admins = DriverUser.objects.filter(
+        is_staff=True,
+        wants_notification=True,
+        notification_email__isnull=False
+    ).exclude(notification_email='')
+
+    return [admin.notification_email for admin in admins]

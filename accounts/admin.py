@@ -2,11 +2,11 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import DriverUser
 
-
 class DriverUserAdmin(UserAdmin):
-    model = DriverUser
-    fieldsets = UserAdmin.fieldsets + (
-        (None, {'fields': ('is_formal', 'is_temporary')}),
+        (None, {
+            'fields': ('is_formal', 'is_temporary', 'notification_email', 'wants_notification')
+        }),
     )
+    list_display = UserAdmin.list_display + ('is_formal', 'is_temporary', 'notification_email', 'wants_notification')
 
 admin.site.register(DriverUser, DriverUserAdmin)
