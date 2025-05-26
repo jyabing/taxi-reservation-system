@@ -60,7 +60,7 @@ class VehicleAdmin(admin.ModelAdmin):
     def first_preview(self, obj):
         first = obj.images.first()
         if first and first.image:
-            return format_html('<img src="{}" style="height:40px;" />', first.image)
+            return format_html('<img src="{}" style="height:40px;" />', first.image.url)
         return ""
     first_preview.short_description = "封面缩略"
 
