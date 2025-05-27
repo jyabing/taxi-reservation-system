@@ -4,7 +4,6 @@
 
 {% block content %}
 <h2>📋 我的预约记录</h2>
-
 {% include 'partials/_messages.html' %}
 
 <table border="1">
@@ -14,7 +13,6 @@
     <th>状态</th>
     <th>操作</th>
   </tr>
-
   {% for r in reservations %}
   <tr>
     <td>{{ r.vehicle.license_plate }}</td>
@@ -23,47 +21,42 @@
     </td>
     <td>{{ r.get_status_display }}</td>
     <td>
+      {# 1. 待审批 或 已预约但未出库：可编辑/可取消 #}
       {% if r.status == 'pending' %}
         <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
-        <a href="{% url 'delete_reservation' r.id %}">❌ 删除</a>
-
-      {% elif r.status == 'reserved' %}
-        {% if not r.actual_departure %}
-          {% if today == r.date %}
-            <button onclick="openTimePopup('{{ r.id }}', 'departure')">
-              🚗 出库
-            </button><br>
-            <span style="color:gray;">
-              ⚠️ 未出库的预约将在开始后一小时自动取消
-            </span>
-          {% else %}
-            <span style="color:gray;">⏳ 等待预约日期</span>
-          {% endif %}
-        {% elif not r.actual_return %}
-          <button onclick="openTimePopup('{{ r.id }}', 'return')">
-            🅿️ 入库
+        <a href="javascript:void(0);" onclick="confirmDelete('{{ r.id }}', '{{ r.vehicle.license_plate }}', '{{ r.date }}', '{{ r.start_time }}')">❌ 删除</a>
+      {% elif r.status == 'reserved' and not r.actual_departure %}
+        <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
+        <a href="javascript:void(0);" onclick="confirmDelete('{{ r.id }}', '{{ r.vehicle.license_plate }}', '{{ r.date }}', '{{ r.start_time }}')">❌ 删除</a>
+        {% if today == r.date %}
+          <button onclick="openTimePopup('{{ r.id }}', 'departure')">
+            🚗 出库
           </button><br>
           <span style="color:gray;">
-            ⚠️ 超过30分钟未入库将自动延长
+            ⚠️ 未出库的预约将在开始后一小时自动取消
           </span>
         {% else %}
-          ✅ 出入库完成
+          <span style="color:gray;">⏳ 等待预约日期</span>
         {% endif %}
-
-      {% elif r.status == 'out' %}
-        {% if not r.actual_return %}
-          <button onclick="openTimePopup('{{ r.id }}', 'return')">
-            🅿️ 入库
-          </button>
-        {% else %}
-          ✅ 完成
-        {% endif %}
-
+      {# 2. 已预约且已出库未还车 #}
+      {% elif r.status == 'reserved' and r.actual_departure and not r.actual_return %}
+        <button onclick="openTimePopup('{{ r.id }}', 'return')">
+          🅿️ 入库
+        </button><br>
+        <span style="color:gray;">
+          ⚠️ 超过30分钟未入库将自动延长
+        </span>
+      {# 3. 已出库未还车 #}
+      {% elif r.status == 'out' and not r.actual_return %}
+        <button onclick="openTimePopup('{{ r.id }}', 'return')">
+          🅿️ 入库
+        </button>
+      {# 4. 已取消 #}
       {% elif r.status == 'canceled' %}
         ❌ 已取消
-
+      {# 5. 其它（已完成等） #}
       {% else %}
-        -
+        ✅ 完成
       {% endif %}
     </td>
   </tr>
@@ -74,52 +67,40 @@
   {% endfor %}
 </table>
 
-{# 只在页面底部 include 一次 popup partial #}
+{# 删除确认弹窗 #}
+<div id="delete-confirm-modal" style="display:none;position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.35);z-index:9999;justify-content:center;align-items:center;">
+  <div style="background:white;padding:32px 40px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.18);min-width:300px;text-align:center;">
+    <div id="delete-confirm-msg" style="margin-bottom:22px;font-size:18px;"></div>
+    <form id="delete-confirm-form" method="post" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit" style="background:#d9534f;color:white;padding:6px 18px;border:none;border-radius:4px;font-size:16px;margin-right:14px;">确定删除</button>
+      <button type="button" onclick="closeDeleteModal()" style="background:#eee;color:#333;padding:6px 16px;border:none;border-radius:4px;font-size:16px;">取消</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  function confirmDelete(reservationId, vehicle, date, start) {
+    const modal = document.getElementById('delete-confirm-modal');
+    const msg = document.getElementById('delete-confirm-msg');
+    msg.innerHTML = `确定要取消 <b>${vehicle}</b> ${date} ${start} 的预约吗？<br>取消后该时间段车辆将可被他人预约。`;
+    const form = document.getElementById('delete-confirm-form');
+    form.action = "/vehicles/reservation/" + reservationId + "/delete/";
+    modal.style.display = 'flex';
+  }
+  function closeDeleteModal() {
+    document.getElementById('delete-confirm-modal').style.display = 'none';
+  }
+  // 允许点击遮罩层关闭弹窗
+  window.onclick = function(event) {
+    if (event.target === document.getElementById('delete-confirm-modal')) {
+      closeDeleteModal();
+    }
+  }
+</script>
+
+{# 出库/入库弹窗，按你已有代码或 include #}
 {% include 'partials/_check_io_popup.html' %}
-
-<style>
-  .pagination {
-    margin-top: 20px;
-    text-align: center;
-  }
-  .pagination .step-links a,
-  .pagination .step-links span {
-    display: inline-block;
-    margin: 0 5px;
-    padding: 6px 12px;
-    text-decoration: none;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    color: #333;
-    background-color: #f9f9f9;
-    transition: background-color 0.2s, color 0.2s;
-  }
-  .pagination .step-links a:hover {
-    background-color: #4CAF50;
-    color: white;
-    border-color: #4CAF50;
-  }
-  .pagination .current-page {
-    background-color: #4CAF50;
-    color: white;
-    font-weight: bold;
-    border-color: #4CAF50;
-  }
-
-    #tip-text {
-    display: inline-block;
-    opacity: 1;
-    transition: opacity 0.5s ease-in-out;
-  }
-
-  .fade-out {
-    opacity: 0;
-  }
-
-  .fade-in {
-    opacity: 1;
-  }
-</style>
 
 <div class="pagination">
   <span class="step-links">
@@ -127,9 +108,7 @@
       <a href="?page=1">&laquo; 第一页</a>
       <a href="?page={{ page_obj.previous_page_number }}">上一页</a>
     {% endif %}
-
     <span class="current-page">第 {{ page_obj.number }} 页 / 共 {{ page_obj.paginator.num_pages }} 页</span>
-
     {% if page_obj.has_next %}
       <a href="?page={{ page_obj.next_page_number }}">下一页</a>
       <a href="?page={{ page_obj.paginator.num_pages }}">最后一页 &raquo;</a>
@@ -138,7 +117,5 @@
 </div>
 
 <p><a href="{% url 'reservation_dashboard' %}">← 返回预约菜单</a></p>
-
 {% include 'partials/tip_box.html' %}
-
 {% endblock %}

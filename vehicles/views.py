@@ -483,7 +483,7 @@ def vehicle_detail_view(request, vehicle_id):
 @login_required
 def edit_reservation_view(request, reservation_id):
     reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
-    if reservation.status != 'pending':
+    if reservation.status not in ['pending', 'reserved']:
         return HttpResponseForbidden("已确认预约无法修改。")
 
     if request.method == 'POST':
@@ -509,7 +509,7 @@ def edit_reservation_view(request, reservation_id):
 @login_required
 def delete_reservation_view(request, reservation_id):
     reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
-    if reservation.status != 'pending':
+    if reservation.status not in ['pending', 'reserved']:
         return HttpResponseForbidden("已确认预约不能删除。")
 
     if request.method == 'POST':
