@@ -1,11 +1,11 @@
 asgiref==3.8.1
 Django==5.1.2
+django-admin-rangefilter==1.0.0
 gunicorn==23.0.0
 packaging==25.0
 pillow==11.2.1
+psycopg2-binary==2.9.9
 python-dotenv==1.1.0
+requests==2.32.2
 sqlparse==0.5.3
 whitenoise==6.9.0
-psycopg2-binary
-requests>=2.0.0
-django-admin-rangefilter>=1.0.0
