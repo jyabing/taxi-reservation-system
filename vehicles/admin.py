@@ -5,6 +5,7 @@ from django.utils.html import format_html
 from django import forms
 from django.utils.safestring import mark_safe
 from .models import Vehicle, Reservation, CarouselImage, VehicleImage, Tip
+from rangefilter.filters import DateRangeFilter
 
 # 🚗 自定义 Inline 表单（隐藏 image 输入框）
 class VehicleImageForm(forms.ModelForm):
@@ -68,8 +69,9 @@ class VehicleAdmin(admin.ModelAdmin):
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
     list_display = ('vehicle', 'driver', 'date', 'start_time', 'end_time', 'status')
-    list_filter = ('status', 'date')
+    list_filter = ('status', 'date', DateRangeFilter)
     actions = ['approve_reservations']
+    list_per_page = 20   # ✅ 新增：每页显示20条数据（你可以改成30、50都可以）
 
     @admin.action(description="✅ 通过选中预约")
     def approve_reservations(self, request, queryset):
