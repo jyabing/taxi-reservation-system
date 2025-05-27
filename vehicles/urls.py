@@ -16,7 +16,6 @@ from .views import (
     daily_overview_view,
     reservation_approval_list, 
     my_reservations_view,
-    test_email_view, 
     reservation_detail_view,
     vehicle_detail_view,
     edit_reservation_view,
@@ -28,7 +27,6 @@ from .views import (
     vehicle_image_list_view, 
     my_stats_view,
     upload_vehicle_image,
-    test_notify_admin_email
     
 )
 
@@ -48,7 +46,6 @@ urlpatterns = [
     path('dashboard/', reservation_dashboard, name='reservation_dashboard'),
     path('daily/', daily_overview_view, name='daily_overview'),
     path('my_reservations/', my_reservations_view, name='my_reservations'),
-    path('test_email/', test_email_view, name='test_email'),
     path('reservation/<int:reservation_id>/', reservation_detail_view, name='reservation_detail'),
     path('vehicle/<int:vehicle_id>/', vehicle_detail_view, name='vehicle_detail'),
     path('reservation/<int:reservation_id>/edit/', edit_reservation_view, name='edit_reservation'),
@@ -64,7 +61,7 @@ urlpatterns = [
     path('my_stats/', views.my_stats_view, name='my_stats'),
     path('admin_stats/', views.admin_stats_view, name='admin_stats'),
     path('admin/vehicle/upload_image/', upload_vehicle_image, name='upload_vehicle_image'),
-    path('test-notify/', test_notify_admin_email, name='test_notify_admin_email'),
+    
     
 ]
 

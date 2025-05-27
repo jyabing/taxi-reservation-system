@@ -1,32 +1,39 @@
-import calendar
+# 标准库
+import calendar, requests, random, os
+from calendar import monthrange
 from datetime import datetime, timedelta, time, date
+from django import forms
+from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import render
+from django.http import JsonResponse
+
+# Django 常用工具
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
+from django.http import HttpResponseRedirect, JsonResponse, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
-from django.urls import reverse
 from django.utils.timezone import now, make_aware
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib import messages
-from django.core.paginator import Paginator
-from django.db.models import F, ExpressionWrapper, DurationField, Sum
-from django.views.decorators.csrf import csrf_exempt
+from django.contrib import messages, admin
+from django.core.mail import send_mail
+from django.conf import settings
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+
+from django.db.models import Q, F, Count, ExpressionWrapper, DurationField, Sum
+
+# 自己的模型和表单
+from django.utils.decorators import method_decorator
 
 from .models import Vehicle, Reservation, Tip
-from .forms import ReservationForm
+from .forms import ReservationForm, MonthForm, AdminStatsForm
+from requests.exceptions import RequestException
 from accounts.models import DriverUser
 
-# ✅ 邮件通知工具
-from vehicles.utils import notify_admin_about_new_reservation
+#把 import 语句分类整理在一起，是一个非常好的编码习惯，不仅让代码更清晰，也能减少重复导入或顺序错误的情况。
 
-def is_admin(user):
-    return user.is_staff
-
-@login_required
-def vehicle_list(request):
-    vehicles = Vehicle.objects.all()
-    return render(request, 'vehicles/vehicle_list.html', {'vehicles': vehicles})
+min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
 @login_required
 def vehicle_detail(request, pk):
@@ -38,25 +45,39 @@ def vehicle_detail(request, pk):
     })
 
 @login_required
+def vehicle_list(request):
+    vehicles = Vehicle.objects.all()
+    return render(request, 'vehicles/vehicle_list.html', {'vehicles': vehicles})
+
+@login_required
 def vehicle_status_view(request):
     date_str = request.GET.get('date')
-    selected_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else timezone.localdate()
+    if date_str:
+        selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    else:
+        selected_date = timezone.localdate()
+
     reservations = Reservation.objects.filter(date=selected_date)
     vehicles = Vehicle.objects.all()
     status_map = {}
     now_dt = timezone.localtime()
+
     for vehicle in vehicles:
         res_list = reservations.filter(vehicle=vehicle).order_by('start_time')
         status = 'available'
+        # 1. 是否出库中
         active = res_list.filter(
-            status='out', actual_departure__isnull=False, actual_return__isnull=True
+            status='out',
+            actual_departure__isnull=False,
+            actual_return__isnull=True
         )
         if active.exists():
             status = 'out'
         else:
+            # 2. 检查“已预约”但未出库且超时未出车 → 自动取消
             future_reserved = res_list.filter(status='reserved', actual_departure__isnull=True)
             for r in future_reserved:
-                start_dt = timezone.make_aware(datetime.combine(r.date, r.start_time))
+                start_dt = make_aware(datetime.combine(r.date, r.start_time))
                 expire_dt = start_dt + timedelta(hours=1)
                 if now_dt > expire_dt:
                     r.status = 'canceled'; r.save()
@@ -65,57 +86,13 @@ def vehicle_status_view(request):
                 else:
                     status = 'reserved'
                     break
+        # 3. 当前用户是否也预约了
         user_reservation = res_list.filter(driver=request.user).first()
         status_map[vehicle] = {'status': status, 'user_reservation': user_reservation}
 
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
-    })
-
-@login_required
-def make_reservation_view(request, vehicle_id):
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
-    min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
-    if vehicle.status == 'maintenance':
-        messages.error(request, "维修中车辆不可预约")
-        return redirect('vehicle_status')
-
-    allow_submit = vehicle.status == 'available'
-    if request.method == 'POST':
-        if not allow_submit:
-            messages.error(request, "当前车辆状态不可预约，请选择其他车辆")
-            return redirect('vehicle_status')
-
-        form = ReservationForm(request.POST)
-        form.instance.driver = request.user
-        if form.is_valid():
-            cleaned = form.cleaned_data
-            start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
-            end_dt = datetime.combine(cleaned['end_date'], cleaned['end_time'])
-            if end_dt <= start_dt:
-                messages.error(request, "结束时间必须晚于开始时间（请检查跨日设置）")
-            else:
-                new_res = form.save(commit=False)
-                new_res.vehicle = vehicle
-                new_res.status = 'pending'
-                new_res.save()
-                notify_admin_about_new_reservation(new_res)  # 邮件通知
-                messages.success(request, "已提交申请，等待审批")
-                return redirect('vehicle_status')
-    else:
-        initial = {
-            'date': request.GET.get('date', ''),
-            'start_time': request.GET.get('start', ''),
-            'end_date': request.GET.get('end_date', ''),
-            'end_time': request.GET.get('end', ''),
-        }
-        form = ReservationForm(initial=initial)
-    return render(request, 'vehicles/reservation_form.html', {
-        'vehicle': vehicle,
-        'form': form,
-        'min_time': min_time,
-        'allow_submit': allow_submit,
     })
 
 @login_required
@@ -141,6 +118,128 @@ def vehicle_timeline_view(request, vehicle_id):
         'is_past': is_past,  # ✅ 传入模板
         'hours': range(24),  # ✅ 加上这行
     })
+
+@login_required
+def make_reservation_view(request, vehicle_id):
+    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+
+    # ✅ 添加：限制当前时间之后30分钟的时间
+    min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
+
+    # ✅ 如果车辆维修中，直接禁止进入表单
+    if vehicle.status == 'maintenance':
+        messages.error(request, "维修中车辆不可预约")
+        return redirect('vehicle_status')
+
+    # ✅ 标记是否允许提交预约（仅当车辆状态为 available 时）
+    allow_submit = vehicle.status == 'available'
+
+    if request.method == 'POST':
+        if not allow_submit:
+            messages.error(request, "当前车辆状态不可预约，请选择其他车辆")
+            return redirect('vehicle_status')
+
+        form = ReservationForm(request.POST)
+        form.instance.driver = request.user
+
+        if form.is_valid():
+            cleaned = form.cleaned_data
+            start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
+            end_dt = datetime.combine(cleaned['end_date'], cleaned['end_time'])
+
+            if end_dt <= start_dt:
+                messages.error(request, "结束时间必须晚于开始时间（请检查跨日设置）")
+            else:
+                new_res = form.save(commit=False)
+                new_res.vehicle = vehicle
+                new_res.status = 'pending'
+                new_res.save()
+                notify_admin_about_new_reservation(new_res)  # ✅ 发邮件通知管理员
+                messages.success(request, "已提交申请，等待审批")
+                return redirect('vehicle_status')
+    else:
+        initial = {
+            'date': request.GET.get('date', ''),
+            'start_time': request.GET.get('start', ''),
+            'end_date': request.GET.get('end_date', ''),
+            'end_time': request.GET.get('end', ''),
+        }
+        form = ReservationForm(initial=initial)
+
+    return render(request, 'vehicles/reservation_form.html', {
+        'vehicle': vehicle,
+        'form': form,
+        'min_time': min_time,
+        'allow_submit': allow_submit,  # ✅ 提供模板中是否允许提交的判断
+    })
+    
+@staff_member_required  # 限制管理员访问
+def reservation_approval_list(request):
+    pending_reservations = Reservation.objects.filter(status='pending').order_by('date', 'start_time')
+    return render(request, 'vehicles/reservation_approval_list.html', {
+        'pending_reservations': pending_reservations
+    })
+
+@staff_member_required
+def approve_reservation(request, reservation_id):
+    reservation = get_object_or_404(Reservation, id=reservation_id)
+    reservation.status = 'reserved'
+    reservation.save()
+    messages.success(request, f"预约 {reservation} 审批通过")
+    return redirect('reservation_approval_list')
+
+@staff_member_required
+def create_reservation(request, vehicle_id):
+    vehicle = Vehicle.objects.get(id=vehicle_id)
+    min_time = (now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')  # 注意格式
+
+    if request.method == 'POST':
+        form = ReservationForm(request.POST)
+        if form.is_valid():
+            form.save()
+            # 重定向成功页
+    else:
+        form = ReservationForm()
+
+    return render(request, 'vehicles/reservation_form.html', {
+        'form': form,
+        'vehicle': vehicle,
+        'min_time': min_time,  # 传入模板
+    })
+
+@login_required
+def check_out(request, reservation_id):
+    reservation = get_object_or_404(Reservation, id=reservation_id)
+
+    if request.user != reservation.driver:
+        return HttpResponseForbidden("你不能操作别人的预约")
+
+    if reservation.actual_departure:
+        messages.warning(request, "你已经出车过了！")
+    else:
+        reservation.actual_departure = timezone.now()
+        reservation.save()
+        messages.success(request, "出车登记成功")
+
+    return redirect('vehicle_status')
+
+@login_required
+def check_in(request, reservation_id):
+    reservation = get_object_or_404(Reservation, id=reservation_id)
+
+    if request.user != reservation.driver:
+        return HttpResponseForbidden("你不能操作别人的预约")
+
+    if not reservation.actual_departure:
+        messages.warning(request, "请先出车登记")
+    elif reservation.actual_return:
+        messages.warning(request, "你已经还车过了！")
+    else:
+        reservation.actual_return = timezone.now()
+        reservation.save()
+        messages.success(request, "还车登记成功")
+
+    return redirect('vehicle_status')
 
 @login_required
 def weekly_overview_view(request):
@@ -406,35 +505,15 @@ def my_reservations_view(request):
         'canceled_any': canceled_any,  # ✅ 传给模板
     })
 
-@staff_member_required
-def reservation_approval_list(request):
-    pending_reservations = Reservation.objects.filter(status='pending').order_by('date', 'start_time')
-    return render(request, 'vehicles/reservation_approval_list.html', {
-        'pending_reservations': pending_reservations
-    })
-
-@staff_member_required
-def approve_reservation(request, reservation_id):
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    reservation.status = 'reserved'
-    reservation.save()
-    messages.success(request, f"预约 {reservation} 审批通过")
-    return redirect('reservation_approval_list')
-
-@login_required
-def my_reservations_view(request):
-    all_reservations = Reservation.objects.filter(driver=request.user).order_by('-date', '-start_time')
-    paginator = Paginator(all_reservations, 10)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-    tips = list(Tip.objects.filter(is_active=True).values('content'))
-    return render(request, 'vehicles/my_reservations.html', {
-        'page_obj': page_obj,
-        'reservations': page_obj,
-        'today': timezone.localdate(),
-        'now': timezone.localtime(),
-        'tips': tips,
-    })
+@login_required 
+def test_email_view(request): 
+    send_mail( 
+        subject='📮 测试邮件 - 车辆预约系统', 
+        message='这是一个测试邮件，说明邮件设置成功！', 
+        from_email=None, recipient_list=[request.user.email], # 发送给当前登录用户   
+        fail_silently=False, 
+    ) 
+    return HttpResponse("✅ 邮件已发送至：" + request.user.email)
 
 @login_required
 def reservation_detail_view(request, reservation_id):
@@ -442,34 +521,6 @@ def reservation_detail_view(request, reservation_id):
     return render(request, 'vehicles/reservation_detail.html', {
         'reservation': reservation
     })
-
-@login_required
-def check_out(request, reservation_id):
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    if request.user != reservation.driver:
-        return HttpResponseForbidden("你不能操作别人的预约")
-    if reservation.actual_departure:
-        messages.warning(request, "你已经出库了！")
-    else:
-        reservation.actual_departure = timezone.now()
-        reservation.save()
-        messages.success(request, "出库登记成功")
-    return redirect('vehicle_status')
-
-@login_required
-def check_in(request, reservation_id):
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    if request.user != reservation.driver:
-        return HttpResponseForbidden("你不能操作别人的预约")
-    if not reservation.actual_departure:
-        messages.warning(request, "请先出库登记")
-    elif reservation.actual_return:
-        messages.warning(request, "你已经入库了！")
-    else:
-        reservation.actual_return = timezone.now()
-        reservation.save()
-        messages.success(request, "入库登记成功")
-    return redirect('vehicle_status')
 
 @login_required
 def vehicle_detail_view(request, vehicle_id):
@@ -519,6 +570,7 @@ def delete_reservation_view(request, reservation_id):
     return render(request, 'vehicles/reservation_confirm_delete.html', {
         'reservation': reservation
     })
+
 
 @require_POST
 @login_required
@@ -595,6 +647,9 @@ def vehicle_status_with_photo(request):
         'status_map': status_map
     })
 
+def home_view(request):
+    return render(request, 'home.html')
+
 def vehicle_image_list_view(request, vehicle_id):
     vehicle = get_object_or_404(Vehicle, id=vehicle_id)
     images = vehicle.images.all()
@@ -609,6 +664,113 @@ def vehicle_image_delete_view(request, vehicle_id, index):
         images[index].delete()
         return JsonResponse({'status': 'deleted'})
     return JsonResponse({'status': 'invalid_index'}, status=400)
+
+@login_required
+def calendar_view(request):
+    today = timezone.localdate()
+    year = int(request.GET.get('year', today.year))
+    month = int(request.GET.get('month', today.month))
+    current_month = date(year, month, 1)
+
+    cal = calendar.Calendar(firstweekday=6)  # 周日开始
+    month_days = cal.itermonthdates(year, month)
+    calendar_matrix = []
+    week = []
+    for d in month_days:
+        if d.month != month:
+            week.append(None)
+        else:
+            week.append(d)
+        if len(week) == 7:
+            calendar_matrix.append(week)
+            week = []
+
+    # 计算上下月
+    prev_month = (current_month.replace(day=1) - timedelta(days=1)).replace(day=1)
+    next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    return render(request, 'vehicles/calendar_view.html', {
+        'current_month': current_month,
+        'calendar_matrix': calendar_matrix,
+        'today': today,
+        'prev_year': prev_month.year,
+        'prev_month': prev_month.month,
+        'next_year': next_month.year,
+        'next_month': next_month.month,
+    })
+
+@csrf_exempt
+def upload_vehicle_image(request):
+    if request.method == 'POST' and request.FILES.get('file'):
+        try:
+            file_obj = request.FILES['file']
+            filename = default_storage.save(f'vehicle_photos/{file_obj.name}', ContentFile(file_obj.read()))
+            file_url = default_storage.url(filename)
+            return JsonResponse({'url': file_url})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@login_required
+def api_daily_sales_mock(request):  #一个假的销售数据接口以便调试
+    target_date = request.GET.get('date')
+    if not target_date:
+        return JsonResponse({'error': '缺少日期参数'}, status=400)
+
+    # 模拟当前用户是司机 hikari9706，返回随机数据
+    return JsonResponse({
+        'date': target_date,
+        'ながし現金': 13450,
+        '貸切現金': 4600,
+        'ETC 空車': 720,
+        'ETC 乗車': 1600,
+        'uberプロモーション': 980,
+        '备注': '已完成夜班'
+    })
+
+def build_vehicle_gantt_matrix(vehicle, year, month):
+    current_month = date(year, month, 1)
+    days_in_month = monthrange(year, month)[1]
+
+    matrix = []
+    hours = list(range(24))
+    today = timezone.localdate()
+    now_time = timezone.localtime().time()
+
+    for day in range(1, days_in_month + 1):
+        d = date(year, month, day)
+        is_past = make_aware(datetime.combine(d, time.max)) < timezone.now()
+
+        reservations = vehicle.reservation_set.filter(
+            date__lte=d,
+            end_date__gte=d,
+            status__in=['pending', 'reserved', 'out']
+        ).order_by('start_time')
+
+        segments = []
+        for r in reservations:
+            start_dt = max(datetime.combine(r.date, r.start_time), datetime.combine(d, time.min))
+            end_dt = min(datetime.combine(r.end_date, r.end_time), datetime.combine(d, time.max))
+            start_offset = (start_dt - datetime.combine(d, time.min)).total_seconds() / 3600
+            length = (end_dt - start_dt).total_seconds() / 3600
+
+            segments.append({
+                'start': start_offset,
+                'length': length,
+                'status': r.status,
+                'label': f"{r.driver.username} {r.start_time.strftime('%H:%M')}-{r.end_time.strftime('%H:%M')}"
+            })
+
+        matrix.append({'date': d, 'segments': segments, 'is_past': is_past})
+
+    return matrix, hours, current_month
+
+class MonthForm(forms.Form):
+    month = forms.DateField(
+        label="统计月份",
+        widget=forms.DateInput(attrs={'type': 'month'}),
+        input_formats=['%Y-%m'],    # ← 一定要支持 YYYY-MM
+    )
 
 @login_required
 def my_stats_view(request):
@@ -762,69 +924,28 @@ def admin_stats_view(request):
     }
     return render(request, "vehicles/admin_stats.html", context)
 
-@csrf_exempt
-def upload_vehicle_image(request):
-    if request.method == 'POST' and request.FILES.get('file'):
-        try:
-            file_obj = request.FILES['file']
-            filename = default_storage.save(f'vehicle_photos/{file_obj.name}', ContentFile(file_obj.read()))
-            file_url = default_storage.url(filename)
-            return JsonResponse({'url': file_url})
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-    return JsonResponse({'error': 'Invalid request'}, status=400)
+def test_notify_admin_email(request):
+    admins = DriverUser.objects.filter(is_staff=True).exclude(notification_email__isnull=True).exclude(notification_email='')
+    recipient_list = [admin.notification_email for admin in admins]
 
-@login_required
-def api_daily_sales_mock(request):  #一个假的销售数据接口以便调试
-    target_date = request.GET.get('date')
-    if not target_date:
-        return JsonResponse({'error': '缺少日期参数'}, status=400)
+    if not recipient_list:
+        return HttpResponse("❌ 没有可用的管理员通知邮箱")
 
-    # 模拟当前用户是司机 hikari9706，返回随机数据
-    return JsonResponse({
-        'date': target_date,
-        'ながし現金': 13450,
-        '貸切現金': 4600,
-        'ETC 空車': 720,
-        'ETC 乗車': 1600,
-        'uberプロモーション': 980,
-        '备注': '已完成夜班'
-    })
+    send_mail(
+        subject="【测试通知】新预约提醒",
+        message="这是一封测试邮件，用于验证通知邮箱功能是否正常。",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=recipient_list,
+        fail_silently=False,
+    )
 
-@login_required
-def calendar_view(request):
-    today = timezone.localdate()
-    year = int(request.GET.get('year', today.year))
-    month = int(request.GET.get('month', today.month))
-    current_month = date(year, month, 1)
+    return HttpResponse(f"✅ 邮件已发送至：{', '.join(recipient_list)}")
 
-    import calendar
-    cal = calendar.Calendar(firstweekday=6)  # 周日开始
-    month_days = cal.itermonthdates(year, month)
-    calendar_matrix = []
-    week = []
-    for d in month_days:
-        if d.month != month:
-            week.append(None)
-        else:
-            week.append(d)
-        if len(week) == 7:
-            calendar_matrix.append(week)
-            week = []
+def get_system_notification_recipients():
+    admins = DriverUser.objects.filter(
+        is_staff=True,
+        wants_notification=True,
+        notification_email__isnull=False
+    ).exclude(notification_email='')
 
-    # 计算上下月
-    prev_month = (current_month.replace(day=1) - timedelta(days=1)).replace(day=1)
-    next_month = (current_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-
-    return render(request, 'vehicles/calendar_view.html', {
-        'current_month': current_month,
-        'calendar_matrix': calendar_matrix,
-        'today': today,
-        'prev_year': prev_month.year,
-        'prev_month': prev_month.month,
-        'next_year': next_month.year,
-        'next_month': next_month.month,
-    })
-
-def home_view(request):
-    return render(request, 'home.html')
+    return [admin.notification_email for admin in admins]
