@@ -18,10 +18,26 @@ class DriverUserAdminForm(forms.ModelForm):
 # 2️⃣ 再定义 admin
 class DriverUserAdmin(UserAdmin):
     form = DriverUserAdminForm
+
     fieldsets = UserAdmin.fieldsets + (
         (None, {'fields': ('is_formal', 'is_temporary', 'notification_email', 'wants_notification')}),
     )
-    list_display = UserAdmin.list_display + ('is_formal', 'is_temporary', 'notification_email', 'wants_notification')
+
+    # 合并姓名方法
+    def full_name(self, obj):
+        # 可自定义顺序（姓+名 or 名+姓），如下为【姓+名】
+        return f"{obj.first_name}{obj.last_name}"
+    full_name.short_description = "姓名"
+
+    list_display = (
+        'username',                # 用户名
+        'full_name',               # 合并后的姓名
+        'email',                   # 系统邮箱
+        'notification_email',      # 通知用邮箱（如需）
+        'is_formal',
+        'is_temporary',
+        'wants_notification',
+    )
 
 # 3️⃣ 注册
 admin.site.register(DriverUser, DriverUserAdmin)
