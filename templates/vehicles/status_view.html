@@ -16,7 +16,7 @@
     <th>车牌号</th>
     <th>车型</th>
     <th>状态</th>
-    <th>车检日期</th>
+    <th>预约者</th>
     <th>备注</th>    
   </tr>
   {% for vehicle, info in status_map.items %}
@@ -64,7 +64,7 @@
 </td>
 
     {# 新增：车检日期 #}
-    <td>{{ vehicle.inspection_date|default:"—" }}</td>
+    <td>{{ info.reserver_name }}</td>
     {# 新增：备注 #}
     <td style="white-space: pre-wrap; word-break: break-word;">{{ vehicle.notes|default:"—" }}</td>  
 
