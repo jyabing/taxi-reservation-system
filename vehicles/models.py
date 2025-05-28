@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.html import format_html
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 
 class Vehicle(models.Model):
     STATUS_CHOICES = [
@@ -69,8 +70,14 @@ class Reservation(models.Model):
     actual_departure = models.DateTimeField(null=True, blank=True, verbose_name="实际出库时间")
     actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际入库时间")
 
+    # ✅ 为自动审批功能新增字段：
+    approved = models.BooleanField(default=False, verbose_name="是否已审批")
+    approval_time = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
     def __str__(self):
         return f"{self.vehicle} {self.date} ~ {self.end_date} {self.start_time}-{self.end_time}"
+
 
 class CarouselImage(models.Model):
     title = models.CharField(max_length=100, verbose_name="标题", blank=True)
