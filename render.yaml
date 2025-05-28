@@ -8,7 +8,6 @@ services:
       python manage.py collectstatic --noinput
     startCommand: "gunicorn fleet_project.wsgi:application"
 
-    # ✅ 仅保留 static 静态路径（media 改为用挂载磁盘）
     staticPublishPath: staticfiles
     staticRoutes:
       - path: /static
@@ -28,7 +27,7 @@ services:
       - key: DB_PORT
         sync: false
 
-cronjobs:
+cronjobs:  # ✅ 放到文件最外层，与 services 对齐
   - name: auto-approve-reservations
-    schedule: '*/10 * * * *'  # 每10分钟运行一次
+    schedule: '*/10 * * * *'
     command: python manage.py auto_approve
