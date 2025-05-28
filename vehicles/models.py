@@ -78,6 +78,10 @@ class Reservation(models.Model):
 
     def __str__(self):
         return f"{self.vehicle} {self.date} ~ {self.end_date} {self.start_time}-{self.end_time}"
+    
+    class Meta:
+        verbose_name = "预约记录"
+        verbose_name_plural = "预约记录"
 
 
 class CarouselImage(models.Model):
@@ -109,3 +113,7 @@ class Tip(models.Model):
 
     def __str__(self):
         return self.content[:30]
+
+    class Meta:
+        verbose_name = "提示信息"
+        verbose_name_plural = "提示信息"
