@@ -1,0 +1,26 @@
+{# ✅ 统一预约状态展示模块 #}
+{% comment %}需要传入：vehicle, info.status, selected_date（可选）{% endcomment %}
+
+{% if selected_date and selected_date < today %}
+  <span style="color:gray;">⏳ 已过期（不可预约）</span>
+
+{% elif vehicle.status == 'maintenance' %}
+  <span style="color:purple; font-weight:bold;">🛠️ 维修中</span>
+
+{% elif info.status == 'out' %}
+  <span style="color:orange; font-weight:bold;">🟧 出库中</span>
+
+{% elif info.status == 'reserved' %}
+  <span style="color:blue; font-weight:bold;">🟦 有预约（但未出库）</span>
+
+{% elif info.status == 'canceled' %}
+  <span style="color:gray; font-weight:bold;">❌ 已自动取消</span>
+
+{% elif info.status == 'available' %}
+  <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red; font-weight:bold;">
+    🟥 可预约（点击预约）
+  </a>
+
+{% else %}
+  <span style="color:gray;">—</span>
+{% endif %}

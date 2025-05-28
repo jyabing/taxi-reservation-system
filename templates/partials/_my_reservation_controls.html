@@ -1,0 +1,21 @@
+{# ✅ 部分模板：显示我的预约按钮与状态 #}
+
+{% if user_reservation %}
+  <div style="margin-top:5px;">
+    <span style="color:blue;">🧍 我的预约</span><br>
+    🕒 {{ user_reservation.start_time|time:"H:i" }} ~ {{ user_reservation.end_time|time:"H:i" }}
+
+    {% if user_reservation.status == 'canceled' %}
+      <br><span style="color:gray;">⚠️ 你的预约已因超时未出库被系统自动取消，请重新预约</span>
+
+    {% elif not user_reservation.actual_departure %}
+      <br><button onclick="openTimePopup('{{ user_reservation.id }}','departure')">🚗 出库</button>
+
+    {% elif not user_reservation.actual_return %}
+      <br><button onclick="openTimePopup('{{ user_reservation.id }}','return')">🅿️ 入库</button>
+
+    {% else %}
+      <br>✅ 已完成出入库
+    {% endif %}
+  </div>
+{% endif %}

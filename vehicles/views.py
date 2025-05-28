@@ -4,7 +4,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
 from django.urls import reverse
-from django.utils.timezone import now, make_aware
+from django.utils.timezone import now, make_aware, localdate
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.admin.views.decorators import staff_member_required
@@ -93,6 +93,7 @@ def vehicle_status_view(request):
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
+        'today': localdate(),  # ✅ 加上 today 给模板组件比较
     })
 
 @login_required
