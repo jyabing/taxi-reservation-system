@@ -74,6 +74,7 @@ class Reservation(models.Model):
     approved = models.BooleanField(default=False, verbose_name="是否已审批")
     approval_time = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    approved_by_system = models.BooleanField(default=False, verbose_name="是否系统自动审批")
 
     def __str__(self):
         return f"{self.vehicle} {self.date} ~ {self.end_date} {self.start_time}-{self.end_time}"

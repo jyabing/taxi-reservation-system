@@ -13,6 +13,7 @@ class Command(BaseCommand):
         for reservation in pending:
             reservation.status = 'reserved'
             reservation.approved = True
+            reservation.approved_by_system = True  # ✅ 系统通过标记为 True
             reservation.approval_time = now()
             reservation.save()
             count += 1

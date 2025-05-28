@@ -68,8 +68,11 @@ class VehicleAdmin(admin.ModelAdmin):
 # ✅ 预约管理
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
-    list_display = ('vehicle', 'driver', 'date', 'start_time', 'end_time', 'status')
-    list_filter = ('status', ('date', DateRangeFilter))
+    list_display = (
+        'vehicle', 'driver', 'date', 'start_time', 'end_time',
+        'status', 'approved', 'approved_by_system', 'approval_time'
+    )
+    list_filter = ('status', 'approved_by_system', ('date', DateRangeFilter))
     actions = ['approve_reservations']
     list_per_page = 20   # ✅ 新增：每页显示20条数据（你可以改成30、50都可以）
 
