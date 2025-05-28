@@ -27,3 +27,8 @@ services:
         sync: false
       - key: DB_PORT
         sync: false
+
+cronjobs:
+  - name: auto-approve-reservations
+    schedule: '*/10 * * * *'  # 每10分钟运行一次
+    command: python manage.py auto_approve
