@@ -10,7 +10,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.core.mail import send_mail
+
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 
@@ -50,8 +50,11 @@ def vehicle_status_view(request):
     for vehicle in vehicles:
         res_list = reservations.filter(vehicle=vehicle).order_by('start_time')
 
-        # 默认状态是可预约
-        status = 'available'
+        # ✅ 如果是过去的日期，则不能预约
+        if selected_date < timezone.localdate():
+            status = 'expired'
+        else:
+            status = 'available'
 
         # 是否有出库中
         active = res_list.filter(

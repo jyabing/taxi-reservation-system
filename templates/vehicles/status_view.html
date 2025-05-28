@@ -37,6 +37,8 @@
       <span style="color:blue; font-weight:bold;">🟦 有预约（但未出库）</span>
     {% elif info.status == 'canceled' %}
       <span style="color:gray; font-weight:bold;">❌ 已自动取消</span>
+    {% elif info.status == 'expired' %}
+      <span style="color:gray; font-weight:bold;">⏳ 已过期（不可预约）</span>
     {% else %}
       <a href="{% url 'make_reservation' vehicle.id %}?date={{ selected_date }}" style="color:red; font-weight:bold;">
         🟥 可预约（点击预约）
