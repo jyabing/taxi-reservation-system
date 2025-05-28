@@ -7,7 +7,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         threshold = now() - timedelta(hours=1)
-        pending = Reservation.objects.filter(status='pending', created_at__lt=threshold)
+        pending = Reservation.objects.filter(
+            status='pending',
+            approved=False,
+            created_at__lt=threshold
+        )
 
         count = 0
         for reservation in pending:
