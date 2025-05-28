@@ -27,6 +27,7 @@ from .views import (
     vehicle_image_list_view, 
     my_stats_view,
     upload_vehicle_image,
+    test_email_view,
     
 )
 
@@ -61,7 +62,7 @@ urlpatterns = [
     path('my_stats/', views.my_stats_view, name='my_stats'),
     path('admin_stats/', views.admin_stats_view, name='admin_stats'),
     path('admin/vehicle/upload_image/', upload_vehicle_image, name='upload_vehicle_image'),
-    
+    path('vehicles/test-email/', test_email_view, name='test_email'),
     
 ]
 

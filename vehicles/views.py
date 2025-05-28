@@ -846,3 +846,18 @@ def calendar_view(request):
 
 def home_view(request):
     return render(request, 'home.html')
+
+
+@login_required
+def test_email_view(request):
+    try:
+        send_mail(
+            subject='测试邮件：车辆预约系统',
+            message='这是一封来自 Django 的测试邮件，用于验证邮件发送功能。',
+            from_email='jiabing.msn@gmail.com',  # 发件人
+            recipient_list=['jiabing.msn@gmail.com'],  # 收件人换成你自己的
+            fail_silently=False,  # 设置为 False 以便报错时看到异常信息
+        )
+        return HttpResponse("✅ 邮件发送成功，请检查收件箱。")
+    except Exception as e:
+        return HttpResponse(f"❌ 邮件发送失败：{str(e)}")
