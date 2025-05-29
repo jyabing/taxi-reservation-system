@@ -21,43 +21,7 @@
     </td>
     <td>{{ r.get_status_display }}</td>
     <td>
-      {# 1. 待审批 或 已预约但未出库：可编辑/可取消 #}
-      {% if r.status == 'pending' %}
-        <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
-        <a href="javascript:void(0);" onclick="confirmDelete('{{ r.id }}', '{{ r.vehicle.license_plate }}', '{{ r.date }}', '{{ r.start_time }}')">❌ 删除</a>
-      {% elif r.status == 'reserved' and not r.actual_departure %}
-        <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
-        <a href="javascript:void(0);" onclick="confirmDelete('{{ r.id }}', '{{ r.vehicle.license_plate }}', '{{ r.date }}', '{{ r.start_time }}')">❌ 删除</a>
-        {% if today == r.date %}
-          <button onclick="openTimePopup('{{ r.id }}', 'departure')">
-            🚗 出库
-          </button><br>
-          <span style="color:gray;">
-            ⚠️ 未出库的预约将在开始后一小时自动取消
-          </span>
-        {% else %}
-          <span style="color:gray;">⏳ 等待预约日期</span>
-        {% endif %}
-      {# 2. 已预约且已出库未还车 #}
-      {% elif r.status == 'reserved' and r.actual_departure and not r.actual_return %}
-        <button onclick="openTimePopup('{{ r.id }}', 'return')">
-          🅿️ 入库
-        </button><br>
-        <span style="color:gray;">
-          ⚠️ 超过30分钟未入库将自动延长
-        </span>
-      {# 3. 已出库未还车 #}
-      {% elif r.status == 'out' and not r.actual_return %}
-        <button onclick="openTimePopup('{{ r.id }}', 'return')">
-          🅿️ 入库
-        </button>
-      {# 4. 已取消 #}
-      {% elif r.status == 'canceled' %}
-        ❌ 已取消
-      {# 5. 其它（已完成等） #}
-      {% else %}
-        ✅ 完成
-      {% endif %}
+      {% include 'partials/_my_reservation_controls.html' with r=r today=today %}
     </td>
   </tr>
   {% empty %}

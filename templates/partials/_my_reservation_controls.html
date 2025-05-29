@@ -1,34 +1,39 @@
 {# ✅ 部分模板：显示我的预约按钮与状态 #}
 
-{% if user_reservation %}
-  <div style="margin-top:5px;">
-    <span style="color:blue;">🧍 我的预约</span><br>
-    🕒 {{ user_reservation.start_time|time:"H:i" }} ~ {{ user_reservation.end_time|time:"H:i" }}
-
-    {% if user_reservation.status == 'canceled' %}
-      <br><span style="color:gray;">⚠️ 你的预约已因超时未出库被系统自动取消，请重新预约</span>
-
-    {% elif not user_reservation.actual_departure %}
-      <button onclick="confirmDeparture('{{ user_reservation.id }}')">🚗 出库</button>
-
-    {% elif not user_reservation.actual_return %}
-      <button onclick="confirmReturn('{{ user_reservation.id }}')">🅿️ 入库</button>
-
-      {# ✅ 管理员：可撤销出库 #}
-      {% if request.user.is_staff %}
-        <br><a href="{% url 'admin_reset_departure' user_reservation.id %}">🔁 撤销出库</a>
-      {% endif %}
-
-    {% else %}
-      <br>✅ 已完成出入库
-
-      {# ✅ 管理员：可撤销入库 #}
-      {% if request.user.is_staff %}
-        <br><a href="{% url 'admin_reset_return' user_reservation.id %}">🔁 撤销入库</a>
-      {% endif %}
-    {% endif %}
-  </div>
+{% if r.status == 'pending' %}
+  <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
+  <a href="javascript:void(0);" onclick="confirmDelete('{{ r.id }}', '{{ r.vehicle.license_plate }}', '{{ r.date }}', '{{ r.start_time }}')">❌ 删除</a>
+{% elif r.status == 'reserved' and not r.actual_departure %}
+  <a href="{% url 'edit_reservation' r.id %}">✏️ 修改</a> |
+  <a href="javascript:void(0);" onclick="confirmDelete('{{ r.id }}', '{{ r.vehicle.license_plate }}', '{{ r.date }}', '{{ r.start_time }}')">❌ 删除</a>
+  {% if today == r.date %}
+    <button onclick="confirmDeparture('{{ r.id }}')">🚗 出库</button><br>
+    <span style="color:gray;">⚠️ 未出库的预约将在开始后一小时自动取消</span>
+  {% else %}
+    <span style="color:gray;">⏳ 等待预约日期</span>
+  {% endif %}
+{% elif r.status == 'reserved' and r.actual_departure and not r.actual_return %}
+  <button onclick="confirmReturn('{{ r.id }}')">🅿️ 入库</button><br>
+  <span style="color:gray;">⚠️ 超过30分钟未入库将自动延长</span>
+  {% if request.user.is_staff %}
+    <br><a href="{% url 'admin_reset_departure' r.id %}">🔁 撤销出库</a>
+  {% endif %}
+{% elif r.status == 'out' and not r.actual_return %}
+  <button onclick="confirmReturn('{{ r.id }}')">🅿️ 入库</button>
+  {% if request.user.is_staff %}
+    <br><a href="{% url 'admin_reset_departure' r.id %}">🔁 撤销出库</a>
+  {% endif %}
+{% elif r.status == 'canceled' %}
+  ❌ 已取消
+{% elif r.status == 'completed' %}
+  ✅ 完成
+  {% if request.user.is_staff %}
+    <br><a href="{% url 'admin_reset_return' r.id %}">🔁 撤销入库</a>
+  {% endif %}
+{% else %}
+  —
 {% endif %}
+
 
 <script>
 function confirmDeparture(reservationId) {

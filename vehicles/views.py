@@ -81,8 +81,16 @@ def vehicle_status_view(request):
         user_reservation = res_list.filter(driver=request.user).first()
 
         # 新增：查找当日该车的预约者姓名（取第一条预约）
-        r = res_list.first()
-        reserver_name = r.driver.get_full_name() if r else ''
+        #r = res_list.first()
+        #reserver_name = r.driver.get_full_name() if r else ''
+        names = res_list.values_list('driver__first_name', 'driver__last_name')
+        #reserver_names = []
+        reserver_labels = []
+        for r in res_list:
+            name = (r.driver.first_name or '') + (r.driver.last_name or '')
+            label = f"{r.start_time.strftime('%H:%M')}~{r.end_time.strftime('%H:%M')} {name}"
+            reserver_labels.append(label)
+        reserver_name = '<br>'.join(reserver_labels) if reserver_labels else ''        
 
         status_map[vehicle] = {
             'status': status,
