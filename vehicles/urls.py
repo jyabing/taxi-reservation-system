@@ -28,6 +28,8 @@ from .views import (
     my_stats_view,
     upload_vehicle_image,
     test_email_view,
+    admin_reset_departure,
+    admin_reset_return,
     
 )
 
@@ -63,6 +65,8 @@ urlpatterns = [
     path('admin_stats/', views.admin_stats_view, name='admin_stats'),
     path('admin/vehicle/upload_image/', upload_vehicle_image, name='upload_vehicle_image'),
     path('test-email/', test_email_view, name='test_email'),
+    path('admin/reset_departure/<int:reservation_id>/', admin_reset_departure, name='admin_reset_departure'),
+    path('admin/reset_return/<int:reservation_id>/', admin_reset_return, name='admin_reset_return'),
     
 ]
 

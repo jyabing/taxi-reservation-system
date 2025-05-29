@@ -866,3 +866,32 @@ def test_email_view(request):
         return HttpResponse("✅ 邮件发送成功，请检查收件箱。")
     except Exception as e:
         return HttpResponse(f"❌ 邮件发送失败：{str(e)}")
+
+@staff_member_required
+def admin_reset_departure(request, reservation_id):
+    reservation = get_object_or_404(Reservation, id=reservation_id)
+    if reservation.actual_departure:
+        reservation.actual_departure = None
+        reservation.status = 'reserved'
+        reservation.vehicle.status = 'available'
+        reservation.vehicle.save()
+        reservation.save()
+        messages.success(request, f"已撤销出库登记：{reservation}")
+    else:
+        messages.warning(request, "该预约没有出库记录。")
+    return redirect('vehicle_status')
+
+
+@staff_member_required
+def admin_reset_return(request, reservation_id):
+    reservation = get_object_or_404(Reservation, id=reservation_id)
+    if reservation.actual_return:
+        reservation.actual_return = None
+        reservation.status = 'out'
+        reservation.vehicle.status = 'out'
+        reservation.vehicle.save()
+        reservation.save()
+        messages.success(request, f"已撤销入库登记：{reservation}")
+    else:
+        messages.warning(request, "该预约没有入库记录。")
+    return redirect('vehicle_status')
