@@ -1,4 +1,4 @@
-import calendar
+import calendar, requests, random, os
 from datetime import datetime, timedelta, time, date
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
+from django.conf import settings
 from django.core.paginator import Paginator
 
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
@@ -17,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import Vehicle, Reservation, Tip
 from .forms import ReservationForm, MonthForm
 from accounts.models import DriverUser
+from requests.exceptions import RequestException
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
