@@ -30,7 +30,15 @@ from .views import (
     test_email_view,
     admin_reset_departure,
     admin_reset_return,
-    
+    monthly_daily_reports,
+    my_daily_reports,
+    reservation_home,
+    reservation_status,
+    create_reservation,
+    reservation_approval,
+    reservation_approval_list,
+    admin_index,
+    admin_list,
 )
 
 urlpatterns = [
@@ -67,6 +75,13 @@ urlpatterns = [
     path('test-email/', test_email_view, name='test_email'),
     path('admin/reset_departure/<int:reservation_id>/', admin_reset_departure, name='admin_reset_departure'),
     path('admin/reset_return/<int:reservation_id>/', admin_reset_return, name='admin_reset_return'),
-    
+    path('reports/monthly/<str:month>/', monthly_daily_reports, name='monthly_daily_reports'),
+    path('my_daily_reports/', my_daily_reports, name='my_daily_reports'),
+    path('home/', reservation_home, name='reservation_home'),
+    path('reservation/status/', reservation_status, name='reservation_status'),
+    path('reservation/create/', create_reservation, name='create_reservation'),
+    path('reservation/approval/', views.reservation_approval, name='reservation_approval'),
+    path('admin/', admin_index, name='staffbook_admin_index'),
+    path('admin/list/', admin_list, name='vehicle_admin_list'),
 ]
 

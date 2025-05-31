@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>{{ month_display }} 日报明细</h2>
+<table class="table">
+  <thead>
+    <tr>
+      <th>日期</th>
+      <th>乘车时间</th>
+      <th>金额</th>
+      <th>支付方式</th>
+      <th>备注</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for report in reports %}
+    <tr>
+      <td>{{ report.date }}</td>
+      <td>{{ report.time }}</td>
+      <td>{{ report.fare }}</td>
+      <td>{{ report.payment_method }}</td>
+      <td>{{ report.note|default:"-" }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="5">本月暂无日报。</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="margin-top:2em;"><a href="{% url 'my_stats' %}">← 返回月度统计</a></p>
+{% endblock %}

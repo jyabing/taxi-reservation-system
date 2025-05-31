@@ -17,6 +17,7 @@
 <a href="{% url 'weekly_overview' %}">← 返回周视图</a>
 {% endblock %}
 
+{% block extra_style %}
 <style>
   ul {
     padding-left: 1em;
@@ -33,3 +34,4 @@
     li { font-size: 0.95em; }
   }
 </style>
+{% endblock %}

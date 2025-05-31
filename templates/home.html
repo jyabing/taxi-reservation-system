@@ -1,73 +1,28 @@
-{% extends 'base.html' %}
-{% load static %}
-{% block content %}
-
-{% if carousel_images %}
-<div class="carousel">
-  {% for img in carousel_images %}
-    <div class="carousel-item{% if forloop.first %} active{% endif %}">
-      <img src="{{ img.image.url }}" alt="{{ img.title }}">
-      {% if img.title %}<p>{{ img.title }}</p>{% endif %}
-    </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-<h2>🚖 自主配车管理系统</h2>
-<p>本系统公司内部自主高效管理公司车辆预约、状态、审批等信息。</p>
-
 <div class="cards">
+
+  <!-- 配车系统入口 -->
   <div class="card">
-    <h3>📅 查看预约状态</h3>
-    <p>随时掌握所有车辆每日的配车预约情况。</p>
+    <h3>🚖 配车系统</h3>
+    <p>车辆预约、派车、预约审批等一站式管理。</p>
+    <a href="{% url 'reservation_home' %}">进入</a>
   </div>
+
+  <!-- 员工手册管理系统入口 -->
   <div class="card">
-    <h3>📝 发起预约申请</h3>
-    <p>根据空缺时间自主提交配车预约请求。</p>
+    <h3>📒 员工手册管理系统</h3>
+    <p>员工日报、工资、材料管理。</p>
+    <a href="{% url 'staffbook_admin_index' %}">进入</a>
   </div>
+
+  <!-- 车辆管理入口 -->
   <div class="card">
-    <h3>📊 审批与统计</h3>
-    <p>管理员可查看使用情况并处理配车预约审批。</p>
+    <h3>🚗 车辆管理系统</h3>
+    <p>车辆资料、维修、照片等统一管理。</p>
+    {# <a href="{% url 'reservation_status' %}">进入</a> #}
   </div>
+
 </div>
 
-<div class="actions">
-  {% if user.is_authenticated %}
-    {% if user.is_superuser %}
-      <a href="/admin/">进入系统</a>
-    {% elif user.is_staff %}
-      <a href="{% url 'admin_dashboard' %}">进入系统</a>
-    {% else %}
-      <a href="{% url 'driver_dashboard' %}">进入系统</a>
-    {% endif %}
-    <a href="{% url 'logout' %}">退出登录</a>
-  {% else %}
-    <a href="{% url 'login' %}" class="btn-login">👉 登录入口</a>
-  {% endif %}
-</div>
-
-<style>
-  .actions {
-    text-align: center;
-    margin-top: 40px;
-  }
-
-  .btn-login {
-    display: inline-block;
-    background-color: #007bff;
-    color: white;
-    padding: 12px 30px;
-    border-radius: 6px;
-    font-size: 16px;
-    text-decoration: none;
-    font-weight: bold;
-    transition: background 0.3s;
-  }
-
-  .btn-login:hover {
-    background-color: #0056b3;
-  }
-</style>
 
 <style>
   .carousel {
@@ -112,5 +67,3 @@
     background: #0056b3;
   }
 </style>
-
-{% endblock %}

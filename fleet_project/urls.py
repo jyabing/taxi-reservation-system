@@ -10,6 +10,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('accounts.urls')),
     path('vehicles/', include('vehicles.urls')),
+    path('staffbook/', include('staffbook.urls')),
 ]
 
 # ✅ 始终启用静态资源路由，不依赖 DEBUG 设置

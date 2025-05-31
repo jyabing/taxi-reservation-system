@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>📅 月度乗務日報记录</h2>
+
+<form method="get">
+  选择月份：
+  <input type="month" name="month" value="{{ selected_month|date:'Y-m' }}">
+  <button type="submit">查询</button>
+</form>
+
+<table border="1" cellpadding="6" style="margin-top: 20px;">
+  <tr>
+    <th>日期</th>
+    <th>是否工作</th>
+    <th>事故</th>
+    <th>売上</th>
+    <th>距离</th>
+    <th>备注</th>
+  </tr>
+
+  {% for r in reports %}
+    <tr>
+      <td>{{ r.date }}</td>
+      <td>{% if r.is_working_day %}✅ 是{% else %}❌ 否{% endif %}</td>
+      <td>{% if r.accident_occurred %}⚠️ 有{% else %}-{% endif %}</td>
+      <td>{{ sales_map.r.date.cash_amount|default:'-' }}</td>
+      <td>{{ sales_map.r.date.mileage|default:'-' }}</td>
+      <td>{{ r.memo }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="6">本月暂无日報记录。</td></tr>
+  {% endfor %}
+</table>
+
+<a href="{% url 'profile' %}">← 返回我的资料页</a>
+
+{% endblock %}

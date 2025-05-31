@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2>📅 {{ month_display }} 日报明细</h2>
+
+<form method="get" style="margin-bottom:1em;">
+    <label>月份:
+        <input type="month" name="month" value="{{ month_value }}">
+    </label>
+    <button type="submit">切换</button>
+    <a href="{% url 'my_daily_reports' %}">本月</a>
+</form>
+
+{% if reports %}
+<div style="overflow-x:auto;">
+<table class="table">
+    <thead>
+        <tr>
+            <th>日期</th>
+            <th>乘车时间</th>
+            <th>金额</th>
+            <th>支付方式</th>
+            <th>备注</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for report in reports %}
+        <tr>
+            <td>{{ report.date }}</td>
+            <td>{{ report.time }}</td>
+            <td>{{ report.fare }}</td>
+            <td>{{ report.payment_method }}</td>
+            <td>{{ report.note|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p>本月暂无日报数据。</p>
+{% endif %}
+
+<p><a href="{% url 'profile' %}">← 返回我的资料</a></p>
+
+{% endblock %}

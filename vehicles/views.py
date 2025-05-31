@@ -17,7 +17,7 @@ from django.core.paginator import Paginator
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Vehicle, Reservation, Tip
+from .models import Vehicle, Reservation, Tip, DriverDailyReport
 from .forms import ReservationForm, MonthForm, AdminStatsForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
@@ -690,21 +690,12 @@ def my_stats_view(request):
     agg = qs.annotate(interval=duration_expr).aggregate(total_duration=Sum('interval'))
     total_duration = agg['total_duration'] or timedelta()
 
-    # 6) 调用外部 API 拿売上，主机名从 settings 里读
-    sales_data = 0
-    try:
-        # 假设你配置了 settings.LEDGER_API_HOST
-        host = getattr(settings, 'LEDGER_API_HOST', 'taxi-reservation.onrender.com')
-        url = f"https://{host}/api/sales/"
-        resp = requests.get(url, params={
-            'driver': request.user.username,
-            'start': first_day.isoformat(),
-            'end': last_day.isoformat(),
-        }, timeout=5)
-        resp.raise_for_status()
-        sales_data = resp.json().get('total_sales', 0)
-    except RequestException:
-        messages.warning(request, "无法获取外部销售数据，已显示为 0。")
+    # 6) 本地统计本月日报売上
+    sales_data = DriverDailyReport.objects.filter(
+        driver=request.user,
+        date__gte=first_day,
+        date__lte=last_day,
+    ).aggregate(total=Sum('fare'))['total'] or 0
 
     # 7) 假设抽成 70%
     take_home = sales_data * 0.7
@@ -714,7 +705,7 @@ def my_stats_view(request):
     return render(request, 'vehicles/my_stats.html', {
         'form':             form,
         'month_display': first_day.strftime('%Y年%m月'),
-        
+        'month_value':      f"{year}-{month:02d}",   # ★ 就是这一行
         'total_checkouts':  total_checkouts,
         'total_duration':   total_duration,
         'sales_data':       sales_data,
@@ -907,3 +898,72 @@ def admin_reset_return(request, reservation_id):
     else:
         messages.warning(request, "该预约没有入库记录。")
     return redirect('vehicle_status')
+
+@login_required
+def monthly_daily_reports(request, month):
+    user = request.user
+    # month 形如 "2024-06"
+    year, mon = month.split('-')
+    reports = DriverDailyReport.objects.filter(
+        driver=user, date__year=year, date__month=mon
+    ).order_by('-date')
+
+    context = {
+        'reports': reports,
+        'month_display': f"{year}年{int(mon)}月"
+    }
+    return render(request, 'vehicles/monthly_daily_reports.html', context)
+
+@login_required
+def my_daily_reports(request):
+    user = request.user
+
+    # 支持 GET 参数 month=2024-06
+    month_str = request.GET.get('month')
+    if month_str:
+        try:
+            year, month = map(int, month_str.split('-'))
+        except Exception:
+            today = date.today()
+            year, month = today.year, today.month
+    else:
+        today = date.today()
+        year, month = today.year, today.month
+
+    # 查询该用户本月的日报
+    reports = DriverDailyReport.objects.filter(
+        driver=user,
+        date__year=year,
+        date__month=month
+    ).order_by('-date')
+
+    # 用于顶部显示
+    month_display = f"{year}年{month}月"
+
+    # 便于选择其他月份
+    month_value = f"{year}-{month:02d}"
+
+    context = {
+        'reports': reports,
+        'month_display': month_display,
+        'month_value': month_value,
+    }
+    return render(request, 'vehicles/my_daily_reports.html', context)
+
+def reservation_home(request):
+    return render(request, 'vehicles/reservation_home.html')
+    
+def reservation_status(request):
+    return render(request, 'vehicles/reservation_status.html')
+
+def create_reservation(request):
+    return render(request, 'vehicles/create_reservation.html')
+
+def reservation_approval(request):
+    return render(request, 'vehicles/reservation_approval.html')
+
+def admin_index(request):
+    return render(request, 'staffbook/admin_index.html')
+
+def admin_list(request):
+    return render(request, 'vehicles/admin_list.html')

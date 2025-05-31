@@ -17,7 +17,9 @@
       💰 本月总売上：
       <strong>
         {% if sales_data and sales_data > 0 %}
-          {{ sales_data }} 元
+          <a href="{% url 'my_daily_reports' %}?month={{ month_value }}">
+            {{ sales_data }} 元
+          </a>
         {% else %}
           🛠️ 正在开发中
         {% endif %}
