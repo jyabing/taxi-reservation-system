@@ -1,4 +1,6 @@
 import calendar, requests, random, os
+from calendar import monthrange
+from django import forms
 from datetime import datetime, timedelta, time, date
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
@@ -16,7 +18,7 @@ from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import Vehicle, Reservation, Tip
-from .forms import ReservationForm, MonthForm
+from .forms import ReservationForm, MonthForm, AdminStatsForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
 
