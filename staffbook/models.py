@@ -2,7 +2,17 @@ from django.db import models
 from accounts.models import DriverUser
 from django.conf import settings
 
-class DailySales(models.Model):
+class Driver(models.Model):
+    staff_code = models.CharField('员工コード', max_length=20, unique=True)
+    name = models.CharField('姓名', max_length=30)
+    phone = models.CharField('手机号', max_length=20, blank=True, null=True)
+    tax_id = models.CharField('税号', max_length=30, blank=True, null=True)
+    # 可根据需要继续添加其他字段
+
+    def __str__(self):
+        return f"{self.staff_code} - {self.name}"
+
+class DriverDailySales(models.Model):
     driver = models.ForeignKey(DriverUser, on_delete=models.CASCADE)
     date = models.DateField()
     cash_amount = models.DecimalField(max_digits=8, decimal_places=2, default=0)
@@ -17,45 +27,6 @@ class DailySales(models.Model):
     def __str__(self):
         return f"{self.driver.username} - {self.date}"
 
-
-class DailyReport(models.Model):
-    driver = models.ForeignKey(DriverUser, on_delete=models.CASCADE)
-    date = models.DateField()
-    memo = models.TextField(blank=True)
-    is_working_day = models.BooleanField(default=True)
-    accident_occurred = models.BooleanField(default=False)
-
-    class Meta:
-        unique_together = ('driver', 'date')
-
-    def __str__(self):
-        return f"{self.driver.username} - {self.date} 日报"
-
-
-class PayrollRecord(models.Model):
-    driver = models.ForeignKey(DriverUser, on_delete=models.CASCADE)
-    month = models.DateField()  # 使用每月第一天表示一个月
-    total_sales = models.DecimalField(max_digits=10, decimal_places=2)
-    salary_paid = models.DecimalField(max_digits=10, decimal_places=2)
-    note = models.TextField(blank=True)
-
-    class Meta:
-        unique_together = ('driver', 'month')
-
-    def __str__(self):
-        return f"{self.driver.username} - {self.month.strftime('%Y-%m')} 工资"
-
-class ReportImage(models.Model):
-    driver = models.ForeignKey(DriverUser, on_delete=models.CASCADE)
-    date = models.DateField()
-    image = models.ImageField(upload_to='report_images/')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('driver', 'date')
-
-    def __str__(self):
-        return f"{self.driver.username} - {self.date} 的图片"
 
 class DriverDailyReport(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staffbook_daily_reports', verbose_name="司机")
@@ -72,3 +43,30 @@ class DriverDailyReport(models.Model):
 
     def __str__(self):
         return f"{self.driver} {self.date} {self.fare}"
+
+
+class DriverPayrollRecord(models.Model):
+    driver = models.ForeignKey(DriverUser, on_delete=models.CASCADE)
+    month = models.DateField()  # 使用每月第一天表示一个月
+    total_sales = models.DecimalField(max_digits=10, decimal_places=2)
+    salary_paid = models.DecimalField(max_digits=10, decimal_places=2)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ('driver', 'month')
+
+    def __str__(self):
+        return f"{self.driver.username} - {self.month.strftime('%Y-%m')} 工资"
+
+class DriverReportImage(models.Model):
+    driver = models.ForeignKey(DriverUser, on_delete=models.CASCADE)
+    date = models.DateField()
+    image = models.ImageField(upload_to='report_images/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('driver', 'date')
+
+    def __str__(self):
+        return f"{self.driver.username} - {self.date} 的图片"
+

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>{{ driver.get_full_name|default:driver.username }} - {% if is_edit %}编辑{% else %}新建{% endif %}乘务日报</h2>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="btn btn-primary">{% if is_edit %}保存修改{% else %}提交{% endif %}</button>
+    <a href="{% url 'staffbook:driver_card' driver.id %}" class="btn btn-link">返回</a>
+  </form>
+{% endblock %}

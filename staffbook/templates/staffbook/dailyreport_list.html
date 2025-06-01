@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>📝 日报录入列表</h2>
+{% if user.is_staff %}
+  <a href="{% url 'staffbook:dailyreport_add' %}" class="btn btn-primary">➕ 新建日报</a>
+{% endif %}
+<table>
+    <thead>
+        <tr>
+            <th>日期</th>
+            <th>司机</th>
+            <th>现金</th>
+            <th>刷卡</th>
+            <th>乘车数</th>
+            <th>里程</th>
+            <th>备注</th>
+            {% if user.is_staff %}
+            <th>操作</th>
+            {% endif %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for r in reports %}
+        <tr>
+            <td>{{ r.date }}</td>
+            <td>{{ r.driver.username }}</td>
+            <td>{{ r.cash_amount }}</td>
+            <td>{{ r.card_amount }}</td>
+            <td>{{ r.ride_count }}</td>
+            <td>{{ r.mileage }}</td>
+            <td>{{ r.memo }}</td>
+            {% if user.is_staff %}
+            <td>
+                <a href="{% url 'staffbook:dailyreport_edit' r.pk %}">编辑</a>
+            </td>
+            {% endif %}
+        </tr>
+    {% empty %}
+        <tr><td colspan="8">暂无日报</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

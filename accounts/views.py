@@ -6,8 +6,8 @@ from django.contrib.auth.views import PasswordChangeView
 from django.urls import reverse_lazy
 from vehicles.models import CarouselImage, Tip
 from django.utils.timezone import localdate
-from staffbook.forms import ReportImageForm, DailyReportForm
-from staffbook.models import DailyReport, ReportImage, DailySales
+from staffbook.forms import DriverReportImageForm, DriverDailyReportForm
+from staffbook.models import DriverDailyReport, DriverReportImage, DriverDailySales
 from staffbook.utils import extract_text_from_image
 from datetime import datetime
 from calendar import monthrange

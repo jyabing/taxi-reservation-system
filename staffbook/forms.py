@@ -1,20 +1,37 @@
 from django import forms
-from .models import DailySales, ReportImage, DailyReport
+from .models import DriverDailySales, DriverDailyReport, DriverPayrollRecord, DriverReportImage, Driver
 
-class DailySalesForm(forms.ModelForm):
+class DriverForm(forms.ModelForm):
     class Meta:
-        model = DailySales
+        model = Driver
+        fields = ['staff_code', 'name', 'phone', 'tax_id']
+        widgets = {
+            'staff_code': forms.TextInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'tax_id': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+class DriverDailySalesForm(forms.ModelForm):
+    class Meta:
+        model = DriverDailySales
         fields = ['date', 'cash_amount', 'card_amount', 'ride_count', 'mileage']
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date'}),
         }
 
-class DailyReportForm(forms.ModelForm):
+class DriverDailyReportForm(forms.ModelForm):
     class Meta:
-        model = DailyReport
-        fields = ['is_working_day', 'accident_occurred', 'memo']
+        model = DriverDailyReport
+        fields = ['date', 'time', 'fare', 'payment_method', 'note']
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date'}),
+            'time': forms.TextInput(attrs={'placeholder': '例：08:30-09:00'}),
+            'payment_method': forms.TextInput(attrs={'placeholder': '现金/微信/Uber等'}),
+            'note': forms.Textarea(attrs={'rows':2}),
+        }
 
-class ReportImageForm(forms.ModelForm):
+class DriverReportImageForm(forms.ModelForm):
     class Meta:
-        model = ReportImage
+        model = DriverReportImage
         fields = ['image']

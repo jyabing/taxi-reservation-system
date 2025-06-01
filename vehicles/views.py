@@ -967,3 +967,7 @@ def admin_index(request):
 
 def admin_list(request):
     return render(request, 'vehicles/admin_list.html')
+
+def dailyreport_list(request):
+    # 这里可以查询所有日报列表，或做管理功能
+    return render(request, 'staffbook/dailyreport_list.html')

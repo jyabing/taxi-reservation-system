@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  .staff-code-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 2rem 0;
+  }
+  .staff-code-item {
+    display: block;
+    background: #f4f4f4;
+    border-radius: 1.5em;
+    padding: 1em 2em;
+    margin: 0.5em 0;
+    font-size: 1.2em;
+    text-decoration: none;
+    color: #333;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: background 0.2s;
+  }
+  .staff-code-item:hover {
+    background: #e0ecff;
+  }
+  .floating-add-btn {
+    position: fixed;
+    bottom: 2.5rem;
+    right: 2.5rem;
+    z-index: 999;
+    background: #1677ff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 3.8rem;
+    height: 3.8rem;
+    box-shadow: 0 2px 16px rgba(22,119,255,0.25);
+    font-size: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+</style>
+
+<!-- 顶部搜索框 -->
+<form method="get" action="{% url 'staffbook:driver_list' %}" style="text-align:center; margin:2rem 0 1.5rem 0;">
+  <input type="text" name="keyword" placeholder="员工姓名/员工コード" value="{{ request.GET.keyword|default:'' }}" style="width:260px; padding:0.5em 1em; border-radius:2em; border:1px solid #ccc;">
+  <button type="submit" style="padding:0.5em 1.5em; border-radius:2em; border:none; background:#1677ff; color:white;">搜索</button>
+</form>
+
+<!-- 中部员工代码列表 -->
+<div class="staff-code-list">
+  {% for driver in drivers %}
+    <a class="staff-code-item" href="{% url 'staffbook:driver_detail' driver.id %}">
+      {{ driver.staff_code }} - {{ driver.name }}
+    </a>
+  {% empty %}
+    <div style="color:#888; margin-top:2em;">暂无员工信息</div>
+  {% endfor %}
+</div>
+
+<!-- 右下角悬浮新增按钮 -->
+<a href="{% url 'staffbook:driver_create' %}" class="floating-add-btn" title="增加员工">+</a>
+{% endblock %}

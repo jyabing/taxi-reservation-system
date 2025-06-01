@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block content %}
+<div style="max-width: 480px; margin: 2em auto; background: #fff; border-radius: 1em; padding: 2em; box-shadow: 0 2px 12px #eee;">
+  <h3>{{ driver.name }}（{{ driver.staff_code }}）</h3>
+  <ul>
+    <li>手机号: {{ driver.phone|default:"无" }}</li>
+    <li>税号: {{ driver.tax_id|default:"无" }}</li>
+  </ul>
+
+  <!-- 日报检索 -->
+  <form method="get" style="margin-bottom:1em;">
+    <label>选择日期：</label>
+    <input type="date" name="date" value="{{ selected_date|default:'' }}">
+    <button type="submit" class="btn btn-outline-secondary">查日报</button>
+  </form>
+
+  {% if dailyreport %}
+    <div style="background:#f9f9f9;border-radius:0.7em;padding:1em;margin-bottom:1em;">
+      <b>{{ dailyreport.date }}</b> 日报<br>
+      <div>{{ dailyreport.content|linebreaks }}</div>
+      <a href="{% url 'staffbook:driver_dailyreport_edit' driver.id dailyreport.id %}" class="btn btn-sm btn-outline-primary">编辑</a>
+      <a href="{% url 'staffbook:driver_dailyreport_delete' driver.id dailyreport.id %}" class="btn btn-sm btn-outline-danger">删除</a>
+    </div>
+  {% elif selected_date %}
+    <div style="color:#888;">
+      {{ selected_date }} 暂无日报，
+      <a href="{% url 'staffbook:driver_dailyreport_add' driver.id %}?date={{ selected_date }}">新增日报</a>
+    </div>
+  {% endif %}
+
+  <!-- 总是显示新增日报按钮 -->
+  <a href="{% url 'staffbook:driver_dailyreport_add' driver.id %}" class="btn btn-success mt-2">➕ 新增日报</a>
+  <a href="{% url 'staffbook:driver_edit' driver.id %}" class="btn btn-link">编辑员工信息</a>
+  <a href="{% url 'staffbook:driver_list' %}" class="btn btn-link">返回员工列表</a>
+</div>
+{% endblock %}
