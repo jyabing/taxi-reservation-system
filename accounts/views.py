@@ -74,10 +74,6 @@ def driver_dashboard(request):
     })
 
 @login_required
-def profile_view(request):
-    return render(request, 'accounts/profile.html')
-
-@login_required
 def edit_profile(request):
     if request.method == 'POST':
         email = request.POST.get('email')
@@ -110,22 +106,22 @@ def profile_view(request):
     driver = request.user  # 当前登录司机
 
     # 获取或创建今日日报
-    report, _ = DailyReport.objects.get_or_create(driver=driver, date=today)
-    daily_form = DailyReportForm(instance=report)
+    report, _ = DriverDailyReport.objects.get_or_create(driver=driver, date=today)
+    daily_form = DriverDailyReportForm(instance=report)
 
     # 获取今日是否上传图片
-    image_uploaded = ReportImage.objects.filter(driver=driver, date=today).first()
-    image_form = ReportImageForm()
+    image_uploaded = DriverReportImage.objects.filter(driver=driver, date=today).first()
+    image_form = DriverReportImageForm()
 
     if request.method == 'POST':
         if 'upload_image' in request.POST:
-            image_form = ReportImageForm(request.POST, request.FILES)
+            image_form = DriverReportImageForm(request.POST, request.FILES)
             if image_form.is_valid():
                 # ✅ 先检查是否已存在图像
                 #img = image_form.save(commit=False)
                 #img.driver = driver
                 #img.date = today
-                img, created = ReportImage.objects.get_or_create(driver=driver, date=today)
+                img, created = DriverReportImage.objects.get_or_create(driver=driver, date=today)
                 img.image = image_form.cleaned_data['image']
                 img.save()
 
@@ -161,7 +157,7 @@ def profile_view(request):
                 return redirect('profile')
 
         elif 'submit_daily' in request.POST:
-            daily_form = DailyReportForm(request.POST, instance=report)
+            daily_form = DriverDailyReportForm(request.POST, instance=report)
             if daily_form.is_valid():
                 daily_form.save()
                 messages.success(request, "日報信息保存成功")
@@ -190,9 +186,9 @@ def monthly_reports_view(request):
     last_day = selected_month.replace(day=monthrange(selected_month.year, selected_month.month)[1])
 
     # 查找日报 & 销售记录
-    reports = DailyReport.objects.filter(driver=driver, date__range=(first_day, last_day)).order_by('date')
+    reports = DriverDailyReport.objects.filter(driver=driver, date__range=(first_day, last_day)).order_by('date')
     sales_map = {
-        s.date: s for s in DailySales.objects.filter(driver=driver, date__range=(first_day, last_day))
+        s.date: s for s in DriverDailySales.objects.filter(driver=driver, date__range=(first_day, last_day))
     }
 
     return render(request, 'accounts/monthly_reports.html', {
