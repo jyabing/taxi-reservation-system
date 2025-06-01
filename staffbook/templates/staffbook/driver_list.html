@@ -9,18 +9,23 @@
   }
   .staff-code-item {
     display: block;
+    width: 100px;
+    max-width: 95vw;
     background: #f4f4f4;
-    border-radius: 1.5em;
+    border-radius: 1em;
     padding: 1em 2em;
     margin: 0.5em 0;
-    font-size: 1.2em;
+    font-size: 1.25em;
     text-decoration: none;
     color: #333;
     box-shadow: 0 2px 8px rgba(0,0,0,0.04);
     transition: background 0.2s;
+    text-align: left;
+    border: 1px solid #eee;
   }
   .staff-code-item:hover {
     background: #e0ecff;
+    border-color: #1677ff;
   }
   .floating-add-btn {
     position: fixed;
@@ -44,7 +49,7 @@
 
 <!-- 顶部搜索框 -->
 <form method="get" action="{% url 'staffbook:driver_list' %}" style="text-align:center; margin:2rem 0 1.5rem 0;">
-  <input type="text" name="keyword" placeholder="员工姓名/员工コード" value="{{ request.GET.keyword|default:'' }}" style="width:260px; padding:0.5em 1em; border-radius:2em; border:1px solid #ccc;">
+  <input type="text" name="keyword" placeholder="员工姓名/员工コード" value="{{ request.GET.keyword|default:'' }}" style="width:240px; padding:0.5em 1em; border-radius:2em; border:1px solid #ccc;">
   <button type="submit" style="padding:0.5em 1.5em; border-radius:2em; border:none; background:#1677ff; color:white;">搜索</button>
 </form>
 

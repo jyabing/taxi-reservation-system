@@ -106,7 +106,16 @@ def profile_view(request):
     driver = request.user  # 当前登录司机
 
     # 获取或创建今日日报
-    report, _ = DriverDailyReport.objects.get_or_create(driver=driver, date=today)
+    report, _ = DriverDailyReport.objects.get_or_create(
+        driver=driver,
+        date=today,
+        defaults={
+            'fare': 0,
+            'time': '',
+            'payment_method': '',
+            'note': '',
+        }
+    )
     daily_form = DriverDailyReportForm(instance=report)
 
     # 获取今日是否上传图片

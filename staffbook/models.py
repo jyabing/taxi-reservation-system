@@ -31,9 +31,9 @@ class DriverDailySales(models.Model):
 class DriverDailyReport(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staffbook_daily_reports', verbose_name="司机")
     date = models.DateField(verbose_name="日期")
-    time = models.CharField(max_length=20, verbose_name="乘车时间")
-    fare = models.DecimalField(max_digits=8, decimal_places=2, verbose_name="运费金额")
-    payment_method = models.CharField(max_length=50, verbose_name="支付方式")
+    time = models.CharField(max_length=20, verbose_name="乘车时间", blank=True, null=True)
+    fare = models.DecimalField(max_digits=8, decimal_places=2, verbose_name="运费金额", null=True, blank=True)
+    payment_method = models.CharField(max_length=50, verbose_name="支付方式", blank=True, null=True)
     note = models.TextField(blank=True, verbose_name="备注")
 
     class Meta:
