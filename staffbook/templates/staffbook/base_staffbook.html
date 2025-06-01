@@ -1,0 +1,36 @@
+<!-- staffbook/base_staffbook.html -->
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="UTF-8">
+  <title>员工台账管理系统</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    nav {
+      padding: 1em 2em; border-bottom: 2px solid #eee; background: #f9fafd;
+      display: flex; align-items: center; font-size: 1.09em;
+    }
+    nav .brand { color: #1677ff; font-weight: bold; margin-right: 2em; }
+    nav a { margin-right: 1.3em; color: #222; text-decoration: none; }
+    nav a:hover { color: #1677ff; text-decoration: underline; }
+    body { background: #fcfdff; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="brand">📒 员工台账管理系统</span>
+    <a href="{% url 'staffbook:driver_list' %}">员工列表</a>
+    <a href="{% url 'staffbook:dailyreport_list' %}">日报总览</a>
+    <a href="{% url 'staffbook:driver_create' %}">➕ 新增员工</a>
+    <a href="/">回首页</a>
+    <span style="flex:1"></span>
+    {% if user.is_authenticated %}
+      <span style="margin-right:1em;">{{ user.username }}</span>
+      <a href="{% url 'logout' %}">退出</a>
+    {% endif %}
+  </nav>
+  <div style="padding:2em;">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+<div style="max-width:500px;margin:2.5em auto;padding:2em;background:#fff;border-radius:12px;box-shadow:0 2px 16px #eef2fa;">
+  <h2>{{ is_edit|default_if_none:False|yesno:"编辑,新增" }}日报</h2>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" style="margin-top:1.3em;background:#1677ff;color:white;padding:0.6em 2.2em;border-radius:2em;border:none;">保存</button>
+    <a href="{% url 'staffbook:driver_detail' driver.id %}" style="margin-left:1.2em;">返回</a>
+  </form>
+</div>
+{% endblock %}

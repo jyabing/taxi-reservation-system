@@ -83,7 +83,7 @@ def driver_list(request):
         )
     else:
         drivers = Driver.objects.all()
-    print("【调试】当前员工数量：", drivers.count(), "| 关键字：", repr(keyword))
+    #print("【调试】当前员工数量：", drivers.count(), "| 关键字：", repr(keyword))
     return render(request, 'staffbook/driver_list.html', {'drivers': drivers})
 
 def driver_create(request):

@@ -1,6 +1,60 @@
-{% extends 'base.html' %}
+{% extends "staffbook/base_staffbook.html" %}
 {% block content %}
-<div style="max-width: 480px; margin: 2em auto; background: #fff; border-radius: 1em; padding: 2em; box-shadow: 0 2px 12px #eee;">
+
+<style>
+  .staff-detail-box {
+    max-width: 540px;
+    margin: 2em auto;
+    background: #fff;
+    border-radius: 1em;
+    padding: 2em 1.5em 1.5em 1.5em;
+    box-shadow: 0 2px 16px #f0f2f7;
+  }
+  .staff-detail-box h3 {
+    margin-bottom: 0.7em;
+    font-size: 1.3em;
+    letter-spacing: .03em;
+  }
+  .staff-detail-box ul {
+    margin-bottom: 1.2em;
+    color: #666;
+    font-size: 1.06em;
+  }
+  .dailyreport-card {
+    background: #f8fafd;
+    border-radius: 0.7em;
+    padding: 1.1em 1em 1em 1em;
+    margin-bottom: 1.2em;
+    box-shadow: 0 2px 8px #f2f6fa;
+  }
+  .action-btn {
+    display: inline-block;
+    background: #1677ff;
+    color: #fff;
+    padding: 0.42em 1.3em;
+    border-radius: 2em;
+    border: none;
+    margin: 0.1em 0.4em 0.5em 0;
+    text-decoration: none;
+    font-size: 1em;
+    transition: background 0.17s;
+  }
+  .action-btn:hover { background: #4093ff; }
+  .link-btn {
+    color: #1677ff;
+    margin-left: 1.1em;
+    text-decoration: underline;
+  }
+  .date-input {
+    padding: 0.4em 1.2em;
+    border-radius: 1.7em;
+    border: 1px solid #ccc;
+    margin: 0 0.5em;
+    font-size: 1.03em;
+  }
+</style>
+
+<div class="staff-detail-box">
   <h3>{{ driver.name }}（{{ driver.staff_code }}）</h3>
   <ul>
     <li>手机号: {{ driver.phone|default:"无" }}</li>
@@ -17,7 +71,7 @@
   {% if dailyreport %}
     <div style="background:#f9f9f9;border-radius:0.7em;padding:1em;margin-bottom:1em;">
       <b>{{ dailyreport.date }}</b> 日报<br>
-      <div>{{ dailyreport.content|linebreaks }}</div>
+      <div>{{ dailyreport.note|linebreaks }}</div>
       <a href="{% url 'staffbook:driver_dailyreport_edit' driver.id dailyreport.id %}" class="btn btn-sm btn-outline-primary">编辑</a>
       <a href="{% url 'staffbook:driver_dailyreport_delete' driver.id dailyreport.id %}" class="btn btn-sm btn-outline-danger">删除</a>
     </div>
@@ -29,8 +83,10 @@
   {% endif %}
 
   <!-- 总是显示新增日报按钮 -->
-  <a href="{% url 'staffbook:driver_dailyreport_add' driver.id %}" class="btn btn-success mt-2">➕ 新增日报</a>
-  <a href="{% url 'staffbook:driver_edit' driver.id %}" class="btn btn-link">编辑员工信息</a>
-  <a href="{% url 'staffbook:driver_list' %}" class="btn btn-link">返回员工列表</a>
+  <div style="margin:1.3em 0 0.5em 0;">
+    <a href="{% url 'staffbook:driver_dailyreport_add' driver.id %}" class="action-btn">➕ 新增日报</a>
+    <a href="{% url 'staffbook:driver_edit' driver.id %}" class="link-btn">编辑员工信息</a>
+    <a href="{% url 'staffbook:driver_list' %}" class="link-btn">返回员工列表</a>
+  </div>
 </div>
 {% endblock %}
