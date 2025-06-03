@@ -17,41 +17,32 @@ OCR_API_KEY = 'K85459002688957'
 
 User = get_user_model()
 
+@login_required(login_url='/accounts/login/')
 def home_view(request):
-    # 查询所有“启用”的轮播图，并按照 order 排序
-    carousel_images = CarouselImage.objects.filter(is_active=True).order_by('order')
-    return render(request, 'home.html', {
-        'carousel_images': carousel_images,  # 传给模板的上下文名
-    })
+    user = request.user
+    if user.is_superuser:
+        return redirect('/admin/')
+    elif user.is_staff:
+        return redirect('admin_dashboard')  # 系统总览页
+    else:
+        return redirect('driver_dashboard')  # 配车首页（普通用户）或你配车首页的 name
 
 def login_view(request):
     context = {}
-    
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
-        context['username'] = username  # 保持输入的用户名回传给前端
+        context['username'] = username
 
         if not username or not password:
             messages.error(request, "请输入用户名和密码")
         else:
-            try:
-                user = User.objects.get(username=username)
-            except User.DoesNotExist:
-                messages.error(request, "用户名不存在")
+            user = authenticate(request, username=username, password=password)
+            if user is not None:
+                login(request, user)
+                return redirect('home')  # 让 home_view 负责分流
             else:
-                user = authenticate(request, username=username, password=password)
-                if user is not None:
-                    login(request, user)
-                    if user.is_superuser:
-                        return redirect('/admin/')
-                    elif user.is_staff:
-                        return redirect('admin_dashboard')
-                    else:
-                        return redirect('driver_dashboard')
-                else:
-                    messages.error(request, "密码错误")
-
+                messages.error(request, "用户名或密码错误")
     return render(request, 'registration/login.html', context)
         
 @login_required
@@ -103,7 +94,9 @@ def login_success_view(request):
 @login_required
 def profile_view(request):
     today = localdate()
-    driver = request.user  # 当前登录司机
+    driver = getattr(request.user, "driver_profile", None)
+    if not driver:
+        return render(request, 'accounts/profile_error.html', {'message': '未绑定司机资料，请联系管理员'})
 
     # 获取或创建今日日报
     report, _ = DriverDailyReport.objects.get_or_create(
@@ -126,43 +119,10 @@ def profile_view(request):
         if 'upload_image' in request.POST:
             image_form = DriverReportImageForm(request.POST, request.FILES)
             if image_form.is_valid():
-                # ✅ 先检查是否已存在图像
-                #img = image_form.save(commit=False)
-                #img.driver = driver
-                #img.date = today
                 img, created = DriverReportImage.objects.get_or_create(driver=driver, date=today)
                 img.image = image_form.cleaned_data['image']
                 img.save()
-
                 messages.success(request, "图片上传成功" + ("（已更新原图）" if not created else ""))
-
-                # ✅ OCR 自动识别处理
-                try:
-                    text = extract_text_from_image(img.image.path, OCR_API_KEY)
-
-                    print("🧠 OCR 返回内容：\n", text)
-
-                    if text:
-                        # 示例：提取売上、距离（你可扩展其他字段）
-                        sales_match = re.search(r'売上[:：]?\s*(\d+)', text)
-                        mileage_match = re.search(r'(走行距離|距離)[:：]?\s*(\d+\.?\d*)', text)
-                        memo_match = re.search(r'(備考|メモ|注記)[:：]?\s*(.*)', text)
-
-                        # 自动写入日报（如有识别成功）
-                        if memo_match:
-                            report.memo = memo_match.group(2).strip()
-                            report.save()
-
-                        messages.info(request, "识别文字如下：")
-                        messages.info(request, text)
-
-                        if not (sales_match or mileage_match or memo_match):
-                            messages.warning(request, "识别成功但未找到具体字段。你可以手动填写。")
-                    else:
-                        messages.error(request, "识别失败，请确认图片清晰并包含可读文字。")
-                except Exception as e:
-                    messages.error(request, f"OCR 识别异常：{e}")
-
                 return redirect('profile')
 
         elif 'submit_daily' in request.POST:

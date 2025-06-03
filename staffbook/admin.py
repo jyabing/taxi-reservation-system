@@ -1,6 +1,26 @@
 from django.contrib import admin
-from .models import DriverDailySales, DriverDailyReport, DriverPayrollRecord, DriverReportImage
+from .models import DriverDailySales, DriverDailyReport, DriverPayrollRecord, DriverReportImage, Driver
 from django.utils.html import format_html
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+@admin.register(Driver)
+class DriverAdmin(admin.ModelAdmin):
+    list_display = ('staff_code', 'name', 'user', 'phone', 'tax_id')
+    search_fields = ('staff_code', 'name')
+    list_filter = ('user',)
+
+    def save_model(self, request, obj, form, change):
+        # 新增/编辑时如果没绑定用户则自动创建并绑定
+        if not obj.user:
+            username = obj.staff_code  # 用员工号做用户名，保证唯一
+            user, created = User.objects.get_or_create(
+                username=username,
+                defaults={'is_active': True, 'first_name': obj.name}
+            )
+            obj.user = user
+        super().save_model(request, obj, form, change)
 
 @admin.register(DriverDailySales)
 class DriverDailySalesAdmin(admin.ModelAdmin):

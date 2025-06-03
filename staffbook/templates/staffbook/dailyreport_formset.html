@@ -1,0 +1,117 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+<h3>{{ driver.name }}（{{ driver.staff_code }}）- {% if is_create %}新建{% else %}编辑{% endif %}乘务日报</h3>
+<form method="post" autocomplete="off">
+  {% csrf_token %}
+  <div>
+    {{ report_form.as_p }}
+  </div>
+  <table id="report-items-table" style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th>回数</th><th>乘车时间</th><th>乘车地</th><th>経由</th><th>降车地</th>
+        <th>男</th><th>女</th><th>メータ料金</th><th>支付方式</th><th>备注</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{ formset.management_form }}
+      {% for form in formset %}
+      <tr class="report-item-row">
+        <td>{{ forloop.counter }}</td>
+        <td>{{ form.time }}</td>
+        <td>{{ form.start_place }}</td>
+        <td>{{ form.via }}</td>
+        <td>{{ form.end_place }}</td>
+        <td>{{ form.male_count }}</td>
+        <td>{{ form.female_count }}</td>
+        <td>{{ form.fare }}</td>
+        <td>{{ form.payment_method }}</td>
+        <td>{{ form.note }}</td>
+        <td>
+          <button type="button" class="add-row">➕</button>
+          {% if not forloop.first %}
+          <button type="button" class="remove-row">➖</button>
+          {% endif %}
+          {{ form.DELETE }}
+        </td>
+        {{ form.order_number }}
+        {{ form.id }}
+      </tr>
+      {% endfor %}
+      <tr id="empty-form-row" style="display:none;">
+        <td>__num__</td>
+        <td>{{ formset.empty_form.time }}</td>
+        <td>{{ formset.empty_form.start_place }}</td>
+        <td>{{ formset.empty_form.via }}</td>
+        <td>{{ formset.empty_form.end_place }}</td>
+        <td>{{ formset.empty_form.male_count }}</td>
+        <td>{{ formset.empty_form.female_count }}</td>
+        <td>{{ formset.empty_form.fare }}</td>
+        <td>{{ formset.empty_form.payment_method }}</td>
+        <td>{{ formset.empty_form.note }}</td>
+        <td>
+          <button type="button" class="add-row">➕</button>
+          <button type="button" class="remove-row">➖</button>
+          {{ formset.empty_form.DELETE }}
+        </td>
+        {{ formset.empty_form.order_number }}
+        {{ formset.empty_form.id }}
+      </tr>
+    </tbody>
+  </table>
+  <button type="submit" class="btn btn-primary">保存</button>
+  <a href="{% url 'staffbook:driver_detail' driver.id %}" class="btn btn-link">返回</a>
+</form>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+function initTimePickers() {
+  document.querySelectorAll('.time-range-picker').forEach(function(input){
+    if (!input.dataset.fpInit) {
+      flatpickr(input, {
+        enableTime: true,
+        noCalendar: true,
+        mode: "range",
+        dateFormat: "H:i",
+        time_24hr: true
+      });
+      input.dataset.fpInit = '1';
+    }
+  });
+}
+document.addEventListener('DOMContentLoaded', function(){
+  initTimePickers();
+  const table = document.getElementById('report-items-table');
+  const totalForms = document.getElementById('id_drivedailyreportitem_set-TOTAL_FORMS');
+  const emptyRow = document.getElementById('empty-form-row');
+  table.addEventListener('click', function(e){
+    if(e.target.classList.contains('add-row')){
+      let n = Number(totalForms.value);
+      let newRowHtml = emptyRow.innerHTML.replace(/__prefix__/g, n).replace(/__num__/g, n+1);
+      let newRow = document.createElement('tr');
+      newRow.className = 'report-item-row';
+      newRow.innerHTML = newRowHtml;
+      table.querySelector('tbody').appendChild(newRow);
+      totalForms.value = n + 1;
+      updateOrderNumbers();
+      initTimePickers();
+    }
+    if(e.target.classList.contains('remove-row')){
+      let rows = table.querySelectorAll('.report-item-row');
+      if(rows.length > 1){
+        let row = e.target.closest('tr');
+        row.remove();
+        totalForms.value = table.querySelectorAll('.report-item-row').length;
+        updateOrderNumbers();
+      }
+    }
+  });
+  function updateOrderNumbers() {
+    table.querySelectorAll('.report-item-row').forEach((row, idx) => {
+      row.querySelector('td').innerText = idx + 1;
+    });
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div style="color: red; margin-top: 2em;">
+    <h2>资料页面无法显示</h2>
+    <p>{{ message }}</p>
+    <p>请联系管理员绑定司机信息。</p>
+    <a href="{% url 'home' %}">返回首页</a>
+  </div>
+{% endblock %}

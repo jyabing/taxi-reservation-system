@@ -4,6 +4,7 @@ from . import views
 app_name = 'staffbook'
 
 urlpatterns = [
+   
     # 日报相关（全部/自己/新建/编辑）
     path('submit_sales/', views.submit_sales, name='submit_sales'),  # 日报录入（通常司机用）
     path('sales_thanks/', views.sales_thanks, name='sales_thanks'),  # 录入成功页
