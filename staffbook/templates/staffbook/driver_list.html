@@ -3,48 +3,98 @@
 <style>
   .staff-code-list {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 2rem 0;
+    flex-direction: row;
+    gap: 1.2em;
+    overflow-x: auto;
+    padding: 1em 0 2em 0;
+    justify-content: flex-start; /* 左对齐，必要时可 center */
+    scroll-snap-type: x mandatory;
+    /* 美化滚动条（可选） */
+  }
+  .staff-code-list::-webkit-scrollbar {
+    height: 9px;
+    background: #f7f7fa;
+  }
+  .staff-code-list::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 4px;
   }
   .staff-code-item {
-    display: block;
-    width: 100px;
-    max-width: 95vw;
-    background: #f4f4f4;
-    border-radius: 1em;
-    padding: 1em 2em;
-    margin: 0.5em 0;
-    font-size: 1.25em;
+    flex: 0 0 320px;
+    max-width: 90vw;
+    min-width: 220px;
+    height: 78px;
+    background: #fff;
+    border-radius: 20px;
+    padding: 0 1.5em;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.07);
+    border: none;
+    transition: box-shadow .15s, background .15s;
+    letter-spacing: 1px;
     text-decoration: none;
-    color: #333;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    transition: background 0.2s;
-    text-align: left;
-    border: 1px solid #eee;
+    color: #222;
+    margin: 0.5em 0;
+    scroll-snap-align: start;
+    white-space: nowrap; /* 防止内容换行 */
   }
   .staff-code-item:hover {
-    background: #e0ecff;
-    border-color: #1677ff;
+    box-shadow: 0 8px 24px rgba(22,119,255,0.18);
+    background: #f4f8ff;
+    color: #1677ff;
   }
+  @media (max-width: 750px) {
+    .staff-code-list {
+      gap: 0.8em;
+      padding-left: 0.4em;
+    }
+    .staff-code-item {
+      flex: 0 0 210px;
+      font-size: 1em;
+      padding: 0 1em;
+      height: 56px;
+    }
+  }
+
   .floating-add-btn {
     position: fixed;
     bottom: 2.5rem;
     right: 2.5rem;
-    z-index: 999;
+    z-index: 99;
     background: #1677ff;
-    color: white;
+    color: #fff;
     border: none;
     border-radius: 50%;
     width: 3.8rem;
     height: 3.8rem;
-    box-shadow: 0 2px 16px rgba(22,119,255,0.25);
-    font-size: 2rem;
+    box-shadow: 0 4px 16px rgba(22,119,255,0.15);
+    font-size: 2.2rem;
+    font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+}
+.floating-add-btn:hover, .floating-add-btn:focus {
+    background: #409fff;
+    box-shadow: 0 8px 32px rgba(22,119,255,0.22);
+    color: #fff;
+    text-decoration: none;
+}
+@media (max-width: 800px) {
+  .floating-add-btn {
+    right: 1.3rem;
+    bottom: 1.2rem;
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1.3rem;
   }
+}
 </style>
 
 <!-- 顶部搜索框 -->
