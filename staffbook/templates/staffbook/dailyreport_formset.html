@@ -20,6 +20,21 @@
 </style>
 
 <h3>{{ driver.name }}（{{ driver.staff_code }}）- {% if is_edit %}编辑{% else %}新建{% endif %}乘务日报</h3>
+
+{% if form.errors %}
+  <div style="color:crimson;">日报表单错误: {{ form.errors }}</div>
+{% endif %}
+{% if formset.non_form_errors %}
+  <div style="color:crimson;">明细整体错误: {{ formset.non_form_errors }}</div>
+{% endif %}
+{% for f in formset.forms %}
+  {% if f.errors %}
+    <div style="color:crimson;">明细第{{ forloop.counter }}行错误: {{ f.errors }}</div>
+  {% endif %}
+{% endfor %}
+
+
+
 <form method="post" autocomplete="off">
   {% csrf_token %}
   {{ form.as_p }}

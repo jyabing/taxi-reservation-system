@@ -31,18 +31,6 @@ class DriverDailyReportForm(forms.ModelForm):
         }
 
 class DriverDailyReportItemForm(forms.ModelForm):
-    PAYMENT_METHOD_CHOICES = [
-        ('', '--- 请选择 ---'),
-        ('现金', '现金'),
-        ('微信', '微信'),
-        ('Uber', 'Uber'),
-        ('Didi', 'Didi'),
-        ('信用卡', '信用卡'),
-        ('乘车券', '乘车券'),
-        ('扫码', '扫码(PayPay/AuPay/支付宝/微信Pay等)'),
-    ]
-    payment_method = forms.ChoiceField(choices=PAYMENT_METHOD_CHOICES)
-
     class Meta:
         model = DriverDailyReportItem
         fields = [
@@ -58,7 +46,6 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'num_male': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'num_female': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'meter_fee': forms.NumberInput(attrs={'class': 'auto-width-input'}),
-            # 'payment_method' 行删掉或注释掉，因为上面用了 ChoiceField
             'note': forms.TextInput(attrs={'class': 'auto-width-input'}),
         }
 

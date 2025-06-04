@@ -54,5 +54,40 @@
       <td></td>
     </tr>
   </table>
+
+  <h3 style="margin-top:2em;">🚕 我的乘务日报</h3>
+{% if dailyreports %}
+  <table border="1" cellpadding="6" style="min-width:360px;">
+    <tr>
+      <th>日期</th>
+      <th>备注</th>
+      <th>明细（仅展示）</th>
+    </tr>
+    {% for report in dailyreports %}
+      <tr>
+        <td>{{ report.date }}</td>
+        <td>{{ report.note|default:"无" }}</td>
+        <td>
+          {% if report.items.all %}
+            <ul>
+              {% for item in report.items.all %}
+                <li>
+                  {{ item.ride_time }}，{{ item.ride_from }}→{{ item.ride_to }}，
+                  男{{ item.num_male }}女{{ item.num_female }}，
+                  费用：{{ item.meter_fee }}，
+                  支付：{{ item.get_payment_method_display }}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            无
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <div style="color:#888;margin-top:.7em;">暂无乘务日报</div>
+{% endif %}
   
   {% endblock %}

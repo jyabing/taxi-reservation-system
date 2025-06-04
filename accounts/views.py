@@ -7,7 +7,7 @@ from django.urls import reverse_lazy
 from vehicles.models import CarouselImage, Tip
 from django.utils.timezone import localdate
 from staffbook.forms import DriverReportImageForm, DriverDailyReportForm
-from staffbook.models import DriverDailyReport, DriverReportImage, DriverDailySales
+from staffbook.models import DriverDailyReport, DriverReportImage, DriverDailySales, Driver
 from staffbook.utils import extract_text_from_image
 from datetime import datetime
 from calendar import monthrange
@@ -104,9 +104,6 @@ def profile_view(request):
         driver=driver,
         date=today,
         defaults={
-            'fare': 0,
-            'time': '',
-            'payment_method': '',
             'note': '',
         }
     )
@@ -165,4 +162,16 @@ def monthly_reports_view(request):
         'selected_month': selected_month,
         'reports': reports,
         'sales_map': sales_map,
+    })
+
+@login_required
+def my_profile_view(request):
+    user = request.user
+    driver = getattr(user, "driver_profile", None)
+    dailyreports = []
+    if driver:
+        dailyreports = DriverDailyReport.objects.filter(driver=driver).order_by('-date')
+    return render(request, 'accounts/profile.html', {
+        'driver': driver,
+        'dailyreports': dailyreports,
     })

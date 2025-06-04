@@ -29,6 +29,27 @@
       <a href="{% url 'logout' %}">退出</a>
     {% endif %}
   </nav>
+
+    <div style="padding:2em;">
+    {% if messages %}
+      <div style="max-width:700px;margin:1.2em auto;">
+        {% for message in messages %}
+          <div style="
+            background: #eaffea;
+            color: #175917;
+            border: 1.5px solid #d6f5d6;
+            border-radius: 7px;
+            padding: 0.65em 1.2em;
+            margin-bottom: 0.7em;
+            font-size: 1.11em;
+          ">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+
   <div style="padding:2em;">
     {% block content %}{% endblock %}
   </div>

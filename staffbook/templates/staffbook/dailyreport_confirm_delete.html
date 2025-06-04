@@ -5,6 +5,6 @@
   <form method="post">
     {% csrf_token %}
     <button type="submit" class="btn btn-danger">确认删除</button>
-    <a href="{% url 'staffbook:driver_card' driver.id %}" class="btn btn-secondary">取消</a>
+    <a href="{% url 'staffbook:driver_detail' driver.id %}" class="btn btn-secondary">取消</a>
   </form>
 {% endblock %}

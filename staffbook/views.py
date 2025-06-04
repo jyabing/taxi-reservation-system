@@ -1,9 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.models import User
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet
 from .models import DriverDailySales, DriverDailyReport, Driver
 from django.db.models import Q
+from django.utils import timezone
 
 def is_admin(user):
     return user.is_staff or user.is_superuser
@@ -112,15 +115,29 @@ def driver_edit(request, driver_id):
 @login_required
 def driver_detail(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    # 管理员可以查看所有人，司机只能看自己
-    if not (request.user.is_staff or request.user.id == driver.id):
+    if not (request.user.is_staff or driver.user == request.user):
         return redirect('staffbook:driver_list')
 
-    reports = DriverDailyReport.objects.filter(driver=driver).order_by('-date')
+    # 获取查询参数
+    selected_date = request.GET.get('date')
+    selected_month = request.GET.get('month')
+
+    # 构建查询条件
+    reports = DriverDailyReport.objects.filter(driver=driver)
+    if selected_date:
+        reports = reports.filter(date=selected_date)
+    elif selected_month:
+        # selected_month 形如 '2025-06'
+        year, month = map(int, selected_month.split('-'))
+        reports = reports.filter(date__year=year, date__month=month)
+    reports = reports.order_by('-date')
+
     can_edit = request.user.is_staff
     return render(request, 'staffbook/driver_detail.html', {
         'driver': driver,
         'reports': reports,
+        'selected_date': selected_date,
+        'selected_month': selected_month,
         'can_edit': can_edit,
     })
 
@@ -135,15 +152,14 @@ def dailyreport_create_for_driver(request, driver_id):
             dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
             dailyreport.save()
-            items = formset.save(commit=False)
-            for item in items:
-                item.report = dailyreport
-                item.save()
-            # 处理被标记删除的
-            for obj in formset.deleted_objects:
-                obj.delete()
+            # 关键点：让 formset 关联到这个 dailyreport
+            formset.instance = dailyreport
+            formset.save()
             messages.success(request, '新增日报成功')
             return redirect('staffbook:driver_detail', driver_id=driver.id)
+        else:
+            print("日报主表错误：", report_form.errors)
+            print("明细表错误：", formset.errors)
     else:
         report_form = DriverDailyReportForm()
         formset = ReportItemFormSet()
@@ -191,3 +207,21 @@ def dailyreport_list(request):
 def my_dailyreports(request):
     reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
     return render(request, 'staffbook/my_dailyreports.html', {'reports': reports})
+
+@staff_member_required
+def bind_missing_users(request):
+    drivers_without_user = Driver.objects.filter(user__isnull=True)
+
+    if request.method == 'POST':
+        for driver in drivers_without_user:
+            # 使用 staff_code 作为用户名，避免重复
+            username = f"driver{driver.staff_code}"
+            if not User.objects.filter(username=username).exists():
+                user = User.objects.create_user(username=username, password='12345678')
+                driver.user = user
+                driver.save()
+        return redirect('staffbook:bind_missing_users')
+
+    return render(request, 'staffbook/bind_missing_users.html', {
+        'drivers': drivers_without_user,
+    })

@@ -1,0 +1,28 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+<h2>未绑定账号的司机列表</h2>
+
+{% if drivers %}
+  <form method="post">
+    {% csrf_token %}
+    <table border="1" cellpadding="6" cellspacing="0">
+      <tr>
+        <th>ID</th>
+        <th>姓名</th>
+        <th>工号</th>
+      </tr>
+      {% for driver in drivers %}
+      <tr>
+        <td>{{ driver.id }}</td>
+        <td>{{ driver.name }}</td>
+        <td>{{ driver.staff_code }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <br>
+    <button type="submit">为以上司机自动生成账号</button>
+  </form>
+{% else %}
+  <p>所有司机都已绑定账号。</p>
+{% endif %}
+{% endblock %}

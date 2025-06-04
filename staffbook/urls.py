@@ -18,6 +18,7 @@ urlpatterns = [
     path('drivers/create/', views.driver_create, name='driver_create'),  # 新增员工
     path('drivers/<int:driver_id>/', views.driver_detail, name='driver_detail'),  # 个人主页+台账
     path('drivers/<int:driver_id>/edit/', views.driver_edit, name='driver_edit'),  # 编辑员工信息
+    path('bind_missing_users/', views.bind_missing_users, name='bind_missing_users'),
     
     # 某员工的日报管理（以员工ID为主键，管理员用）
     path('drivers/<int:driver_id>/dailyreport/add/', views.dailyreport_create_for_driver, name='driver_dailyreport_add'),
