@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
-from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm
+from django.contrib import messages
+from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet
 from .models import DriverDailySales, DriverDailyReport, Driver
 from django.db.models import Q
 
@@ -17,7 +18,7 @@ def dailyreport_create(request):
             return redirect('staffbook:dailyreport_list')
     else:
         form = DriverDailyReportForm()
-    return render(request, 'staffbook/dailyreport_form.html', {'form': form})
+    return render(request, 'staffbook/dailyreport_formset.html', {'form': form})
 
 @login_required
 @user_passes_test(is_admin)
@@ -30,7 +31,7 @@ def dailyreport_edit(request, pk):
             return redirect('staffbook:dailyreport_list')
     else:
         form = DriverDailyReportForm(instance=report)
-    return render(request, 'staffbook/dailyreport_form.html', {'form': form})
+    return render(request, 'staffbook/dailyreport_formset.html', {'form': form})
 
 @login_required
 def submit_sales(request):
@@ -128,17 +129,27 @@ def driver_detail(request, driver_id):
 def dailyreport_create_for_driver(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
-        form = DriverDailyReportForm(request.POST)
-        if form.is_valid():
-            dailyreport = form.save(commit=False)
+        report_form = DriverDailyReportForm(request.POST)
+        formset = ReportItemFormSet(request.POST)
+        if report_form.is_valid() and formset.is_valid():
+            dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
             dailyreport.save()
+            items = formset.save(commit=False)
+            for item in items:
+                item.report = dailyreport
+                item.save()
+            # 处理被标记删除的
+            for obj in formset.deleted_objects:
+                obj.delete()
             messages.success(request, '新增日报成功')
             return redirect('staffbook:driver_detail', driver_id=driver.id)
     else:
-        form = DriverDailyReportForm()
-    return render(request, 'staffbook/dailyreport_form.html', {
-        'form': form,
+        report_form = DriverDailyReportForm()
+        formset = ReportItemFormSet()
+    return render(request, 'staffbook/dailyreport_formset.html', {
+        'form': report_form,
+        'formset': formset,
         'driver': driver,
         'is_edit': False,
     })
@@ -149,15 +160,19 @@ def dailyreport_edit_for_driver(request, driver_id, pk):
     driver = get_object_or_404(Driver, pk=driver_id)
     dailyreport = get_object_or_404(DriverDailyReport, pk=pk, driver=driver)
     if request.method == 'POST':
-        form = DriverDailyReportForm(request.POST, instance=dailyreport)
-        if form.is_valid():
-            form.save()
+        report_form = DriverDailyReportForm(request.POST, instance=dailyreport)
+        formset = ReportItemFormSet(request.POST, instance=dailyreport)
+        if report_form.is_valid() and formset.is_valid():
+            report_form.save()
+            formset.save()
             messages.success(request, '日报修改成功')
             return redirect('staffbook:driver_detail', driver_id=driver.id)
     else:
-        form = DriverDailyReportForm(instance=dailyreport)
-    return render(request, 'staffbook/dailyreport_form.html', {
-        'form': form,
+        report_form = DriverDailyReportForm(instance=dailyreport)
+        formset = ReportItemFormSet(instance=dailyreport)
+    return render(request, 'staffbook/dailyreport_formset.html', {
+        'form': report_form,
+        'formset': formset,
         'driver': driver,
         'is_edit': True,
     })

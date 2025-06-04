@@ -30,8 +30,8 @@ class DriverDailySalesAdmin(admin.ModelAdmin):
 
 @admin.register(DriverDailyReport)
 class DriverDailyReportAdmin(admin.ModelAdmin):
-    list_display = ('driver', 'date', 'time', 'fare', 'payment_method', 'note')
-    list_filter = ('date', 'driver', 'payment_method')
+    list_display = ['driver', 'date', 'note']
+    list_filter = ['driver', 'date']
     search_fields = ('driver__username', 'note')
 
 @admin.register(DriverPayrollRecord)
