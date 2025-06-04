@@ -23,28 +23,17 @@
   </form>
 
   {% if messages %}
-    <div class="error-message">
-      {% for message in messages %}
-        <div>{{ message }}</div>
-      {% endfor %}
-    </div>
-
-    <script>
-    // 自动聚焦到密码输入框
-      document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('id_password').focus();
-      });
-    </script>
-  {% endif %}
-
-  {% if messages %}
-    <div class="error-message">
-      {% for message in messages %}
-        <div>{{ message }}</div>
-      {% endfor %}
-    </div>
-  {% endif %}
-</div>
+  <div class="error-message">
+    {% for message in messages %}
+      <div>{{ message }}</div>
+    {% endfor %}
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('id_password').focus();
+    });
+  </script>
+{% endif %}
 
 <style>
   .login-container {

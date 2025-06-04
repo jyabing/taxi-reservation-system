@@ -21,7 +21,8 @@ User = get_user_model()
 def home_view(request):
     user = request.user
     if user.is_superuser:
-        return redirect('/admin/')
+        #return redirect('/admin/')
+        return render(request, 'home.html')
     elif user.is_staff:
         return redirect('admin_dashboard')  # 系统总览页
     else:
