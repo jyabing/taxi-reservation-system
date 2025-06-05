@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>📝 {{ date }} 日报详细</h2>
+{% if reports %}
+  {% for report in reports %}
+    <h3>备注：{{ report.note|default:"无" }}</h3>
+    {% if report.items.all %}
+      <table border="1" style="width:100%;margin-bottom:1.5em;">
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>起点</th>
+            <th>终点</th>
+            <th>男</th>
+            <th>女</th>
+            <th>金额</th>
+            <th>支付方式</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in report.items.all %}
+          <tr>
+            <td>{{ item.ride_time }}</td>
+            <td>{{ item.ride_from }}</td>
+            <td>{{ item.ride_to }}</td>
+            <td>{{ item.num_male }}</td>
+            <td>{{ item.num_female }}</td>
+            <td>{{ item.meter_fee }}</td>
+            <td>{{ item.get_payment_method_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div style="color:#888;">无行程明细</div>
+    {% endif %}
+    <hr>
+  {% endfor %}
+{% else %}
+  <div style="color:#888;">这一天没有日报。</div>
+{% endif %}
+<p><a href="{% url 'my_daily_reports' %}">← 返回日报明细列表</a></p>
+{% endblock %}

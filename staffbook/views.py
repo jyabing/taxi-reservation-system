@@ -7,6 +7,7 @@ from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, Repo
 from .models import DriverDailySales, DriverDailyReport, Driver
 from django.db.models import Q
 from django.utils import timezone
+from django import forms
 
 def is_admin(user):
     return user.is_staff or user.is_superuser
@@ -186,11 +187,16 @@ def dailyreport_edit_for_driver(request, driver_id, pk):
     else:
         report_form = DriverDailyReportForm(instance=dailyreport)
         formset = ReportItemFormSet(instance=dailyreport)
+        # 设置日期字段为只读和初值
+        report_form.fields['date'].initial = dailyreport.date.strftime('%Y-%m-%d')
+        report_form.fields['date'].widget = forms.HiddenInput()
+
     return render(request, 'staffbook/dailyreport_formset.html', {
         'form': report_form,
         'formset': formset,
         'driver': driver,
         'is_edit': True,
+        #'selected_date': selected_date,   # ✅ 传入模板
     })
 
 # 日报列表（管理员看全部，司机看自己）

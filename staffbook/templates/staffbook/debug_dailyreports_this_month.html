@@ -1,0 +1,26 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+<h2>调试：{{ year }}年{{ month }}月 所有日报列表</h2>
+
+{% if reports %}
+  <table border="1" cellpadding="6" cellspacing="0">
+    <tr>
+      <th>司机ID</th>
+      <th>姓名</th>
+      <th>日期</th>
+      <th>备注</th>
+    </tr>
+    {% for report in reports %}
+    <tr>
+      <td>{{ report.driver.id }}</td>
+      <td>{{ report.driver.name }}</td>
+      <td>{{ report.date }}</td>
+      <td>{{ report.note|default:"（无）" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p>本月无日报数据。</p>
+{% endif %}
+
+{% endblock %}

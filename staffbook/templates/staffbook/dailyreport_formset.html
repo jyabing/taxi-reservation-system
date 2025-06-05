@@ -37,6 +37,10 @@
 
 <form method="post" autocomplete="off">
   {% csrf_token %}
+  <p>
+    日期：<span>{{ form.fields.date.initial }}</span>
+    {{ form.date }}
+</p>
   {{ form.as_p }}
   <table border="1" style="border-collapse:collapse;width:100%;">
     <thead>
