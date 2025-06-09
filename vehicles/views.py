@@ -3,6 +3,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 
 from django import forms
+from decimal import Decimal
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
@@ -25,7 +26,7 @@ from accounts.models import DriverUser
 from requests.exceptions import RequestException
 
 # 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
-from staffbook.models import Driver, DriverDailyReport
+from staffbook.models import Driver, DriverDailyReport, DriverDailyReportItem
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
@@ -652,31 +653,25 @@ def vehicle_image_delete_view(request, vehicle_id, index):
 
 @login_required
 def my_stats_view(request):
+    from staffbook.models import DriverDailyReportItem  # <--- 新增或提前导入
 
-    # 1) 先统一初始化 month_date 和 form
     today = timezone.localdate()
     default_month = today.replace(day=1)
 
     if request.method == 'POST':
         form = MonthForm(request.POST)
         if form.is_valid():
-            # 用户点了「查询」，用用户选的月份
             month_date = form.cleaned_data['month']
         else:
-            # 表单无效就退回当月第一天
             month_date = default_month
-
     else:
-        # 表单无效就退回当月第一天
         month_date = default_month
         form = MonthForm(initial={'month': default_month})
 
-    # 2) 计算本月第一天/最后一天
     year, month = month_date.year, month_date.month
     first_day = month_date.replace(day=1)
     last_day = first_day.replace(day=calendar.monthrange(year, month)[1])
 
-    # 3) 拉出「出库中(out)」「已完成(completed)」的记录
     qs = Reservation.objects.filter(
         driver=request.user,
         actual_departure__date__gte=first_day,
@@ -684,10 +679,8 @@ def my_stats_view(request):
         status__in=['out', 'completed'],
     )
 
-    # 4) 出入库次数
     total_checkouts = qs.count()
 
-    # 5) 出入库总时长
     duration_expr = ExpressionWrapper(
         F('actual_return') - F('actual_departure'),
         output_field=DurationField()
@@ -695,26 +688,23 @@ def my_stats_view(request):
     agg = qs.annotate(interval=duration_expr).aggregate(total_duration=Sum('interval'))
     total_duration = agg['total_duration'] or timedelta()
 
-    # 6) 本地统计本月日报売上
-    sales_data = DriverDailyReport.objects.filter(
-        driver__user=request.user,
-        date__gte=first_day,
-        date__lte=last_day,
-    ).aggregate(total=Sum('fare'))['total'] or 0
+    # 只改这里👇
+    sales_data = DriverDailyReportItem.objects.filter(
+        report__driver__user=request.user,
+        report__date__gte=first_day,
+        report__date__lte=last_day,
+    ).aggregate(total=Sum('meter_fee'))['total'] or 0
 
-    # 7) 假设抽成 70%
-    take_home = sales_data * 0.7
+    take_home = sales_data * Decimal('0.7')
 
-    #month_display = first_day.strftime('%Y年%m月')
-    
     return render(request, 'vehicles/my_stats.html', {
-        'form':             form,
+        'form': form,
         'month_display': first_day.strftime('%Y年%m月'),
-        'month_value':      f"{year}-{month:02d}",   # ★ 就是这一行
-        'total_checkouts':  total_checkouts,
-        'total_duration':   total_duration,
-        'sales_data':       sales_data,
-        'take_home':        take_home,
+        'month_value': f"{year}-{month:02d}",
+        'total_checkouts': total_checkouts,
+        'total_duration': total_duration,
+        'sales_data': sales_data,
+        'take_home': take_home,
     })
 
 # 売上API数据（伪代码）
