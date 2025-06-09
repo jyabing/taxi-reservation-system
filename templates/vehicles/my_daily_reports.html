@@ -1,45 +1,47 @@
 {% extends 'base.html' %}
+{% load dict_filters %}
 {% block content %}
 
 <h2>📅 {{ month_display }} 日报明细</h2>
-
 <form method="get" style="margin-bottom:1em;">
-    <label>月份:
-        <input type="month" name="month" value="{{ month_value }}">
-    </label>
-    <button type="submit">切换</button>
-    <a href="{% url 'my_daily_reports' %}">本月</a>
+    <label>按日期：</label>
+    <input type="date" name="date" value="{{ selected_date|default:'' }}">
+    <label style="margin-left:1.2em;">按月份：</label>
+    <input type="month" name="month" value="{{ selected_month|default:'' }}">
+    <button type="submit" class="btn btn-outline-secondary">查日报</button>
+    {% if selected_date or selected_month %}
+        <a href="{% url 'my_daily_reports' %}" style="margin-left:1.2em;">重置</a>
+    {% endif %}
 </form>
 
 {% if reports %}
-<div style="overflow-x:auto;">
-<table class="table">
+<table border="1" style="width:100%;margin-bottom:1.5em;">
     <thead>
-        <tr>
-            <th>日期</th>
-            <th>乘车时间</th>
-            <th>金额</th>
-            <th>支付方式</th>
-            <th>备注</th>
-        </tr>
+    <tr>
+        <th>日期</th>
+        <th>メータ料金合计</th>
+        <th>操作</th>
+    </tr>
     </thead>
     <tbody>
-        {% for report in reports %}
-        <tr>
-            <td>{{ report.date }}</td>
-            <td>{{ report.time }}</td>
-            <td>{{ report.fare }}</td>
-            <td>{{ report.payment_method }}</td>
-            <td>{{ report.note|default:"-" }}</td>
-        </tr>
-        {% endfor %}
+    {% for report in reports %}
+    <tr>
+        <td>{{ report.date }}</td>
+        <td>{{ report_sums|get_item:report.id|default:"0" }}</td>
+        <td>
+            <a href="{% url 'my_daily_report_detail' report.id %}">查看明细</a>
+        </td>
+    </tr>
+    {% endfor %}
     </tbody>
 </table>
-</div>
 {% else %}
-<p>本月暂无日报数据。</p>
+    <div style="color:#888;">没有查到日报。</div>
 {% endif %}
 
-<p><a href="{% url 'profile' %}">← 返回我的资料</a></p>
+<div style="margin-top:1em; font-weight:bold;">
+    本期メータ料金合计：{{ total_meter_fee|default:"0" }} 円
+</div>
 
+<p><a href="{% url 'profile' %}">← 返回我的资料</a></p>
 {% endblock %}

@@ -5,7 +5,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet
 from .models import DriverDailySales, DriverDailyReport, Driver
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.utils import timezone
 from django import forms
 
@@ -128,10 +128,13 @@ def driver_detail(request, driver_id):
     if selected_date:
         reports = reports.filter(date=selected_date)
     elif selected_month:
-        # selected_month 形如 '2025-06'
         year, month = map(int, selected_month.split('-'))
         reports = reports.filter(date__year=year, date__month=month)
     reports = reports.order_by('-date')
+
+    # 统计每份日报的“メータ料金合计”
+    for report in reports:
+        report.total_meter_fee = report.items.aggregate(total=Sum('meter_fee'))['total'] or 0
 
     can_edit = request.user.is_staff
     return render(request, 'staffbook/driver_detail.html', {

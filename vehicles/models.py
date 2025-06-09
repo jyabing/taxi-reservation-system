@@ -33,7 +33,7 @@ class VehicleImage(models.Model):
         verbose_name=_("车辆")
     )
     image = models.ImageField(
-        upload_to='vehicles/%Y/%m/%d/',  # ✅ 图片将保存到 media/vehicle_photos/
+        upload_to='vehicles/%Y/%m/%d/',
         verbose_name=_("图片文件")
     )
 
@@ -70,7 +70,7 @@ class Reservation(models.Model):
     actual_departure = models.DateTimeField(null=True, blank=True, verbose_name="实际出库时间")
     actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际入库时间")
 
-    # ✅ 为自动审批功能新增字段：
+    # 自动审批相关字段
     approved = models.BooleanField(default=False, verbose_name="是否已审批")
     approval_time = models.DateTimeField(null=True, blank=True, verbose_name="审批时间")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
@@ -82,7 +82,6 @@ class Reservation(models.Model):
     class Meta:
         verbose_name = "预约记录"
         verbose_name_plural = "预约记录"
-
 
 class CarouselImage(models.Model):
     title = models.CharField(max_length=100, verbose_name="标题", blank=True)
@@ -117,17 +116,3 @@ class Tip(models.Model):
     class Meta:
         verbose_name = "提示信息"
         verbose_name_plural = "提示信息"
-
-from django.db import models
-from django.contrib.auth.models import User
-
-class DriverDailyReport(models.Model):
-    driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='vehicles_daily_reports', verbose_name="司机")
-    date = models.DateField()
-    time = models.CharField(max_length=20)
-    fare = models.DecimalField(max_digits=8, decimal_places=2)
-    payment_method = models.CharField(max_length=50)
-    note = models.TextField(blank=True)
-
-    class Meta:
-        ordering = ['-date']

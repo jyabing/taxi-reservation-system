@@ -45,8 +45,10 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'ride_to': forms.TextInput(attrs={'class': 'auto-width-input'}),
             'num_male': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'num_female': forms.NumberInput(attrs={'class': 'auto-width-input'}),
-            'meter_fee': forms.NumberInput(attrs={'class': 'auto-width-input'}),
+            # 关键：这里要多加一个 class
+            'meter_fee': forms.NumberInput(attrs={'class': 'meter-fee-input auto-width-input'}),
             'note': forms.TextInput(attrs={'class': 'auto-width-input'}),
+            'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
         }
 
 ReportItemFormSet = inlineformset_factory(

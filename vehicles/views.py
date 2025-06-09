@@ -1,7 +1,9 @@
 import calendar, requests, random, os
 from calendar import monthrange
-from django import forms
 from datetime import datetime, timedelta, time, date
+
+from django import forms
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
@@ -17,10 +19,13 @@ from django.core.paginator import Paginator
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Vehicle, Reservation, Tip, DriverDailyReport
+from .models import Vehicle, Reservation, Tip
 from .forms import ReservationForm, MonthForm, AdminStatsForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
+
+# 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
+from staffbook.models import Driver, DriverDailyReport
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
@@ -457,21 +462,6 @@ def approve_reservation(request, reservation_id):
     return redirect('reservation_approval_list')
 
 @login_required
-def my_reservations_view(request):
-    all_reservations = Reservation.objects.filter(driver=request.user).order_by('-date', '-start_time')
-    paginator = Paginator(all_reservations, 10)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-    tips = list(Tip.objects.filter(is_active=True).values('content'))
-    return render(request, 'vehicles/my_reservations.html', {
-        'page_obj': page_obj,
-        'reservations': page_obj,
-        'today': timezone.localdate(),
-        'now': timezone.localtime(),
-        'tips': tips,
-    })
-
-@login_required
 def reservation_detail_view(request, reservation_id):
     reservation = get_object_or_404(Reservation, id=reservation_id)
     return render(request, 'vehicles/reservation_detail.html', {
@@ -507,12 +497,18 @@ def check_in(request, reservation_id):
     return redirect('vehicle_status')
 
 @login_required
-def vehicle_detail_view(request, vehicle_id):
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
-    reservations = Reservation.objects.filter(vehicle=vehicle).order_by('-date')[:5]
-    return render(request, 'vehicles/vehicle_detail.html', {
-        'vehicle': vehicle,
-        'reservations': reservations
+def my_reservations_view(request):
+    all_reservations = Reservation.objects.filter(driver=request.user).order_by('-date', '-start_time')
+    paginator = Paginator(all_reservations, 10)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+    tips = list(Tip.objects.filter(is_active=True).values('content'))
+    return render(request, 'vehicles/my_reservations.html', {
+        'page_obj': page_obj,
+        'reservations': page_obj,
+        'today': timezone.localdate(),
+        'now': timezone.localtime(),
+        'tips': tips,
     })
 
 @login_required
@@ -553,6 +549,15 @@ def delete_reservation_view(request, reservation_id):
 
     return render(request, 'vehicles/reservation_confirm_delete.html', {
         'reservation': reservation
+    })
+
+@login_required
+def vehicle_detail_view(request, vehicle_id):
+    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    reservations = Reservation.objects.filter(vehicle=vehicle).order_by('-date')[:5]
+    return render(request, 'vehicles/vehicle_detail.html', {
+        'vehicle': vehicle,
+        'reservations': reservations
     })
 
 @require_POST
@@ -692,7 +697,7 @@ def my_stats_view(request):
 
     # 6) 本地统计本月日报売上
     sales_data = DriverDailyReport.objects.filter(
-        driver=request.user,
+        driver__user=request.user,
         date__gte=first_day,
         date__lte=last_day,
     ).aggregate(total=Sum('fare'))['total'] or 0
@@ -899,57 +904,6 @@ def admin_reset_return(request, reservation_id):
         messages.warning(request, "该预约没有入库记录。")
     return redirect('vehicle_status')
 
-@login_required
-def monthly_daily_reports(request, month):
-    user = request.user
-    # month 形如 "2024-06"
-    year, mon = month.split('-')
-    reports = DriverDailyReport.objects.filter(
-        driver=user, date__year=year, date__month=mon
-    ).order_by('-date')
-
-    context = {
-        'reports': reports,
-        'month_display': f"{year}年{int(mon)}月"
-    }
-    return render(request, 'vehicles/monthly_daily_reports.html', context)
-
-@login_required
-def my_daily_reports(request):
-    user = request.user
-
-    # 支持 GET 参数 month=2024-06
-    month_str = request.GET.get('month')
-    if month_str:
-        try:
-            year, month = map(int, month_str.split('-'))
-        except Exception:
-            today = date.today()
-            year, month = today.year, today.month
-    else:
-        today = date.today()
-        year, month = today.year, today.month
-
-    # 查询该用户本月的日报
-    reports = DriverDailyReport.objects.filter(
-        driver=user,
-        date__year=year,
-        date__month=month
-    ).order_by('-date')
-
-    # 用于顶部显示
-    month_display = f"{year}年{month}月"
-
-    # 便于选择其他月份
-    month_value = f"{year}-{month:02d}"
-
-    context = {
-        'reports': reports,
-        'month_display': month_display,
-        'month_value': month_value,
-    }
-    return render(request, 'vehicles/my_daily_reports.html', context)
-
 def reservation_home(request):
     return render(request, 'vehicles/reservation_home.html')
     
@@ -968,6 +922,64 @@ def admin_index(request):
 def admin_list(request):
     return render(request, 'vehicles/admin_list.html')
 
-def dailyreport_list(request):
-    # 这里可以查询所有日报列表，或做管理功能
-    return render(request, 'staffbook/dailyreport_list.html')
+
+
+@login_required
+def my_dailyreports(request):
+    user = request.user
+    try:
+        driver = Driver.objects.get(user=user)
+    except Driver.DoesNotExist:
+        return render(request, 'vehicles/my_daily_reports.html', {
+            'reports': [],
+            'report_sums': {},
+            'total_meter_fee': 0,
+            'month_display': '',
+            'selected_date': '',
+            'selected_month': '',
+            'no_driver': True,
+        })
+
+    selected_date = request.GET.get('date')
+    selected_month = request.GET.get('month')
+
+    # 查日报
+    reports = DriverDailyReport.objects.filter(driver=driver).prefetch_related('items')
+    month_display = ''
+    if selected_date:
+        reports = reports.filter(date=selected_date)
+        month_display = f"{selected_date} 日报明细"
+    elif selected_month:
+        year, month = map(int, selected_month.split('-'))
+        reports = reports.filter(date__year=year, date__month=month)
+        month_display = f"{year}年{month}月 日报明细"
+    else:
+        today = timezone.localdate()
+        reports = reports.filter(date__year=today.year, date__month=today.month)
+        month_display = f"{today.year}年{today.month}月 日报明细"
+
+    # 计算每日报的合计
+    report_sums = {}
+    for report in reports:
+        total = sum([(item.meter_fee or 0) for item in report.items.all()])
+        report_sums[report.id] = total
+
+    total_meter_fee = sum(report_sums.values())
+
+    return render(request, 'vehicles/my_daily_reports.html', {
+        'reports': reports,
+        'report_sums': report_sums,
+        'total_meter_fee': total_meter_fee,
+        'month_display': month_display,
+        'selected_date': selected_date or '',
+        'selected_month': selected_month or '',
+        'no_driver': False,
+    })
+
+@login_required
+def my_daily_report_detail(request, report_id):
+    report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
+    # 你可以在这里处理明细内容
+    return render(request, 'vehicles/my_daily_report_detail.html', {
+        'report': report
+    })

@@ -33,8 +33,6 @@
   {% endif %}
 {% endfor %}
 
-
-
 <form method="post" autocomplete="off">
   {% csrf_token %}
   <p>
@@ -42,6 +40,27 @@
     {{ form.date }}
 </p>
   {{ form.as_p }}
+<td>{{ form.meter_fee }} <span style="color:red">{{ form.meter_fee }}</span></td>
+<table>
+  <tr>
+    <th>メータ料金合计</th>
+    <th>Uber合计</th>
+    <th>现金合计</th>
+    <th>Didi合计</th>
+    <th>信用卡合计</th>
+    <th>乘车券合计</th>
+    <th>扫码合计</th>
+  <tr>
+    <td><input id="total_meter" readonly size="8"></td>
+    <td><input id="total_uber" readonly size="8"></td>
+    <td><input id="total_cash" readonly size="8"></td>
+    <td><input id="total_didi" readonly size="8"></td>
+    <td><input id="total_card" readonly size="8"></td>
+    <td><input id="total_ticket" readonly size="8"></td>
+    <td><input id="total_qr" readonly size="8"></td>
+  </tr>
+</table>
+
   <table border="1" style="border-collapse:collapse;width:100%;">
     <thead>
       <tr>
@@ -145,4 +164,47 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 </script>
+
+<script>
+function updateTotals() {
+    let total_meter = 0, total_uber = 0, total_cash = 0, total_didi = 0, total_card = 0, total_ticket = 0, total_qr = 0;
+    let rows = document.querySelectorAll('tr.report-item-row');
+    rows.forEach(row => {
+        let feeInput = row.querySelector('.meter-fee-input');
+        let paySelect = row.querySelector('.payment-method-select');
+        if (feeInput && paySelect) {
+            let fee = parseFloat(feeInput.value) || 0;
+            let pay = paySelect.value;
+            total_meter += fee;
+            if (pay === 'uber') total_uber += fee;
+            else if (pay === 'cash') total_cash += fee;
+            else if (pay === 'didi') total_didi += fee;
+            else if (pay === 'credit') total_card += fee;
+            else if (pay === 'ticket') total_ticket += fee;
+            else if (pay === 'barcode') total_qr += fee;
+            else if (pay === 'wechat') total_qr += fee;  // 微信归到扫码合计
+        }
+    });
+    document.getElementById('total_meter').value = total_meter.toFixed(2);
+    document.getElementById('total_uber').value = total_uber.toFixed(2);
+    document.getElementById('total_cash').value = total_cash.toFixed(2);
+    document.getElementById('total_didi').value = total_didi.toFixed(2);
+    document.getElementById('total_card').value = total_card.toFixed(2);
+    document.getElementById('total_ticket').value = total_ticket.toFixed(2);
+    document.getElementById('total_qr').value = total_qr.toFixed(2);
+}
+
+document.addEventListener('input', function (e) {
+    if (e.target.classList.contains('meter-fee-input') || e.target.classList.contains('payment-method-select')) {
+        updateTotals();
+    }
+});
+document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('meter-fee-input') || e.target.classList.contains('payment-method-select')) {
+        updateTotals();
+    }
+});
+window.onload = updateTotals;
+</script>
+
 {% endblock %}

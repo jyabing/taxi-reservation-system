@@ -4,7 +4,6 @@ from django.conf import settings
 
 PAYMENT_METHOD_CHOICES = [
     ('cash', '现金'),
-    ('wechat', '微信'),
     ('uber', 'Uber'),
     ('didi', 'Didi'),
     ('credit', '信用卡'),
@@ -14,6 +13,7 @@ PAYMENT_METHOD_CHOICES = [
 
 # 司机基本信息
 class Driver(models.Model):
+    # user 字段一定指向 AUTH_USER_MODEL
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,    # 通常是 accounts.DriverUser
         on_delete=models.CASCADE,

@@ -78,7 +78,7 @@
       <thead>
         <tr>
           <th>日期</th>
-          <th>备注</th>
+          <th>売上</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -86,7 +86,7 @@
         {% for report in reports %}
         <tr>
           <td>{{ report.date }}</td>
-          <td>{{ report.note|default:"无" }}</td>
+          <td>{{ report.total_meter_fee }}</td>
           <td>
             {% if can_edit %}
             <a href="{% url 'staffbook:driver_dailyreport_edit' driver.id report.id %}">编辑</a>
