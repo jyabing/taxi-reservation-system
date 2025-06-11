@@ -25,16 +25,6 @@
         {% endif %}
       </strong>
     </li>
-    <li>
-      🏠 预计到手工资（70%）：
-      <strong>
-        {% if take_home and take_home > 0 %}
-          {{ take_home|floatformat:2 }} 元
-        {% else %}
-          🛠️ 正在开发中
-        {% endif %}
-      </strong>
-    </li>
 </ul>
 
 <p><a href="{% url 'profile' %}">← 返回我的资料</a></p>

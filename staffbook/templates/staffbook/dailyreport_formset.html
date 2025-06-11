@@ -10,12 +10,14 @@
       box-sizing: content-box;
       transition: width 0.15s;
   }
-    /* 隐藏的span用于测量内容宽度 */
   .mirror-span {
       position: absolute;
       visibility: hidden;
       white-space: pre;
       font: inherit;
+  }
+  .has-note {
+      background-color: #fff9c4; /* 淡黄色高亮 */
   }
 </style>
 
@@ -35,36 +37,34 @@
 
 <form method="post" autocomplete="off">
   {% csrf_token %}
-  <p>
-    日期：<span>{{ form.fields.date.initial }}</span>
-    {{ form.date }}
-</p>
+  <p>日期：<span>{{ form.fields.date.initial }}</span>{{ form.date }}</p>
   {{ form.as_p }}
-<td>{{ form.meter_fee }} <span style="color:red">{{ form.meter_fee }}</span></td>
-{% if report.edited_by and report.edited_at %}
-  <p style="margin-top:1em; font-size: 0.9rem; color: #555;">
-    🖊️ 由 {{ report.edited_by.get_full_name|default:report.edited_by.username }} 于 {{ report.edited_at|date:"Y年n月j日 H:i" }} 编辑
-  </p>
-{% endif %}
-<table>
-  <tr>
-    <th>メータ料金合计</th>
-    <th>Uber合计</th>
-    <th>现金合计</th>
-    <th>Didi合计</th>
-    <th>信用卡合计</th>
-    <th>乘车券合计</th>
-    <th>扫码合计</th>
-  <tr>
-    <td><input id="total_meter" readonly size="8"></td>
-    <td><input id="total_uber" readonly size="8"></td>
-    <td><input id="total_cash" readonly size="8"></td>
-    <td><input id="total_didi" readonly size="8"></td>
-    <td><input id="total_card" readonly size="8"></td>
-    <td><input id="total_ticket" readonly size="8"></td>
-    <td><input id="total_qr" readonly size="8"></td>
-  </tr>
-</table>
+
+  {% if report.edited_by and report.edited_at %}
+    <p style="margin-top:1em; font-size: 0.9rem; color: #555;">
+      🖊️ 由 {{ report.edited_by.get_full_name|default:report.edited_by.username }} 于 {{ report.edited_at|date:"Y年n月j日 H:i" }} 编辑
+    </p>
+  {% endif %}
+
+  <table>
+    <tr>
+      <th>メータ料金合计</th>
+      <th>Uber合计</th>
+      <th>现金合计</th>
+      <th>Didi合计</th>
+      <th>信用卡合计</th>
+      <th>乘车券合计</th>
+      <th>扫码合计</th>
+    <tr>
+      <td><input id="total_meter" readonly size="8"></td>
+      <td><input id="total_uber" readonly size="8"></td>
+      <td><input id="total_cash" readonly size="8"></td>
+      <td><input id="total_didi" readonly size="8"></td>
+      <td><input id="total_card" readonly size="8"></td>
+      <td><input id="total_ticket" readonly size="8"></td>
+      <td><input id="total_qr" readonly size="8"></td>
+    </tr>
+  </table>
 
   <table border="1" style="border-collapse:collapse;width:100%;">
     <thead>
@@ -78,14 +78,15 @@
         <th>女</th>
         <th>メータ料金</th>
         <th>支付方式</th>
-        <th>备注</th>
+        <th>注释</th>
         <th>操作</th>
       </tr>
     </thead>
     <tbody>
       {{ formset.management_form }}
       {% for form in formset %}
-      <tr class="report-item-row">
+      <tr class="report-item-row {% if form.instance.note %}has-note{% endif %}">
+        {{ form.id }}  {# ✅ 确保每行都渲染 id 字段 #}
         <td>{{ forloop.counter }}</td>
         <td>{{ form.ride_time }}</td>
         <td>{{ form.ride_from }}</td>
@@ -95,7 +96,10 @@
         <td>{{ form.num_female }}</td>
         <td>{{ form.meter_fee }}</td>
         <td>{{ form.payment_method }}</td>
-        <td>{{ form.note }}</td>
+        <td>
+          {{ form.note }}
+          {% if form.instance.note %}<span title="此单被注释过">📝</span>{% endif %}
+        </td>
         <td>
           {% if form.instance.pk %}
             {{ form.DELETE }} 删除
@@ -107,10 +111,12 @@
       {% endfor %}
     </tbody>
   </table>
+
   <button type="submit" class="btn btn-primary">保存</button>
   <a href="{% url 'staffbook:driver_detail' driver.id %}" class="btn btn-link">返回</a>
 </form>
 <button id="add-row-btn" style="margin-top:1em;">增加一行</button>
+
 <script>
 document.getElementById('add-row-btn').onclick = function(){
     let totalForms = document.querySelector('input[id$="-TOTAL_FORMS"]');
@@ -119,7 +125,6 @@ document.getElementById('add-row-btn').onclick = function(){
     totalForms.value = n + 1;
     document.forms[0].submit();
 };
-
 function initRideTimePickers() {
     document.querySelectorAll('.ride-time-input').forEach(function(input){
         if (!input.dataset.fpInit) {
@@ -133,10 +138,7 @@ function initRideTimePickers() {
         }
     });
 }
-
-// 2. 输入框自适应宽度
 function initAutoWidthInputs() {
-    // 单例隐藏span，避免多次创建
     if (!window._mirrorSpan) {
         let span = document.createElement('span');
         span.className = 'mirror-span';
@@ -144,11 +146,8 @@ function initAutoWidthInputs() {
         window._mirrorSpan = span;
     }
     document.querySelectorAll('.auto-width-input').forEach(function(input){
-        // 初始宽度
         syncWidth(input);
-        // 监听输入
         input.addEventListener('input', function(){ syncWidth(input); });
-        // 监听 placeholder 变化（如有）
         input.addEventListener('change', function(){ syncWidth(input); });
     });
     function syncWidth(input) {
@@ -158,19 +157,10 @@ function initAutoWidthInputs() {
         input.style.width = (span.offsetWidth + 20) + 'px';
     }
 }
-
 document.addEventListener('DOMContentLoaded', function(){
-    // 绑定增加/移除行等事件（如前文所写，略）
-    // ...
-    // 初始化时间选择器
     initRideTimePickers();
-    // 初始化自适应宽度
     initAutoWidthInputs();
 });
-
-</script>
-
-<script>
 function updateTotals() {
     let total_meter = 0, total_uber = 0, total_cash = 0, total_didi = 0, total_card = 0, total_ticket = 0, total_qr = 0;
     let rows = document.querySelectorAll('tr.report-item-row');
@@ -187,7 +177,7 @@ function updateTotals() {
             else if (pay === 'credit') total_card += fee;
             else if (pay === 'ticket') total_ticket += fee;
             else if (pay === 'barcode') total_qr += fee;
-            else if (pay === 'wechat') total_qr += fee;  // 微信归到扫码合计
+            else if (pay === 'wechat') total_qr += fee;
         }
     });
     document.getElementById('total_meter').value = total_meter.toFixed(2);
@@ -198,7 +188,6 @@ function updateTotals() {
     document.getElementById('total_ticket').value = total_ticket.toFixed(2);
     document.getElementById('total_qr').value = total_qr.toFixed(2);
 }
-
 document.addEventListener('input', function (e) {
     if (e.target.classList.contains('meter-fee-input') || e.target.classList.contains('payment-method-select')) {
         updateTotals();
@@ -211,5 +200,4 @@ document.addEventListener('change', function (e) {
 });
 window.onload = updateTotals;
 </script>
-
 {% endblock %}

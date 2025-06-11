@@ -13,11 +13,12 @@
         <th>女</th>
         <th>金额</th>
         <th>支付方式</th>
+        <th>注释</th>
       </tr>
     </thead>
     <tbody>
       {% for item in report.items.all %}
-      <tr>
+      <tr {% if item.note %} style="background:#fff9c4" {% endif %}>
         <td>{{ item.ride_time }}</td>
         <td>{{ item.ride_from }}</td>
         <td>{{ item.ride_to }}</td>
@@ -25,6 +26,10 @@
         <td>{{ item.num_female }}</td>
         <td>{{ item.meter_fee }}</td>
         <td>{{ item.get_payment_method_display }}</td>
+        <td>
+            {{ item.note|default:"" }}
+            {% if item.note %}<span title="有注释">📝</span>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

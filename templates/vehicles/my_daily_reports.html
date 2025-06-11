@@ -21,6 +21,7 @@
         <th>日期</th>
         <th>メータ料金合计</th>
         <th>操作</th>
+        <th>备注</th>
     </tr>
     </thead>
     <tbody>
@@ -31,6 +32,7 @@
         <td>
             <a href="{% url 'my_daily_report_detail' report.id %}">查看明细</a>
         </td>
+        <td>{{ report.note|default:"无" }}</td>
     </tr>
     {% endfor %}
     </tbody>
