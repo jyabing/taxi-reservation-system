@@ -1,14 +1,19 @@
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{% extends "base.html" %}
+
+{% block title %}系统首页{% endblock %}
+
+{% block content %}
+
 <div class="cards">
 
   <!-- 配车系统入口 -->
   <div class="card">
     <h3>🚖 配车系统</h3>
     <p>车辆预约、派车、预约审批等一站式管理。</p>
-    <a href="{% url 'reservation_home' %}">进入</a>
+    <a href="{% url 'reservation_dashboard' %}">进入</a>
   </div>
 
-  <!-- 员工手册管理系统入口 -->
+  <!-- 员工台账管理系统入口 -->
   <div class="card">
     <h3>📒 员工台账管理系统</h3>
     <p>员工日报、工资、材料管理。</p>
@@ -19,11 +24,10 @@
   <div class="card">
     <h3>🚗 车辆管理系统</h3>
     <p>车辆资料、维修、照片等统一管理。</p>
-    {# <a href="{% url 'reservation_status' %}">进入</a> #}
+    <a href="{% url 'carinfo:car_list' %}">进入</a>
   </div>
 
 </div>
-
 
 <style>
   .carousel {
@@ -68,3 +72,5 @@
     background: #0056b3;
   }
 </style>
+
+{% endblock %}

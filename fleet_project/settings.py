@@ -45,10 +45,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'accounts',
+    
+    # 你的 app
+    'accounts.apps.AccountsConfig',  # ✅ 保留这个
     'vehicles',
     'rangefilter',
     'staffbook',
+    'carinfo',
 ]
 
 

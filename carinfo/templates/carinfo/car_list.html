@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>🚗 车辆列表</h2>
+<a href="{% url 'carinfo:car_create' %}" class="btn btn-primary">添加新车辆</a>
+<table>
+  <thead>
+    <tr>
+      <th>车牌号</th>
+      <th>名称</th>
+      <th>状态</th>
+      <th>品牌</th>
+      <th>型号</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for car in cars %}
+    <tr>
+      <td>{{ car.license_plate }}</td>
+      <td>{{ car.name }}</td>
+      <td>{{ car.get_status_display }}</td>
+      <td>{{ car.brand }}</td>
+      <td>{{ car.model }}</td>
+      <td>
+        <a href="{% url 'carinfo:car_edit' car.pk %}">编辑</a> |
+        <a href="{% url 'carinfo:car_delete' car.pk %}">删除</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

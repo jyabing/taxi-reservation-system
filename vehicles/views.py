@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, time, date
 
 from django import forms
 from decimal import Decimal
+from accounts.utils import check_module_permission
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
@@ -31,8 +32,23 @@ from staffbook.models import Driver, DriverDailyReport, DriverDailyReportItem
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
 
-def is_admin(user):
-    return user.is_staff
+def is_vehicles_admin(user):
+    return user.is_authenticated and (user.is_superuser or getattr(user.userprofile, 'is_vehicles_admin', False))
+
+# 装饰器：限制仅 vehicles 管理员或超级管理员访问
+require_vehicles_admin = user_passes_test(is_vehicles_admin)
+
+# 所有 view 里的权限装饰器如下修改方式：
+# 1. 超级管理员或 vehiclesvehicles_admin 才能访问的页面：@login_required + @require_vehicle_admin
+# 2. 司机/所有用户都能访问的页面：@login_required
+
+# ✅ 示例：
+# @login_required
+# @require_vehicle_admin
+# def admin_stats_view(request):
+#     return render(request, 'vehicles/admin_stats.html')
+
+# 后续你只需要在已有函数前加上这个装饰器组合，并统一模板路径写为 'vehicles/xxx.html' 即可。
 
 @login_required
 def vehicle_list(request):

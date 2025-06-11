@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{% if car %}编辑车辆{% else %}添加新车辆{% endif %}</h2>
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit" class="btn btn-success">保存</button>
+  <a href="{% url 'carinfo:car_list' %}" class="btn btn-secondary">返回</a>
+</form>
+{% endblock %}

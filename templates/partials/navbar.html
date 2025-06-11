@@ -1,0 +1,45 @@
+<nav>
+  {% if user.is_authenticated %}
+    👋 {{ user.username }} |
+
+    <!-- 🚪 统一系统首页入口（可选） -->
+    <a href="{% url 'home' %}">🏠 系统首页</a>
+
+    <!-- ✅ 所有人可见 -->
+    <a href="{% url 'profile' %}">👤 我的资料</a>
+    <a href="{% url 'vehicle_status' %}">🚗 车辆状态</a>
+    <a href="{% url 'weekly_overview' %}">📅 一周预约概览</a>
+    <a href="{% url 'my_reservations' %}">📋 我的预约</a>
+
+    <!-- ✅ 配车系统管理员 -->
+    {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
+      <a href="{% url 'reservation_dashboard' %}">🚖 配车系统</a>
+      <a href="{% url 'reservation_approval_list' %}">🛠️ 审批面板</a>
+      <a href="{% url 'admin_stats' %}" style="color:purple;">📊 管理员统计</a>
+    {% endif %}
+
+    <!-- ✅ 员工台账管理员 -->
+    {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
+      <a href="{% url 'staffbook:dashboard' %}">📒 员工台账</a>
+    {% endif %}
+
+    <!-- ✅ 车辆管理管理员 -->
+    {% if user.is_superuser or user.userprofile.is_carinfo_admin %}
+      <a href="{% url 'carinfo:car_list' %}">🚗 车辆管理</a>
+    {% endif %}
+
+    <!-- ✅ 后台链接（仅超级管理员） -->
+    {% if user.is_superuser %}
+      <a href="/admin/">⚙️ 后台</a>
+    {% endif %}
+
+    <!-- ✅ 退出登录 -->
+    <form method="post" action="{% url 'logout' %}" style="display:inline;">
+      {% csrf_token %}
+      <button type="submit">🚪 退出</button>
+    </form>
+
+  {% else %}
+    <a href="{% url 'login' %}">登录</a>
+  {% endif %}
+</nav>

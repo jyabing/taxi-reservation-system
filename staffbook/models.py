@@ -1,6 +1,7 @@
 from django.db import models
 from accounts.models import DriverUser
 from django.conf import settings
+from django.utils import timezone
 
 PAYMENT_METHOD_CHOICES = [
     ('cash', '现金'),
@@ -57,6 +58,16 @@ class DriverDailyReport(models.Model):
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_reports', verbose_name="司机")
     date = models.DateField('日期')
     note = models.TextField('备注', blank=True)
+
+    # ✅ 新增两个字段
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='edited_dailyreports',
+        verbose_name="编辑人"
+    )
+    edited_at = models.DateTimeField("编辑时间", null=True, blank=True)
 
     class Meta:
         ordering = ['-date']

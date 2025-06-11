@@ -14,6 +14,7 @@ urlpatterns = [
     path('my_dailyreports/', views.my_dailyreports, name='my_dailyreports'), # 当前登录用户的日报列表
 
     # 员工（司机）信息管理
+    path('dashboard/', views.staffbook_dashboard, name='dashboard'),
     path('drivers/', views.driver_list, name='driver_list'),  # 员工主目录
     path('drivers/create/', views.driver_create, name='driver_create'),  # 新增员工
     path('drivers/<int:driver_id>/', views.driver_detail, name='driver_detail'),  # 个人主页+台账

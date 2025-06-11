@@ -41,6 +41,11 @@
 </p>
   {{ form.as_p }}
 <td>{{ form.meter_fee }} <span style="color:red">{{ form.meter_fee }}</span></td>
+{% if report.edited_by and report.edited_at %}
+  <p style="margin-top:1em; font-size: 0.9rem; color: #555;">
+    🖊️ 由 {{ report.edited_by.get_full_name|default:report.edited_by.username }} 于 {{ report.edited_at|date:"Y年n月j日 H:i" }} 编辑
+  </p>
+{% endif %}
 <table>
   <tr>
     <th>メータ料金合计</th>

@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import DriverUser
+from .models import DriverUser, UserProfile
 
 # 1️⃣ 先定义表单
 class DriverUserAdminForm(forms.ModelForm):
@@ -41,3 +41,10 @@ class DriverUserAdmin(UserAdmin):
 
 # 3️⃣ 注册
 admin.site.register(DriverUser, DriverUserAdmin)
+
+# 4️⃣ 注册 UserProfile 模型（权限扩展）
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ['user', 'is_vehicles_admin', 'is_staffbook_admin', 'is_carinfo_admin']
+    list_editable = ['is_vehicles_admin', 'is_staffbook_admin', 'is_carinfo_admin']
+    search_fields = ['user__username']

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}员工台账管理{% endblock %}
+
+{% block content %}
+<h1>📒 员工台账系统管理</h1>
+<p>该系统支持员工信息、日报、售件和工资等内容综合管理。</p>
+
+<div class="cards">
+  <div class="card">
+    <h3>👥 员工列表</h3>
+    <p>查看所有员工信息，支持筛选、编辑和添加新员工。</p>
+    <a href="{% url 'staffbook:driver_list' %}">进入</a>
+  </div>
+
+  <div class="card">
+    <h3>📅 日报管理</h3>
+    <p>对员工日报进行维护，包括查看、编辑和删除。</p>
+    <a href="{% url 'staffbook:dailyreport_list' %}">进入</a>
+  </div>
+
+  <div class="card">
+    <h3>💸 我的日报</h3>
+    <p>员工查看个人日报历史和售件总结。</p>
+    <a href="{% url 'staffbook:my_dailyreports' %}">进入</a>
+  </div>
+</div>
+
+<style>
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.card {
+  flex: 1 1 250px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 20px;
+  background: #f9f9f9;
+}
+.card h3 {
+  margin-top: 0;
+}
+.card a {
+  display: inline-block;
+  margin-top: 10px;
+  background-color: #007bff;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 5px;
+  text-decoration: none;
+}
+.card a:hover {
+  background-color: #0056b3;
+}
+</style>
+
+{% endblock %}

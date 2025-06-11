@@ -1,7 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.models import User
-from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet
 from .models import DriverDailySales, DriverDailyReport, Driver
@@ -9,11 +7,14 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 from django import forms
 
-def is_admin(user):
-    return user.is_staff or user.is_superuser
+from accounts.utils import check_module_permission
 
 @login_required
-@user_passes_test(is_admin)
+def staffbook_dashboard(request):
+    return render(request, 'staffbook/dashboard.html')
+
+# ✅ 新增日报
+@check_module_permission('employee')
 def dailyreport_create(request):
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST)
@@ -24,8 +25,8 @@ def dailyreport_create(request):
         form = DriverDailyReportForm()
     return render(request, 'staffbook/dailyreport_formset.html', {'form': form})
 
-@login_required
-@user_passes_test(is_admin)
+# ✅ 编辑日报
+@check_module_permission('employee')
 def dailyreport_edit(request, pk):
     report = get_object_or_404(DriverDailyReport, pk=pk)
     if request.method == 'POST':
@@ -37,6 +38,7 @@ def dailyreport_edit(request, pk):
         form = DriverDailyReportForm(instance=report)
     return render(request, 'staffbook/dailyreport_formset.html', {'form': form})
 
+# ✅ 提交销售额（司机自己）
 @login_required
 def submit_sales(request):
     if request.method == 'POST':
@@ -45,17 +47,17 @@ def submit_sales(request):
             sales = form.save(commit=False)
             sales.driver = request.user
             sales.save()
-            return redirect('staffbook:sales_thanks')  # 录入成功页面
+            return redirect('staffbook:sales_thanks')
     else:
         form = DriverDailySalesForm()
-    
     return render(request, 'staffbook/submit_sales.html', {'form': form})
 
 @login_required
 def sales_thanks(request):
     return render(request, 'staffbook/sales_thanks.html')
 
-@user_passes_test(lambda u: u.is_staff)
+# ✅ 删除日报（管理员）
+@check_module_permission('employee')
 def dailyreport_delete_for_driver(request, driver_id, pk):
     driver = get_object_or_404(Driver, pk=driver_id)
     report = get_object_or_404(DriverDailyReport, pk=pk, driver=driver)
@@ -68,18 +70,17 @@ def dailyreport_delete_for_driver(request, driver_id, pk):
         'driver': driver,
     })
 
+# ✅ 日报列表（管理员看全部，司机看自己）
 @login_required
 def dailyreport_list(request):
-    # 可根据需求筛选，比如只显示自己的
     if request.user.is_staff:
         reports = DriverDailyReport.objects.all().order_by('-date')
     else:
         reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
     return render(request, 'staffbook/dailyreport_list.html', {'reports': reports})
 
-
-# 员工列表（管理员可见）
-#@user_passes_test(lambda u: u.is_staff)
+# ✅ 员工列表（管理员）
+@check_module_permission('employee')
 def driver_list(request):
     keyword = request.GET.get('keyword', '').strip()
     if keyword:
@@ -88,9 +89,10 @@ def driver_list(request):
         )
     else:
         drivers = Driver.objects.all()
-    #print("【调试】当前员工数量：", drivers.count(), "| 关键字：", repr(keyword))
     return render(request, 'staffbook/driver_list.html', {'drivers': drivers})
 
+# ✅ 新增员工
+@check_module_permission('employee')
 def driver_create(request):
     if request.method == 'POST':
         form = DriverForm(request.POST)
@@ -101,6 +103,8 @@ def driver_create(request):
         form = DriverForm()
     return render(request, 'staffbook/driver_form.html', {'form': form, 'is_create': True})
 
+# ✅ 编辑员工
+@check_module_permission('employee')
 def driver_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
@@ -112,18 +116,16 @@ def driver_edit(request, driver_id):
         form = DriverForm(instance=driver)
     return render(request, 'staffbook/driver_form.html', {'form': form, 'is_create': False})
 
-# 员工卡片视图（包含日报列表）
+# ✅ 员工详情页（司机可看自己，管理员可看全部）
 @login_required
 def driver_detail(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if not (request.user.is_staff or driver.user == request.user):
         return redirect('staffbook:driver_list')
 
-    # 获取查询参数
     selected_date = request.GET.get('date')
     selected_month = request.GET.get('month')
 
-    # 构建查询条件
     reports = DriverDailyReport.objects.filter(driver=driver)
     if selected_date:
         reports = reports.filter(date=selected_date)
@@ -132,7 +134,6 @@ def driver_detail(request, driver_id):
         reports = reports.filter(date__year=year, date__month=month)
     reports = reports.order_by('-date')
 
-    # 统计每份日报的“メータ料金合计”
     for report in reports:
         report.total_meter_fee = report.items.aggregate(total=Sum('meter_fee'))['total'] or 0
 
@@ -145,8 +146,8 @@ def driver_detail(request, driver_id):
         'can_edit': can_edit,
     })
 
-# 新增日报（管理员为任意员工）
-@user_passes_test(lambda u: u.is_staff)
+# ✅ 管理员新增日报给某员工
+@check_module_permission('employee')
 def dailyreport_create_for_driver(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
@@ -156,7 +157,6 @@ def dailyreport_create_for_driver(request, driver_id):
             dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
             dailyreport.save()
-            # 关键点：让 formset 关联到这个 dailyreport
             formset.instance = dailyreport
             formset.save()
             messages.success(request, '新增日报成功')
@@ -174,23 +174,28 @@ def dailyreport_create_for_driver(request, driver_id):
         'is_edit': False,
     })
 
-# 编辑日报（管理员）
-@user_passes_test(lambda u: u.is_staff)
+# ✅ 编辑日报（管理员）
+@check_module_permission('employee')
 def dailyreport_edit_for_driver(request, driver_id, pk):
     driver = get_object_or_404(Driver, pk=driver_id)
     dailyreport = get_object_or_404(DriverDailyReport, pk=pk, driver=driver)
+
     if request.method == 'POST':
         report_form = DriverDailyReportForm(request.POST, instance=dailyreport)
         formset = ReportItemFormSet(request.POST, instance=dailyreport)
+
         if report_form.is_valid() and formset.is_valid():
-            report_form.save()
+            report = report_form.save(commit=False)
+            report.edited_by = request.user  # ✅ 记录编辑人
+            report.edited_at = timezone.now()  # ✅ 记录编辑时间
+            report.save()
             formset.save()
             messages.success(request, '日报修改成功')
             return redirect('staffbook:driver_detail', driver_id=driver.id)
+
     else:
         report_form = DriverDailyReportForm(instance=dailyreport)
         formset = ReportItemFormSet(instance=dailyreport)
-        # 设置日期字段为只读和初值
         report_form.fields['date'].initial = dailyreport.date.strftime('%Y-%m-%d')
         report_form.fields['date'].widget = forms.HiddenInput()
 
@@ -199,31 +204,22 @@ def dailyreport_edit_for_driver(request, driver_id, pk):
         'formset': formset,
         'driver': driver,
         'is_edit': True,
-        #'selected_date': selected_date,   # ✅ 传入模板
+        'report': dailyreport,  # ✅ 传给模板用于显示“由谁于何时编辑”
     })
 
-# 日报列表（管理员看全部，司机看自己）
-@login_required
-def dailyreport_list(request):
-    if request.user.is_staff:
-        reports = DriverDailyReport.objects.all().order_by('-date')
-    else:
-        reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
-    return render(request, 'staffbook/dailyreport_list.html', {'reports': reports})
-
-# 司机个人查看自己的日报（比如“我的资料”页可以引用此函数，或在 accounts/views.py 中实现）
+# ✅ 司机查看自己日报
 @login_required
 def my_dailyreports(request):
     reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
     return render(request, 'staffbook/my_dailyreports.html', {'reports': reports})
 
-@staff_member_required
+# ✅ 批量生成账号绑定员工
+@check_module_permission('employee')
 def bind_missing_users(request):
     drivers_without_user = Driver.objects.filter(user__isnull=True)
 
     if request.method == 'POST':
         for driver in drivers_without_user:
-            # 使用 staff_code 作为用户名，避免重复
             username = f"driver{driver.staff_code}"
             if not User.objects.filter(username=username).exists():
                 user = User.objects.create_user(username=username, password='12345678')

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>⚠️ 确认删除车辆</h2>
+
+<p>你确定要删除车辆 <strong>{{ car }}</strong> 吗？</p>
+
+<ul>
+    <li><strong>名称：</strong>{{ car.name }}</li>
+    <li><strong>型号：</strong>{{ car.model }}</li>
+    <li><strong>车牌：</strong>{{ car.license_plate }}</li>
+</ul>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">🗑️ 确认删除</button>
+    <a href="{% url 'carinfo:car_list' %}" class="btn btn-secondary">取消</a>
+</form>
+{% endblock %}
