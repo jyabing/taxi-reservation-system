@@ -24,14 +24,14 @@ class FamilyMemberInline(admin.TabularInline):
 
 @admin.register(Driver)
 class DriverAdmin(admin.ModelAdmin):
-    list_display = ('staff_code', 'name', 'user', 'phone', 'tax_id')
-    search_fields = ('staff_code', 'name')
+    list_display = ('driver_code', 'name', 'kana', 'user', 'phone_number')
+    search_fields = ('driver_code', 'name')
     list_filter = ('user',)
 
     def save_model(self, request, obj, form, change):
         # 新增/编辑时如果没绑定用户则自动创建并绑定
         if not obj.user:
-            username = obj.staff_code  # 用员工号做用户名，保证唯一
+            username = obj.driver_code  # 用员工号做用户名，保证唯一
             user, created = User.objects.get_or_create(
                 username=username,
                 defaults={'is_active': True, 'first_name': obj.name}

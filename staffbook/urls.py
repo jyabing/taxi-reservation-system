@@ -4,7 +4,7 @@ from . import views
 app_name = 'staffbook'
 
 urlpatterns = [
-   
+    
     # 日报相关（全部/自己/新建/编辑）
     path('submit_sales/', views.submit_sales, name='submit_sales'),  # 日报录入（通常司机用）
     path('sales_thanks/', views.sales_thanks, name='sales_thanks'),  # 录入成功页
@@ -17,6 +17,10 @@ urlpatterns = [
     path('dashboard/', views.staffbook_dashboard, name='dashboard'),
     path('drivers/', views.driver_list, name='driver_list'),  # 员工主目录
     path('drivers/create/', views.driver_create, name='driver_create'),  # 新增员工
+    path('drivers/<int:driver_id>/personal/', views.driver_personal_info, name='driver_personal_info'),
+    path('drivers/<int:driver_id>/license/', views.driver_license_info, name='driver_license_info'), # 员工驾驶证信息
+    path('drivers/<int:driver_id>/license/edit', views.driver_license_edit, name='driver_license_edit'), # 编辑员工驾驶证信息
+    path('drivers/<int:driver_id>/daily/', views.driver_card_daily, name='driver_card_daily'),  # 员工日报卡片（个人主页）
     path('drivers/<int:driver_id>/', views.driver_detail, name='driver_detail'),  # 个人主页+台账
     path('drivers/<int:driver_id>/edit/', views.driver_edit, name='driver_edit'),  # 编辑员工信息
     path('bind_missing_users/', views.bind_missing_users, name='bind_missing_users'),

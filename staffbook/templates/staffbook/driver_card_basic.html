@@ -1,3 +1,4 @@
+{% load driver_extras %}
 <table>
   <tr><th>编号</th><td>{{ driver.staff_code }}</td><a href="{% url 'staffbook:driver_edit' driver.id %}" class="btn btn-outline-primary btn-sm" style="float:right;">编辑</a></tr>
   <tr><th>姓名</th><td>{{ driver.name }}</td></tr>

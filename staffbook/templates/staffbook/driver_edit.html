@@ -1,29 +1,106 @@
 {% extends "staffbook/base_staffbook.html" %}
 {% block content %}
-<h3>编辑员工信息（{{ driver.staff_code }} - {{ driver.name }}）</h3>
-<form method="post" enctype="multipart/form-data">
-  {% csrf_token %}
-  {{ form.as_p }}
-
-  <h5>驾驶经验</h5>
-  {{ exp_formset.management_form }}
-  {% for f in exp_formset %}
-    {{ f.as_p }}
-  {% endfor %}
-
-  <h5>保险信息</h5>
-  {{ ins_formset.management_form }}
-  {% for f in ins_formset %}
-    {{ f.as_p }}
-  {% endfor %}
-
-  <h5>家庭成员</h5>
-  {{ fam_formset.management_form }}
-  {% for f in fam_formset %}
-    {{ f.as_p }}
-  {% endfor %}
-
-  <button type="submit" class="btn btn-primary">保存</button>
-  <a href="{% url 'staffbook:driver_detail' driver.id %}" class="btn btn-secondary">取消</a>
-</form>
+{% load driver_extras %}
+<div class="container mt-4">
+  <div class="card shadow" style="width: 96vw; max-width: 1600px; margin:0 auto;"> # 主要容器
+    <div class="card-header bg-white d-flex align-items-center">
+      <i class="fa fa-user me-2"></i>
+      <b>編集</b>
+      <span class="badge bg-primary ms-2">No.{{ form.driver_code.value }}</span>
+      <span class="ms-auto">
+        事業者名: {{ form.company.value }}　営業所名: {{ form.workplace.value }}
+      </span>
+    </div>
+    <div class="card-body">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row">
+          <!-- 左栏（基本信息） -->
+          <div class="col-md-7">
+            <div class="row mb-2">
+              <div class="col-md-6">
+                <label class="form-label">従業員番号 <span class="badge bg-danger">必須</span></label>
+                {{ form.driver_code }}
+                {% if form.driver_code.errors %}<div class="text-danger small">{{ form.driver_code.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">氏名 <span class="badge bg-danger">必須</span></label>
+                {{ form.name }}
+                {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">フリガナ <span class="badge bg-danger">必須</span></label>
+                {{ form.kana }}
+                {% if form.kana.errors %}<div class="text-danger small">{{ form.kana.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">営業所 <span class="badge bg-danger">必須</span></label>
+                {{ form.workplace }}
+                {% if form.workplace.errors %}<div class="text-danger small">{{ form.workplace.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">部門</label>
+                {{ form.department }}
+                {% if form.department.errors %}<div class="text-danger small">{{ form.department.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">職種 <span class="badge bg-danger">必須</span></label>
+                {{ form.position }}
+                {% if form.position.errors %}<div class="text-danger small">{{ form.position.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">性別 <span class="badge bg-danger">必須</span></label>
+                {{ form.gender }}
+                {% if form.gender.errors %}<div class="text-danger small">{{ form.gender.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">血液型</label>
+                {{ form.blood_type }}
+                {% if form.blood_type.errors %}<div class="text-danger small">{{ form.blood_type.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">生年月日</label>
+                {{ form.birth_date }}
+                {% if form.birth_date.errors %}<div class="text-danger small">{{ form.birth_date.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">年齢</label>
+                <div>{% if form.birth_date.value %}{{ form.birth_date.value|age }}歳{% endif %}</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">入社年月日</label>
+                {{ form.hire_date }}
+                {% if form.hire_date.errors %}<div class="text-danger small">{{ form.hire_date.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">選任年月日</label>
+                {{ form.appointment_date }}
+                {% if form.appointment_date.errors %}<div class="text-danger small">{{ form.appointment_date.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">作成年月日</label>
+                {{ form.create_date }}
+                {% if form.create_date.errors %}<div class="text-danger small">{{ form.create_date.errors }}</div>{% endif %}
+              </div>
+            </div>
+          </div>
+          <!-- 右栏（特記事項/履歴/其他） -->
+          <div class="col-md-5">
+            <div class="mb-3">
+              <label class="form-label">特記事項</label>
+              {{ form.remark }}
+              {% if form.remark.errors %}<div class="text-danger small">{{ form.remark.errors }}</div>{% endif %}
+            </div>
+            <!-- 这里可继续加履歴栏、变更理由、退职等，和右侧图一致 -->
+          </div>
+        </div>
+        <div class="text-end mt-4">
+          <button type="submit" class="btn btn-success btn-lg px-5">
+            <i class="fa fa-save"></i> 保存
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}

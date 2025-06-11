@@ -1,35 +1,83 @@
-{% extends "base.html" %}
+{% extends "staffbook/base_staffbook.html" %}
 {% block content %}
-<div class="card mb-4">
-  <div class="card-header d-flex align-items-center">
-    {% if driver.photo %}
-      <img src="{{ driver.photo.url }}" alt="照片" style="width:80px;height:100px;object-fit:cover;border-radius:8px;margin-right:1em;">
-    {% endif %}
-    <div>
-      <h4 class="mb-1">{{ driver.name }} <span class="badge bg-primary">No.{{ driver.staff_code }}</span></h4>
-      <div>手机号: {{ driver.phone|default:"-" }}　税号: {{ driver.tax_id|default:"-" }}</div>
-      {% if driver.user %}
-        <div>账号: {{ driver.user.username }}</div>
-      {% endif %}
-      
+{% load driver_extras %}
+<div class="container mt-4">
+  <div class="card shadow" style="width:90vw;max-width:1400px;margin:0 auto;">
+    <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
+      <i class="fa fa-user me-2"></i>
+      <b>{{ driver.name }}</b>
+      <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
+      <span class="ms-auto" style="font-size:0.95em;">
+        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+      </span>
     </div>
-  </div>
-  <div class="card-body">
-    <ul class="nav nav-tabs" id="driverTab" role="tablist">
-      <li class="nav-item"><button class="nav-link active" id="tab-basic" data-bs-toggle="tab" data-bs-target="#tab-pane-basic" type="button">基本信息</button></li>
-      <li class="nav-item"><button class="nav-link" id="tab-career" data-bs-toggle="tab" data-bs-target="#tab-pane-career" type="button">履历/资格</button></li>
-      <li class="nav-item"><button class="nav-link" id="tab-health" data-bs-toggle="tab" data-bs-target="#tab-pane-health" type="button">健康/家族</button></li>
-      <li class="nav-item"><button class="nav-link" id="tab-daily" data-bs-toggle="tab" data-bs-target="#tab-pane-daily" type="button">日报</button></li>
-      <li class="nav-item"><button class="nav-link" id="tab-payroll" data-bs-toggle="tab" data-bs-target="#tab-pane-payroll" type="button">工资记录</button></li>
-      <li class="nav-item"><button class="nav-link" id="tab-images" data-bs-toggle="tab" data-bs-target="#tab-pane-images" type="button">日报图片</button></li>
-    </ul>
-    <div class="tab-content p-3 border border-top-0 rounded-bottom">
-      <div class="tab-pane fade show active" id="tab-pane-basic">{% include "staffbook/driver_card_basic.html" %}</div>
-      <div class="tab-pane fade" id="tab-pane-career">{% include "staffbook/driver_card_career.html" %}</div>
-      <div class="tab-pane fade" id="tab-pane-health">{% include "staffbook/driver_card_health.html" %}</div>
-      <div class="tab-pane fade" id="tab-pane-daily">{% include "staffbook/driver_card_daily.html" %}</div>
-      <div class="tab-pane fade" id="tab-pane-payroll">{% include "staffbook/driver_card_payroll.html" %}</div>
-      <div class="tab-pane fade" id="tab-pane-images">{% include "staffbook/driver_card_images.html" %}</div>
+    <div class="card-body">
+      {% include "staffbook/driver_tab_nav.html" %}
+      <!-- 基本信息表 -->
+      <form>
+      <div class="row">
+        <!-- 左列 -->
+        <div class="col-md-7">
+          <div class="row mb-2">
+            <div class="col-md-6">
+              <label class="form-label">従業員番号：{{ driver.driver_code }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">氏名：{{ driver.name }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">フリガナ：{{ driver.kana }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">営業所：{{ driver.workplace }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">部門：{{ driver.department }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">職種：{{ driver.get_position_display }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">性別：{{ driver.get_gender_display }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">血液型：{{ driver.blood_type }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">生年月日：{{ driver.birth_date|date:"Y/m/d" }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">年齢：{% if driver.birth_date %}{{ driver.birth_date|age }}歳{% endif %}</label>
+            </div>
+          </div>
+          <div class="row mb-2">
+            <div class="col-md-6">
+              <label class="form-label">入社年月日</label>
+              <div>{{ driver.hire_date|date:"Y/m/d" }}</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">選任年月日：{{ driver.appointment_date|date:"Y/m/d" }}</label>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">作成年月日：{{ driver.create_date|date:"Y/m/d" }}</label>
+            </div>
+          </div>
+        </div>
+        <!-- 右列 -->
+        <div class="col-md-5">
+          <div class="mb-3">
+            <label class="form-label">特記事項</label>
+            <div class="border p-2 rounded bg-light">{{ driver.remark|default:"-" }}</div>
+          </div>
+          <!-- 可继续加入“履歴”相关字段/专用说明等 -->
+        </div>
+      </div>
+      <div class="text-end">
+        <a href="{% url 'staffbook:driver_edit' driver.id %}" class="btn btn-outline-primary">
+          <i class="fa fa-edit"></i> 編集
+        </a>
+      </div>
+      </form>
     </div>
   </div>
 </div>

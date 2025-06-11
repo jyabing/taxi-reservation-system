@@ -1,0 +1,92 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+{% include "staffbook/driver_tab_nav.html" %}
+<div class="container mt-4">
+  <div class="card shadow" style="max-width:1100px;margin:0 auto;">
+    <div class="card-body">
+      <div class="row">
+        <!-- 左侧 头像和照片 -->
+        <div class="col-md-4 d-flex flex-column align-items-center">
+            <img src="{% if license.photo %}{{ license.photo.url }}{% else %}/static/default_avatar.png{% endif %}"
+                alt="写真"
+                class="rounded-circle border mb-2" style="width:110px;height:110px;object-fit:cover;">
+            <div class="text-primary mb-2" style="font-weight:500;">写真を设置する</div>
+        </div>
+        <!-- 右侧 详细信息 -->
+        <div class="col-md-8">
+          <form>
+            <div class="mb-3 row align-items-center">
+              <label class="col-sm-3 col-form-label fw-bold">免許証番号</label>
+              <div class="col-sm-9">
+                <input type="text" class="form-control" value="{{ license.license_number }}" readonly>
+              </div>
+            </div>
+            <div class="mb-3 row align-items-center">
+              <label class="col-sm-3 col-form-label fw-bold">交付年月日</label>
+              <div class="col-sm-9">
+                <input type="text" class="form-control" value="{{ license.issue_date|date:'Y/m/d' }}" readonly>
+              </div>
+            </div>
+            <div class="mb-3 row align-items-center">
+              <label class="col-sm-3 col-form-label fw-bold">有効期限</label>
+              <div class="col-sm-9">
+                <input type="text" class="form-control" value="{{ license.expiry_date|date:'Y/m/d' }}" readonly>
+              </div>
+            </div>
+            <div class="mb-3 row align-items-center">
+              <label class="col-sm-3 col-form-label fw-bold">取得年月日</label>
+              <div class="col-sm-9">
+                <div class="row g-1">
+                  <div class="col">
+                    <input type="text" class="form-control" value="{{ license.date_acquired_a|date:'Y/m/d' }}" placeholder="二・小・原" readonly>
+                  </div>
+                  <div class="col">
+                    <input type="text" class="form-control" value="{{ license.date_acquired_b|date:'Y/m/d' }}" placeholder="他" readonly>
+                  </div>
+                  <div class="col">
+                    <input type="text" class="form-control" value="{{ license.date_acquired_c|date:'Y/m/d' }}" placeholder="二種" readonly>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- 種類checkbox以表格方式只读展示 -->
+            <div class="mb-3 row align-items-center">
+              <label class="col-sm-3 col-form-label fw-bold">種　類</label>
+              <div class="col-sm-9">
+                <div class="table-responsive">
+                  <table class="table table-bordered align-middle mb-0">
+                    <tr>
+                      {% for t in all_license_types %}
+                        <td style="min-width:70px;">
+                          <input type="checkbox" disabled {% if t in license.license_types.all %}checked{% endif %}>
+                          {{ t.label|default:t.name }}
+                        </td>
+                        {% if forloop.counter|divisibleby:6 %}</tr><tr>{% endif %}
+                      {% endfor %}
+                    </tr>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="mb-3 row align-items-center">
+              <label class="col-sm-3 col-form-label fw-bold">条件</label>
+              <div class="col-sm-9">
+                <input type="text" class="form-control" value="{{ license.license_conditions }}" readonly>
+              </div>
+            </div>
+            <div class="mb-3 row align-items-center">
+              <label class="col-sm-3 col-form-label fw-bold">備考</label>
+              <div class="col-sm-9">
+                <textarea class="form-control" rows="2" readonly>{{ license.note }}</textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="text-end mt-3">
+        <a href="{% url 'staffbook:driver_license_edit' driver.id %}" class="btn btn-primary">编辑</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

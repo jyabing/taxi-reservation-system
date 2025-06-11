@@ -1,0 +1,71 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+{% include "staffbook/driver_tab_nav.html" %}
+<div class="container mt-4">
+  <div class="card shadow" style="max-width:1100px; margin:0 auto;">
+    <div class="card-body">
+      <div class="row">
+        <!-- 左栏：头像+信息 -->
+        <div class="col-md-4 d-flex flex-column align-items-center">
+            {% if driver.photo %}
+                <img src="{{ driver.photo.url }}" alt="写真" class="rounded-circle border mb-2" style="width:110px;height:110px;object-fit:cover;">
+            {% else %}
+                <img src="/static/default_avatar.png" alt="写真" class="rounded-circle border mb-2" style="width:110px;height:110px;object-fit:cover;">
+            {% endif %}
+          <button type="button" class="btn btn-outline-primary btn-sm mb-2">写真を設定する</button>
+          <div class="alert alert-info p-2 small mb-3" style="width:100%;font-size:0.97em;">
+            作成前6月以内に撮影した単独、上3分身、無帽、正面、無背景の写真<br>
+            ※縦横比率 4:3 推奨
+          </div>
+          <form method="post" enctype="multipart/form-data" style="width:100%;">
+            {% csrf_token %}
+            <div class="mb-2">
+              <label class="form-label">撮影年月日</label>
+              {{ form.photo_date }}
+            </div>
+            <div class="mb-2">
+              <label class="form-label">郵便番号</label>
+              {{ form.postal_code }}
+            </div>
+            <div class="mb-2">
+              <label class="form-label">住所</label>
+              {{ form.address }}
+            </div>
+            <div class="mb-2">
+              <label class="form-label">電話番号</label>
+              {{ form.phone_number }}
+            </div>
+            <div class="text-end">
+              <button type="submit" class="btn btn-success">保存</button>
+            </div>
+          </form>
+        </div>
+        <!-- 右栏：保险 -->
+        <div class="col-md-8">
+          <div class="row g-2">
+            <div class="col-4"><b>健康保険</b></div>
+            <div class="col-3">番号 {{ driver.health_insurance_no }}</div>
+            <div class="col-3">加入 {{ driver.health_insurance_join_date|date:"Y/m/d" }}</div>
+            <div class="w-100"></div>
+            <div class="col-4"><b>厚生年金保険</b></div>
+            <div class="col-3">番号 {{ driver.pension_no }}</div>
+            <div class="col-3">加入 {{ driver.pension_join_date|date:"Y/m/d" }}</div>
+            <div class="w-100"></div>
+            <div class="col-4"><b>雇用保険</b></div>
+            <div class="col-3">番号 {{ driver.employment_insurance_no }}</div>
+            <div class="col-3">加入 {{ driver.employment_insurance_join_date|date:"Y/m/d" }}</div>
+            <div class="w-100"></div>
+            <div class="col-4"><b>労災保険</b></div>
+            <div class="col-3">番号 {{ driver.workers_insurance_no }}</div>
+            <div class="col-3">加入 {{ driver.workers_insurance_join_date|date:"Y/m/d" }}</div>
+            <div class="w-100"></div>
+            <div class="col-4"><b>厚生年金基金</b></div>
+            <div class="col-3">番号 {{ driver.pension_fund_no }}</div>
+            <div class="col-3">加入 {{ driver.pension_fund_join_date|date:"Y/m/d" }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

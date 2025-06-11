@@ -1,0 +1,26 @@
+<ul class="nav nav-tabs mb-3" id="detailTab">
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'detail' %}active{% endif %}"
+            href="{% url 'staffbook:driver_detail' driver.id %}">基本データ管理</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'personal' %}active{% endif %}" 
+            href="{% url 'staffbook:driver_personal_info' driver.id %}">個人情報</a>
+    </li>
+    <li class="nav-item"><a class="nav-link" href="#">運転経験</a></li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'license' %}active{% endif %}" 
+            href="{% url 'staffbook:driver_license_info' driver.id %}">免許証管理</a></li>
+    <li class="nav-item"><a class="nav-link" href="#">資格</a></li>
+    <li class="nav-item"><a class="nav-link" href="#">適性診断</a></li>
+    <li class="nav-item"><a class="nav-link" href="#">賞罰</a></li>
+    <li class="nav-item"><a class="nav-link" href="#">事故・違反</a></li>
+    <li class="nav-item"><a class="nav-link" href="#">指導教育</a></li>
+    <li class="nav-item"><a class="nav-link" href="#">健康診断</a></li>
+    <li class="nav-item"><a class="nav-link" href="#">既往歴</a></li>
+    <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'daily' %}active{% endif %}"
+            href="{% url 'staffbook:driver_card_daily' driver.id %}">日報</a>
+    </li>
+    <!-- 其余 tab ... -->
+</ul>

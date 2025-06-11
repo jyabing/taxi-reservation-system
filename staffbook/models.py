@@ -22,28 +22,47 @@ class Driver(models.Model):
         null=True, blank=True,       # 允许先不绑定
         verbose_name='绑定用户'
     )
-    staff_code = models.CharField('员工コード', max_length=20, unique=True)
-    name = models.CharField('姓名', max_length=30)
-    phone = models.CharField('手机号', max_length=20, blank=True, null=True)
-    tax_id = models.CharField('税号', max_length=30, blank=True, null=True)
-    # —— 台账扩展字段 ——
-    gender = models.CharField("性别", max_length=5, choices=[('男', '男'), ('女', '女')], blank=True)
-    birthday = models.DateField("出生年月日", blank=True, null=True)
-    address = models.CharField("住址", max_length=128, blank=True)
-    hire_date = models.DateField("聘用日期", blank=True, null=True)
-    employ_type = models.CharField("在职类型", max_length=20, blank=True)  # 常时、兼职等
-    company = models.CharField("公司名", max_length=40, blank=True)
-    workplace = models.CharField("所属营业所", max_length=40, blank=True)
-    education = models.CharField("最终学历", max_length=40, blank=True)
-    previous_employer = models.CharField("前任勤务先", max_length=40, blank=True)
-    qualification = models.CharField("资格证", max_length=40, blank=True)
-    qualification_date = models.DateField("资格取得年月", blank=True, null=True)
-    health_insurance = models.CharField("健康保险", max_length=40, blank=True)
-    health_check = models.CharField("健康诊断结果", max_length=100, blank=True)
-    health_check_date = models.DateField("健康诊断日期", blank=True, null=True)
-    family_info = models.TextField("家族状况", blank=True)
-    note = models.TextField("备注", blank=True)
-    photo = models.ImageField("照片", upload_to="staff_photos/", blank=True, null=True)  # 如需支持照片上传
+    # 新建司机
+    driver_code = models.CharField('従業員番号', max_length=20, unique=True)
+    name = models.CharField('氏名', max_length=32)
+    kana = models.CharField('フリガナ', max_length=32)
+    company = models.CharField('事業者名', max_length=64)
+    workplace = models.CharField('営業所名', max_length=64)
+    department = models.CharField('部門', max_length=32, blank=True)
+    position = models.CharField('職種', max_length=32, choices=[
+        ('1', '常時選任運転者'),
+        ('2', '運転者'),
+        ('3', '職員'),
+        ('4', '整備士')
+    ])
+    employ_type = models.CharField("在职类型", max_length=20, choices=[  # 常时、兼职等
+        ('1', '正式運転者'),
+        ('2', '非常勤運転者')
+    ])
+    appointment_date = models.DateField(blank=True, null=True, verbose_name="選任年月日")
+    hire_date = models.DateField(blank=True, null=True, verbose_name="入社年月日")
+    create_date = models.DateField(blank=True, null=True, verbose_name="作成年月日")
+    birth_date = models.DateField(blank=True, null=True, verbose_name="生年月日")
+    gender = models.CharField(max_length=8, choices=[('男性', '男性'), ('女性', '女性'), ('未設定', '未設定')], default='未設定', verbose_name="性別")
+    blood_type = models.CharField(max_length=4, verbose_name="血液型", blank=True, null=True)
+    postal_code = models.CharField(max_length=16, blank=True, null=True, verbose_name="郵便番号")
+    address = models.CharField(max_length=128, blank=True, null=True, verbose_name="住所")
+    phone_number = models.CharField(max_length=32, blank=True, null=True, verbose_name="電話番号")
+    photo = models.ImageField(upload_to='driver_photos/', blank=True, null=True, verbose_name="写真")
+    photo_date = models.DateField(blank=True, null=True, verbose_name="撮影年月日")
+    # 保险相关
+    health_insurance_no = models.CharField(max_length=32, blank=True, null=True, verbose_name="健康保険番号")
+    health_insurance_join_date = models.DateField(blank=True, null=True, verbose_name="健康保険加入日")
+    pension_no = models.CharField(max_length=32, blank=True, null=True, verbose_name="厚生年金保険番号")
+    pension_join_date = models.DateField(blank=True, null=True, verbose_name="厚生年金保険加入日")
+    employment_insurance_no = models.CharField(max_length=32, blank=True, null=True, verbose_name="雇用保険番号")
+    employment_insurance_join_date = models.DateField(blank=True, null=True, verbose_name="雇用保険加入日")
+    workers_insurance_no = models.CharField(max_length=32, blank=True, null=True, verbose_name="労災保険番号")
+    workers_insurance_join_date = models.DateField(blank=True, null=True, verbose_name="労災保険加入日")
+    pension_fund_no = models.CharField(max_length=32, blank=True, null=True, verbose_name="厚生年金基金番号")
+    pension_fund_join_date = models.DateField(blank=True, null=True, verbose_name="厚生年金基金加入日")
+    # 其它
+    remark = models.CharField(max_length=256, blank=True, null=True, verbose_name="特記事項")
     # 可根据需要继续添加其他字段（如身份证号、入职日期、状态等）
 
     class Meta:
@@ -51,7 +70,7 @@ class Driver(models.Model):
         verbose_name_plural = "司机资料"
     
     def __str__(self):
-        return f"{self.staff_code} - {self.name}"
+        return f"{self.driver_code} - {self.name}"
 
 # 驾驶经验（可多条）
 class DrivingExperience(models.Model):
@@ -94,6 +113,31 @@ class DriverDailySales(models.Model):
 
     def __str__(self):
         return f"{self.driver} - {self.date}"
+
+class LicenseType(models.Model):
+    """驾驶证种类，如：大型、中型、准中型、普通等"""
+    name = models.CharField('种类', max_length=30, unique=True)
+    label = models.CharField('显示名', max_length=32, blank=True)
+
+    def __str__(self):
+        return self.label or self.name
+
+class DriverLicense(models.Model):
+    driver = models.OneToOneField('Driver', on_delete=models.CASCADE, related_name='license')
+    photo = models.ImageField("免许写真", upload_to='license_photos/', null=True, blank=True)
+    license_number = models.CharField("免許証番号", max_length=32, blank=True)
+    issue_date = models.DateField("交付年月日", null=True, blank=True)
+    expiry_date = models.DateField("有効期限", null=True, blank=True)
+    date_acquired_a = models.DateField("二・小・原取得年月日", null=True, blank=True)
+    date_acquired_b = models.DateField("其他取得年月日", null=True, blank=True)
+    date_acquired_c = models.DateField("二種取得年月日", null=True, blank=True)
+    license_types = models.ManyToManyField(LicenseType, verbose_name="種　類", blank=True)
+    license_conditions = models.CharField("条件", max_length=128, blank=True)
+    note = models.TextField("備考", blank=True)
+
+    def __str__(self):
+        return f"{self.driver.name}的免許证"
+
 
 # 核心：乘务日报（一天一条），不再保存单独的金额等，而是所有明细归属于这张日报
 class DriverDailyReport(models.Model):

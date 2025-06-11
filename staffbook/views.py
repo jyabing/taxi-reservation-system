@@ -1,8 +1,8 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet
-from .models import DriverDailySales, DriverDailyReport, Driver, DrivingExperience, Insurance, FamilyMember
+from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm
+from .models import DriverDailySales, DriverDailyReport, Driver, DrivingExperience, Insurance, FamilyMember, DriverLicense, LicenseType
 from django.db.models import Q, Sum
 from django.forms import inlineformset_factory
 from django.utils import timezone
@@ -92,7 +92,7 @@ def driver_list(request):
     keyword = request.GET.get('keyword', '').strip()
     if keyword:
         drivers = Driver.objects.filter(
-            Q(name__icontains=keyword) | Q(staff_code__icontains=keyword)
+            Q(name__icontains=keyword) | Q(driver_code__icontains=keyword)
         )
     else:
         drivers = Driver.objects.all()
@@ -108,7 +108,7 @@ def driver_create(request):
             return redirect('staffbook:driver_detail', driver_id=driver.id)
     else:
         form = DriverForm()
-    return render(request, 'staffbook/driver_form.html', {'form': form, 'is_create': True})
+    return render(request, 'staffbook/driver_create.html', {'form': form, 'is_create': True})
 
 # ✅ 编辑员工
 def driver_edit(request, driver_id):
@@ -174,6 +174,70 @@ def driver_detail(request, driver_id):
         'selected_date': selected_date,
         'selected_month': selected_month,
         'can_edit': can_edit,
+        'active_tab': 'detail',   # ←←←←← 一定要加！！！！
+    })
+
+@login_required
+def driver_card_daily(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    # 默认查询本月日报
+    today = date.today()
+    selected_month = request.GET.get('month', today.strftime('%Y-%m'))
+    year, month = map(int, selected_month.split('-'))
+    reports = DriverDailyReport.objects.filter(driver=driver, date__year=year, date__month=month).order_by('-date')
+    return render(request, 'staffbook/driver_card_daily.html', {
+        'driver': driver,
+        'reports': reports,
+        'selected_month': selected_month,
+        'active_tab': 'daily',
+    })
+
+@login_required
+def driver_personal_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    if request.method == 'POST':
+        form = DriverPersonalInfoForm(request.POST, request.FILES, instance=driver)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "个人情报已保存！")
+            return redirect('staffbook:driver_personal_info', driver_id=driver.id)
+    else:
+        form = DriverPersonalInfoForm(instance=driver)
+    return render(request, 'staffbook/driver_personal_info.html', {
+        'driver': driver,
+        'form': form,
+        'active_tab': 'personal',  # tab高亮
+    })
+
+@login_required
+def driver_license_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    # get_or_create: 没有就创建一个
+    license, created = DriverLicense.objects.get_or_create(driver=driver)
+    all_license_types = LicenseType.objects.all()
+    return render(request, 'staffbook/driver_license_info.html', {
+        'driver': driver,
+        'license': license,
+        'all_license_types': all_license_types,
+        'active_tab': 'license',  # tab高亮
+    })
+
+@login_required
+def driver_license_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    # get_or_create: 没有就创建一个
+    license, created = DriverLicense.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = DriverLicenseForm(request.POST, request.FILES, instance=license)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_license_info', driver_id=driver.id)
+    else:
+        form = DriverLicenseForm(instance=license)
+    return render(request, 'staffbook/driver_license_edit.html', {
+        'form': form,
+        'driver': driver,
+        'license': license,
     })
 
 # ✅ 管理员新增日报给某员工
@@ -250,7 +314,7 @@ def bind_missing_users(request):
 
     if request.method == 'POST':
         for driver in drivers_without_user:
-            username = f"driver{driver.staff_code}"
+            username = f"driver{driver.driver_code}"
             if not User.objects.filter(username=username).exists():
                 user = User.objects.create_user(username=username, password='12345678')
                 driver.user = user
