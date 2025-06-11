@@ -1,9 +1,26 @@
 from django.contrib import admin
-from .models import DriverDailySales, DriverDailyReport, DriverPayrollRecord, DriverReportImage, Driver
 from django.utils.html import format_html
 from django.contrib.auth import get_user_model
+from .models import (
+    Driver, DriverDailySales, DriverDailyReport, DriverPayrollRecord,
+    DriverReportImage, DrivingExperience, Insurance, FamilyMember
+)
 
 User = get_user_model()
+
+# 台账明细 Inline
+class DrivingExperienceInline(admin.TabularInline):
+    model = DrivingExperience
+    extra = 1
+
+class InsuranceInline(admin.TabularInline):
+    model = Insurance
+    extra = 1
+
+class FamilyMemberInline(admin.TabularInline):
+    model = FamilyMember
+    extra = 1
+
 
 @admin.register(Driver)
 class DriverAdmin(admin.ModelAdmin):

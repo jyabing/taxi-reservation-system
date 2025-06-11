@@ -2,12 +2,19 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet
-from .models import DriverDailySales, DriverDailyReport, Driver
+from .models import DriverDailySales, DriverDailyReport, Driver, DrivingExperience, Insurance, FamilyMember
 from django.db.models import Q, Sum
+from django.forms import inlineformset_factory
 from django.utils import timezone
 from django import forms
+from datetime import date
+from calendar import monthrange
 
 from accounts.utils import check_module_permission
+
+def driver_card(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    return render(request, "staffbook/driver_detail.html", {"driver": driver})
 
 @login_required
 def staffbook_dashboard(request):
@@ -104,17 +111,36 @@ def driver_create(request):
     return render(request, 'staffbook/driver_form.html', {'form': form, 'is_create': True})
 
 # ✅ 编辑员工
-@check_module_permission('employee')
 def driver_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
+    DrivingExpFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
+    InsuranceFormSet = inlineformset_factory(Driver, Insurance, fields="__all__", extra=1, can_delete=True)
+    FamilyFormSet = inlineformset_factory(Driver, FamilyMember, fields="__all__", extra=1, can_delete=True)
+
     if request.method == 'POST':
-        form = DriverForm(request.POST, instance=driver)
-        if form.is_valid():
+        form = DriverForm(request.POST, request.FILES, instance=driver)
+        exp_formset = DrivingExpFormSet(request.POST, instance=driver)
+        ins_formset = InsuranceFormSet(request.POST, instance=driver)
+        fam_formset = FamilyFormSet(request.POST, instance=driver)
+        if form.is_valid() and exp_formset.is_valid() and ins_formset.is_valid() and fam_formset.is_valid():
             form.save()
+            exp_formset.save()
+            ins_formset.save()
+            fam_formset.save()
             return redirect('staffbook:driver_detail', driver_id=driver.id)
     else:
         form = DriverForm(instance=driver)
-    return render(request, 'staffbook/driver_form.html', {'form': form, 'is_create': False})
+        exp_formset = DrivingExpFormSet(instance=driver)
+        ins_formset = InsuranceFormSet(instance=driver)
+        fam_formset = FamilyFormSet(instance=driver)
+
+    return render(request, 'staffbook/driver_edit.html', {
+        'form': form,
+        'exp_formset': exp_formset,
+        'ins_formset': ins_formset,
+        'fam_formset': fam_formset,
+        'driver': driver,
+    })
 
 # ✅ 员工详情页（司机可看自己，管理员可看全部）
 @login_required
@@ -123,9 +149,16 @@ def driver_detail(request, driver_id):
     if not (request.user.is_staff or driver.user == request.user):
         return redirect('staffbook:driver_list')
 
+    # 获取查询参数
     selected_date = request.GET.get('date')
     selected_month = request.GET.get('month')
 
+    today = date.today()
+    # 如果没传month参数，默认当前月
+    if not selected_month:
+        selected_month = today.strftime('%Y-%m')
+
+    # 查询日报
     reports = DriverDailyReport.objects.filter(driver=driver)
     if selected_date:
         reports = reports.filter(date=selected_date)
@@ -133,9 +166,6 @@ def driver_detail(request, driver_id):
         year, month = map(int, selected_month.split('-'))
         reports = reports.filter(date__year=year, date__month=month)
     reports = reports.order_by('-date')
-
-    for report in reports:
-        report.total_meter_fee = report.items.aggregate(total=Sum('meter_fee'))['total'] or 0
 
     can_edit = request.user.is_staff
     return render(request, 'staffbook/driver_detail.html', {

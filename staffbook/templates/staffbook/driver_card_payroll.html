@@ -1,0 +1,13 @@
+<table class="table table-bordered table-sm">
+  <tr><th>月份</th><th>总业绩</th><th>实发工资</th><th>备注</th></tr>
+  {% for pr in driver.payroll_records.all %}
+    <tr>
+      <td>{{ pr.month|date:"Y年m月" }}</td>
+      <td>{{ pr.total_sales }}</td>
+      <td>{{ pr.salary_paid }}</td>
+      <td>{{ pr.note|truncatechars:12 }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="4">暂无工资记录</td></tr>
+  {% endfor %}
+</table>

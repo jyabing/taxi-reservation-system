@@ -1,0 +1,14 @@
+<table class="table table-bordered table-sm">
+  <tr><th>最终学历</th><td>{{ driver.education }}</td><th>前任勤务先</th><td>{{ driver.previous_employer }}</td></tr>
+  <tr><th>资格证</th><td>{{ driver.qualification }}</td><th>资格取得年月</th><td>{{ driver.qualification_date }}</td></tr>
+</table>
+
+<h6>驾驶经验</h6>
+<table class="table table-bordered table-sm">
+  <tr><th>车种</th><th>经验年数</th><th>公司</th></tr>
+  {% for exp in driver.driving_exp.all %}
+    <tr><td>{{ exp.vehicle_type }}</td><td>{{ exp.years }}</td><td>{{ exp.company }}</td></tr>
+  {% empty %}
+    <tr><td colspan="3">无记录</td></tr>
+  {% endfor %}
+</table>

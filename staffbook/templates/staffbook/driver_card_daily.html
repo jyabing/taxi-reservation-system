@@ -1,0 +1,57 @@
+ <!-- 日报检索区 
+  <form method="get" style="margin-bottom:1em;">
+    <label>按日期：</label>
+    <input type="date" name="date" value="{{ selected_date|default:'' }}">
+    <label style="margin-left:1.2em;">按月份：</label>
+    <input type="month" name="month" value="{{ selected_month|default:'' }}">
+    <button type="submit" class="btn btn-outline-secondary">查日报</button>
+    {% if selected_date or selected_month %}
+    <a href="{% url 'staffbook:driver_detail' driver.id %}" style="margin-left:1.2em;">重置</a>
+    {% endif %}
+  </form>-->
+
+<div style="margin-bottom:1.2em;">
+  <form method="get" class="row g-2 align-items-center">
+    <div class="col-auto">
+      <b style="font-size:1.2em;">
+        {% if selected_date %}
+          日报日期：{{ selected_date }}
+        {% else %}
+          当前月份：{{ selected_month }}
+        {% endif %}
+      </b>
+    </div>
+    <div class="col-auto">
+      <input type="date" name="date" class="form-control" value="{{ selected_date|default_if_none:'' }}">
+    </div>
+    <div class="col-auto">
+      <input type="month" name="month" class="form-control" value="{{ selected_month|default_if_none:'' }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-outline-primary btn-sm">查找</button>
+      <a href="{% url 'staffbook:driver_detail' driver.id %}" class="btn btn-outline-secondary btn-sm">本月</a>
+    </div>
+  </form>
+</div>
+
+<table class="table table-bordered table-sm">
+  <tr>
+    <th>日期</th>
+    <th>卖上(合计)</th>
+    <th>备注</th>
+    <th>操作</th>
+  </tr>
+  {% for report in reports %}
+    <tr>
+      <td>{{ report.date }}</td>
+      <td>{{ report.total_meter_fee }}</td>
+      <td>{{ report.note|truncatechars:12 }}</td>
+      <td>
+        <a href="{% url 'staffbook:driver_dailyreport_edit' driver.id report.id %}">编辑</a>
+        <a href="{% url 'staffbook:driver_dailyreport_delete' driver.id report.id %}">删除</a>
+      </td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="4">暂无日报</td></tr>
+  {% endfor %}
+</table>

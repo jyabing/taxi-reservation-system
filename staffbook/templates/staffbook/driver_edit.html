@@ -1,0 +1,29 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+<h3>编辑员工信息（{{ driver.staff_code }} - {{ driver.name }}）</h3>
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {{ form.as_p }}
+
+  <h5>驾驶经验</h5>
+  {{ exp_formset.management_form }}
+  {% for f in exp_formset %}
+    {{ f.as_p }}
+  {% endfor %}
+
+  <h5>保险信息</h5>
+  {{ ins_formset.management_form }}
+  {% for f in ins_formset %}
+    {{ f.as_p }}
+  {% endfor %}
+
+  <h5>家庭成员</h5>
+  {{ fam_formset.management_form }}
+  {% for f in fam_formset %}
+    {{ f.as_p }}
+  {% endfor %}
+
+  <button type="submit" class="btn btn-primary">保存</button>
+  <a href="{% url 'staffbook:driver_detail' driver.id %}" class="btn btn-secondary">取消</a>
+</form>
+{% endblock %}

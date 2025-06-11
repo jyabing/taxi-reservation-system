@@ -1,0 +1,24 @@
+<table class="table table-bordered table-sm">
+  <tr><th>健康保险</th><td>{{ driver.health_insurance }}</td><th>健康诊断日期</th><td>{{ driver.health_check_date }}</td></tr>
+  <tr><th>健康诊断结果</th><td>{{ driver.health_check }}</td><th>家族状况</th><td>{{ driver.family_info }}</td></tr>
+</table>
+
+<h6>保险信息</h6>
+<table class="table table-bordered table-sm">
+  <tr><th>种类</th><th>加入日期</th><th>保险号</th></tr>
+  {% for ins in driver.insurances.all %}
+    <tr><td>{{ ins.kind }}</td><td>{{ ins.join_date }}</td><td>{{ ins.number }}</td></tr>
+  {% empty %}
+    <tr><td colspan="3">无记录</td></tr>
+  {% endfor %}
+</table>
+
+<h6>家庭成员</h6>
+<table class="table table-bordered table-sm">
+  <tr><th>姓名</th><th>关系</th><th>出生年月</th></tr>
+  {% for fm in driver.family_members.all %}
+    <tr><td>{{ fm.name }}</td><td>{{ fm.relation }}</td><td>{{ fm.birthday }}</td></tr>
+  {% empty %}
+    <tr><td colspan="3">无记录</td></tr>
+  {% endfor %}
+</table>

@@ -12,7 +12,7 @@ PAYMENT_METHOD_CHOICES = [
     ('barcode', '扫码(PayPay/AuPay/支付宝/微信Pay等)'),
 ]
 
-# 司机基本信息
+# 司机基本信息 + 台账扩展字段
 class Driver(models.Model):
     # user 字段一定指向 AUTH_USER_MODEL
     user = models.OneToOneField(
@@ -26,6 +26,24 @@ class Driver(models.Model):
     name = models.CharField('姓名', max_length=30)
     phone = models.CharField('手机号', max_length=20, blank=True, null=True)
     tax_id = models.CharField('税号', max_length=30, blank=True, null=True)
+    # —— 台账扩展字段 ——
+    gender = models.CharField("性别", max_length=5, choices=[('男', '男'), ('女', '女')], blank=True)
+    birthday = models.DateField("出生年月日", blank=True, null=True)
+    address = models.CharField("住址", max_length=128, blank=True)
+    hire_date = models.DateField("聘用日期", blank=True, null=True)
+    employ_type = models.CharField("在职类型", max_length=20, blank=True)  # 常时、兼职等
+    company = models.CharField("公司名", max_length=40, blank=True)
+    workplace = models.CharField("所属营业所", max_length=40, blank=True)
+    education = models.CharField("最终学历", max_length=40, blank=True)
+    previous_employer = models.CharField("前任勤务先", max_length=40, blank=True)
+    qualification = models.CharField("资格证", max_length=40, blank=True)
+    qualification_date = models.DateField("资格取得年月", blank=True, null=True)
+    health_insurance = models.CharField("健康保险", max_length=40, blank=True)
+    health_check = models.CharField("健康诊断结果", max_length=100, blank=True)
+    health_check_date = models.DateField("健康诊断日期", blank=True, null=True)
+    family_info = models.TextField("家族状况", blank=True)
+    note = models.TextField("备注", blank=True)
+    photo = models.ImageField("照片", upload_to="staff_photos/", blank=True, null=True)  # 如需支持照片上传
     # 可根据需要继续添加其他字段（如身份证号、入职日期、状态等）
 
     class Meta:
@@ -34,6 +52,30 @@ class Driver(models.Model):
     
     def __str__(self):
         return f"{self.staff_code} - {self.name}"
+
+# 驾驶经验（可多条）
+class DrivingExperience(models.Model):
+    driver = models.ForeignKey(Driver, related_name="driving_exp", on_delete=models.CASCADE)
+    vehicle_type = models.CharField("车种", max_length=30, blank=True)
+    years = models.IntegerField("经验年数", blank=True, null=True)
+    company = models.CharField("经验公司", max_length=50, blank=True)
+
+# 保险信息（可多条）
+class Insurance(models.Model):
+    driver = models.ForeignKey(Driver, related_name="insurances", on_delete=models.CASCADE)
+    kind = models.CharField("保险种类", max_length=20)  # 健康/厚生年金/雇用/劳灾
+    join_date = models.DateField("加入年月日", blank=True, null=True)
+    number = models.CharField("保险号", max_length=40, blank=True)
+
+# 家庭成员（可多条）
+class FamilyMember(models.Model):
+    driver = models.ForeignKey(Driver, related_name="family_members", on_delete=models.CASCADE)
+    name = models.CharField("家族姓名", max_length=20)
+    relation = models.CharField("关系", max_length=10)
+    birthday = models.DateField("出生年月", blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.driver.name} - {self.name}({self.relation})"
 
 # 日销售（不变）
 class DriverDailySales(models.Model):
@@ -69,6 +111,12 @@ class DriverDailyReport(models.Model):
     )
     edited_at = models.DateTimeField("编辑时间", null=True, blank=True)
 
+    @property
+    def total_meter_fee(self):
+        """返回该日报下所有明细的メータ料金合计"""
+        # items 为 related_name，指向所有明细表
+        return sum(item.meter_fee or 0 for item in self.items.all())
+
     class Meta:
         ordering = ['-date']
         verbose_name = '乘务日报'
@@ -78,7 +126,7 @@ class DriverDailyReport(models.Model):
     def __str__(self):
         return f"{self.driver} {self.date}"
 
-# ★ 新增！乘务日报明细，一天可有多条
+# ★ 新增！乘务日报明细，一天可有多条，归属于DriverDailyReport
 class DriverDailyReportItem(models.Model):
     report = models.ForeignKey(
         DriverDailyReport, on_delete=models.CASCADE, related_name='items', verbose_name="所属日报"

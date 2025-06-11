@@ -1,0 +1,40 @@
+<table>
+  <tr><th>编号</th><td>{{ driver.staff_code }}</td><a href="{% url 'staffbook:driver_edit' driver.id %}" class="btn btn-outline-primary btn-sm" style="float:right;">编辑</a></tr>
+  <tr><th>姓名</th><td>{{ driver.name }}</td></tr>
+  <tr><th>性别</th><td>{{ driver.gender }}</td></tr>
+  <tr><th>出生年月日</th><td>{{ driver.birthday }}</td></tr>
+  <tr><th>手机号</th><td>{{ driver.phone }}</td></tr>
+  <tr><th>税号</th><td>{{ driver.tax_id }}</td></tr>
+  <tr><th>住址</th><td>{{ driver.address }}</td></tr>
+  <tr><th>聘用日期</th><td>{{ driver.hire_date }}</td></tr>
+  <tr><th>公司</th><td>{{ driver.company }}</td></tr>
+  <tr><th>营业所</th><td>{{ driver.workplace }}</td></tr>
+  <tr><th>备注</th><td>{{ driver.note }}</td></tr>
+</table>
+
+<h6>驾驶经验</h6>
+<ul>
+  {% for exp in driver.driving_exp.all %}
+    <li>{{ exp.vehicle_type }}（{{ exp.company }}）: {{ exp.years }}年</li>
+  {% empty %}
+    <li>无</li>
+  {% endfor %}
+</ul>
+
+<h6>保险信息</h6>
+<ul>
+  {% for ins in driver.insurances.all %}
+    <li>{{ ins.kind }}: {{ ins.join_date }} ({{ ins.number }})</li>
+  {% empty %}
+    <li>无</li>
+  {% endfor %}
+</ul>
+
+<h6>家庭成员</h6>
+<ul>
+  {% for fm in driver.family_members.all %}
+    <li>{{ fm.name }}（{{ fm.relation }}，{{ fm.birthday }}）</li>
+  {% empty %}
+    <li>无</li>
+  {% endfor %}
+</ul>

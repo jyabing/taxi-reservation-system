@@ -22,6 +22,7 @@ urlpatterns = [
     path('bind_missing_users/', views.bind_missing_users, name='bind_missing_users'),
     
     # 某员工的日报管理（以员工ID为主键，管理员用）
+    #path('drivers/<int:driver_id>/dailyreport/<int:pk>/', views.dailyreport_detail, name='driver_dailyreport_detail'),
     path('drivers/<int:driver_id>/dailyreport/add/', views.dailyreport_create_for_driver, name='driver_dailyreport_add'),
     path('drivers/<int:driver_id>/dailyreport/<int:pk>/edit/', views.dailyreport_edit_for_driver, name='driver_dailyreport_edit'),
     path('drivers/<int:driver_id>/dailyreport/<int:pk>/delete/', views.dailyreport_delete_for_driver, name='driver_dailyreport_delete'),
