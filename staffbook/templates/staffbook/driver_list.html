@@ -106,8 +106,8 @@
 <!-- 中部员工代码列表 -->
 <div class="staff-code-list">
   {% for driver in drivers %}
-    <a class="staff-code-item" href="{% url 'staffbook:driver_detail' driver.id %}">
-      {{ driver.staff_code }} - {{ driver.name }}
+    <a class="staff-code-item" href="{% url 'staffbook:driver_basic_info' driver.id %}">
+      {{ driver.driver_code }} - {{ driver.name }}
     </a>
   {% empty %}
     <div style="color:#888; margin-top:2em;">暂无员工信息</div>
