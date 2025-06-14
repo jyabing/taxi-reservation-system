@@ -1,0 +1,41 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+{% include "staffbook/driver_tab_nav.html" %}
+<div class="container mt-3">
+  <h5>编辑事故・違反记录</h5>
+  <form method="post">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <table class="table table-bordered align-middle">
+      <thead>
+        <tr>
+          <th>发生日期</th>
+          <th>简要说明</th>
+          <th>处理/处分</th>
+          <th>备注</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for form in formset %}
+        <tr>
+          <td>{{ form.happened_at }}</td>
+          <td>{{ form.description }}</td>
+          <td>{{ form.penalty }}</td>
+          <td>{{ form.note }}</td>
+          <td>
+            {% if form.instance.pk %}
+              <label>{{ form.DELETE }} 删除</label>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="text-end">
+      <button type="submit" class="btn btn-success">保存</button>
+      <a href="{% url 'staffbook:driver_accident_info' driver.id %}" class="btn btn-secondary ms-2">取消</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

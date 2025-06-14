@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm
+from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, DriverBasicForm
 from .models import DriverDailySales, DriverDailyReport, Driver, DrivingExperience, Insurance, FamilyMember, DriverLicense, LicenseType
 from django.db.models import Q, Sum
 from django.forms import inlineformset_factory
@@ -14,7 +14,7 @@ from accounts.utils import check_module_permission
 
 def driver_card(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    return render(request, "staffbook/driver_detail.html", {"driver": driver})
+    return render(request, "staffbook/driver_basic_info.html", {"driver": driver})
 
 @login_required
 def staffbook_dashboard(request):
@@ -71,7 +71,7 @@ def dailyreport_delete_for_driver(request, driver_id, pk):
     if request.method == "POST":
         report.delete()
         messages.success(request, "已删除该日报记录。")
-        return redirect('staffbook:driver_detail', driver_id=driver.id)
+        return redirect('staffbook:driver_basic_info', driver_id=driver.id)
     return render(request, 'staffbook/dailyreport_confirm_delete.html', {
         'report': report,
         'driver': driver,
@@ -105,7 +105,7 @@ def driver_create(request):
         form = DriverForm(request.POST)
         if form.is_valid():
             driver = form.save()
-            return redirect('staffbook:driver_detail', driver_id=driver.id)
+            return redirect('staffbook:driver_basic_info', driver_id=driver.id)
     else:
         form = DriverForm()
     return render(request, 'staffbook/driver_create.html', {'form': form, 'is_create': True})
@@ -127,7 +127,7 @@ def driver_edit(request, driver_id):
             exp_formset.save()
             ins_formset.save()
             fam_formset.save()
-            return redirect('staffbook:driver_detail', driver_id=driver.id)
+            return redirect('staffbook:driver_basic_info', driver_id=driver.id)
     else:
         form = DriverForm(instance=driver)
         exp_formset = DrivingExpFormSet(instance=driver)
@@ -142,56 +142,65 @@ def driver_edit(request, driver_id):
         'driver': driver,
     })
 
-# ✅ 员工详情页（司机可看自己，管理员可看全部）
+# 个人主页+台账
 @login_required
-def driver_detail(request, driver_id):
+def driver_basic_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    if not (request.user.is_staff or driver.user == request.user):
-        return redirect('staffbook:driver_list')
-
-    # 获取查询参数
-    selected_date = request.GET.get('date')
-    selected_month = request.GET.get('month')
-
-    today = date.today()
-    # 如果没传month参数，默认当前月
-    if not selected_month:
-        selected_month = today.strftime('%Y-%m')
-
-    # 查询日报
-    reports = DriverDailyReport.objects.filter(driver=driver)
-    if selected_date:
-        reports = reports.filter(date=selected_date)
-    elif selected_month:
-        year, month = map(int, selected_month.split('-'))
-        reports = reports.filter(date__year=year, date__month=month)
-    reports = reports.order_by('-date')
-
-    can_edit = request.user.is_staff
-    return render(request, 'staffbook/driver_detail.html', {
+    return render(request, 'staffbook/driver_basic_info.html', {
         'driver': driver,
-        'reports': reports,
-        'selected_date': selected_date,
-        'selected_month': selected_month,
-        'can_edit': can_edit,
-        'active_tab': 'detail',   # ←←←←← 一定要加！！！！
+        'main_tab': 'basic',
+        'tab': 'basic',
     })
 
 @login_required
-def driver_card_daily(request, driver_id):
+def driver_basic_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    # 默认查询本月日报
-    today = date.today()
-    selected_month = request.GET.get('month', today.strftime('%Y-%m'))
-    year, month = map(int, selected_month.split('-'))
-    reports = DriverDailyReport.objects.filter(driver=driver, date__year=year, date__month=month).order_by('-date')
-    return render(request, 'staffbook/driver_card_daily.html', {
+    if request.method == 'POST':
+        form = DriverBasicForm(request.POST, request.FILES, instance=driver)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_basic_info', driver_id=driver.id)
+    else:
+        form = DriverBasicForm(instance=driver)
+    return render(request, 'staffbook/driver_basic_edit.html', {
+        'form': form,
         'driver': driver,
-        'reports': reports,
-        'selected_month': selected_month,
-        'active_tab': 'daily',
+        'main_tab': 'basic',
+        'tab': 'basic'
     })
 
+#運転経験
+@login_required
+def driver_experience_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    # 查询经验对象，可以多条
+    experiences = DrivingExperience.objects.filter(driver=driver)
+    return render(request, 'staffbook/driver_experience_info.html', {
+        'driver': driver,
+        'experiences': experiences,
+        'main_tab': 'driving',
+        'tab': 'experience',
+    })
+
+@login_required
+def driver_experience_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    ExperienceFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
+    if request.method == 'POST':
+        formset = ExperienceFormSet(request.POST, instance=driver)
+        if formset.is_valid():
+            formset.save()
+            return redirect('staffbook:driver_experience_info', driver_id=driver.id)
+    else:
+        formset = ExperienceFormSet(instance=driver)
+    return render(request, 'staffbook/driver_experience_edit.html', {
+        'formset': formset,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'experience',
+    })
+
+#個人情報
 @login_required
 def driver_personal_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
@@ -210,6 +219,55 @@ def driver_personal_info(request, driver_id):
     })
 
 @login_required
+def driver_personal_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    if request.method == 'POST':
+        form = DriverPersonalInfoForm(request.POST, request.FILES, instance=driver)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "个人信息已保存！")
+            return redirect('staffbook:driver_personal_info', driver_id=driver.id)
+    else:
+        form = DriverPersonalInfoForm(instance=driver)
+    return render(request, 'staffbook/driver_personal_edit.html', {
+        'driver': driver,
+        'form': form,
+        'main_tab': 'basic',
+        'tab': 'personal',
+    })
+
+# 緊急連絡先
+@login_required
+def driver_emergency_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    # 你可以先不传实际数据，先做一个空模板
+    return render(request, 'staffbook/driver_emergency_info.html', {
+        'driver': driver,
+        'main_tab': 'basic',
+        'tab': 'emergency'
+    })
+
+@login_required
+def driver_emergency_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    if request.method == 'POST':
+        form = DriverEmergencyInfoForm(request.POST, request.FILES, instance=driver)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "緊急連絡先已保存！")
+            return redirect('staffbook:driver_emergency_info', driver_id=driver.id)
+    else:
+        form = DriverEmergencyInfoForm(instance=driver)
+    return render(request, 'staffbook/driver_emergency_edit.html', {
+        'driver': driver,
+        'form': form,
+        'main_tab': 'basic',
+        'tab': 'emergency',
+    })
+
+
+# 员工驾驶证信息
+@login_required
 def driver_license_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     # get_or_create: 没有就创建一个
@@ -218,8 +276,8 @@ def driver_license_info(request, driver_id):
     return render(request, 'staffbook/driver_license_info.html', {
         'driver': driver,
         'license': license,
-        'all_license_types': all_license_types,
-        'active_tab': 'license',  # tab高亮
+        'main_tab': 'driving',  # 当前大类
+        'tab': 'license',  # 当前二级tab
     })
 
 @login_required
@@ -240,6 +298,267 @@ def driver_license_edit(request, driver_id):
         'license': license,
     })
 
+#運転経験
+@login_required
+def driver_experience_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    experiences = DrivingExperience.objects.filter(driver=driver)
+    return render(request, 'staffbook/driver_experience_info.html', {
+        'driver': driver,
+        'experiences': experiences,
+        'main_tab': 'driving',
+        'tab': 'experience',
+    })
+
+def driver_experience_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    ExperienceFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
+    if request.method == 'POST':
+        formset = ExperienceFormSet(request.POST, instance=driver)
+        if formset.is_valid():
+            formset.save()
+            return redirect('staffbook:driver_experience_info', driver_id=driver.id)
+    else:
+        formset = ExperienceFormSet(instance=driver)
+    return render(request, 'staffbook/driver_experience_edit.html', {
+        'formset': formset,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'experience',
+    })
+
+#資格
+@login_required
+def driver_qualification_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    qualification, _ = Qualification.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_qualification_info.html', {
+        'driver': driver,
+        'qualification': qualification,
+        'main_tab': 'driving',
+        'tab': 'qualification',
+    })
+
+@login_required
+def driver_qualification_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    qualification, _ = Qualification.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = QualificationForm(request.POST, instance=qualification)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_qualification_info', driver_id=driver.id)
+    else:
+        form = QualificationForm(instance=qualification)
+    return render(request, 'staffbook/driver_qualification_edit.html', {
+        'form': form,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'qualification',
+    })
+
+#適性診断
+@login_required
+def driver_aptitude_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    qualification, created = Qualification.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_qualification_info.html', {
+        'driver': driver,
+        'qualification': qualification,
+        'main_tab': 'driving',
+        'tab': 'qualification',
+    })
+
+@login_required
+def driver_aptitude_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    aptitude, created = aptitude.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = aptitudeForm(request.POST, instance=aptitude)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_aptitude_info', driver_id=driver.id)
+    else:
+        form = aptitudeForm(instance=aptitude)
+    return render(request, 'staffbook/driver_aptitude_edit.html', {
+        'form': form,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'aptitude',
+    })
+
+
+#賞罰
+@login_required
+def driver_rewards_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    rewards, created = Rewards.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_rewards_info.html', {
+        'driver': driver,
+        'rewards': rewards,
+        'main_tab': 'driving',
+        'tab': 'rewards',
+    })
+
+@login_required
+def driver_rewards_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    rewards, created = Rewards.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = rewardsForm(request.POST, instance=rewards)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_rewards_info', driver_id=driver.id)
+    else:
+        form = rewardsForm(instance=health)
+    return render(request, 'staffbook/driver_rewards_edit.html', {
+        'form': form,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'rewards',
+    })
+
+
+#事故・違反
+@login_required
+def driver_accident_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    accident, created = Accident.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_accident_info.html', {
+        'driver': driver,
+        'accident': accident,
+        'main_tab': 'driving',
+        'tab': 'education',
+    })
+
+@login_required
+def driver_accident_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    AccidentFormSet = inlineformset_factory(Driver, Accident, form=AccidentForm, extra=1, can_delete=True)
+    if request.method == 'POST':
+        formset = AccidentFormSet(request.POST, instance=driver)
+        if formset.is_valid():
+            formset.save()
+            return redirect('staffbook:driver_accident_info', driver_id=driver.id)
+    else:
+        formset = AccidentFormSet(instance=driver)
+    return render(request, 'staffbook/driver_accident_edit.html', {
+        'formset': formset,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'accident',
+    })
+
+
+#指導教育
+@login_required
+def driver_education_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    education, created = Education.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_education_info.html', {
+        'driver': driver,
+        'education': education,
+        'main_tab': 'driving',
+        'tab': 'education',
+    })
+
+@login_required
+def driver_education_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    education, created = Education.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = EducationForm(request.POST, instance=education)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_education_info', driver_id=driver.id)
+    else:
+        form = HealthForm(instance=health)
+    return render(request, 'staffbook/driver_education_edit.html', {
+        'form': form,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'education',
+    })
+
+
+#健康診断
+@login_required
+def driver_health_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    health, created = Health.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_health_info.html', {
+        'driver': driver,
+        'health': health,
+        'main_tab': 'driving',
+        'tab': 'health',
+    })
+
+@login_required
+def driver_health_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    health, created = Health.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = HealthForm(request.POST, instance=health)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_health_info', driver_id=driver.id)
+    else:
+        form = HealthForm(instance=health)
+    return render(request, 'staffbook/driver_health_edit.html', {
+        'form': form,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'health',
+    })
+
+
+#既往歴
+@login_required
+def driver_history_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    history, created = History.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_history_info.html', {
+        'driver': driver,
+        'history': history,
+        'main_tab': 'driving',
+        'tab': 'history',
+    })
+
+@login_required
+def driver_history_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    history, created = History.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = historyForm(request.POST, instance=health)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_history_info', driver_id=driver.id)
+    else:
+        form = HistoryForm(instance=history)
+    return render(request, 'staffbook/driver_history_edit.html', {
+        'form': form,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'history',
+    })
+
+
+# ✅ 司机日报（管理员看全部，司机看自己）
+@login_required
+def driver_card_daily(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    # 默认查询本月日报
+    today = date.today()
+    selected_month = request.GET.get('month', today.strftime('%Y-%m'))
+    year, month = map(int, selected_month.split('-'))
+    reports = DriverDailyReport.objects.filter(driver=driver, date__year=year, date__month=month).order_by('-date')
+    return render(request, 'staffbook/driver_card_daily.html', {
+        'driver': driver,
+        'reports': reports,
+        'selected_month': selected_month,
+        'active_tab': 'daily',
+    })
+
 # ✅ 管理员新增日报给某员工
 @check_module_permission('employee')
 def dailyreport_create_for_driver(request, driver_id):
@@ -254,7 +573,7 @@ def dailyreport_create_for_driver(request, driver_id):
             formset.instance = dailyreport
             formset.save()
             messages.success(request, '新增日报成功')
-            return redirect('staffbook:driver_detail', driver_id=driver.id)
+            return redirect('staffbook:driver_basic_info', driver_id=driver.id)
         else:
             print("日报主表错误：", report_form.errors)
             print("明细表错误：", formset.errors)
@@ -285,7 +604,7 @@ def dailyreport_edit_for_driver(request, driver_id, pk):
             report.save()
             formset.save()
             messages.success(request, '日报修改成功')
-            return redirect('staffbook:driver_detail', driver_id=driver.id)
+            return redirect('staffbook:driver_basic_info', driver_id=driver.id)
 
     else:
         report_form = DriverDailyReportForm(instance=dailyreport)

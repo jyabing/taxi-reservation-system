@@ -1,0 +1,64 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% load static %}
+
+{% block content %}
+{% include "staffbook/driver_tab_nav.html" %}
+
+<div class="container mt-4">
+  <div class="card shadow" style="max-width:1100px;margin:0 auto;">
+    <div class="card-body">
+      <h5 class="mb-3">基本データ管理（编辑）</h5>
+
+{% if form.errors %}
+  <div class="alert alert-danger">
+    <ul>
+      {# 遍历所有字段 #}
+      {% for field in form %}
+        {% for error in field.errors %}
+          <li><b>{{ field.label }}:</b> {{ error }}</li>
+        {% endfor %}
+      {% endfor %}
+      {# 非字段错误 #}
+      {% for error in form.non_field_errors %}
+        <li>{{ error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="row">
+          <div class="col-md-4 d-flex flex-column align-items-center">
+            {% if driver.photo %}
+              <img src="{{ driver.photo.url }}" class="rounded-circle border mb-2" style="width:120px;height:120px;object-fit:cover;">
+            {% else %}
+              <img src="{% static 'default_avatar.png' %}" class="rounded-circle border mb-2" style="width:120px;height:120px;object-fit:cover;">
+            {% endif %}
+            {{ form.photo }}
+          </div>
+          <div class="col-md-8">
+            {% for field in form %}
+              <div class="mb-3">
+                <label class="form-label fw-bold">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}
+                  <div class="form-text">{{ field.help_text }}</div>
+                {% endif %}
+                {% for error in field.errors %}
+                  <div class="text-danger">{{ error }}</div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+            <div class="text-end mt-3">
+              <button type="submit" class="btn btn-success">保存</button>
+              <a href="{% url 'staffbook:driver_basic_info' driver.id %}" class="btn btn-secondary ms-2">取消</a>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

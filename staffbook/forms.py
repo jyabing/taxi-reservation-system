@@ -1,5 +1,5 @@
 from django import forms
-from .models import DriverDailySales, DriverDailyReport, DriverPayrollRecord, DriverReportImage, Driver, DriverDailyReportItem, DriverLicense, LicenseType
+from .models import DriverDailySales, DriverDailyReport, DriverPayrollRecord, DriverReportImage, Driver, DriverDailyReportItem, DriverLicense, LicenseType, Accident
 from django.forms import inlineformset_factory
 
 class DriverForm(forms.ModelForm):
@@ -19,16 +19,13 @@ class DriverForm(forms.ModelForm):
             'create_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields:
             # 统一样式
             if not isinstance(self.fields[field].widget, (forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
                 self.fields[field].widget.attrs.update({'class': 'form-control'})
-        #self.fields['gender'].widget = forms.RadioSelect(choices=self.fields['gender'].choices)
-        self.fields['position'].widget = forms.Select(choices=self.fields['position'].choices)
-        self.fields['blood_type'].widget = forms.Select(choices=self.fields['blood_type'].choices)
-
 
 class DriverLicenseForm(forms.ModelForm):
     class Meta:
@@ -55,6 +52,35 @@ class DriverLicenseForm(forms.ModelForm):
         if not cleaned.get('issue_date'):
             self.add_error('issue_date', '交付年月日为必填项')
         return cleaned
+
+class AccidentForm(forms.ModelForm):
+    class Meta:
+        model = Accident
+        fields = ['happened_at', 'description', 'penalty', 'note']
+
+class DriverBasicForm(forms.ModelForm):
+    class Meta:
+        model = Driver
+        fields = [
+            'driver_code', 'name', 'kana', 'company', 'workplace', 'department',
+            'position', 'employ_type',  # ←必须有employ_type
+            'appointment_date', 'hire_date', 'create_date',
+            'birth_date', 'gender', 'blood_type', 'postal_code', 'address',
+            'phone_number', 'photo', 'photo_date', 'remark'
+        ]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class DriverDailySalesForm(forms.ModelForm):
     class Meta:

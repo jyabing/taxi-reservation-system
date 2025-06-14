@@ -1,0 +1,60 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+{% include "staffbook/driver_tab_nav.html" %}
+<div class="container mt-4">
+  <div class="card shadow" style="max-width:700px;margin:0 auto;">
+    <div class="card-body">
+      <h5 class="mb-3">编辑个人信息</h5>
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="row mb-3">
+          <div class="col-md-4 d-flex flex-column align-items-center">
+            <img src="{% if driver.photo %}{{ driver.photo.url }}{% else %}/static/default_avatar.png{% endif %}" alt="写真"
+              class="rounded-circle border mb-2" style="width:100px;height:100px;object-fit:cover;">
+            <div class="mb-2">{{ form.photo }}</div>
+            <div class="mb-2">{{ form.photo_date }}</div>
+          </div>
+          <div class="col-md-8">
+            <div class="mb-3">
+              <label class="form-label fw-bold">氏名</label>
+              {{ form.name|as_crispy_field }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">フリガナ</label>
+              {{ form.kana|as_crispy_field }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">性別</label>
+              {{ form.gender|as_crispy_field }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">生年月日</label>
+              {{ form.birth_date|as_crispy_field }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">血液型</label>
+              {{ form.blood_type|as_crispy_field }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">郵便番号</label>
+              {{ form.postal_code|as_crispy_field }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">住所</label>
+              {{ form.address|as_crispy_field }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">電話番号</label>
+              {{ form.phone_number|as_crispy_field }}
+            </div>
+          </div>
+        </div>
+        <div class="text-end">
+          <button type="submit" class="btn btn-success">保存</button>
+          <a href="{% url 'staffbook:driver_personal_info' driver.id %}" class="btn btn-secondary ms-2">取消</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

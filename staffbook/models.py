@@ -43,8 +43,10 @@ class Driver(models.Model):
     hire_date = models.DateField(blank=True, null=True, verbose_name="入社年月日")
     create_date = models.DateField(blank=True, null=True, verbose_name="作成年月日")
     birth_date = models.DateField(blank=True, null=True, verbose_name="生年月日")
-    gender = models.CharField(max_length=8, choices=[('男性', '男性'), ('女性', '女性'), ('未設定', '未設定')], default='未設定', verbose_name="性別")
-    blood_type = models.CharField(max_length=4, verbose_name="血液型", blank=True, null=True)
+    gender = models.CharField(max_length=8, choices=[
+        ('男性', '男性'), ('女性', '女性'), ('未設定', '未設定')], default='未設定', verbose_name="性別")
+    blood_type = models.CharField(max_length=4, choices=[
+        ('A', 'A'), ('B', 'B'), ('AB', 'AB'), ('O', 'O')], verbose_name="血液型", blank=True, null=True)
     postal_code = models.CharField(max_length=16, blank=True, null=True, verbose_name="郵便番号")
     address = models.CharField(max_length=128, blank=True, null=True, verbose_name="住所")
     phone_number = models.CharField(max_length=32, blank=True, null=True, verbose_name="電話番号")
@@ -137,6 +139,27 @@ class DriverLicense(models.Model):
 
     def __str__(self):
         return f"{self.driver.name}的免許证"
+
+class Accident(models.Model):
+    driver = models.ForeignKey('Driver', on_delete=models.CASCADE, related_name='accidents', verbose_name="司机")
+    happened_at = models.DateField("发生日期")
+    description = models.CharField("简要说明", max_length=100)
+    penalty = models.CharField("处理/处分", max_length=100, blank=True)
+    note = models.CharField("备注", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "事故・違反"
+        verbose_name_plural = "事故・違反"
+
+    def __str__(self):
+        return f"{self.driver.name} - {self.happened_at} - {self.description}"
+
+
+
+
+
+
+
 
 
 # 核心：乘务日报（一天一条），不再保存单独的金额等，而是所有明细归属于这张日报
