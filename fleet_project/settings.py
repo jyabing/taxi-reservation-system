@@ -52,6 +52,8 @@ INSTALLED_APPS = [
     'rangefilter',
     'staffbook',
     'carinfo',
+    'django.contrib.humanize',
+    'widget_tweaks',
 ]
 
 

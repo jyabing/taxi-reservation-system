@@ -5,6 +5,6 @@
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit" class="btn btn-primary">{% if is_edit %}保存修改{% else %}提交{% endif %}</button>
-    <a href="{% url 'staffbook:driver_detail' driver.id %}" class="btn btn-link">返回</a>
+    <a href="{% url 'staffbook:driver_dailyreport_month' driver.id %}" class="btn btn-link">返回</a>
   </form>
 {% endblock %}

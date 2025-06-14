@@ -1,7 +1,18 @@
 from django import forms
-from .models import DriverDailySales, DriverDailyReport, DriverPayrollRecord, DriverReportImage, Driver, DriverDailyReportItem, DriverLicense, LicenseType, Accident
+from .models import (
+    Driver, DriverLicense, Accident,
+    DriverDailySales, DriverDailyReport, DriverDailyReportItem,
+    DriverPayrollRecord, DriverReportImage
+)
 from django.forms import inlineformset_factory
 
+# ✅ 通用样式自动添加工具函数
+def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
+    for field in fields:
+        if not isinstance(fields[field].widget, exclude_types):
+            fields[field].widget.attrs.update({'class': 'form-control'})
+
+# ✅ 司机基础信息表单
 class DriverForm(forms.ModelForm):
     class Meta:
         model = Driver
@@ -22,11 +33,9 @@ class DriverForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields:
-            # 统一样式
-            if not isinstance(self.fields[field].widget, (forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
-                self.fields[field].widget.attrs.update({'class': 'form-control'})
+        apply_form_control_style(self.fields)
 
+# ✅ 驾照信息表单
 class DriverLicenseForm(forms.ModelForm):
     class Meta:
         model = DriverLicense
@@ -53,52 +62,44 @@ class DriverLicenseForm(forms.ModelForm):
             self.add_error('issue_date', '交付年月日为必填项')
         return cleaned
 
+# ✅ 事故表单
 class AccidentForm(forms.ModelForm):
     class Meta:
         model = Accident
         fields = ['happened_at', 'description', 'penalty', 'note']
 
+# ✅ 简版基础信息表单
 class DriverBasicForm(forms.ModelForm):
     class Meta:
         model = Driver
         fields = [
             'driver_code', 'name', 'kana', 'company', 'workplace', 'department',
-            'position', 'employ_type',  # ←必须有employ_type
+            'position', 'employ_type',
             'appointment_date', 'hire_date', 'create_date',
             'birth_date', 'gender', 'blood_type', 'postal_code', 'address',
             'phone_number', 'photo', 'photo_date', 'remark'
         ]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+# ✅ 日销售数据表单
 class DriverDailySalesForm(forms.ModelForm):
     class Meta:
         model = DriverDailySales
         fields = ['date', 'cash_amount', 'card_amount', 'ride_count', 'mileage']
         widgets = {
-            'date': forms.DateInput(attrs={'type': 'date'}),
+            'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
 
+# ✅ 日报主表表单
 class DriverDailyReportForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReport
         fields = ['date', 'note']
         widgets = {
-            'date': forms.DateInput(attrs={'type': 'date'}),
-            'note': forms.Textarea(attrs={'rows':2}),
+            'note': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
 
+# ✅ 日报明细表单
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReportItem
@@ -108,33 +109,34 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'payment_method', 'note'
         ]
         widgets = {
-            'ride_time': forms.TextInput(attrs={'class': 'ride-time-input auto-width-input', 'placeholder': '例：08:30-09:00'}),
+            'ride_time': forms.TextInput(attrs={'class': 'ride-time-input auto-width-input'}),
             'ride_from': forms.TextInput(attrs={'class': 'auto-width-input'}),
             'via': forms.TextInput(attrs={'class': 'auto-width-input'}),
             'ride_to': forms.TextInput(attrs={'class': 'auto-width-input'}),
             'num_male': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'num_female': forms.NumberInput(attrs={'class': 'auto-width-input'}),
-            # 关键：这里要多加一个 class
             'meter_fee': forms.NumberInput(attrs={'class': 'meter-fee-input auto-width-input'}),
-            'note': forms.TextInput(attrs={'class': 'auto-width-input'}),
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
+            'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
         }
 
+# ✅ 明细表单集合
 ReportItemFormSet = inlineformset_factory(
     DriverDailyReport,
     DriverDailyReportItem,
     form=DriverDailyReportItemForm,
     extra=1,
     can_delete=True,
-    max_num=40,
+    max_num=40
 )
 
+# ✅ 日报上传图片
 class DriverReportImageForm(forms.ModelForm):
     class Meta:
         model = DriverReportImage
         fields = ['image']
 
-
+# ✅ 司机个人信息编辑
 class DriverPersonalInfoForm(forms.ModelForm):
     class Meta:
         model = Driver

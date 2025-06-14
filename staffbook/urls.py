@@ -12,6 +12,7 @@ urlpatterns = [
     path('dailyreports/add/', views.dailyreport_create, name='dailyreport_add'),  # 管理员新建日报
     path('dailyreports/<int:pk>/edit/', views.dailyreport_edit, name='dailyreport_edit'), # 管理员编辑日报
     path('my_dailyreports/', views.my_dailyreports, name='my_dailyreports'), # 当前登录用户的日报列表
+    path('dailyreports/overview/', views.dailyreport_overview, name='dailyreport_overview'),  # 日报概览（管理员用）
 
     # 员工（司机）信息管理
     path('dashboard/', views.staffbook_dashboard, name='dashboard'),
@@ -55,7 +56,7 @@ urlpatterns = [
     # 既往歴
     path('drivers/<int:driver_id>/history/', views.driver_history_info, name='driver_history_info'),   # 既往歴只读
     path('drivers/<int:driver_id>/history/edit/', views.driver_history_edit, name='driver_history_edit'), # 编辑
-    path('drivers/<int:driver_id>/daily/', views.driver_card_daily, name='driver_card_daily'),  # 员工日报卡片（个人主页）
+    path('drivers/<int:driver_id>/daily/', views.driver_dailyreport_month, name='driver_dailyreport_month'),  # 员工日报卡片（个人主页）
     
     path('drivers/<int:driver_id>/edit/', views.driver_edit, name='driver_edit'),  # 编辑员工信息
     path('bind_missing_users/', views.bind_missing_users, name='bind_missing_users'),
@@ -63,6 +64,7 @@ urlpatterns = [
     # 某员工的日报管理（以员工ID为主键，管理员用）
     #path('drivers/<int:driver_id>/dailyreport/<int:pk>/', views.dailyreport_detail, name='driver_dailyreport_detail'),
     path('drivers/<int:driver_id>/dailyreport/add/', views.dailyreport_create_for_driver, name='driver_dailyreport_add'),
-    path('drivers/<int:driver_id>/dailyreport/<int:pk>/edit/', views.dailyreport_edit_for_driver, name='driver_dailyreport_edit'),
+
+    path('drivers/<int:driver_id>/dailyreport/<int:report_id>/edit/', views.dailyreport_edit_for_driver, name='driver_dailyreport_edit'),
     path('drivers/<int:driver_id>/dailyreport/<int:pk>/delete/', views.dailyreport_delete_for_driver, name='driver_dailyreport_delete'),
 ]

@@ -1,0 +1,94 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% load humanize %}
+
+{% block content %}
+
+<!-- ✅ 搜索栏 -->
+<form method="get" class="row row-cols-auto align-items-end mb-4 g-2">
+  <div class="col">
+    <label class="form-label">従業員名</label>
+    <input type="text" name="keyword" value="{{ keyword }}" class="form-control" placeholder="例：山田">
+  </div>
+  <div class="col">
+    <label class="form-label">特定日</label>
+    <input type="date" name="date" value="{{ date_str }}" class="form-control">
+  </div>
+  <div class="col">
+    <label class="form-label">対象月</label>
+    <input type="month" name="month" value="{{ month_str }}" class="form-control">
+  </div>
+  <div class="col">
+    <button type="submit" class="btn btn-primary">検索</button>
+  </div>
+</form>
+
+<h2 class="mb-4 border-bottom pb-2">📊 乗務日報・月間サマリー（{{ month|date:"Y年n月" }}）</h2>
+
+<!-- ✅ 卡片包裹的表格 -->
+<div class="card shadow-sm rounded-4 border-0 mt-3 mb-5">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>従業員名</th>
+            <th>合計メータ料金</th>
+            <th>備考</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in page_obj %}
+            <tr class="{% if d.note %}table-warning{% endif %}">
+              <td>{{ d.driver.name }}</td>
+              <td>¥{{ d.total_fee|intcomma }}</td>
+              <td>
+                {% if d.note %}
+                  <span class="text-danger">{{ d.note }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'staffbook:driver_dailyreport_month' d.driver.id %}?month={{ d.month_str }}"
+                   class="btn btn-sm btn-outline-primary">
+                  ▶ 月報一覧を見る
+                </a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="4" class="text-muted text-center">対象のデータがありません。</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ 分页导航 -->
+<nav aria-label="ページネーション" class="mt-4">
+  <ul class="pagination justify-content-center">
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?month={{ month|date:'Y-m' }}&page={{ page_obj.previous_page_number }}">前へ</a>
+      </li>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+        <a class="page-link"
+           href="?month={{ month|date:'Y-m' }}&page={{ num }}">{{ num }}</a>
+      </li>
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?month={{ month|date:'Y-m' }}&page={{ page_obj.next_page_number }}">次へ</a>
+      </li>
+    {% endif %}
+  </ul>
+</nav>
+
+{% endblock %}

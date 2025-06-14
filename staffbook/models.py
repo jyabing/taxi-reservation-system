@@ -168,6 +168,8 @@ class DriverDailyReport(models.Model):
     date = models.DateField('日期')
     note = models.TextField('备注', blank=True)
 
+    has_issue = models.BooleanField("包含异常记录", default=False)  # ✅ 新增
+
     # ✅ 新增两个字段
     edited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -207,6 +209,18 @@ class DriverDailyReportItem(models.Model):
     meter_fee = models.DecimalField("メータ料金", max_digits=7, decimal_places=2, blank=True, null=True)
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
     note = models.CharField("备注", max_length=255, blank=True)
+    comment = models.TextField("录入员注释", blank=True)  # 新增字段
+    has_issue = models.BooleanField("是否异常", default=False)  # 新增字段
+
+    def save(self, *args, **kwargs):
+    # 如果 comment 不为空就设为有异常
+        self.has_issue = bool(self.comment.strip())
+        super().save(*args, **kwargs)
+
+    # 更新日报本体状态（是否包含异常记录）
+        if self.report:
+            self.report.has_issue = self.report.items.filter(has_issue=True).exists()
+            self.report.save(update_fields=['has_issue'])
 
     def __str__(self):
         return f"{self.ride_time} - {self.ride_from}→{self.ride_to} - {self.meter_fee}"

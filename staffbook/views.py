@@ -1,14 +1,16 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, DriverBasicForm
+from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, DriverBasicForm, ReportItemFormSet
 from .models import DriverDailySales, DriverDailyReport, Driver, DrivingExperience, Insurance, FamilyMember, DriverLicense, LicenseType
 from django.db.models import Q, Sum
 from django.forms import inlineformset_factory
 from django.utils import timezone
 from django import forms
-from datetime import date
+from datetime import date, datetime
 from calendar import monthrange
+from django.utils.timezone import now
+from django.core.paginator import Paginator
 
 from accounts.utils import check_module_permission
 
@@ -545,20 +547,36 @@ def driver_history_edit(request, driver_id):
 
 # ✅ 司机日报（管理员看全部，司机看自己）
 @login_required
-def driver_card_daily(request, driver_id):
+def driver_dailyreport_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    # 默认查询本月日报
     today = date.today()
-    selected_month = request.GET.get('month', today.strftime('%Y-%m'))
-    year, month = map(int, selected_month.split('-'))
-    reports = DriverDailyReport.objects.filter(driver=driver, date__year=year, date__month=month).order_by('-date')
-    return render(request, 'staffbook/driver_card_daily.html', {
+
+    selected_month = request.GET.get('month') or today.strftime('%Y-%m')  # ✅ 容错处理
+    selected_date = request.GET.get('date', '').strip()
+
+    if selected_date:
+        try:
+            selected_date_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
+            reports = DriverDailyReport.objects.filter(driver=driver, date=selected_date_obj)
+        except ValueError:
+            reports = DriverDailyReport.objects.none()
+    else:
+        try:
+            year, month = map(int, selected_month.split('-'))
+            reports = DriverDailyReport.objects.filter(
+                driver=driver, date__year=year, date__month=month
+            )
+        except ValueError:
+            reports = DriverDailyReport.objects.none()
+
+    reports = reports.order_by('-date')
+
+    return render(request, 'staffbook/driver_dailyreport_month.html', {
         'driver': driver,
         'reports': reports,
         'selected_month': selected_month,
-        'active_tab': 'daily',
+        'selected_date': selected_date,
     })
-
 # ✅ 管理员新增日报给某员工
 @check_module_permission('employee')
 def dailyreport_create_for_driver(request, driver_id):
@@ -588,36 +606,30 @@ def dailyreport_create_for_driver(request, driver_id):
     })
 
 # ✅ 编辑日报（管理员）
-@check_module_permission('employee')
-def dailyreport_edit_for_driver(request, driver_id, pk):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    dailyreport = get_object_or_404(DriverDailyReport, pk=pk, driver=driver)
+def dailyreport_edit_for_driver(request, driver_id, report_id):
+    driver = get_object_or_404(Driver, id=driver_id)
+    report = get_object_or_404(DriverDailyReport, id=report_id, driver=driver)
 
     if request.method == 'POST':
-        report_form = DriverDailyReportForm(request.POST, instance=dailyreport)
-        formset = ReportItemFormSet(request.POST, instance=dailyreport)
+        form = DriverDailyReportForm(request.POST, instance=report)
+        formset = ReportItemFormSet(request.POST, instance=report)
 
-        if report_form.is_valid() and formset.is_valid():
-            report = report_form.save(commit=False)
-            report.edited_by = request.user  # ✅ 记录编辑人
-            report.edited_at = timezone.now()  # ✅ 记录编辑时间
+        if form.is_valid() and formset.is_valid():
+            report = form.save(commit=False)
+            report.edited_by = request.user
             report.save()
             formset.save()
-            messages.success(request, '日报修改成功')
-            return redirect('staffbook:driver_basic_info', driver_id=driver.id)
-
+            messages.success(request, '編集が保存されました。')
+            return redirect('staffbook:driver_dailyreport_month', driver_id=driver.id)
     else:
-        report_form = DriverDailyReportForm(instance=dailyreport)
-        formset = ReportItemFormSet(instance=dailyreport)
-        report_form.fields['date'].initial = dailyreport.date.strftime('%Y-%m-%d')
-        report_form.fields['date'].widget = forms.HiddenInput()
+        form = DriverDailyReportForm(instance=report)
+        formset = ReportItemFormSet(instance=report)
 
     return render(request, 'staffbook/dailyreport_formset.html', {
-        'form': report_form,
-        'formset': formset,
         'driver': driver,
-        'is_edit': True,
-        'report': dailyreport,  # ✅ 传给模板用于显示“由谁于何时编辑”
+        'report': report,
+        'form': form,
+        'formset': formset,
     })
 
 # ✅ 司机查看自己日报
@@ -642,4 +654,65 @@ def bind_missing_users(request):
 
     return render(request, 'staffbook/bind_missing_users.html', {
         'drivers': drivers_without_user,
+    })
+
+@check_module_permission('employee')
+@login_required
+def dailyreport_overview(request):
+    # 取参数
+    today = now().date()
+    keyword = request.GET.get('keyword', '').strip()
+    date_str = request.GET.get('date', '').strip()
+    month_str = request.GET.get('month', today.strftime('%Y-%m'))
+
+    # 转为日期
+    try:
+        month = datetime.strptime(month_str, "%Y-%m")
+    except:
+        month = today.replace(day=1)
+
+    reports = DriverDailyReport.objects.all()
+
+    # ✅ 按司机名过滤（模糊匹配）
+    if keyword:
+        reports = reports.filter(driver__name__icontains=keyword)
+
+    # ✅ 按日期过滤（精确匹配）
+    if date_str:
+        try:
+            specific_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            reports = reports.filter(date=specific_date)
+        except:
+            pass
+    else:
+        # 默认按月份
+        reports = reports.filter(date__year=month.year, date__month=month.month)
+
+    # 按司机聚合
+    driver_ids = reports.values_list('driver', flat=True).distinct()
+    drivers = Driver.objects.filter(id__in=driver_ids)
+
+    driver_data = []
+    for driver in drivers:
+        driver_reports = reports.filter(driver=driver)
+        total_fee = sum(r.total_meter_fee for r in driver_reports)
+        note = "⚠️ 異常あり" if driver_reports.filter(has_issue=True).exists() else ""
+        driver_data.append({
+            'driver': driver,
+            'total_fee': total_fee,
+            'note': note,
+            'month_str': month.strftime('%Y-%m'),
+        })
+
+    # 分页
+    paginator = Paginator(driver_data, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, 'staffbook/dailyreport_overview.html', {
+        'page_obj': page_obj,
+        'month': month,
+        'keyword': keyword,
+        'date_str': date_str,
+        'month_str': month_str,
     })

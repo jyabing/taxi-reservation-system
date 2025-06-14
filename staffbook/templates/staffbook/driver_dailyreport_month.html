@@ -5,26 +5,32 @@
 <div class="container mt-4">
   <div class="card shadow" style="width: 96vw; max-width: 1600px; margin:0 auto;">
     <div class="card-header bg-white" style="font-size:1.3em;">
-      <b>{{ driver.name }}</b> 的日报
-      <span class="ms-auto" style="font-size:0.95em;">
-        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
-      </span>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0"><strong>{{ driver.name }}</strong> 的日報</h4>
+        <a href="{% url 'staffbook:driver_basic_info' driver.id %}" class="btn btn-outline-secondary">
+    ← {{ driver.name }}さんの基本情報へ戻る
+        </a>
+      </div>
     </div>
     
     <div class="card-body">
-      {% include "staffbook/driver_tab_nav.html" %}
-      <form method="get" class="row g-2 align-items-center mb-3">
-        <div class="col-auto">
-          <b style="font-size:1.2em;">当前月份：{{ selected_month }}</b>
+      <form method="get" class="row row-cols-auto g-2 align-items-end mb-3">
+        <div class="col">
+          <label class="form-label">対象月</label>
+          <input type="month" name="month" value="{{ selected_month }}" class="form-control">
         </div>
-        <div class="col-auto">
-          <input type="month" name="month" class="form-control" value="{{ selected_month|default_if_none:'' }}">
+        <div class="col">
+          <label class="form-label">特定日</label>
+          <input type="date" name="date" value="{{ selected_date }}" class="form-control">
         </div>
-        <div class="col-auto">
-          <button type="submit" class="btn btn-outline-primary btn-sm">查找</button>
-          <a href="{% url 'staffbook:driver_card_daily' driver.id %}" class="btn btn-outline-secondary btn-sm">本月</a>
+        <div class="col">
+          <label class="form-label invisible">検索</label>
+          <button type="submit" class="btn btn-primary">查找</button>
+          <a href="?month={{ today|date:'Y-m' }}" class="btn btn-outline-secondary">本月</a>
         </div>
       </form>
+
+      
       <table class="table table-bordered table-sm align-middle">
         <thead class="table-light">
           <tr>
