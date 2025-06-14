@@ -156,12 +156,6 @@ class Accident(models.Model):
 
 
 
-
-
-
-
-
-
 # 核心：乘务日报（一天一条），不再保存单独的金额等，而是所有明细归属于这张日报
 class DriverDailyReport(models.Model):
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_reports', verbose_name="司机")
