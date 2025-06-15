@@ -2,49 +2,43 @@
 {% load static %}
 {% block content %}
 
-<h2>车辆预约状态一览（{{ selected_date }}）</h2>
+<h2 class="mb-4">🚗 车辆预约状况（{{ selected_date }}）</h2>
 
 {% include 'partials/_messages.html' %}
 
-<form method="get">
-  选择日期：<input type="date" name="date" value="{{ selected_date }}">
-  <button type="submit">查询</button>
+<form method="get" class="mb-4 d-flex align-items-center gap-2">
+  <label for="date">📅 选择日期：</label>
+  <input type="date" name="date" id="date" class="form-control" style="max-width: 200px;" value="{{ selected_date }}">
+  <button type="submit" class="btn btn-primary">查询</button>
 </form>
 
-<table border="1">
-  <tr>
-    <th>车牌号</th>
-    <th>车型</th>
-    <th>状态</th>
-    <th>预约者</th>
-    <th>备注</th>    
-  </tr>
-  {% for vehicle, info in status_map.items %}
-  <tr>
-    <td>
-      <a href="{% url 'vehicle_detail' vehicle.id %}">
-        {{ vehicle.license_plate }}
-      </a>
-    </td>
-    <td>{{ vehicle.model }}</td>
-<td>
-  {% include 'partials/_reservation_status.html' with vehicle=vehicle info=info selected_date=selected_date today=today %}
-
-  {# 我的预约详情/出入库操作不变 #}
-  {% include 'partials/_my_reservation_controls.html' with user_reservation=info.user_reservation %}
-
-</td>
-
-    {# 新增：车检日期 #}
-    <td>{{ info.reserver_name|safe }}</td>
-    {# 新增：备注 #}
-    <td style="white-space: pre-wrap; word-break: break-word;">{{ vehicle.notes|default:"—" }}</td>  
-
-</tr>
-  {% endfor %}
+<table class="table table-bordered table-hover align-middle shadow-sm">
+  <thead class="table-light text-center">
+    <tr>
+      <th style="width: 120px;">🔢 车牌号</th>
+      <th style="width: 140px;">🚘 车型</th>
+      <th style="min-width: 220px;">📌 状态 / 操作</th>
+      <th style="min-width: 180px;">👤 预约者</th>
+      <th style="min-width: 240px;">📝 备注</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for vehicle, info in status_map.items %}
+    <tr>
+      <td>
+        <a href="{% url 'vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a>
+      </td>
+      <td>{{ vehicle.model }}</td>
+      <td class="text-start">
+        {% include 'partials/_reservation_status.html' with vehicle=vehicle info=info selected_date=selected_date today=today %}
+        {% include 'partials/_my_reservation_controls.html' with user_reservation=info.user_reservation %}
+      </td>
+      <td style="white-space: pre-wrap;">{{ info.reserver_name|default:"—"|safe }}</td>
+      <td style="white-space: pre-wrap; word-break: break-word;">{{ vehicle.notes|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
 </table>
 
-{# 只在页面底部 include 弹窗模板 #}
 {% include 'partials/_check_io_popup.html' %}
-
 {% endblock %}
