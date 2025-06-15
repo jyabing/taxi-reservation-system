@@ -1,45 +1,87 @@
 {# templates/vehicles/weekly_view.html #}
 {% extends 'base.html' %}
 {% load static %}
-
 {% block content %}
 
+<h2 class="mb-4">🚗 車輌 一週間予約概覧（{{ today }}〜）</h2>
 {% include 'partials/_messages.html' %}
 
-<h2>车辆一周预约概览</h2>
+<nav class="mb-3">
+  <a href="?date={{ today }}&offset={{ offset|add:"-1" }}">← 前週</a>
+  <span class="mx-2">|</span>
+  <a href="?date={{ today }}&offset=0" class="fw-bold">本週</a>
+  <span class="mx-2">|</span>
+  <a href="?date={{ today }}&offset={{ offset|add:"1" }}">次週 →</a>
+</nav>
 
-<p>
-  <a href="?date={{ selected_date }}&offset={{ offset|add:"-1" }}">← 上一周</a> |
-  <a href="?date={{ selected_date }}&offset=0">本周</a> |
-  <a href="?date={{ selected_date }}&offset={{ offset|add:"1" }}">下一周 →</a>
-</p>
-<table border="1">
+<style>
+.japanese-week-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fefefe;
+  border: 1px solid #dee2e6;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.japanese-week-table thead {
+  background: #f6f8fb;
+  color: #2c3e50;
+  font-weight: 600;
+}
+.japanese-week-table th,
+.japanese-week-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #dee2e6;
+  font-size: 14px;
+  vertical-align: top;
+}
+.japanese-week-table thead th {
+  text-align: center;
+  white-space: nowrap;
+}
+.japanese-week-table tbody tr:hover {
+  background: #f0f4fa;
+  transition: background 0.2s;
+}
+.japanese-week-table td a {
+  display: inline-block;
+  margin-bottom: 4px;
+}
+</style>
+
+<table class="japanese-week-table">
   <thead>
     <tr>
-      <th>车牌号</th>
+      <th style="width:120px;">🔢 车牌号</th>
       {% for date in week_dates %}
-        <th>{{ date|date:"m/d (D)" }}</th>
+        <th>{{ date|date:"n/j（D）" }}</th>
       {% endfor %}
     </tr>
   </thead>
   <tbody>
     {% for row in vehicle_data %}
       <tr>
-        <td>{{ row.vehicle.license_plate }}</td>
+        <td class="text-center">
+          <a href="{% url 'vehicle_detail' row.vehicle.id %}">
+            {{ row.vehicle.license_plate }}
+          </a>
+        </td>
         {% for cell in row.days %}
-          <td style="vertical-align:top; {% if cell.is_past %}color:#aaa;{% endif %}">
-
-            {# —— 1. 全局状态：维修中 🔧 —— #}
+          <td style="{% if cell.is_past %}color:#aaa;{% endif %}">
+            {# 维修中 #}
             {% if row.vehicle.status == 'maintenance' %}
               <span>🛠️ 维修中</span>
 
-            {# —— 2. 已有预约 —— #}
+            {# 已有预约 #}
             {% elif cell.reservations %}
               {% for res in cell.reservations %}
                 <div>
                   {% if res.status == 'canceled' %}
-                    <span style="color:gray;">
-                      ❌ {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }} {{ res.driver.username }}（取消）
+                    <span style="color:#999;">❌
+                      {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }}
+                      {{ res.driver.username }}
                     </span>
                   {% else %}
                     <a href="{% url 'reservation_detail' res.id %}">
@@ -48,50 +90,32 @@
                     </a>
                   {% endif %}
                 </div>
-                {% if forloop.last %}
-                  {# 只有当天未过才可能继续开空缺 #}
-                  {% if not cell.is_past %}
-                    {% if cell.date == now_dt.date %}
-                      {# 今天：检查冷却结束后才能约 #}
-                      {% if not cooldown_end or now_dt > cooldown_end %}
-                        {% include 'vehicles/weekly_empty_after.html' %}
-                      {% endif %}
-                    {% else %}
-                      {# 未来任一天：直接显示空缺 #}
-                      {% include 'vehicles/weekly_empty_after.html' %}
-                    {% endif %}
-                  {% endif %}
-                {% endif %}
               {% endfor %}
 
-            {# —— 3. 整天空缺 —— #}
+              {# 如果当天还有空隙可预约 #}
+              {% if not cell.is_past %}
+                {% include 'vehicles/weekly_empty_after.html' %}
+              {% endif %}
+
+            {# 整天空缺 #}
             {% else %}
               {% if not cell.is_past %}
-                {% if cell.date == now_dt.date %}
-                  {# 今天：先看冷却 #}
-                  {% if not cooldown_end or now_dt > cooldown_end %}
-                    <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
-                      📝 申请预约
-                    </a>
-                  {% else %}
-                    <span title="上次入库后10h内不可再约">🔒 冷却中</span>
-                  {% endif %}
-                {% else %}
-                  {# 明天及以后：直接可约 #}
-                  <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:"Y-m-d" }}">
-                    📝 申请预约
-                  </a>
-                {% endif %}
+                <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">
+                  📝 申请预约
+                </a>
               {% else %}
-                空缺
+                <span>—</span>
               {% endif %}
             {% endif %}
-
           </td>
         {% endfor %}
       </tr>
     {% endfor %}
   </tbody>
 </table>
-<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
+
+<p class="mt-4">
+  <a href="{% url 'vehicle_status' %}">← 返回车辆状态</a>
+</p>
+
 {% endblock %}
