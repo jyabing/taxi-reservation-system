@@ -46,9 +46,11 @@
               <label class="form-label">電話番号</label>
               {{ form.phone_number }}
             </div>
-            <div class="text-end">
-              <button type="submit" class="btn btn-success">保存</button>
-            </div>
+      <div class="text-end">
+        <a href="{% url 'staffbook:driver_personal_edit' driver.id %}" class="btn btn-outline-primary">
+          <i class="fa fa-edit"></i> 編集
+        </a>
+      </div>
           </form>
         </div>
         <!-- 右栏：保险 -->

@@ -146,6 +146,7 @@ def driver_edit(request, driver_id):
         'driver': driver,
     })
 
+# ----- basic -----
 # 个人主页+台账
 @user_passes_test(is_staffbook_admin)
 def driver_basic_info(request, driver_id):
@@ -208,19 +209,22 @@ def driver_experience_edit(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_personal_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    if request.method == 'POST':
-        form = DriverPersonalInfoForm(request.POST, request.FILES, instance=driver)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "个人情报已保存！")
-            return redirect('staffbook:driver_personal_info', driver_id=driver.id)
-    else:
-        form = DriverPersonalInfoForm(instance=driver)
+    insurance_fields = [
+        ('健康保险', driver.health_insurance_no),
+        ('厚生年金保险', driver.pension_no),
+        ('雇用保险', driver.employment_insurance_no),
+        ('労災保险', driver.workers_insurance_no),
+        ('厚生年金基金', driver.pension_fund_no),
+    ]
     return render(request, 'staffbook/driver_personal_info.html', {
         'driver': driver,
-        'form': form,
-        'active_tab': 'personal',  # tab高亮
-    })
+        'main_tab': 'basic',   # 例如‘basic’或‘driving’
+        'tab': 'personal',     # 当前二级tab
+        # 这里可以继续添加其它需要传到模板的变量，如：
+        # 'form': form,
+        # 'active_tab': 'personal',
+        # 'title': '司机个人信息',
+})
 
 @user_passes_test(is_staffbook_admin)
 def driver_personal_edit(request, driver_id):
@@ -238,6 +242,54 @@ def driver_personal_edit(request, driver_id):
         'form': form,
         'main_tab': 'basic',
         'tab': 'personal',
+    })
+
+#签证在留
+@user_passes_test(is_staffbook_admin)
+def driver_certificate_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    return render(request, 'staffbook/driver_certificate_info.html', {
+        'driver': driver,
+        'main_tab': 'basic',
+        'tab': 'certificate',
+    })
+
+@user_passes_test(is_staffbook_admin)
+def driver_certificate_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    return render(request, 'staffbook/driver_certificate_info.html', {
+        'driver': driver,
+        'main_tab': 'basic',
+        'tab': 'certificate',
+    })
+
+
+#履歴変更記録
+@user_passes_test(is_staffbook_admin)
+def driver_history_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    return render(request, 'staffbook/driver_history_info.html', {
+        'driver': driver,
+        'main_tab': 'basic',
+        'tab': 'history',
+    })
+
+@user_passes_test(is_staffbook_admin)
+def driver_history_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    history, created = History.objects.get_or_create(driver=driver)
+    if request.method == 'POST':
+        form = historyForm(request.POST, instance=health)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_history_info', driver_id=driver.id)
+    else:
+        form = HistoryForm(instance=history)
+    return render(request, 'staffbook/driver_history_edit.html', {
+        'form': form,
+        'driver': driver,
+        'main_tab': 'driving',
+        'tab': 'history',
     })
 
 # 緊急連絡先
@@ -310,8 +362,8 @@ def driver_experience_info(request, driver_id):
     return render(request, 'staffbook/driver_experience_info.html', {
         'driver': driver,
         'experiences': experiences,
-        'main_tab': 'driving',
-        'tab': 'experience',
+        'main_tab': 'driving',  # 一级tab激活"運転情報"
+        'tab': 'experience',    # 二级tab激活"運転経験"
     })
 
 def driver_experience_edit(request, driver_id):
@@ -516,35 +568,6 @@ def driver_health_edit(request, driver_id):
     })
 
 
-#既往歴
-@user_passes_test(is_staffbook_admin)
-def driver_history_info(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    history, created = History.objects.get_or_create(driver=driver)
-    return render(request, 'staffbook/driver_history_info.html', {
-        'driver': driver,
-        'history': history,
-        'main_tab': 'driving',
-        'tab': 'history',
-    })
-
-@user_passes_test(is_staffbook_admin)
-def driver_history_edit(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    history, created = History.objects.get_or_create(driver=driver)
-    if request.method == 'POST':
-        form = historyForm(request.POST, instance=health)
-        if form.is_valid():
-            form.save()
-            return redirect('staffbook:driver_history_info', driver_id=driver.id)
-    else:
-        form = HistoryForm(instance=history)
-    return render(request, 'staffbook/driver_history_edit.html', {
-        'form': form,
-        'driver': driver,
-        'main_tab': 'driving',
-        'tab': 'history',
-    })
 
 
 # ✅ 司机日报

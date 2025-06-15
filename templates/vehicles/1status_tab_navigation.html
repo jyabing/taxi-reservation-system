@@ -1,0 +1,20 @@
+
+<!-- 状态页视图切换导航 -->
+<div style="margin-bottom: 15px;">
+  <a href="{% url 'vehicle_status' %}" style="
+    padding: 8px 16px;
+    background-color: {% if request.resolver_match.url_name == 'vehicle_status' %}#007bff{% else %}#e0e0e0{% endif %};
+    color: {% if request.resolver_match.url_name == 'vehicle_status' %}white{% else %}black{% endif %};
+    text-decoration: none;
+    border-radius: 5px;
+    margin-right: 5px;
+  ">📋 简洁视图</a>
+
+  <a href="{% url 'vehicle_status_with_photo' %}" style="
+    padding: 8px 16px;
+    background-color: {% if request.resolver_match.url_name == 'vehicle_status_with_photo' %}#007bff{% else %}#e0e0e0{% endif %};
+    color: {% if request.resolver_match.url_name == 'vehicle_status_with_photo' %}white{% else %}black{% endif %};
+    text-decoration: none;
+    border-radius: 5px;
+  ">🖼️ 图文视图</a>
+</div>

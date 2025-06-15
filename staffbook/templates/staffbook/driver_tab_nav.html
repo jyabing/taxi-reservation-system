@@ -1,10 +1,11 @@
+{% load static %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
-
 <style>
 .nav-pills.flex-nowrap {
   overflow-x: auto;
   white-space: nowrap;
   flex-wrap: nowrap !important;
+  -webkit-overflow-scrolling: touch;
 }
 .nav-pills .nav-link {
   min-width: 120px;
@@ -22,48 +23,34 @@
 <!-- 一级tab -->
 <ul class="nav nav-tabs mb-2" id="mainTab" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link {% if main_tab == 'basic' %}active{% endif %}"
-      id="tab-basic-tab"
-      data-bs-toggle="tab"
-      data-bs-target="#tab-basic"
-      type="button" role="tab"
-      aria-controls="tab-basic"
-      aria-selected="{% if main_tab == 'basic' %}true{% else %}false{% endif %}">基本情報</button>
+    <a class="nav-link {% if main_tab == 'basic' %}active{% endif %}"
+       href="{% url 'staffbook:driver_basic_info' driver.id %}">
+      基本情報
+    </a>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link {% if main_tab == 'driving' %}active{% endif %}"
-      id="tab-driving-tab"
-      data-bs-toggle="tab"
-      data-bs-target="#tab-driving"
-      type="button" role="tab"
-      aria-controls="tab-driving"
-      aria-selected="{% if main_tab == 'driving' %}true{% else %}false{% endif %}">運転情報</button>
+    <a class="nav-link {% if main_tab == 'driving' %}active{% endif %}"
+       href="{% url 'staffbook:driver_experience_info' driver.id %}">
+      運転情報
+    </a>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link {% if main_tab == 'insurance' %}active{% endif %}"
-      id="tab-insurance-tab"
-      data-bs-toggle="tab"
-      data-bs-target="#tab-insurance"
-      type="button" role="tab"
-      aria-controls="tab-insurance"
-      aria-selected="{% if main_tab == 'insurance' %}true{% else %}false{% endif %}">保険・税務</button>
+    <a class="nav-link {% if main_tab == 'insurance' %}active{% endif %}"
+       href="{% url 'staffbook:driver_personal_info' driver.id %}?tab=insurance">
+      保険・税務
+    </a>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link {% if main_tab == 'salary' %}active{% endif %}"
-      id="tab-salary-tab"
-      data-bs-toggle="tab"
-      data-bs-target="#tab-salary"
-      type="button" role="tab"
-      aria-controls="tab-salary"
-      aria-selected="{% if main_tab == 'salary' %}true{% else %}false{% endif %}">給与情報</button>
+    <a class="nav-link {% if main_tab == 'salary' %}active{% endif %}"
+       href="#">
+      給与情報
+    </a>
   </li>
 </ul>
 
-
-<!-- 二级tab（以基本情報为例，含建议结构） -->
+<!-- 二级tab（主tab对应内容切换） -->
 <div class="tab-content mb-2" id="mainTabContent">
-  <!-- 基本情報 -->
-  <div class="tab-pane fade {% if main_tab == 'basic' %}show active{% endif %}" id="tab-basic" role="tabpanel" aria-labelledby="tab-basic-tab">
+  {% if main_tab == 'basic' %}
     <ul class="nav nav-pills flex-nowrap mb-2">
       <li class="nav-item">
         <a class="nav-link {% if tab == 'basic' %}active{% endif %}" href="{% url 'staffbook:driver_basic_info' driver.id %}">基本データ管理</a>
@@ -72,8 +59,8 @@
         <a class="nav-link {% if tab == 'personal' %}active{% endif %}" href="{% url 'staffbook:driver_personal_info' driver.id %}">個人情報</a>
       </li>
       <li class="nav-item">
-        <a class="nav-link {% if tab == 'personal' %}active{% endif %}" href="{% url 'staffbook:driver_personal_info' driver.id %}">签证在留</a>
-      </li>      
+        <a class="nav-link {% if tab == 'certificate' %}active{% endif %}" href="{% url 'staffbook:driver_certificate_info' driver.id %}">签证在留</a>
+      </li>
       <li class="nav-item">
         <a class="nav-link {% if tab == 'history' %}active{% endif %}" href="{% url 'staffbook:driver_history_info' driver.id %}">履歴・変更記録</a>
       </li>
@@ -81,38 +68,45 @@
         <a class="nav-link {% if tab == 'emergency' %}active{% endif %}" href="{% url 'staffbook:driver_emergency_info' driver.id %}">緊急連絡先</a>
       </li>
     </ul>
-  </div>
-
-  <!-- 運転情報 -->
-  <div class="tab-pane fade {% if main_tab == 'driving' %}show active{% endif %}" id="tab-driving" role="tabpanel" aria-labelledby="tab-driving-tab">
+  {% elif main_tab == 'driving' %}
     <ul class="nav nav-pills flex-nowrap mb-2">
-      <li class="nav-item"><a class="nav-link {% if tab == 'experience' %}active{% endif %}" href="{% url 'staffbook:driver_experience_info' driver.id %}">運転経験</a></li>
-      <li class="nav-item"><a class="nav-link {% if tab == 'license' %}active{% endif %}" href="{% url 'staffbook:driver_license_info' driver.id %}">免許証管理</a></li>
-      <li class="nav-item"><a class="nav-link {% if tab == 'qualification' %}active{% endif %}" href="{% url 'staffbook:driver_qualification_info' driver.id %}">資格</a></li>
-      <li class="nav-item"><a class="nav-link {% if tab == 'aptitude' %}active{% endif %}" href="{% url 'staffbook:driver_aptitude_info' driver.id %}">適性診断</a></li>
-      <li class="nav-item"><a class="nav-link {% if tab == 'rewards' %}active{% endif %}" href="{% url 'staffbook:driver_rewards_info' driver.id %}">賞罰</a></li>
-      <li class="nav-item"><a class="nav-link {% if tab == 'accident' %}active{% endif %}" href="{% url 'staffbook:driver_accident_info' driver.id %}">事故・違反</a></li>
-      <li class="nav-item"><a class="nav-link {% if tab == 'education' %}active{% endif %}" href="{% url 'staffbook:driver_education_info' driver.id %}">指導教育</a></li>
-      <li class="nav-item"><a class="nav-link {% if tab == 'health' %}active{% endif %}" href="{% url 'staffbook:driver_health_info' driver.id %}">健康診断</a></li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'experience' %}active{% endif %}" href="{% url 'staffbook:driver_experience_info' driver.id %}">運転経験</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'license' %}active{% endif %}" href="{% url 'staffbook:driver_license_info' driver.id %}">免許証管理</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'qualification' %}active{% endif %}" href="{% url 'staffbook:driver_qualification_info' driver.id %}">資格</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'aptitude' %}active{% endif %}" href="{% url 'staffbook:driver_aptitude_info' driver.id %}">適性診断</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'rewards' %}active{% endif %}" href="{% url 'staffbook:driver_rewards_info' driver.id %}">賞罰</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'accident' %}active{% endif %}" href="{% url 'staffbook:driver_accident_info' driver.id %}">事故・違反</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'education' %}active{% endif %}" href="{% url 'staffbook:driver_education_info' driver.id %}">指導教育</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if tab == 'health' %}active{% endif %}" href="{% url 'staffbook:driver_health_info' driver.id %}">健康診断</a>
+      </li>
     </ul>
-  </div>
-
-  <!-- 保険・税務（留空或根据需要实现） -->
-  <div class="tab-pane fade {% if main_tab == 'insurance' %}show active{% endif %}" id="tab-insurance" role="tabpanel" aria-labelledby="tab-insurance-tab">
+  {% elif main_tab == 'insurance' %}
     <ul class="nav nav-pills flex-nowrap mb-2">
       <li class="nav-item"><a class="nav-link" href="#">厚生年金</a></li>
       <li class="nav-item"><a class="nav-link" href="#">健康保険</a></li>
       <li class="nav-item"><a class="nav-link" href="#">雇用保険</a></li>
       <li class="nav-item"><a class="nav-link" href="#">税务相关</a></li>
     </ul>
-  </div>
-  <!-- 給与信息（留空或根据需要实现） -->
-  <div class="tab-pane fade {% if main_tab == 'salary' %}show active{% endif %}" id="tab-salary" role="tabpanel" aria-labelledby="tab-salary-tab">
+  {% elif main_tab == 'salary' %}
     <ul class="nav nav-pills flex-nowrap mb-2">
       <li class="nav-item"><a class="nav-link" href="#">基本工资</a></li>
       <li class="nav-item"><a class="nav-link" href="#">奖金/加班费</a></li>
       <li class="nav-item"><a class="nav-link" href="#">扣除/实发工资</a></li>
     </ul>
-  </div>
+  {% endif %}
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

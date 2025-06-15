@@ -25,6 +25,12 @@ urlpatterns = [
     path('drivers/<int:driver_id>/personal/', views.driver_personal_info, name='driver_personal_info'),#個人情報
     path('drivers/<int:driver_id>/personal/edit/', views.driver_personal_edit, name='driver_personal_edit'), # 编辑个人信息
 
+    path('drivers/<int:driver_id>/certificate/', views.driver_certificate_info, name='driver_certificate_info'),#签证在留
+    path('drivers/<int:driver_id>/certificate/edit/', views.driver_certificate_edit, name='driver_certificate_edit'), # 编辑签证在留
+
+    path('drivers/<int:driver_id>/history/', views.driver_history_info, name='driver_history_info'),#履歴変更記録
+    path('drivers/<int:driver_id>/history/edit/', views.driver_history_edit, name='driver_history_edit'), # 编辑履歴変更記録    
+
     path('drivers/<int:driver_id>/emergency/', views.driver_emergency_info, name='driver_emergency_info'), # 緊急連絡先
     path('drivers/<int:driver_id>/emergency/edit/', views.driver_emergency_edit, name='driver_emergency_edit'), # 编辑紧急联系人信息
     
