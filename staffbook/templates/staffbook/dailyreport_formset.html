@@ -43,15 +43,36 @@
     {{ form.date.as_hidden }}
     <div class="mb-3">{{ form.note }}</div>
 
-    <div class="row g-2 mb-3">
-      <div class="col"><input class="form-control" id="total_meter" readonly placeholder="メータ合計"></div>
-      <div class="col"><input class="form-control" id="total_uber" readonly placeholder="Uber合計"></div>
-      <div class="col"><input class="form-control" id="total_cash" readonly placeholder="現金合計"></div>
-      <div class="col"><input class="form-control" id="total_didi" readonly placeholder="Didi合計"></div>
-      <div class="col"><input class="form-control" id="total_card" readonly placeholder="信用卡合計"></div>
-      <div class="col"><input class="form-control" id="total_ticket" readonly placeholder="乘车券合計"></div>
-      <div class="col"><input class="form-control" id="total_qr" readonly placeholder="扫码合計"></div>
-    </div>
+  <div class="row g-2 mb-3">
+   <div class="col">
+    <label class="form-label" for="total_meter">メータ合计</label>
+    <input class="form-control" id="total_meter" readonly placeholder="メータ合计">
+   </div>
+   <div class="col">
+    <label class="form-label" for="total_uber">Uber合计</label>
+    <input class="form-control" id="total_uber" readonly placeholder="Uber合计">
+   </div>
+   <div class="col">
+    <label class="form-label" for="total_cash">现金合计</label>
+    <input class="form-control" id="total_cash" readonly placeholder="现金合计">
+   </div>
+   <div class="col">
+    <label class="form-label" for="total_didi">Didi合计</label>
+    <input class="form-control" id="total_didi" readonly placeholder="Didi合计">
+   </div>
+   <div class="col">
+    <label class="form-label" for="total_card">信用卡合计</label>
+    <input class="form-control" id="total_card" readonly placeholder="信用卡合计">
+   </div>
+   <div class="col">
+    <label class="form-label" for="total_ticket">乘车券合计</label>
+    <input class="form-control" id="total_ticket" readonly placeholder="乘车券合计">
+   </div>
+   <div class="col">
+    <label class="form-label" for="total_qr">扫码合计</label>
+    <input class="form-control" id="total_qr" readonly placeholder="扫码合计">
+   </div>
+</div>
 
     <table class="table table-bordered table-sm">
       <thead class="table-light">

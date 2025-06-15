@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
+from .permissions import is_staffbook_admin
 from django.contrib import messages
 from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, DriverBasicForm, ReportItemFormSet
 from .models import DriverDailySales, DriverDailyReport, Driver, DrivingExperience, Insurance, FamilyMember, DriverLicense, LicenseType
@@ -18,12 +19,12 @@ def driver_card(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     return render(request, "staffbook/driver_basic_info.html", {"driver": driver})
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def staffbook_dashboard(request):
     return render(request, 'staffbook/dashboard.html')
 
 # ✅ 新增日报
-@check_module_permission('employee')
+@user_passes_test(is_staffbook_admin)
 def dailyreport_create(request):
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST)
@@ -35,7 +36,7 @@ def dailyreport_create(request):
     return render(request, 'staffbook/dailyreport_formset.html', {'form': form})
 
 # ✅ 编辑日报
-@check_module_permission('employee')
+@user_passes_test(is_staffbook_admin)
 def dailyreport_edit(request, pk):
     report = get_object_or_404(DriverDailyReport, pk=pk)
     if request.method == 'POST':
@@ -66,7 +67,7 @@ def sales_thanks(request):
     return render(request, 'staffbook/sales_thanks.html')
 
 # ✅ 删除日报（管理员）
-@check_module_permission('employee')
+@user_passes_test(is_staffbook_admin)
 def dailyreport_delete_for_driver(request, driver_id, pk):
     driver = get_object_or_404(Driver, pk=driver_id)
     report = get_object_or_404(DriverDailyReport, pk=pk, driver=driver)
@@ -89,7 +90,7 @@ def dailyreport_list(request):
     return render(request, 'staffbook/dailyreport_list.html', {'reports': reports})
 
 # ✅ 员工列表（管理员）
-@check_module_permission('employee')
+@user_passes_test(is_staffbook_admin)
 def driver_list(request):
     keyword = request.GET.get('keyword', '').strip()
     if keyword:
@@ -101,7 +102,7 @@ def driver_list(request):
     return render(request, 'staffbook/driver_list.html', {'drivers': drivers})
 
 # ✅ 新增员工
-@check_module_permission('employee')
+@user_passes_test(is_staffbook_admin)
 def driver_create(request):
     if request.method == 'POST':
         form = DriverForm(request.POST)
@@ -113,6 +114,7 @@ def driver_create(request):
     return render(request, 'staffbook/driver_create.html', {'form': form, 'is_create': True})
 
 # ✅ 编辑员工
+@user_passes_test(is_staffbook_admin)
 def driver_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     DrivingExpFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
@@ -145,7 +147,7 @@ def driver_edit(request, driver_id):
     })
 
 # 个人主页+台账
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_basic_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     return render(request, 'staffbook/driver_basic_info.html', {
@@ -154,7 +156,7 @@ def driver_basic_info(request, driver_id):
         'tab': 'basic',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_basic_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
@@ -172,7 +174,7 @@ def driver_basic_edit(request, driver_id):
     })
 
 #運転経験
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_experience_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     # 查询经验对象，可以多条
@@ -184,7 +186,7 @@ def driver_experience_info(request, driver_id):
         'tab': 'experience',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_experience_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     ExperienceFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
@@ -203,7 +205,7 @@ def driver_experience_edit(request, driver_id):
     })
 
 #個人情報
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_personal_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
@@ -220,7 +222,7 @@ def driver_personal_info(request, driver_id):
         'active_tab': 'personal',  # tab高亮
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_personal_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
@@ -239,7 +241,7 @@ def driver_personal_edit(request, driver_id):
     })
 
 # 緊急連絡先
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_emergency_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     # 你可以先不传实际数据，先做一个空模板
@@ -249,7 +251,7 @@ def driver_emergency_info(request, driver_id):
         'tab': 'emergency'
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_emergency_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
@@ -269,7 +271,7 @@ def driver_emergency_edit(request, driver_id):
 
 
 # 员工驾驶证信息
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_license_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     # get_or_create: 没有就创建一个
@@ -282,7 +284,7 @@ def driver_license_info(request, driver_id):
         'tab': 'license',  # 当前二级tab
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_license_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     # get_or_create: 没有就创建一个
@@ -301,7 +303,7 @@ def driver_license_edit(request, driver_id):
     })
 
 #運転経験
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_experience_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     experiences = DrivingExperience.objects.filter(driver=driver)
@@ -330,7 +332,7 @@ def driver_experience_edit(request, driver_id):
     })
 
 #資格
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_qualification_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     qualification, _ = Qualification.objects.get_or_create(driver=driver)
@@ -341,7 +343,7 @@ def driver_qualification_info(request, driver_id):
         'tab': 'qualification',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_qualification_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     qualification, _ = Qualification.objects.get_or_create(driver=driver)
@@ -360,7 +362,7 @@ def driver_qualification_edit(request, driver_id):
     })
 
 #適性診断
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_aptitude_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     qualification, created = Qualification.objects.get_or_create(driver=driver)
@@ -371,7 +373,7 @@ def driver_aptitude_info(request, driver_id):
         'tab': 'qualification',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_aptitude_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     aptitude, created = aptitude.objects.get_or_create(driver=driver)
@@ -391,7 +393,7 @@ def driver_aptitude_edit(request, driver_id):
 
 
 #賞罰
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_rewards_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     rewards, created = Rewards.objects.get_or_create(driver=driver)
@@ -402,7 +404,7 @@ def driver_rewards_info(request, driver_id):
         'tab': 'rewards',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_rewards_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     rewards, created = Rewards.objects.get_or_create(driver=driver)
@@ -422,7 +424,7 @@ def driver_rewards_edit(request, driver_id):
 
 
 #事故・違反
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_accident_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     accident, created = Accident.objects.get_or_create(driver=driver)
@@ -433,7 +435,7 @@ def driver_accident_info(request, driver_id):
         'tab': 'education',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_accident_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     AccidentFormSet = inlineformset_factory(Driver, Accident, form=AccidentForm, extra=1, can_delete=True)
@@ -453,7 +455,7 @@ def driver_accident_edit(request, driver_id):
 
 
 #指導教育
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_education_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     education, created = Education.objects.get_or_create(driver=driver)
@@ -464,7 +466,7 @@ def driver_education_info(request, driver_id):
         'tab': 'education',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_education_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     education, created = Education.objects.get_or_create(driver=driver)
@@ -484,7 +486,7 @@ def driver_education_edit(request, driver_id):
 
 
 #健康診断
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_health_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     health, created = Health.objects.get_or_create(driver=driver)
@@ -495,7 +497,7 @@ def driver_health_info(request, driver_id):
         'tab': 'health',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_health_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     health, created = Health.objects.get_or_create(driver=driver)
@@ -515,7 +517,7 @@ def driver_health_edit(request, driver_id):
 
 
 #既往歴
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_history_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     history, created = History.objects.get_or_create(driver=driver)
@@ -526,7 +528,7 @@ def driver_history_info(request, driver_id):
         'tab': 'history',
     })
 
-@login_required
+@user_passes_test(is_staffbook_admin)
 def driver_history_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     history, created = History.objects.get_or_create(driver=driver)
@@ -545,8 +547,8 @@ def driver_history_edit(request, driver_id):
     })
 
 
-# ✅ 司机日报（管理员看全部，司机看自己）
-@login_required
+# ✅ 司机日报
+@user_passes_test(is_staffbook_admin)
 def driver_dailyreport_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     today = date.today()
@@ -578,7 +580,7 @@ def driver_dailyreport_month(request, driver_id):
         'selected_date': selected_date,
     })
 # ✅ 管理员新增日报给某员工
-@check_module_permission('employee')
+@user_passes_test(is_staffbook_admin)
 def dailyreport_create_for_driver(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
@@ -606,6 +608,7 @@ def dailyreport_create_for_driver(request, driver_id):
     })
 
 # ✅ 编辑日报（管理员）
+@user_passes_test(is_staffbook_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
     driver = get_object_or_404(Driver, id=driver_id)
     report = get_object_or_404(DriverDailyReport, id=report_id, driver=driver)
@@ -639,7 +642,7 @@ def my_dailyreports(request):
     return render(request, 'staffbook/my_dailyreports.html', {'reports': reports})
 
 # ✅ 批量生成账号绑定员工
-@check_module_permission('employee')
+@user_passes_test(is_staffbook_admin)
 def bind_missing_users(request):
     drivers_without_user = Driver.objects.filter(user__isnull=True)
 
@@ -656,8 +659,7 @@ def bind_missing_users(request):
         'drivers': drivers_without_user,
     })
 
-@check_module_permission('employee')
-@login_required
+@user_passes_test(is_staffbook_admin)
 def dailyreport_overview(request):
     # 取参数
     today = now().date()

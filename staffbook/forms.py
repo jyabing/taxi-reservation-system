@@ -146,4 +146,9 @@ class DriverPersonalInfoForm(forms.ModelForm):
             'postal_code': forms.TextInput(attrs={'class': 'form-control'}),
             'address': forms.TextInput(attrs={'class': 'form-control'}),
             'phone_number': forms.TextInput(attrs={'class': 'form-control'}),
+            # 图片字段不需要 form-control
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        apply_form_control_style(self.fields, exclude_types=(forms.FileInput,))

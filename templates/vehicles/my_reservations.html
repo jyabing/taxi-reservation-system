@@ -3,83 +3,157 @@
 {% load custom_filters %}
 
 {% block content %}
-<h2>📋 我的预约记录</h2>
+<h2>📋 私の予約履歴</h2>
 {% include 'partials/_messages.html' %}
 
-<table border="1">
-  <tr>
-    <th>车辆</th>
-    <th>时间段</th>
-    <th>状态</th>
-    <th>操作</th>
-  </tr>
-  {% for r in reservations %}
-  <tr>
-    <td>{{ r.vehicle.license_plate }}</td>
-    <td>
-      {% include 'partials/_time_range_snippet.html' with obj=r %}
-    </td>
-    <td>{{ r.get_status_display }}</td>
-    <td>
-      {% include 'partials/_my_reservation_controls.html' with r=r today=today %}
-    </td>
-  </tr>
-  {% empty %}
-  <tr>
-    <td colspan="4">暂无预约记录</td>
-  </tr>
-  {% endfor %}
+<style>
+  /* 和風テーブルスタイル */
+  .japanese-style-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    background-color: #fefefe;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  }
+
+  .japanese-style-table thead {
+    background-color: #f6f8fb;
+    color: #2c3e50;
+    font-weight: 600;
+  }
+
+  .japanese-style-table th,
+  .japanese-style-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #dee2e6;
+    font-size: 15px;
+  }
+
+  .japanese-style-table th {
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .japanese-style-table td {
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .japanese-style-table td.text-start {
+    text-align: left;
+  }
+
+  .japanese-style-table tbody tr:hover {
+    background-color: #f0f4fa;
+    transition: background-color 0.2s;
+  }
+
+  .empty-row {
+    color: #999;
+    text-align: center;
+    padding: 16px;
+    font-style: italic;
+  }
+
+  /* 状態バッジ：淡色 + 円形タグ */
+  .status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .badge-pending {
+    background-color: #f5f5f5;
+    color: #555;
+    border-color: #ccc;
+  }
+
+  .badge-reserved {
+    background-color: #e6f2ff;
+    color: #3178c6;
+    border-color: #b3d8ff;
+  }
+
+  .badge-out {
+    background-color: #fff4e6;
+    color: #d9822b;
+    border-color: #ffd39b;
+  }
+
+  .badge-completed {
+    background-color: #e6f7ec;
+    color: #2c9464;
+    border-color: #a4e0bf;
+  }
+
+  .badge-canceled {
+    background-color: #fdecea;
+    color: #d93025;
+    border-color: #f5b2ac;
+  }
+</style>
+
+<table class="japanese-style-table">
+  <thead>
+    <tr>
+      <th style="width: 120px;">🚘 車輌</th>
+      <th style="min-width: 240px;">📅 利用時間</th>
+      <th style="width: 120px;">📌 状態</th>
+      <th style="width: 120px;">✅ 操作</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in reservations %}
+      <tr>
+        <td>{{ r.vehicle.license_plate }}</td>
+        <td class="text-start">{% include 'partials/_time_range_snippet.html' with obj=r %}</td>
+        <td>
+          {% if r.status == 'pending' %}
+            <span class="status-badge badge-pending">申請中</span>
+          {% elif r.status == 'reserved' %}
+            <span class="status-badge badge-reserved">予約済</span>
+          {% elif r.status == 'out' %}
+            <span class="status-badge badge-out">出庫中</span>
+          {% elif r.status == 'completed' %}
+            <span class="status-badge badge-completed">完了</span>
+          {% elif r.status == 'canceled' %}
+            <span class="status-badge badge-canceled">キャンセル</span>
+          {% else %}
+            <span class="status-badge" style="background-color:#eee; color:#999;">不明</span>
+          {% endif %}
+        </td>
+        <td>{% include 'partials/_my_reservation_controls.html' with r=r today=today %}</td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="4" class="empty-row">📭 ご予約履歴が見つかりませんでした。</td>
+      </tr>
+    {% endfor %}
+  </tbody>
 </table>
 
-{# 删除确认弹窗 #}
-<div id="delete-confirm-modal" style="display:none;position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.35);z-index:9999;justify-content:center;align-items:center;">
-  <div style="background:white;padding:32px 40px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.18);min-width:300px;text-align:center;">
-    <div id="delete-confirm-msg" style="margin-bottom:22px;font-size:18px;"></div>
-    <form id="delete-confirm-form" method="post" style="display:inline;">
-      {% csrf_token %}
-      <button type="submit" style="background:#d9534f;color:white;padding:6px 18px;border:none;border-radius:4px;font-size:16px;margin-right:14px;">确定删除</button>
-      <button type="button" onclick="closeDeleteModal()" style="background:#eee;color:#333;padding:6px 16px;border:none;border-radius:4px;font-size:16px;">取消</button>
-    </form>
-  </div>
-</div>
-
-<script>
-  function confirmDelete(reservationId, vehicle, date, start) {
-    const modal = document.getElementById('delete-confirm-modal');
-    const msg = document.getElementById('delete-confirm-msg');
-    msg.innerHTML = `确定要取消 <b>${vehicle}</b> ${date} ${start} 的预约吗？<br>取消后该时间段车辆将可被他人预约。`;
-    const form = document.getElementById('delete-confirm-form');
-    form.action = "/vehicles/reservation/" + reservationId + "/delete/";
-    modal.style.display = 'flex';
-  }
-  function closeDeleteModal() {
-    document.getElementById('delete-confirm-modal').style.display = 'none';
-  }
-  // 允许点击遮罩层关闭弹窗
-  window.onclick = function(event) {
-    if (event.target === document.getElementById('delete-confirm-modal')) {
-      closeDeleteModal();
-    }
-  }
-</script>
-
-{# 出库/入库弹窗，按你已有代码或 include #}
-{% include 'partials/_check_io_popup.html' %}
-
-<div class="pagination">
+<!-- 分页控件 -->
+<div class="pagination mt-3">
   <span class="step-links">
-    {% if page_obj.has_previous %}
-      <a href="?page=1">&laquo; 第一页</a>
-      <a href="?page={{ page_obj.previous_page_number }}">上一页</a>
+    {% if reservations.has_previous %}
+      <a href="?page=1">&laquo; 第一頁</a>
+      <a href="?page={{ reservations.previous_page_number }}">上一頁</a>
     {% endif %}
-    <span class="current-page">第 {{ page_obj.number }} 页 / 共 {{ page_obj.paginator.num_pages }} 页</span>
-    {% if page_obj.has_next %}
-      <a href="?page={{ page_obj.next_page_number }}">下一页</a>
-      <a href="?page={{ page_obj.paginator.num_pages }}">最后一页 &raquo;</a>
+    <span class="current-page">第 {{ reservations.number }} 頁 / 共 {{ reservations.paginator.num_pages }} 頁</span>
+    {% if reservations.has_next %}
+      <a href="?page={{ reservations.next_page_number }}">下一頁</a>
+      <a href="?page={{ reservations.paginator.num_pages }}">最後一頁 &raquo;</a>
     {% endif %}
   </span>
 </div>
 
-<p><a href="{% url 'reservation_dashboard' %}">← 返回预约菜单</a></p>
+<p class="mt-4"><a href="{% url 'reservation_dashboard' %}">← 戻る：予約メニュー</a></p>
 {% include 'partials/tip_box.html' %}
 {% endblock %}

@@ -13,12 +13,14 @@
     <a href="{% url 'reservation_dashboard' %}">进入</a>
   </div>
 
-  <!-- 员工台账管理系统入口 -->
+  <!-- 员工台账管理系统入口，只给管理员 -->
+  {% if user.is_authenticated and user.userprofile.is_staffbook_admin %}
   <div class="card">
     <h3>📒 员工台账管理系统</h3>
     <p>员工日报、工资、材料管理。</p>
     <a href="{% url 'staffbook:driver_list' %}">进入</a>
   </div>
+  {% endif %}
 
   <!-- 车辆管理入口 -->
   <div class="card">

@@ -1,9 +1,20 @@
 {% extends "staffbook/base_staffbook.html" %}
 {% block content %}
-{% include "staffbook/driver_tab_nav.html" %}
+
 <div class="container mt-4">
-  <div class="card shadow" style="max-width:1100px; margin:0 auto;">
+  <div class="card shadow" style="width:90vw;max-width:1400px;margin:0 auto;">
+    <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
+      <i class="fa fa-user me-2"></i>
+      <b>{{ driver.name }}</b>
+      <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
+      <span class="ms-auto" style="font-size:0.95em;">
+        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+      </span>
+    </div>
     <div class="card-body">
+      {% include "staffbook/driver_tab_nav.html" %}
+        
+      <form>
       <div class="row">
         <!-- 左栏：头像+信息 -->
         <div class="col-md-4 d-flex flex-column align-items-center">
@@ -65,6 +76,7 @@
           </div>
         </div>
       </div>
+      </form>
     </div>
   </div>
 </div>
