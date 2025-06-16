@@ -580,15 +580,12 @@ def vehicle_detail_view(request, vehicle_id):
 @require_POST
 @login_required
 def confirm_check_io(request):
-    # 1. 从 POST 里拿到三个参数
     reservation_id = request.POST.get('reservation_id')
     action = request.POST.get('action_type')       # 'departure' 或 'return'
-    actual_time = request.POST.get('actual_time')  # ISO 格式字符串，例：'2025-05-13T05:12'
+    actual_time = request.POST.get('actual_time')  # ISO格式 '2025-06-17T12:30'
 
-    # 2. 找到这条仅属于当前用户、ID 匹配的预约
     reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
 
-    # 3. 解析时间
     try:
         dt = timezone.datetime.fromisoformat(actual_time)
         dt = timezone.make_aware(dt) if timezone.is_naive(dt) else dt
@@ -596,9 +593,7 @@ def confirm_check_io(request):
         messages.error(request, "时间格式错误")
         return redirect('my_reservations')
 
-    # 4. 根据 action 分情况处理
     if action == 'departure':
-        # 只有 status == 'reserved' 时才允许出库
         if reservation.status != 'reserved':
             return HttpResponseForbidden("当前预约不允许出库登记")
         reservation.actual_departure = dt
@@ -606,17 +601,15 @@ def confirm_check_io(request):
         reservation.vehicle.status = 'out'
         messages.success(request, "🚗 实际出库时间已登记，状态更新为“出库中”")
     elif action == 'return':
-        # 只有 status == 'out' 时才允许入库
         if reservation.status != 'out':
             return HttpResponseForbidden("当前预约不允许入库登记")
         reservation.actual_return = dt
         reservation.status = 'completed'
         reservation.vehicle.status = 'available'
-        messages.success(request, "🅿️ 实际入库时间已登记，预约完成，车辆空闲中，状态恢复“可预约”")
+        messages.success(request, "🅿️ 实际入库时间已登记，预约完成，车辆空闲中")
     else:
-        return HttpResponseForbidden("未知的操作类型")
+        return HttpResponseForbidden("未知操作类型")
 
-    # 5. 保存并跳回列表
     reservation.vehicle.save()
     reservation.save()
     return redirect('my_reservations')
