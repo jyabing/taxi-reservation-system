@@ -100,6 +100,23 @@
   </tbody>
 </table>
 
+<!-- 分页控件 -->
+<div class="pagination mt-3" style="text-align: center;">
+  <span class="step-links">
+    {% if reservations.has_previous %}
+      <a href="?page=1">&laquo; 第一頁</a>
+      <a href="?page={{ reservations.previous_page_number }}">上一頁</a>
+    {% endif %}
+    <span class="current-page">
+      第 {{ reservations.number }} 頁 / 共 {{ reservations.paginator.num_pages }} 頁
+    </span>
+    {% if reservations.has_next %}
+      <a href="?page={{ reservations.next_page_number }}">下一頁</a>
+      <a href="?page={{ reservations.paginator.num_pages }}">最後一頁 &raquo;</a>
+    {% endif %}
+  </span>
+</div>
+
 <!-- 出库弹窗 -->
 <div class="modal fade" id="departureModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
