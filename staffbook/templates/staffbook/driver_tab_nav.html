@@ -36,13 +36,13 @@
   </li>
   <li class="nav-item" role="presentation">
     <a class="nav-link {% if main_tab == 'insurance' %}active{% endif %}"
-       href="{% url 'staffbook:driver_personal_info' driver.id %}?tab=insurance">
-      保険・税務
+        href="{% url 'staffbook:driver_pension_info' driver.id %}">
+        保険・税務
     </a>
   </li>
   <li class="nav-item" role="presentation">
     <a class="nav-link {% if main_tab == 'salary' %}active{% endif %}"
-       href="#">
+       href="{% url 'staffbook:driver_salary' driver.id %}">
       給与情報
     </a>
   </li>
@@ -96,17 +96,31 @@
       </li>
     </ul>
   {% elif main_tab == 'insurance' %}
-    <ul class="nav nav-pills flex-nowrap mb-2">
-      <li class="nav-item"><a class="nav-link" href="#">厚生年金</a></li>
-      <li class="nav-item"><a class="nav-link" href="#">健康保険</a></li>
-      <li class="nav-item"><a class="nav-link" href="#">雇用保険</a></li>
-      <li class="nav-item"><a class="nav-link" href="#">税务相关</a></li>
-    </ul>
+  <ul class="nav nav-pills flex-nowrap mb-2">
+    <li class="nav-item">
+      <a class="nav-link {% if sub_tab == 'pension' %}active{% endif %}" href="{% url 'staffbook:driver_pension_info' driver.id %}">厚生年金</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if sub_tab == 'health' %}active{% endif %}" href="{% url 'staffbook:driver_health_insurance_info' driver.id %}">健康保険</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if sub_tab == 'employment' %}active{% endif %}" href="{% url 'staffbook:driver_employment_insurance_info' driver.id %}">雇用保険</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if sub_tab == 'tax' %}active{% endif %}" href="{% url 'staffbook:driver_tax_info' driver.id %}">税务相关</a>
+    </li>
+  </ul>
   {% elif main_tab == 'salary' %}
-    <ul class="nav nav-pills flex-nowrap mb-2">
-      <li class="nav-item"><a class="nav-link" href="#">基本工资</a></li>
-      <li class="nav-item"><a class="nav-link" href="#">奖金/加班费</a></li>
-      <li class="nav-item"><a class="nav-link" href="#">扣除/实发工资</a></li>
-    </ul>
+<!--    <ul class="nav nav-pills flex-nowrap mb-2">
+      <li class="nav-item">
+        <a class="nav-link {% if sub_tab == 'base' %}active{% endif %}" href="{% url 'staffbook:driver_salary' driver.id %}?sub=base">支給</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if sub_tab == 'bonus' %}active{% endif %}" href="{% url 'staffbook:driver_salary' driver.id %}?sub=bonus">控除</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if sub_tab == 'deduct' %}active{% endif %}" href="{% url 'staffbook:driver_salary' driver.id %}?sub=deduct">勤怠/差引</a>
+      </li>
+    </ul>-->
   {% endif %}
 </div>

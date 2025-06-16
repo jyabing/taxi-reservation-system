@@ -59,6 +59,21 @@ urlpatterns = [
     path('drivers/<int:driver_id>/health/', views.driver_health_info, name='driver_health_info'),   # 健康診断只读
     path('drivers/<int:driver_id>/health/edit/', views.driver_health_edit, name='driver_health_edit'), # 编辑
 
+    # 保险税务
+    path('drivers/<int:driver_id>/pension/', views.driver_pension_info, name='driver_pension_info'),  # 厚生年金只读
+    #path('drivers/<int:driver_id>/pension/edit', views.driver_pension_edit, name='driver_pension_edit'),
+    
+    path('drivers/<int:driver_id>/health_insurance/', views.driver_health_insurance_info, name='driver_health_insurance_info'),   # 健康保険只读
+    #path('drivers/<int:driver_id>/health_insurance/edit', views.driver_health_insurance_edit, name='driver_health_insurance_edit'),
+
+    path('drivers/<int:driver_id>/employment_insurance/', views.driver_employment_insurance_info, name='driver_employment_insurance_info'),   # 雇用保険只读
+    #path('drivers/<int:driver_id>/employment_insurance/edit', views.driver_employment_insurance_edit, name='driver_employment_insurance_edit'),
+
+    path('drivers/<int:driver_id>/tax/', views.driver_tax_info, name='driver_tax_info'),   # 税务相关只读
+    #path('drivers/<int:driver_id>/tax/edit', views.driver_tax_edit, name='river_tax_edit'),
+
+    path('drivers/<int:driver_id>/salary/', views.driver_salary, name='driver_salary'),
+
     # 既往歴
     path('drivers/<int:driver_id>/history/', views.driver_history_info, name='driver_history_info'),   # 既往歴只读
     path('drivers/<int:driver_id>/history/edit/', views.driver_history_edit, name='driver_history_edit'), # 编辑

@@ -1,17 +1,27 @@
-from django.shortcuts import render, redirect, get_object_or_404
+import datetime
+from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from .permissions import is_staffbook_admin
 from django.contrib import messages
-from .forms import DriverDailySalesForm, DriverDailyReportForm, DriverForm, ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, DriverBasicForm, ReportItemFormSet
-from .models import DriverDailySales, DriverDailyReport, Driver, DrivingExperience, Insurance, FamilyMember, DriverLicense, LicenseType
+from .forms import (
+    DriverDailySalesForm, DriverDailyReportForm, DriverForm, 
+    ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, 
+    DriverBasicForm, ReportItemFormSet, RewardForm, DriverPayrollRecordForm
+    )
+from .models import (
+    DriverDailySales, DriverDailyReport, Driver, DrivingExperience, 
+    Insurance, FamilyMember, DriverLicense, LicenseType, Qualification, Aptitude,
+    Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord
+    )
 from django.db.models import Q, Sum
-from django.forms import inlineformset_factory
+from django.forms import inlineformset_factory, modelformset_factory
 from django.utils import timezone
 from django import forms
-from datetime import date, datetime
+#from datetime import date, datetime
 from calendar import monthrange
 from django.utils.timezone import now
 from django.core.paginator import Paginator
+from django.urls import reverse
 
 from accounts.utils import check_module_permission
 
@@ -417,25 +427,25 @@ def driver_qualification_edit(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_aptitude_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    qualification, created = Qualification.objects.get_or_create(driver=driver)
-    return render(request, 'staffbook/driver_qualification_info.html', {
+    aptitude, created = Aptitude.objects.get_or_create(driver=driver)
+    return render(request, 'staffbook/driver_aptitude_info.html', {
         'driver': driver,
-        'qualification': qualification,
+        'aptitude': aptitude,
         'main_tab': 'driving',
-        'tab': 'qualification',
+        'tab': 'aptitude',
     })
 
 @user_passes_test(is_staffbook_admin)
 def driver_aptitude_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    aptitude, created = aptitude.objects.get_or_create(driver=driver)
+    aptitude, created = Aptitude.objects.get_or_create(driver=driver)
     if request.method == 'POST':
         form = aptitudeForm(request.POST, instance=aptitude)
         if form.is_valid():
             form.save()
             return redirect('staffbook:driver_aptitude_info', driver_id=driver.id)
     else:
-        form = aptitudeForm(instance=aptitude)
+        form = AptitudeForm(instance=aptitude)
     return render(request, 'staffbook/driver_aptitude_edit.html', {
         'form': form,
         'driver': driver,
@@ -448,7 +458,7 @@ def driver_aptitude_edit(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_rewards_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    rewards, created = Rewards.objects.get_or_create(driver=driver)
+    rewards, created = Reward.objects.get_or_create(driver=driver)
     return render(request, 'staffbook/driver_rewards_info.html', {
         'driver': driver,
         'rewards': rewards,
@@ -459,14 +469,14 @@ def driver_rewards_info(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_rewards_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    rewards, created = Rewards.objects.get_or_create(driver=driver)
+    rewards, created = Reward.objects.get_or_create(driver=driver)
     if request.method == 'POST':
-        form = rewardsForm(request.POST, instance=rewards)
+        form = RewardForm(request.POST, instance=rewards)
         if form.is_valid():
             form.save()
             return redirect('staffbook:driver_rewards_info', driver_id=driver.id)
     else:
-        form = rewardsForm(instance=health)
+        form = RewardForm(instance=rewards)
     return render(request, 'staffbook/driver_rewards_edit.html', {
         'form': form,
         'driver': driver,
@@ -478,13 +488,17 @@ def driver_rewards_edit(request, driver_id):
 #事故・違反
 @user_passes_test(is_staffbook_admin)
 def driver_accident_info(request, driver_id):
+    # 1. 拿到司机实例
     driver = get_object_or_404(Driver, pk=driver_id)
-    accident, created = Accident.objects.get_or_create(driver=driver)
+    # 事故记录通常会有多条，这里假设你只编辑最新一条，或者由 URL 传入具体的 accident_id
+    # 2. 列出该司机的所有事故记录（QuerySet），按发生日期倒序
+    accidents = Accident.objects.filter(driver=driver).order_by('-happened_at')
+    # 3. 渲染模板
     return render(request, 'staffbook/driver_accident_info.html', {
         'driver': driver,
-        'accident': accident,
+        'accidents': accidents,
         'main_tab': 'driving',
-        'tab': 'education',
+        'tab': 'accident',
     })
 
 @user_passes_test(is_staffbook_admin)
@@ -541,25 +555,26 @@ def driver_education_edit(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_health_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    health, created = Health.objects.get_or_create(driver=driver)
+    # 筛选出该司机的“健康”保险记录
+    health_insurances = Insurance.objects.filter(driver=driver, kind='health')
     return render(request, 'staffbook/driver_health_info.html', {
         'driver': driver,
-        'health': health,
+        'insurances': health_insurances,
         'main_tab': 'driving',
         'tab': 'health',
     })
 
 @user_passes_test(is_staffbook_admin)
-def driver_health_edit(request, driver_id):
+def driver_health_edit(request, driver_id, ins_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    health, created = Health.objects.get_or_create(driver=driver)
+    insurance = get_object_or_404(Insurance, pk=ins_id, driver=driver)
     if request.method == 'POST':
-        form = HealthForm(request.POST, instance=health)
+        form = InsuranceForm(request.POST, instance=insurance)
         if form.is_valid():
             form.save()
             return redirect('staffbook:driver_health_info', driver_id=driver.id)
     else:
-        form = HealthForm(instance=health)
+        form = InsuranceForm(instance=insurance)
     return render(request, 'staffbook/driver_health_edit.html', {
         'form': form,
         'driver': driver,
@@ -569,6 +584,135 @@ def driver_health_edit(request, driver_id):
 
 
 
+
+# 保险信息
+@user_passes_test(is_staffbook_admin)
+def driver_pension_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    pensions = Pension.objects.filter(driver=driver)
+    return render(request, 'staffbook/driver_pension_info.html', {
+        'driver': driver,
+        'pensions': pensions,
+        'main_tab': 'insurance',
+        'tab': 'insurance',
+        'sub_tab': 'pension',
+    })
+
+@user_passes_test(is_staffbook_admin)
+def driver_pension_edit(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+
+    # 用 ModelFormSet 一次性编辑多条记录
+    PensionFormSet = modelformset_factory(Insurance, form=PensionForm, extra=0)
+    qs = Pension.objects.filter(driver=driver)
+
+    if request.method == 'POST':
+        formset = PensionFormSet(request.POST, queryset=qs)
+        if formset.is_valid():
+            pension = formset.save(commit=False)
+            for ins in pension:
+                ins.driver = driver
+                ins.save()
+            return redirect('staffbook:driver_pension_info', driver_id=driver.id)
+    else:
+        formset = PensionFormSet(queryset=qs)
+
+    return render(request, 'staffbook/driver_pension_edit.html', {
+        'driver': driver,
+        'form': form,
+        'main_tab': 'insurance',
+        'tab': 'pension',
+    })
+
+
+
+@user_passes_test(is_staffbook_admin)
+def driver_health_insurance_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    # 拿到健康保险相关记录
+    healths = Insurance.objects.filter(driver=driver, kind='health')
+    return render(request, 'staffbook/driver_health_insurance_info.html', {
+        'driver': driver,
+        'insurances': healths,
+        'main_tab': 'insurance',   # 让一级“保険・税務”被高亮
+        'tab': 'insurance',        # （如果二级也用 tab 判断，可以同设）
+        'sub_tab': 'health',       # 新增：告诉模板，二级要高亮“health”
+    })
+
+
+@user_passes_test(is_staffbook_admin)
+def driver_employment_insurance_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    employment_ins = Insurance.objects.filter(driver=driver, kind='employment')
+    return render(request, 'staffbook/driver_employment_insurance_info.html', {
+        'driver': driver,
+        'insurances': employment_ins,
+        'main_tab': 'insurance',
+        'tab': 'insurance',
+        'sub_tab': 'employment',
+    })
+
+@user_passes_test(is_staffbook_admin)
+def driver_tax_info(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+    taxes = Insurance.objects.filter(driver=driver, kind='tax')
+    return render(request, 'staffbook/driver_tax_info.html', {
+        'driver': driver,
+        'insurances': taxes,
+        'main_tab': 'insurance',
+        'tab': 'insurance',
+        'sub_tab': 'tax',          # ← 模板里判断用的就是 'tax'
+    })
+
+
+@user_passes_test(is_staffbook_admin)
+def driver_salary(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+
+    sub_tab = request.GET.get('sub', 'attendance')
+    mode    = request.GET.get('mode', 'view')
+
+    # —— 修正版：无论如何都有默认 month_str —— 
+    month_str = request.GET.get('month')
+    if not month_str:
+        today = datetime.date.today()
+        month_str = today.strftime('%Y-%m')
+    # 现在 month_str 一定是 "YYYY-MM"
+    year, mon = map(int, month_str.split('-'))
+    start = datetime.date(year, mon, 1)
+    if mon == 12:
+        end = datetime.date(year + 1, 1, 1)
+    else:
+        end = datetime.date(year, mon + 1, 1)
+
+    qs = DriverPayrollRecord.objects.filter(
+        driver=driver,
+        month__gte=start,
+        month__lt=end
+    ).order_by('-month')
+
+    if mode == 'edit':
+        FormSet = modelformset_factory(DriverPayrollRecord, form=DriverPayrollRecordForm, extra=0)
+        formset = FormSet(request.POST or None, queryset=qs)
+        if request.method == 'POST' and formset.is_valid():
+            formset.save()
+            return redirect(
+                f"{reverse('staffbook:driver_salary', args=[driver.id])}"
+                f"?sub={sub_tab}&month={month_str}"
+            )
+        context = {'formset': formset}
+    else:
+        context = {'records': qs}
+
+    return render(request, 'staffbook/driver_salary.html', {
+        'driver': driver,
+        'main_tab': 'salary',
+        'tab': 'salary',
+        'sub_tab': sub_tab,
+        'mode': mode,
+        'month': month_str,
+        **context,
+    })
 
 # ✅ 司机日报
 @user_passes_test(is_staffbook_admin)

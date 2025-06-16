@@ -53,7 +53,13 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
 
 @admin.register(DriverPayrollRecord)
 class DriverPayrollRecordAdmin(admin.ModelAdmin):
-    list_display = ('driver', 'month_display', 'total_sales', 'salary_paid')
+    list_display = [
+        'driver',
+        'month',
+        'basic_pay',        # 替换原 total_sales
+        'total_pay',        # 替换原 salary_paid
+        'note',
+    ]
     list_filter = ('month', 'driver')
     search_fields = ('driver__username',)
 

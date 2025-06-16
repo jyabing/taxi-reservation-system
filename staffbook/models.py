@@ -154,6 +154,80 @@ class Accident(models.Model):
     def __str__(self):
         return f"{self.driver.name} - {self.happened_at} - {self.description}"
 
+class Qualification(models.Model):
+    driver = models.OneToOneField(Driver, on_delete=models.CASCADE, related_name='qualification')
+    qualification_name = models.CharField("資格名", max_length=100, blank=True)
+    qualification_number = models.CharField("資格番号", max_length=50, blank=True)
+    issue_date = models.DateField("交付日", null=True, blank=True)
+    expiry_date = models.DateField("有効期限", null=True, blank=True)
+    note = models.TextField("備考", blank=True)
+
+    class Meta:
+        verbose_name = "資格"
+        verbose_name_plural = "資格"
+
+    def __str__(self):
+        return f"{self.driver.name} - {self.qualification_name}"
+
+class Aptitude(models.Model):
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='aptitudes', verbose_name="司机")
+    name = models.CharField("资质名称", max_length=100)
+    issue_date = models.DateField("颁发日期", blank=True, null=True)
+    expiry_date = models.DateField("到期日期", blank=True, null=True)
+    note = models.TextField("备注", blank=True)
+
+    class Meta:
+        verbose_name = "资质"
+        verbose_name_plural = "资质"
+
+    def __str__(self):
+        return f"{self.driver.name} - {self.name}"
+
+class Reward(models.Model):
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='rewards')
+    points = models.IntegerField('积分', default=0)
+    issued_at = models.DateTimeField('发放时间', default=timezone.now)
+    remark = models.CharField('备注', max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = '奖励记录'
+        verbose_name_plural = '奖励记录'
+
+    def __str__(self):
+        return f"{self.driver.name}：{self.points} 点"
+
+class Education(models.Model):
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='educations')
+    school_name = models.CharField('学校名称', max_length=100)
+    degree = models.CharField('学位／学历', max_length=50, blank=True)
+    start_date = models.DateField('起始日期', blank=True, null=True)
+    end_date = models.DateField('结束日期', blank=True, null=True)
+    note = models.TextField('备注', blank=True)
+
+    class Meta:
+        verbose_name = '教育经历'
+        verbose_name_plural = '教育经历'
+
+    def __str__(self):
+        return f"{self.driver.name} – {self.school_name}"
+
+class Pension(models.Model):
+    driver = models.ForeignKey(
+        Driver,
+        on_delete=models.CASCADE,
+        related_name='pensions',
+        verbose_name='司机'
+    )
+    pension_number = models.CharField('年金番号', max_length=32, blank=True)
+    join_date = models.DateField('厚生年金加入日', null=True, blank=True)
+    note = models.TextField('备注', blank=True)
+
+    class Meta:
+        verbose_name = '厚生年金记录'
+        verbose_name_plural = '厚生年金记录'
+
+    def __str__(self):
+        return f"{self.driver.name} – {self.join_date or '未加入'}"
 
 
 # 核心：乘务日报（一天一条），不再保存单独的金额等，而是所有明细归属于这张日报
@@ -222,9 +296,49 @@ class DriverDailyReportItem(models.Model):
 # 工资记录（不变）
 class DriverPayrollRecord(models.Model):
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='payroll_records')
-    month = models.DateField('月份')  # 通常用每月1号代表该月
-    total_sales = models.DecimalField('总业绩', max_digits=10, decimal_places=2)
-    salary_paid = models.DecimalField('实发工资', max_digits=10, decimal_places=2)
+    month = models.DateField('月份')  # 用每月1号代表当月
+
+    # --- 勤怠字段 ---
+    working_days = models.IntegerField('就業日数', default=0)
+    attendance_days = models.IntegerField('出勤日数', default=0)
+    absence_days = models.IntegerField('欠勤日数', default=0)
+    holiday_work_days = models.IntegerField('休日出勤日数', default=0)
+    paid_leave_days = models.IntegerField('有給日数', default=0)
+    overtime_hours = models.DecimalField('残業時間', max_digits=5, decimal_places=2, default=0)
+    night_hours = models.DecimalField('深夜時間', max_digits=5, decimal_places=2, default=0)
+    holiday_hours = models.DecimalField('休日時間', max_digits=5, decimal_places=2, default=0)
+    total_working_hours = models.DecimalField('総労働時間', max_digits=5, decimal_places=2, default=0)
+    late_minutes = models.IntegerField('遅刻分', default=0)  # 分钟数
+    early_minutes = models.IntegerField('早退分', default=0)  # 分钟数
+
+    # --- 支給字段 ---
+    basic_pay = models.DecimalField('基本給', max_digits=10, decimal_places=2, default=0)
+    overtime_allowance = models.DecimalField('残業手当', max_digits=10, decimal_places=2, default=0)
+    night_allowance = models.DecimalField('深夜手当', max_digits=10, decimal_places=2, default=0)
+    holiday_allowance = models.DecimalField('休日手当', max_digits=10, decimal_places=2, default=0)
+    commute_allowance = models.DecimalField('通勤手当', max_digits=10, decimal_places=2, default=0)
+    bonus = models.DecimalField('資格手当', max_digits=10, decimal_places=2, default=0)
+    other_allowances = models.DecimalField('役職手当', max_digits=10, decimal_places=2, default=0)
+    special_allowance = models.DecimalField('住宅手当', max_digits=10, decimal_places=2, default=0)
+    transportation_allowance = models.DecimalField('家族手当', max_digits=10, decimal_places=2, default=0)
+    total_pay = models.DecimalField('総支給額', max_digits=10, decimal_places=2, default=0)
+
+    # --- 控除字段 ---
+    health_insurance_deduction = models.DecimalField('健康保険扣除', max_digits=10, decimal_places=2, default=0)
+    health_care_insurance_deduction = models.DecimalField('介護保険', max_digits=10, decimal_places=2, default=0)
+    pension_deduction = models.DecimalField('厚生年金扣除', max_digits=10, decimal_places=2, default=0)
+    employment_insurance_deduction = models.DecimalField('雇用保険扣除', max_digits=10, decimal_places=2, default=0)
+    workers_insurance_deduction = models.DecimalField('労災保険扣除', max_digits=10, decimal_places=2, default=0)
+    income_tax_deduction = models.DecimalField('所得税扣除', max_digits=10, decimal_places=2, default=0)
+    resident_tax_deduction = models.DecimalField('住民税扣除', max_digits=10, decimal_places=2, default=0)
+    tax_total = models.DecimalField('税金合計', max_digits=10, decimal_places=2, default=0)
+    other_deductions = models.DecimalField('其他扣除', max_digits=10, decimal_places=2, default=0)
+    total_deductions = models.DecimalField('総控除額', max_digits=10, decimal_places=2, default=0)
+    # --- 最终金额 ---
+    # 差引支給額 = 总支给额 - 总控除额
+    # 这里默认总支给额和总控除额都已计算好
+    net_pay = models.DecimalField('差引支給額', max_digits=10, decimal_places=2, default=0)
+
     note = models.TextField('备注', blank=True)
 
     class Meta:

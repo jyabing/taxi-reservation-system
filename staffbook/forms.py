@@ -2,7 +2,7 @@ from django import forms
 from .models import (
     Driver, DriverLicense, Accident,
     DriverDailySales, DriverDailyReport, DriverDailyReportItem,
-    DriverPayrollRecord, DriverReportImage
+    DriverPayrollRecord, DriverReportImage, Reward, Insurance
 )
 from django.forms import inlineformset_factory
 
@@ -67,6 +67,11 @@ class AccidentForm(forms.ModelForm):
     class Meta:
         model = Accident
         fields = ['happened_at', 'description', 'penalty', 'note']
+        widgets = {
+            'happened_at': forms.DateInput(attrs={'type': 'date'}),
+            'description': forms.Textarea(attrs={'rows': 2}),
+            'note': forms.Textarea(attrs={'rows': 2}),
+        }
 
 # ✅ 简版基础信息表单
 class DriverBasicForm(forms.ModelForm):
@@ -152,3 +157,35 @@ class DriverPersonalInfoForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         apply_form_control_style(self.fields, exclude_types=(forms.FileInput,))
+
+# ✅ 奖励表单
+class RewardForm(forms.ModelForm):
+    class Meta:
+        model = Reward
+        # 根据需要列出所有要在表单中出现的字段
+        fields = ['points', 'remark']
+        labels = {
+            'points': '积分',
+            'remark': '备注',
+        }
+        widgets = {
+            'remark': forms.Textarea(attrs={'rows': 3}),
+        }
+
+# ✅ 保险表单
+class InsuranceForm(forms.ModelForm):
+    class Meta:
+        model = Insurance
+        fields = ['kind', 'join_date', 'number']
+        widgets = {
+            'join_date': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+class DriverPayrollRecordForm(forms.ModelForm):
+    class Meta:
+        model = DriverPayrollRecord
+        # 不在这里写具体字段，由 view 里 modelformset_factory(fields=…) 动态指定
+        fields = []
+        widgets = {
+            'month': forms.DateInput(attrs={'type': 'month'}),
+        }

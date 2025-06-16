@@ -1,0 +1,21 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+  {% include "staffbook/driver_tab_nav.html" %}
+  <h5>厚生年金记录</h5>
+  <table class="table">
+    <thead>
+      <tr><th>加入日期</th><th>年金番号</th><th>备注</th></tr>
+    </thead>
+    <tbody>
+      {% for p in pensions %}
+        <tr>
+          <td>{{ p.join_date }}</td>
+          <td>{{ p.pension_number }}</td>
+          <td>{{ p.note }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3">暂无厚生年金记录。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

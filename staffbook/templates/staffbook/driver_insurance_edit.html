@@ -1,0 +1,18 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% block content %}
+  {% include "staffbook/driver_tab_nav.html" %}
+  <h5>编辑保险・税务</h5>
+  <form method="post">{% csrf_token %}
+    {{ formset.management_form }}
+    <table class="table">
+      {% for form in formset %}
+        <tr>
+          <td>{{ form.kind.label_tag }} {{ form.kind }}</td>
+          <td>{{ form.join_date.label_tag }} {{ form.join_date }}</td>
+          <td>{{ form.number.label_tag }} {{ form.number }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+    <button class="btn btn-primary">保存</button>
+  </form>
+{% endblock %}
