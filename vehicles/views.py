@@ -3,7 +3,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 
 from django import forms
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from accounts.utils import check_module_permission
 
 from django.shortcuts import render, get_object_or_404, redirect
@@ -925,54 +925,54 @@ def admin_list(request):
 
 @login_required
 def my_dailyreports(request):
-    user = request.user
-    try:
-        driver = Driver.objects.get(user=user)
-    except Driver.DoesNotExist:
-        return render(request, 'vehicles/my_daily_reports.html', {
-            'reports': [],
-            'report_sums': {},
-            'total_meter_fee': 0,
-            'month_display': '',
-            'selected_date': '',
-            'selected_month': '',
-            'no_driver': True,
+    # 1. 拿到当前登录用户对应的 Driver
+    driver = get_object_or_404(Driver, user=request.user)
+
+    # 2. 如果有 ?date=YYYY-MM-DD，就只看那一天，否则就全部
+    selected_date = request.GET.get('date', '').strip()
+    if selected_date:
+        try:
+            day = timezone.datetime.strptime(selected_date, "%Y-%m-%d").date()
+            qs = DriverDailyReport.objects.filter(driver=driver, date=day)
+        except ValueError:
+            qs = DriverDailyReport.objects.none()
+    else:
+        qs = DriverDailyReport.objects.filter(driver=driver)
+
+    qs = qs.order_by('-date')
+
+    # 3. 聚合原始里程费
+    agg = (
+        DriverDailyReportItem.objects
+        .filter(report__in=qs)
+        .values('report')
+        .annotate(meter_raw=Sum('meter_fee'))
+    )
+    raw_map = {o['report']: o['meter_raw'] or Decimal('0') for o in agg}
+
+    # 4. 计算每行和总计
+    coef = Decimal('0.9091')
+    reports_data = []
+    total_raw = Decimal('0')
+    for rpt in qs:
+        raw = raw_map.get(rpt.id, Decimal('0'))
+        split = (raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        total_raw += raw
+        reports_data.append({
+            'id':           rpt.id,
+            'date':         rpt.date,
+            'note':         rpt.note,
+            'meter_raw':    raw,
+            'meter_split':  split,
         })
 
-    selected_date = request.GET.get('date')
-    selected_month = request.GET.get('month')
+    total_split = (total_raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
-    # 查日报
-    reports = DriverDailyReport.objects.filter(driver=driver).prefetch_related('items')
-    month_display = ''
-    if selected_date:
-        reports = reports.filter(date=selected_date)
-        month_display = f"{selected_date} 日报明细"
-    elif selected_month:
-        year, month = map(int, selected_month.split('-'))
-        reports = reports.filter(date__year=year, date__month=month)
-        month_display = f"{year}年{month}月 日报明细"
-    else:
-        today = timezone.localdate()
-        reports = reports.filter(date__year=today.year, date__month=today.month)
-        month_display = f"{today.year}年{today.month}月 日报明细"
-
-    # 计算每日报的合计
-    report_sums = {}
-    for report in reports:
-        total = sum([(item.meter_fee or 0) for item in report.items.all()])
-        report_sums[report.id] = total
-
-    total_meter_fee = sum(report_sums.values())
-
-    return render(request, 'vehicles/my_daily_reports.html', {
-        'reports': reports,
-        'report_sums': report_sums,
-        'total_meter_fee': total_meter_fee,
-        'month_display': month_display,
-        'selected_date': selected_date or '',
-        'selected_month': selected_month or '',
-        'no_driver': False,
+    return render(request, 'vehicles/my_dailyreports.html', {
+        'reports_data':  reports_data,
+        'total_raw':     total_raw,
+        'total_split':   total_split,
+        'selected_date': selected_date,
     })
 
 @login_required

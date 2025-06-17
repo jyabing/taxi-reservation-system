@@ -1,12 +1,22 @@
+{# vehicles/templates/vehicles/my_dailyreports.html #}
 {% extends 'base.html' %}
-
 {% block content %}
-<h2>📅 {{ month_display }} 日报明细</h2>
 
-<form method="get" class="mb-3">
-  <label>按月份：</label>
-  <input type="month" name="month" value="{{ month_display|date:'Y-m' }}">
-  <button class="btn btn-outline-secondary btn-sm">查询</button>
+<h2>📅 日报明细</h2>
+
+<form method="get" class="mb-3 d-flex align-items-center">
+  <label class="me-2 mb-0">按日期：</label>
+  <input
+    type="date"
+    name="date"
+    value="{{ selected_date|default:'' }}"
+    class="form-control form-control-sm d-inline-block me-2"
+    style="width: 8rem;"
+  />
+  <button type="submit" class="btn btn-outline-secondary btn-sm">查询</button>
+  {% if selected_date %}
+    <a href="{% url 'my_dailyreports' %}" class="btn btn-light btn-sm ms-2">重置</a>
+  {% endif %}
 </form>
 
 <table class="table table-bordered mb-4">
