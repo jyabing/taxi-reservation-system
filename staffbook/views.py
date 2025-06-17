@@ -719,7 +719,7 @@ def driver_salary(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_dailyreport_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    today = datetime.datetime.date.today()
+    today = now().date()
 
     selected_month = request.GET.get('month') or today.strftime('%Y-%m')  # ✅ 容错处理
     selected_date = request.GET.get('date', '').strip()
@@ -747,6 +747,7 @@ def driver_dailyreport_month(request, driver_id):
         'selected_month': selected_month,
         'selected_date': selected_date,
     })
+
 # ✅ 管理员新增日报给某员工
 @user_passes_test(is_staffbook_admin)
 def dailyreport_create_for_driver(request, driver_id):
@@ -778,28 +779,76 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 编辑日报（管理员）
 @user_passes_test(is_staffbook_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    report = get_object_or_404(DriverDailyReport, pk=report_id, driver=driver)
+    report = get_object_or_404(DriverDailyReport, pk=report_id)
 
+    # 绑定主表单 + 明细 formset
     if request.method == 'POST':
-        form = DriverDailyReportForm(request.POST, instance=report)
+        form    = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
         if form.is_valid() and formset.is_valid():
-            daily = form.save(commit=False)
-            daily.edited_by = request.user
-            daily.save()
+            form.save()
             formset.save()
-            messages.success(request, "编辑已保存")
-            return redirect('staffbook:driver_dailyreport_month', driver_id=driver.id)
+            return redirect('staffbook:dailyreport_overview')
     else:
-        form = DriverDailyReportForm(instance=report)
+        form    = DriverDailyReportForm(instance=report)
         formset = ReportItemFormSet(instance=report)
 
+    # 1) 定义费率：key 全部和 model 存的 value 一致（小写）
+    rates = {
+        'meter':  Decimal('0.9091'),
+        'cash':   Decimal('0'),
+        'uber':   Decimal('0.05'),
+        'didi':   Decimal('0.05'),
+        'credit': Decimal('0.05'),
+        'ticket': Decimal('0.05'),
+        'barcode':Decimal('0.05'),
+        'wechat': Decimal('0.05'),
+    }
+
+    # 2) 初始化
+    raw   = {k: Decimal('0') for k in rates}
+    split = {k: Decimal('0') for k in rates}
+
+    # 3) 迭代 formset 数据
+    data_iter = (formset.cleaned_data 
+                 if request.method=='POST' and formset.is_valid()
+                 else [f.initial for f in formset.forms])
+
+    for row in data_iter:
+        if row.get('DELETE'):
+            continue
+        amt = row.get('meter_fee') or Decimal('0')
+        pay = row.get('payment_method') or ''  # pay 例如 "uber" 或 "ticket" 或 "barcode"
+
+        # 里程费(水揚)
+        raw['meter']   += amt
+        split['meter'] += amt * rates['meter']
+
+        # 支付方式
+        if pay in ('barcode', 'wechat'):
+            # 合并扫码两种情况
+            raw['barcode']   += amt
+            split['barcode'] += amt * rates['barcode']
+        elif pay in rates:
+            raw[pay]   += amt
+            split[pay] += amt * rates[pay]
+
+    # 4) 组合传给模板
+    totals = {}
+    for k in rates:
+        totals[f"{k}_raw"]   = raw[k]
+        totals[f"{k}_split"] = split[k]
+
+    # ◆ 新增：把 barcode 别名成 qr
+    totals['qr_raw']   = raw['barcode']
+    totals['qr_split'] = split['barcode']
+
     return render(request, 'staffbook/dailyreport_formset.html', {
-        'driver': driver,
-        'report': report,
-        'form': form,
-        'formset': formset,
+        'form':      form,
+        'formset':   formset,
+        'totals':    totals,
+        'driver_id': driver_id,
+        'report':    report,
     })
 
 # ✅ 司机查看自己日报

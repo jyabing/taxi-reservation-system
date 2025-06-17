@@ -36,7 +36,7 @@
 </style>
 
 <div class="container">
-  <h4><strong>{{ driver.name }}</strong>（{{ driver.driver_code }}）- 編集乗務日報</h4>
+  <h4><strong>{{ report.driver.name }}</strong>（{{ report.driver.driver_code }}）- 編集乗務日報</h4>
   <p class="text-muted">日付：{{ form.date.value }}</p>
 
   {% if report.pk %}
@@ -68,37 +68,50 @@
       </div>
     </div>
 
-    {# —— 原本的“合计”那一行 —— #}
-    <div class="row g-2 mb-3">
-      <div class="col">
-        <label class="form-label" for="total_meter">メータ(水揚)合计</label>
-        <input class="form-control" id="total_meter" readonly placeholder="メータ(水揚)合计">
-      </div>
-      <div class="col">
-        <label class="form-label" for="total_uber">Uber合计</label>
-        <input class="form-control" id="total_uber" readonly placeholder="7.Uber合计">
-      </div>
-      <div class="col">
-        <label class="form-label" for="total_cash">现金(ながし)合计</label>
-        <input class="form-control" id="total_cash" readonly placeholder="1.现金(ながし)合计">
-      </div>
-      <div class="col">
-        <label class="form-label" for="total_didi">Didi合计</label>
-        <input class="form-control" id="total_didi" readonly placeholder="10.Didi合计">
-      </div>
-      <div class="col">
-        <label class="form-label" for="total_card">クレジ合计</label>
-        <input class="form-control" id="total_card" readonly placeholder="8.クレジ合计">
-      </div>
-      <div class="col">
-        <label class="form-label" for="total_ticket">乘车券合计</label>
-        <input class="form-control" id="total_ticket" readonly placeholder="乘车券合计">
-      </div>
-      <div class="col">
-        <label class="form-label" for="total_qr">扫码合计</label>
-        <input class="form-control" id="total_qr" readonly placeholder="扫码合计">
-      </div>
-    </div>
+{# dailyreport_formset.html 的合计面板部分 #}
+<div class="d-flex flex-wrap mb-3" style="gap: 0.5rem;">
+  {# メーター(水揚) 合計 #}
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="small text-muted">メーター(水揚)合計</div>
+    <div>{{ totals.meter_raw|floatformat:0 }}（{{ totals.meter_split|floatformat:0 }}）</div>
+  </div>
+
+  {# 現金(ながし) 合計 #}
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="small text-muted">現金(ながし)合計</div>
+    <div>{{ totals.cash_raw|floatformat:0 }}（{{ totals.cash_split|floatformat:0 }}）</div>
+  </div>
+
+  {# Uber 合計 #}
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="small text-muted">Uber 合計</div>
+    <div>{{ totals.uber_raw|floatformat:0 }}（{{ totals.uber_split|floatformat:0 }}）</div>
+  </div>
+
+  {# Didi 合計 #}
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="small text-muted">Didi 合計</div>
+    <div>{{ totals.didi_raw|floatformat:0 }}（{{ totals.didi_split|floatformat:0 }}）</div>
+  </div>
+
+  {# クレジ 合計 #}
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="small text-muted">クレジ 合計</div>
+    <div>{{ totals.credit_raw|floatformat:0 }}（{{ totals.credit_split|floatformat:0 }}）</div>
+  </div>
+
+  {# 乗車券 合計 #}
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="small text-muted">乗車券 合計</div>
+    <div>{{ totals.ticket_raw|floatformat:0 }}（{{ totals.ticket_split|floatformat:0 }}）</div>
+  </div>
+
+  {# 扫码 合計 #}
+  <div class="border rounded px-3 py-2 text-center">
+    <div class="small text-muted">扫码 合計</div>
+    <div>{{ totals.qr_raw|floatformat:0 }}（{{ totals.qr_split|floatformat:0 }}）</div>
+  </div>
+</div>
 
     <table class="table table-bordered table-sm">
       <thead class="table-light">
@@ -140,7 +153,8 @@
     </table>
 
     <button type="submit" class="btn btn-primary">💾 保存</button>
-    <a href="{% url 'staffbook:driver_dailyreport_month' driver.id %}?month={{ report.date|date:'Y-m' }}" class="btn btn-secondary">← 返回</a>
+    
+    
   </form>
 
   <div class="text-center mt-3">
