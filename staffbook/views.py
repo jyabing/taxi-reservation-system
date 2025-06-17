@@ -718,7 +718,7 @@ def driver_salary(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_dailyreport_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    today = date.today()
+    today = datetime.date.today()
 
     selected_month = request.GET.get('month') or today.strftime('%Y-%m')  # ✅ 容错处理
     selected_date = request.GET.get('date', '').strip()
