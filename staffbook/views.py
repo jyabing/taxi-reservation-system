@@ -9,11 +9,11 @@ from .forms import (
     DriverBasicForm, ReportItemFormSet, RewardForm, DriverPayrollRecordForm
     )
 from .models import (
-    DriverDailySales, DriverDailyReport, Driver, DrivingExperience, 
+    DriverDailySales, DriverDailyReport, DriverDailyReportItem, Driver, DrivingExperience, 
     Insurance, FamilyMember, DriverLicense, LicenseType, Qualification, Aptitude,
-    Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord
+    Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord 
     )
-from django.db.models import Q, Sum
+from django.db.models import Q, Sum, Case, When, F, DecimalField
 from django.forms import inlineformset_factory, modelformset_factory
 from django.utils import timezone
 from django import forms
@@ -22,6 +22,7 @@ from calendar import monthrange
 from django.utils.timezone import now
 from django.core.paginator import Paginator
 from django.urls import reverse
+from decimal import Decimal, ROUND_HALF_UP
 
 from accounts.utils import check_module_permission
 
@@ -718,14 +719,14 @@ def driver_salary(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_dailyreport_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    today = datetime.date.today()
+    today = datetime.datetime.date.today()
 
     selected_month = request.GET.get('month') or today.strftime('%Y-%m')  # ✅ 容错处理
     selected_date = request.GET.get('date', '').strip()
 
     if selected_date:
         try:
-            selected_date_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
+            selected_date_obj = datetime.datetime.strptime(selected_date, '%Y-%m-%d').date()
             reports = DriverDailyReport.objects.filter(driver=driver, date=selected_date_obj)
         except ValueError:
             reports = DriverDailyReport.objects.none()
@@ -777,19 +778,18 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 编辑日报（管理员）
 @user_passes_test(is_staffbook_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
-    driver = get_object_or_404(Driver, id=driver_id)
-    report = get_object_or_404(DriverDailyReport, id=report_id, driver=driver)
+    driver = get_object_or_404(Driver, pk=driver_id)
+    report = get_object_or_404(DriverDailyReport, pk=report_id, driver=driver)
 
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
-
         if form.is_valid() and formset.is_valid():
-            report = form.save(commit=False)
-            report.edited_by = request.user
-            report.save()
+            daily = form.save(commit=False)
+            daily.edited_by = request.user
+            daily.save()
             formset.save()
-            messages.success(request, '編集が保存されました。')
+            messages.success(request, "编辑已保存")
             return redirect('staffbook:driver_dailyreport_month', driver_id=driver.id)
     else:
         form = DriverDailyReportForm(instance=report)
@@ -828,60 +828,82 @@ def bind_missing_users(request):
 
 @user_passes_test(is_staffbook_admin)
 def dailyreport_overview(request):
-    # 取参数
-    today = now().date()
-    keyword = request.GET.get('keyword', '').strip()
-    date_str = request.GET.get('date', '').strip()
+    # 1. 基本参数：关键字 + 月份
+    today     = now().date()
+    keyword   = request.GET.get('keyword', '').strip()
     month_str = request.GET.get('month', today.strftime('%Y-%m'))
 
-    # 转为日期
+    # 2. 解析 month_str
     try:
-        month = datetime.strptime(month_str, "%Y-%m")
-    except:
+        month = datetime.datetime.strptime(month_str, "%Y-%m")
+    except ValueError:
         month = today.replace(day=1)
 
-    reports = DriverDailyReport.objects.all()
-
-    # ✅ 按司机名过滤（模糊匹配）
+    # 3. 构建 reports，只按 month 和 keyword 过滤
+    reports = DriverDailyReport.objects.filter(
+        date__year=month.year,
+        date__month=month.month
+    )
     if keyword:
         reports = reports.filter(driver__name__icontains=keyword)
 
-    # ✅ 按日期过滤（精确匹配）
-    if date_str:
-        try:
-            specific_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            reports = reports.filter(date=specific_date)
-        except:
-            pass
-    else:
-        # 默认按月份
-        reports = reports.filter(date__year=month.year, date__month=month.month)
+    # 4. 全员明细聚合
+    items = DriverDailyReportItem.objects.filter(report__in=reports)
+    totals = items.aggregate(
+        total_meter  = Sum('meter_fee'),
+        total_cash   = Sum(Case(When(payment_method='cash',    then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_uber   = Sum(Case(When(payment_method='uber',    then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_didi   = Sum(Case(When(payment_method='didi',    then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_credit = Sum(Case(When(payment_method='credit',  then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_ticket = Sum(Case(When(payment_method='ticket',  then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_qr     = Sum(Case(When(payment_method__in=['barcode','wechat'], then=F('meter_fee')), default=0, output_field=DecimalField())),
+    )
 
-    # 按司机聚合
+    # 5. 税前计算
+    gross = totals.get('total_meter') or Decimal('0')
+    totals['meter_pre_tax'] = (gross / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+
+    # 6. 分成额计算
+    rates = {
+        'meter':  Decimal('0.9091'),
+        'cash':   Decimal('0'),
+        'uber':   Decimal('0.05'),
+        'didi':   Decimal('0.05'),
+        'credit': Decimal('0.05'),
+        'ticket': Decimal('0.05'),
+        'qr':     Decimal('0.05'),
+    }
+    def split(key):
+        amt = totals.get(f"total_{key}") or Decimal('0')
+        return (amt * rates[key]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+
+    totals.update({
+        'meter_split':  split('meter'),
+        'cash_split':   split('cash'),
+        'uber_split':   split('uber'),
+        'didi_split':   split('didi'),
+        'credit_split': split('credit'),
+        'ticket_split': split('ticket'),
+        'qr_split':     split('qr'),
+    })
+
+    # 7. 按司机小计 & 分页
     driver_ids = reports.values_list('driver', flat=True).distinct()
-    drivers = Driver.objects.filter(id__in=driver_ids)
-
     driver_data = []
-    for driver in drivers:
-        driver_reports = reports.filter(driver=driver)
-        total_fee = sum(r.total_meter_fee for r in driver_reports)
-        note = "⚠️ 異常あり" if driver_reports.filter(has_issue=True).exists() else ""
+    for d in Driver.objects.filter(id__in=driver_ids):
+        dr_reps = reports.filter(driver=d)
         driver_data.append({
-            'driver': driver,
-            'total_fee': total_fee,
-            'note': note,
-            'month_str': month.strftime('%Y-%m'),
+            'driver':    d,
+            'total_fee': sum(r.total_meter_fee for r in dr_reps),
+            'note':      "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else "",
         })
+    page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
 
-    # 分页
-    paginator = Paginator(driver_data, 10)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-
+    # 8. 渲染
     return render(request, 'staffbook/dailyreport_overview.html', {
-        'page_obj': page_obj,
-        'month': month,
-        'keyword': keyword,
-        'date_str': date_str,
+        'page_obj':  page_obj,
+        'month':     month,
         'month_str': month_str,
+        'keyword':   keyword,
+        'totals':    totals,
     })

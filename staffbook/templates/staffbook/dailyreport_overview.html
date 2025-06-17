@@ -10,10 +10,6 @@
     <input type="text" name="keyword" value="{{ keyword }}" class="form-control" placeholder="例：山田">
   </div>
   <div class="col">
-    <label class="form-label">特定日</label>
-    <input type="date" name="date" value="{{ date_str }}" class="form-control">
-  </div>
-  <div class="col">
     <label class="form-label">対象月</label>
     <input type="month" name="month" value="{{ month_str }}" class="form-control">
   </div>
@@ -23,6 +19,58 @@
 </form>
 
 <h2 class="mb-4 border-bottom pb-2">📊 乗務日報・月間サマリー（{{ month|date:"Y年n月" }}）</h2>
+
+{# 日式风格全員合計（金额（分成額）） #}
+<div class="d-flex flex-wrap align-items-end mb-4">
+  <div class="me-3 text-center">
+    <label class="form-label small">メーター(水揚)合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_meter|floatformat:'0' }}（{{ totals.meter_split|floatformat:'0' }}）">
+  </div>
+
+  <div class="me-3 text-center">
+    <label class="form-label small">現金(ながし)合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+           value="{{ totals.total_cash|floatformat:'0' }}（{{ totals.cash_split|floatformat:'0' }}）">
+  </div>
+
+  <div class="me-3 text-center">
+    <label class="form-label small">Uber合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_uber|floatformat:'0' }}（{{ totals.uber_split|floatformat:'0' }}）">
+  </div>
+
+  <div class="me-3 text-center">
+    <label class="form-label small">Didi合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_didi|floatformat:'0' }}（{{ totals.didi_split|floatformat:'0' }}）">
+  </div>
+
+  <div class="me-3 text-center">
+    <label class="form-label small">クレジ合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_credit|floatformat:'0' }}（{{ totals.credit_split|floatformat:'0' }}）">
+  </div>
+
+  <div class="me-3 text-center">
+    <label class="form-label small">乗車券合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_ticket|floatformat:'0' }}（{{ totals.ticket_split|floatformat:'-0' }}）">
+  </div>
+
+  <div class="text-center">
+    <label class="form-label small">扫码合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_qr|floatformat:'0' }}（{{ totals.qr_split|floatformat:'0' }}）">
+  </div>
+</div>
 
 <!-- ✅ 卡片包裹的表格 -->
 <div class="card shadow-sm rounded-4 border-0 mt-3 mb-5">
@@ -91,4 +139,19 @@
   </ul>
 </nav>
 
+<script>
+  // ➊ 自适应宽度
+  document.querySelectorAll('.auto-width-input').forEach(function(input) {
+    const span = document.createElement('span');
+    span.className = 'mirror-span';
+    document.body.appendChild(span);
+    const sync = () => {
+      span.style.font = window.getComputedStyle(input).font;
+      span.textContent = input.value || input.placeholder || '';
+      input.style.width = (span.offsetWidth + 20) + 'px';
+    };
+    sync();
+    input.addEventListener('input', sync);
+  });
+</script>
 {% endblock %}

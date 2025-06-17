@@ -238,7 +238,11 @@ class DriverDailyReport(models.Model):
 
     has_issue = models.BooleanField("包含异常记录", default=False)  # ✅ 新增
 
-    # ✅ 新增两个字段
+    # —— 新增：出勤／退勤 时间字段 —— 
+    clock_in  = models.TimeField("出勤时间",  null=True, blank=True)
+    clock_out = models.TimeField("退勤时间",  null=True, blank=True)
+
+    # —— 编辑人/编辑时间 —— 
     edited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True, blank=True,
@@ -246,7 +250,7 @@ class DriverDailyReport(models.Model):
         related_name='edited_dailyreports',
         verbose_name="编辑人"
     )
-    edited_at = models.DateTimeField("编辑时间", null=True, blank=True)
+    edited_at = models.DateTimeField("编辑时间", auto_now=True, null=True, blank=True, help_text="自动记录最后保存时间")
 
     @property
     def total_meter_fee(self):

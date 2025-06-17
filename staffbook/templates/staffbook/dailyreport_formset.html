@@ -39,40 +39,66 @@
   <h4><strong>{{ driver.name }}</strong>（{{ driver.driver_code }}）- 編集乗務日報</h4>
   <p class="text-muted">日付：{{ form.date.value }}</p>
 
-  <form method="post" autocomplete="off">{% csrf_token %}
+  {% if report.pk %}
+    {% if report.edited_by %}
+      <div class="alert alert-light small mb-3">
+        <strong>最后编辑：</strong>
+        {{ report.edited_by.get_full_name|default:report.edited_by.username }}
+        于 {{ report.edited_at|date:"Y年n月j日 H:i" }} 保存
+      </div>
+    {% else %}
+      <div class="alert alert-secondary small mb-3">尚未被编辑过</div>
+    {% endif %}
+  {% endif %}
+
+  <form method="post" autocomplete="off">
+    {% csrf_token %}
     {{ form.date.as_hidden }}
     <div class="mb-3">{{ form.note }}</div>
 
-  <div class="row g-2 mb-3">
-   <div class="col">
-    <label class="form-label" for="total_meter">メータ合计</label>
-    <input class="form-control" id="total_meter" readonly placeholder="メータ合计">
-   </div>
-   <div class="col">
-    <label class="form-label" for="total_uber">Uber合计</label>
-    <input class="form-control" id="total_uber" readonly placeholder="Uber合计">
-   </div>
-   <div class="col">
-    <label class="form-label" for="total_cash">现金合计</label>
-    <input class="form-control" id="total_cash" readonly placeholder="现金合计">
-   </div>
-   <div class="col">
-    <label class="form-label" for="total_didi">Didi合计</label>
-    <input class="form-control" id="total_didi" readonly placeholder="Didi合计">
-   </div>
-   <div class="col">
-    <label class="form-label" for="total_card">信用卡合计</label>
-    <input class="form-control" id="total_card" readonly placeholder="信用卡合计">
-   </div>
-   <div class="col">
-    <label class="form-label" for="total_ticket">乘车券合计</label>
-    <input class="form-control" id="total_ticket" readonly placeholder="乘车券合计">
-   </div>
-   <div class="col">
-    <label class="form-label" for="total_qr">扫码合计</label>
-    <input class="form-control" id="total_qr" readonly placeholder="扫码合计">
-   </div>
-</div>
+    {# —— 新增：出勤/退勤 时间 —— #}
+    <div class="row g-2 mb-3">
+      <div class="col-md-3">
+        {{ form.clock_in.label_tag }}
+        {{ form.clock_in }}
+      </div>
+      <div class="col-md-3">
+        {{ form.clock_out.label_tag }}
+        {{ form.clock_out }}
+      </div>
+    </div>
+
+    {# —— 原本的“合计”那一行 —— #}
+    <div class="row g-2 mb-3">
+      <div class="col">
+        <label class="form-label" for="total_meter">メータ(水揚)合计</label>
+        <input class="form-control" id="total_meter" readonly placeholder="メータ(水揚)合计">
+      </div>
+      <div class="col">
+        <label class="form-label" for="total_uber">Uber合计</label>
+        <input class="form-control" id="total_uber" readonly placeholder="7.Uber合计">
+      </div>
+      <div class="col">
+        <label class="form-label" for="total_cash">现金(ながし)合计</label>
+        <input class="form-control" id="total_cash" readonly placeholder="1.现金(ながし)合计">
+      </div>
+      <div class="col">
+        <label class="form-label" for="total_didi">Didi合计</label>
+        <input class="form-control" id="total_didi" readonly placeholder="10.Didi合计">
+      </div>
+      <div class="col">
+        <label class="form-label" for="total_card">クレジ合计</label>
+        <input class="form-control" id="total_card" readonly placeholder="8.クレジ合计">
+      </div>
+      <div class="col">
+        <label class="form-label" for="total_ticket">乘车券合计</label>
+        <input class="form-control" id="total_ticket" readonly placeholder="乘车券合计">
+      </div>
+      <div class="col">
+        <label class="form-label" for="total_qr">扫码合计</label>
+        <input class="form-control" id="total_qr" readonly placeholder="扫码合计">
+      </div>
+    </div>
 
     <table class="table table-bordered table-sm">
       <thead class="table-light">

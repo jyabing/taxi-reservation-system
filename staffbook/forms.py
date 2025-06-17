@@ -98,12 +98,15 @@ class DriverDailySalesForm(forms.ModelForm):
 class DriverDailyReportForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReport
-        fields = ['date', 'note']
+        fields = [
+            'date', 'note', 'has_issue',
+            'clock_in', 'clock_out',
+        ]
         widgets = {
-            'note': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-            'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'date':      forms.DateInput(attrs={'type': 'date'}),
+            'clock_in':  forms.TimeInput(attrs={'type': 'time'}),
+            'clock_out': forms.TimeInput(attrs={'type': 'time'}),
         }
-
 # ✅ 日报明细表单
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
