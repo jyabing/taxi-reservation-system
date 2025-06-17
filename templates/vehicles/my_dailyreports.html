@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>📅 {{ month_display }} 日报明细</h2>
+
+<form method="get" class="mb-3">
+  <label>按月份：</label>
+  <input type="month" name="month" value="{{ month_display|date:'Y-m' }}">
+  <button class="btn btn-outline-secondary btn-sm">查询</button>
+</form>
+
+<table class="table table-bordered mb-4">
+  <thead class="table-light">
+    <tr>
+      <th>日期</th>
+      <th>メータ料金合計</th>
+      <th>操作</th>
+      <th>备注</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for rpt in reports_data %}
+      <tr>
+        <td>{{ rpt.date|date:"Y年n月j日" }}</td>
+        <td>{{ rpt.meter_raw|floatformat:0 }}（{{ rpt.meter_split|floatformat:0 }}）</td>
+        <td><a href="{% url 'my_daily_report_detail' rpt.id %}">查看明细</a></td>
+        <td>{{ rpt.note|default:"无" }}</td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="4" class="text-center text-secondary">没有查到日报。</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="fw-bold fs-5">
+  本期メータ料金合計：{{ total_raw|floatformat:0 }}（{{ total_split|floatformat:0 }}） 円
+</div>
+
+<p class="mt-4"><a href="{% url 'profile' %}">← 返回我的资料</a></p>
+{% endblock %}
