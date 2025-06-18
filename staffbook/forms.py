@@ -2,9 +2,11 @@ from django import forms
 from .models import (
     Driver, DriverLicense, Accident,
     DriverDailySales, DriverDailyReport, DriverDailyReportItem,
-    DriverPayrollRecord, DriverReportImage, Reward, Insurance
+    DriverPayrollRecord, DriverReportImage, Reward, Insurance,
 )
 from django.forms import inlineformset_factory
+from vehicles.models import Reservation
+
 
 # ✅ 通用样式自动添加工具函数
 def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
@@ -97,16 +99,50 @@ class DriverDailySalesForm(forms.ModelForm):
 # ✅ 日报主表表单
 class DriverDailyReportForm(forms.ModelForm):
     class Meta:
-        model = DriverDailyReport
-        fields = [
-            'date', 'note', 'has_issue',
-            'clock_in', 'clock_out',
-        ]
+        model  = DriverDailyReport
+        fields = ['date','note','has_issue','status','clock_in','clock_out','gas_volume','mileage']
         widgets = {
-            'date':      forms.DateInput(attrs={'type': 'date'}),
-            'clock_in':  forms.TimeInput(attrs={'type': 'time'}),
-            'clock_out': forms.TimeInput(attrs={'type': 'time'}),
+            'status':     forms.HiddenInput(),
+            'date':       forms.DateInput(attrs={'type':'date','class':'form-control'}),
+            'note':       forms.Textarea(attrs={'class':'form-control auto-width-input','rows':2}),
+            'has_issue':  forms.CheckboxInput(attrs={'class':'form-check-input'}),
+            'clock_in':   forms.TimeInput(attrs={'type':'time','class':'form-control auto-width-input'}),
+            'clock_out':  forms.TimeInput(attrs={'type':'time','class':'form-control auto-width-input'}),
+            'gas_volume':  forms.NumberInput(attrs={'step':'0.01','class':'form-control auto-width-input','placeholder':'0.00 L'}),
+            'mileage':     forms.NumberInput(attrs={'step':'0.01','class':'form-control auto-width-input','placeholder':'0.00 KM'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        instance = kwargs.get('instance', None)
+        super().__init__(*args, **kwargs)
+
+        # 样式初始化
+        apply_form_control_style(self.fields)
+        self.fields['has_issue'].widget.attrs.update({'class': 'form-check-input'})
+
+        # 只有在 GET（无 POST 数据）且有 instance 时，才做自动注入
+        if instance is not None and not self.data:
+            # ① 从 DriverDailyReport 拿到关联的 DriverUser
+            driver_user = instance.driver.user
+            if driver_user:
+                # ② 按日期筛选出当天所有已有 actual_departure 的 Reservation，再倒序取最新一条
+                res = (
+                    Reservation.objects
+                    .filter(
+                        driver=driver_user,
+                        actual_departure__date=instance.date,
+                        actual_departure__isnull=False
+                    )
+                    .order_by('-actual_departure')
+                    .first()
+                )
+                # ③ 如果找到，就把时间注入到表单的 initial
+                if res:
+                    self.fields['clock_in'].initial  = res.actual_departure.time()
+                    if res.actual_return:
+                        self.fields['clock_out'].initial = res.actual_return.time()
+
+        
 # ✅ 日报明细表单
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
@@ -123,7 +159,7 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'ride_to': forms.TextInput(attrs={'class': 'auto-width-input'}),
             'num_male': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'num_female': forms.NumberInput(attrs={'class': 'auto-width-input'}),
-            'meter_fee': forms.NumberInput(attrs={'class': 'meter-fee-input auto-width-input'}),
+            'meter_fee': forms.NumberInput(attrs={'class': 'meter-fee-input auto-width-input','min': '0','step': '1'}),
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
             'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
         }

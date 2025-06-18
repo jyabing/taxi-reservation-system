@@ -1,12 +1,13 @@
 import datetime
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
+
 from .permissions import is_staffbook_admin
 from django.contrib import messages
 from .forms import (
     DriverDailySalesForm, DriverDailyReportForm, DriverForm, 
     ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, 
-    DriverBasicForm, ReportItemFormSet, RewardForm, DriverPayrollRecordForm
+    DriverBasicForm, RewardForm, DriverPayrollRecordForm
     )
 from .models import (
     DriverDailySales, DriverDailyReport, DriverDailyReportItem, Driver, DrivingExperience, 
@@ -23,6 +24,8 @@ from django.utils.timezone import now
 from django.core.paginator import Paginator
 from django.urls import reverse
 from decimal import Decimal, ROUND_HALF_UP
+
+from vehicles.models import Reservation 
 
 from accounts.utils import check_module_permission
 
@@ -779,67 +782,134 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 编辑日报（管理员）
 @user_passes_test(is_staffbook_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
-    report = get_object_or_404(DriverDailyReport, pk=report_id)
+    report = get_object_or_404(
+        DriverDailyReport,
+        pk=report_id,
+        driver_id=driver_id
+    )
 
-    # 绑定主表单 + 明细 formset
     if request.method == 'POST':
+        # —— 1) 绑定提交数据 —— #
         form    = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
+
         if form.is_valid() and formset.is_valid():
-            form.save()
+            inst = form.save(commit=False)
+
+            # —— (A) 取消态自动切完成 —— #
+            if inst.status == 'cancelled' and inst.clock_in and inst.clock_out:
+                inst.status = 'completed'
+
+            # —— (B) 出/退勤都填时清异常标记 —— #
+            if inst.clock_in and inst.clock_out:
+                inst.has_issue = False
+
+            inst.save()
+            formset.instance = inst
             formset.save()
+
+            # —— (C) 回写到 Reservation —— #
+            driver_user = inst.driver.user
+            if driver_user and inst.clock_in:
+                qs = (Reservation.objects
+                      .filter(
+                          driver=driver_user,
+                          actual_departure__date=inst.date,
+                          actual_departure__isnull=False
+                      )
+                      .order_by('-actual_departure'))
+                res = qs.first()
+                if res:
+                    tz = timezone.get_current_timezone()
+                    # 出勤
+                    dep_dt = timezone.make_aware(
+                        datetime.datetime.combine(inst.date, inst.clock_in),
+                        tz
+                    )
+                    res.actual_departure = dep_dt
+
+                    # 退勤（次日情况）
+                    if inst.clock_out:
+                        ret_date = inst.date
+                        if inst.clock_out < inst.clock_in:
+                            ret_date += datetime.timedelta(days=1)
+                        ret_dt = timezone.make_aware(
+                            datetime.datetime.combine(ret_date, inst.clock_out),
+                            tz
+                        )
+                        res.actual_return = ret_dt
+
+                    res.save()
+
             return redirect('staffbook:dailyreport_overview')
+
     else:
-        form    = DriverDailyReportForm(instance=report)
+        # —— GET：一定要同时给 status + clock_in/clock_out 初始值 —— #
+        initial = {
+            'status': report.status,
+        }
+        driver_user = report.driver.user
+        if driver_user:
+            res = (Reservation.objects
+                   .filter(
+                       driver=driver_user,
+                       actual_departure__date=report.date,
+                       actual_departure__isnull=False
+                   )
+                   .order_by('-actual_departure')
+                   .first())
+            if res:
+                initial['clock_in']  = timezone.localtime(res.actual_departure).time()
+                if res.actual_return:
+                    initial['clock_out'] = timezone.localtime(res.actual_return).time()
+
+        form    = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-    # 1) 定义费率：key 全部和 model 存的 value 一致（小写）
+    # 计算各支付方式的原始和分成金额
     rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
-        'ticket': Decimal('0.05'),
-        'barcode':Decimal('0.05'),
-        'wechat': Decimal('0.05'),
+        'meter':   Decimal('0.9091'),
+        'cash':    Decimal('0'),
+        'uber':    Decimal('0.05'),
+        'didi':    Decimal('0.05'),
+        'credit':  Decimal('0.05'),
+        'ticket':  Decimal('0.05'),
+        'barcode': Decimal('0.05'),
+        'wechat':  Decimal('0.05'),
     }
-
-    # 2) 初始化
     raw   = {k: Decimal('0') for k in rates}
     split = {k: Decimal('0') for k in rates}
 
-    # 3) 迭代 formset 数据
-    data_iter = (formset.cleaned_data 
-                 if request.method=='POST' and formset.is_valid()
-                 else [f.initial for f in formset.forms])
+    # 根据请求方法选择数据来源
+    data_iter = (
+        formset.cleaned_data
+        if request.method == 'POST' and formset.is_valid()
+        else [f.initial for f in formset.forms]
+    )
 
     for row in data_iter:
         if row.get('DELETE'):
             continue
         amt = row.get('meter_fee') or Decimal('0')
-        pay = row.get('payment_method') or ''  # pay 例如 "uber" 或 "ticket" 或 "barcode"
+        pay = row.get('payment_method') or ''
 
-        # 里程费(水揚)
+        # 累计里程费
         raw['meter']   += amt
         split['meter'] += amt * rates['meter']
 
-        # 支付方式
+        # 累计支付方式
         if pay in ('barcode', 'wechat'):
-            # 合并扫码两种情况
             raw['barcode']   += amt
             split['barcode'] += amt * rates['barcode']
         elif pay in rates:
             raw[pay]   += amt
             split[pay] += amt * rates[pay]
 
-    # 4) 组合传给模板
+    # 组合 totals 并添加别名 qr
     totals = {}
     for k in rates:
         totals[f"{k}_raw"]   = raw[k]
         totals[f"{k}_split"] = split[k]
-
-    # ◆ 新增：把 barcode 别名成 qr
     totals['qr_raw']   = raw['barcode']
     totals['qr_split'] = split['barcode']
 
@@ -850,6 +920,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'driver_id': driver_id,
         'report':    report,
     })
+
 
 # ✅ 司机查看自己日报
 @login_required

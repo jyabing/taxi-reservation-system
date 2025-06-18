@@ -2,6 +2,7 @@ from django.db import models
 from accounts.models import DriverUser
 from django.conf import settings
 from django.utils import timezone
+from django.core.validators import MinValueValidator
 
 PAYMENT_METHOD_CHOICES = [
     ('cash', '现金'),
@@ -232,15 +233,30 @@ class Pension(models.Model):
 
 # 核心：乘务日报（一天一条），不再保存单独的金额等，而是所有明细归属于这张日报
 class DriverDailyReport(models.Model):
+    STATUS_CHOICES = [
+        ('pending',   '待处理'),
+        ('completed', '已完成'),
+        ('cancelled', '已取消'),
+    ]
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_reports', verbose_name="司机")
     date = models.DateField('日期')
     note = models.TextField('备注', blank=True)
 
     has_issue = models.BooleanField("包含异常记录", default=False)  # ✅ 新增
 
+    status = models.CharField(
+        "状态",
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending'
+    )
+
     # —— 新增：出勤／退勤 时间字段 —— 
     clock_in  = models.TimeField("出勤时间",  null=True, blank=True)
     clock_out = models.TimeField("退勤时间",  null=True, blank=True)
+
+    gas_volume = models.DecimalField("ガソリン量 (L)",max_digits=6, decimal_places=2,default=0,validators=[MinValueValidator(0)])
+    mileage = models.DecimalField("里程 (KM)",max_digits=7, decimal_places=2,default=0,validators=[MinValueValidator(0)])
 
     # —— 编辑人/编辑时间 —— 
     edited_by = models.ForeignKey(

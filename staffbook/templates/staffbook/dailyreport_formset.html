@@ -22,8 +22,7 @@
   }
   .auto-width-input {
     width: 2ch;
-    min-width: 60px;
-    max-width: 360px;
+    min-width: 4ch;
     box-sizing: content-box;
     transition: width 0.2s;
   }
@@ -51,22 +50,67 @@
     {% endif %}
   {% endif %}
 
-  <form method="post" autocomplete="off">
-    {% csrf_token %}
-    {{ form.date.as_hidden }}
-    <div class="mb-3">{{ form.note }}</div>
 
-    {# —— 新增：出勤/退勤 时间 —— #}
-    <div class="row g-2 mb-3">
-      <div class="col-md-3">
-        {{ form.clock_in.label_tag }}
-        {{ form.clock_in }}
-      </div>
-      <div class="col-md-3">
-        {{ form.clock_out.label_tag }}
-        {{ form.clock_out }}
-      </div>
+    <!-- 先把错误渲染出来 -->
+  {% if form.errors %}
+    <div class="alert alert-danger">
+      <strong>表单错误：</strong>
+      <ul>
+      {% for field, errs in form.errors.items %}
+        <li>{{ field }}: {{ errs|join:", " }}</li>
+      {% endfor %}
+      </ul>
     </div>
+  {% endif %}
+
+  {% if formset.non_form_errors %}
+    <div class="alert alert-danger">
+      <strong>明细表单错误：</strong>
+      {{ formset.non_form_errors }}
+    </div>
+  {% endif %}
+
+  <!-- 然后正常渲染表单 -->
+  <form method="post" autocomplete="off">
+  {% csrf_token %}
+  {{ form.status }}      {# 隐藏字段 #}
+  {{ form.date.as_hidden }}
+
+
+  <div class="col-md-3">
+    <label>备注:</label>{{ form.note }}</div>
+
+  <div class="row g-3 mb-4 align-items-end">
+  <!-- 出勤時間 -->
+  <div class="col-auto">
+    <label class="form-label d-block">出勤時間</label>
+    {{ form.clock_in }}
+  </div>
+
+  <!-- 退勤時間 -->
+  <div class="col-auto">
+    <label class="form-label d-block">退勤時間</label>
+    {{ form.clock_out }}
+  </div>
+
+  <!-- 総時長 -->
+  <div class="col-auto">
+    <label class="form-label d-block">&nbsp;</label>
+    <div><strong>総時長：</strong><span id="total-duration">--:--</span></div>
+  </div>
+
+  <!-- ガソリン量 -->
+  <div class="col-auto ms-auto">
+    <label class="form-label d-block">ガソリン量 (L)</label>
+    {{ form.gas_volume }}
+  </div>
+
+  <!-- 里程 -->
+  <div class="col-auto">
+    <label class="form-label d-block">里程 (KM)</label>
+    {{ form.mileage }}
+  </div>
+</div>
 
 {# dailyreport_formset.html 的合计面板部分 #}
 <div class="d-flex flex-wrap mb-3" style="gap: 0.5rem;">
@@ -163,6 +207,48 @@
 </div>
 
 <script>
+
+  
+// —— 计算并更新总时长 —— //
+function updateDuration() {
+  const inEl  = document.querySelector('input[name="clock_in"]');
+  const outEl = document.querySelector('input[name="clock_out"]');
+  const display = document.getElementById('total-duration');
+  const inVal  = inEl.value;
+  const outVal = outEl.value;
+
+  if (!inVal || !outVal) {
+    display.textContent = '--:--';
+    return;
+  }
+
+  // 构造两个 Date 对象（同一天），用于相减
+  const [h1, m1] = inVal.split(':').map(Number);
+  const [h2, m2] = outVal.split(':').map(Number);
+  let d1 = new Date(0,0,0,h1,m1);
+  let d2 = new Date(0,0,0,h2,m2);
+
+  // 如果退勤时间早于出勤，就跨天 +1 日
+  if (d2 <= d1) {
+    d2 = new Date(0,0,1,h2,m2);
+  }
+
+  const diffMs = d2 - d1;
+  const diffH = Math.floor(diffMs / (1000*60*60));
+  const diffM = Math.floor((diffMs % (1000*60*60)) / (1000*60));
+  // 两位数格式
+  const hh = String(diffH).padStart(2,'0');
+  const mm = String(diffM).padStart(2,'0');
+  display.textContent = `${hh}:${mm}`;
+}
+
+// 监听两输入框的变化
+document.addEventListener('DOMContentLoaded', () => {
+  updateDuration();
+  document.querySelector('input[name="clock_in"]').addEventListener('input', updateDuration);
+  document.querySelector('input[name="clock_out"]').addEventListener('input', updateDuration);
+});
+
   // ➊ 自适应宽度
   document.querySelectorAll('.auto-width-input').forEach(function(input) {
     const span = document.createElement('span');
