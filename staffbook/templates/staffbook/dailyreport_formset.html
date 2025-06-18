@@ -1,4 +1,5 @@
 {% extends "staffbook/base_staffbook.html" %}
+{% load time_filters %}
 {% block extra_css %}
 <style>
   .table tbody tr.has-note {
@@ -80,37 +81,27 @@
   <div class="col-md-3">
     <label>备注:</label>{{ form.note }}</div>
 
-  <div class="row g-3 mb-4 align-items-end">
-  <!-- 出勤時間 -->
-  <div class="col-auto">
-    <label class="form-label d-block">出勤時間</label>
-    {{ form.clock_in }}
-  </div>
+<table class="table table-bordered table-sm">
+  <thead class="table-light">
+    <tr>
+      <th>出勤时间</th>
+      <th>退勤时间</th>
+      <th>总时长</th>
+      <th>油量 (L)</th>
+      <th>里程 (KM)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><input type="time" name="clock_in" value="{{ form.initial.clock_in|default_if_none:'' }}" class="form-control" /></td>
+      <td><input type="time" name="clock_out" value="{{ form.initial.clock_out|default_if_none:'' }}" class="form-control" /></td>
+      <td>{{ duration|time_length }}</td>
+      <td>{{ form.gas_volume }}</td>
+      <td>{{ form.mileage }}</td>
+    </tr>
+  </tbody>
 
-  <!-- 退勤時間 -->
-  <div class="col-auto">
-    <label class="form-label d-block">退勤時間</label>
-    {{ form.clock_out }}
-  </div>
-
-  <!-- 総時長 -->
-  <div class="col-auto">
-    <label class="form-label d-block">&nbsp;</label>
-    <div><strong>総時長：</strong><span id="total-duration">--:--</span></div>
-  </div>
-
-  <!-- ガソリン量 -->
-  <div class="col-auto ms-auto">
-    <label class="form-label d-block">ガソリン量 (L)</label>
-    {{ form.gas_volume }}
-  </div>
-
-  <!-- 里程 -->
-  <div class="col-auto">
-    <label class="form-label d-block">里程 (KM)</label>
-    {{ form.mileage }}
-  </div>
-</div>
+</table>
 
 {# dailyreport_formset.html 的合计面板部分 #}
 <div class="d-flex flex-wrap mb-3" style="gap: 0.5rem;">

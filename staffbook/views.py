@@ -18,7 +18,7 @@ from django.db.models import Q, Sum, Case, When, F, DecimalField
 from django.forms import inlineformset_factory, modelformset_factory
 from django.utils import timezone
 from django import forms
-#from datetime import date, datetime
+from datetime import timedelta
 from calendar import monthrange
 from django.utils.timezone import now
 from django.core.paginator import Paginator
@@ -782,25 +782,26 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 编辑日报（管理员）
 @user_passes_test(is_staffbook_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
-    report = get_object_or_404(
-        DriverDailyReport,
-        pk=report_id,
-        driver_id=driver_id
-    )
+    report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
 
     if request.method == 'POST':
-        # —— 1) 绑定提交数据 —— #
-        form    = DriverDailyReportForm(request.POST, instance=report)
+        form = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
 
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
-            # —— (A) 取消态自动切完成 —— #
-            if inst.status == 'cancelled' and inst.clock_in and inst.clock_out:
-                inst.status = 'completed'
+            print("📝 保存日报：", inst.date)
+            print("🕒 clock_in:", inst.clock_in)
+            print("🕒 clock_out:", inst.clock_out)
+            print("📦 当前状态:", inst.status)
 
-            # —— (B) 出/退勤都填时清异常标记 —— #
+            # ✅ 状态为取消或申请中 + 填写了出退勤 → 自动设为 completed
+            if inst.status in ['cancelled', 'pending'] and inst.clock_in and inst.clock_out:
+                inst.status = 'completed'
+                print("🚦 状态自动变更为 completed")
+
+            # ✅ 如果填写了出退勤 → 去除异常标记
             if inst.clock_in and inst.clock_out:
                 inst.has_issue = False
 
@@ -808,63 +809,62 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             formset.instance = inst
             formset.save()
 
-            # —— (C) 回写到 Reservation —— #
+            # ✅ Reservation 同步写入实际出/入库时间
             driver_user = inst.driver.user
             if driver_user and inst.clock_in:
-                qs = (Reservation.objects
-                      .filter(
-                          driver=driver_user,
-                          actual_departure__date=inst.date,
-                          actual_departure__isnull=False
-                      )
-                      .order_by('-actual_departure'))
-                res = qs.first()
+                res = (Reservation.objects
+                       .filter(driver=driver_user, date=inst.date)
+                       .order_by('start_time')
+                       .first())
+                print("🔍 查找到 Reservation:", res)
+
                 if res:
                     tz = timezone.get_current_timezone()
-                    # 出勤
-                    dep_dt = timezone.make_aware(
-                        datetime.datetime.combine(inst.date, inst.clock_in),
-                        tz
+                    res.actual_departure = timezone.make_aware(
+                        datetime.datetime.combine(inst.date, inst.clock_in), tz
                     )
-                    res.actual_departure = dep_dt
 
-                    # 退勤（次日情况）
                     if inst.clock_out:
                         ret_date = inst.date
                         if inst.clock_out < inst.clock_in:
                             ret_date += datetime.timedelta(days=1)
-                        ret_dt = timezone.make_aware(
-                            datetime.datetime.combine(ret_date, inst.clock_out),
-                            tz
+                        res.actual_return = timezone.make_aware(
+                            datetime.datetime.combine(ret_date, inst.clock_out), tz
                         )
-                        res.actual_return = ret_dt
+                        print("✅ 写入 actual_return:", res.actual_return)
 
                     res.save()
 
             return redirect('staffbook:dailyreport_overview')
 
     else:
-        # —— GET：一定要同时给 status + clock_in/clock_out 初始值 —— #
-        initial = {
-            'status': report.status,
-        }
+        initial = {'status': report.status}
+        duration = None
         driver_user = report.driver.user
+
         if driver_user:
             res = (Reservation.objects
-                   .filter(
-                       driver=driver_user,
-                       actual_departure__date=report.date,
-                       actual_departure__isnull=False
-                   )
-                   .order_by('-actual_departure')
+                   .filter(driver=driver_user, date=report.date)
+                   .order_by('start_time')
                    .first())
             if res:
-                initial['clock_in']  = timezone.localtime(res.actual_departure).time()
+                if res.actual_departure:
+                    clock_in = timezone.localtime(res.actual_departure).time()
+                    initial['clock_in'] = clock_in
                 if res.actual_return:
-                    initial['clock_out'] = timezone.localtime(res.actual_return).time()
+                    clock_out = timezone.localtime(res.actual_return).time()
+                    initial['clock_out'] = clock_out
 
-        form    = DriverDailyReportForm(instance=report, initial=initial)
+                    # ✅ 计算总时长（支持跨日）
+                    dt_in = datetime.datetime.combine(report.date, clock_in)
+                    dt_out = datetime.datetime.combine(report.date, clock_out)
+                    if dt_out <= dt_in:
+                        dt_out += datetime.timedelta(days=1)
+                    duration = dt_out - dt_in
+
+        form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
+
 
     # 计算各支付方式的原始和分成金额
     rates = {
@@ -919,6 +919,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'totals':    totals,
         'driver_id': driver_id,
         'report':    report,
+        'duration': duration,
     })
 
 
