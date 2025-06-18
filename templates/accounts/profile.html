@@ -2,57 +2,58 @@
 {% load static %}
 {% block content %}
 
-<h2>👤 我的资料</h2>
+<h2 class="mb-4">👤 我的资料</h2>
 
-<table border="1" cellpadding="8">
-    <tr>
-      <th>用户名</th>
-      <td>{{ request.user.username }}</td>
-      <td></td>
-    </tr>
-    <tr>
-      <th>邮箱</th>
-      <td>{{ request.user.email }}</td>
-      <td><a href="{% url 'edit_profile' %}">✏️ 修改邮箱</a></td>
-    </tr>
-    <tr>
-      <th>密码</th>
-      <td>********</td>
-      <td><a href="{% url 'change_password' %}">🔐 修改密码</a></td>
-    </tr>
+<div class="card shadow-sm">
+  <div class="card-body p-4">
+    <table class="table table-bordered align-middle mb-0">
+      <tbody>
+        <tr>
+          <th style="width: 20%;">用户名</th>
+          <td style="width: 60%;">{{ request.user.username }}</td>
+          <td style="width: 20%;"></td>
+        </tr>
+        <tr>
+          <th>邮箱</th>
+          <td>{{ request.user.email }}</td>
+          <td><a href="{% url 'edit_profile' %}">✏️ 修改邮箱</a></td>
+        </tr>
+        <tr>
+          <th>密码</th>
+          <td>********</td>
+          <td><a href="{% url 'change_password' %}">🔐 修改密码</a></td>
+        </tr>
+        {% if request.user.is_formal %}
+        <tr>
+          <th>员工类型</th>
+          <td>正式司机</td>
+          <td></td>
+        </tr>
+        {% elif request.user.is_temporary %}
+        <tr>
+          <th>员工类型</th>
+          <td>临时司机</td>
+          <td></td>
+        </tr>
+        {% endif %}
+        <tr>
+          <th>注册时间</th>
+          <td>{{ request.user.date_joined|date:"Y年n月j日 H:i" }}</td>
+          <td></td>
+        </tr>
+        <tr>
+          <th>月度统计</th>
+          <td><a href="{% url 'my_stats' %}">查看</a></td>
+          <td></td>
+        </tr>
+        <tr>
+          <th>日报记录</th>
+          <td><a href="{% url 'my_daily_reports' %}">查看</a></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
-    {# 只显示已选的那一项 #}
-    {% if request.user.is_formal %}
-    <tr>
-      <th>员工类型</th>
-      <td>正式司机</td>
-      <td></td>
-    </tr>
-    {% elif request.user.is_temporary %}
-    <tr>
-      <th>员工类型</th>
-      <td>临时司机</td>
-      <td></td>
-    </tr>
-    {% endif %}
-
-    <tr>
-      <th>注册时间</th>
-      <td>{{ request.user.date_joined }}</td>
-      <td></td>
-    </tr>
-
-    <tr>
-      <th>月度统计</th>
-      <td><a href="{% url 'my_stats' %}">查看</a></td>
-      <td></td>
-    </tr>
-
-    <tr>
-      <th>日報记录</th>
-      <td><a href="{% url 'my_daily_reports' %}">查看</a></td>
-      <td></td>
-    </tr>
-  </table>
-  
-  {% endblock %}
+{% endblock %}

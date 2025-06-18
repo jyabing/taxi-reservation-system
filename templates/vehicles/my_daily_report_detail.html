@@ -1,74 +1,89 @@
 {% extends 'base.html' %}
 {% load time_filters %}
 {% block content %}
-<h2>📝 {{ report.date }} 日报详细</h2>
-<h3>备注：{{ report.note|default:"无" }}</h3>
+<h4 class="mb-4">📝 {{ report.date }} 日报详情</h4>
 
-<!-- 只读元数据展示区 -->
-  <div class="row g-3 mb-4 align-items-end">
-  <!-- 出勤時間 -->
-  <div class="col-auto">
-    <label class="form-label d-block">出勤時間</label>  {{ start_time|date:"Y年n月j日 H:i" }}
+<!-- 备注区 -->
+<div class="alert alert-warning small rounded shadow-sm">
+  <strong>备注：</strong>{{ report.note|default:"无" }}
+</div>
+
+<!-- 出退勤卡片区域 -->
+<div class="d-flex flex-wrap gap-3 my-4">
+  <div class="card border-start border-4 border-primary shadow-sm" style="min-width: 160px;">
+    <div class="card-body py-2 px-3">
+      <div class="small text-muted">出勤時間</div>
+      <div class="fw-bold">{{ start_time|time:'H:i'|default:"--:--" }}</div>
+    </div>
   </div>
-
-  <!-- 退勤時間 -->
-  <div class="col-auto">
-    <label class="form-label d-block">退勤時間</label> {{ end_time|date:"Y年n月j日 H:i" }}
+  <div class="card border-start border-4 border-danger shadow-sm" style="min-width: 160px;">
+    <div class="card-body py-2 px-3">
+      <div class="small text-muted">退勤時間</div>
+      <div class="fw-bold">{{ end_time|time:'H:i'|default:"--:--" }}</div>
+    </div>
   </div>
-
-  <!-- 総時長 -->
-  <div class="col-auto">
-    <label class="form-label d-block">総時長：</label>
-    <div>{{ duration|time_length }}</div>
+  <div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
+    <div class="card-body py-2 px-3">
+      <div class="small text-muted">総時長</div>
+      <div class="fw-bold text-primary">{{ duration|time_length|default:"--:--" }}</div>
+    </div>
   </div>
-
-  <!-- ガソリン量 -->
-  <div class="col-auto ms-auto">
-    <label class="form-label d-block">ガソリン量 (L)</label>{{ report.gas_volume }} L
+  <div class="card border-start border-4 border-warning shadow-sm" style="min-width: 160px;">
+    <div class="card-body py-2 px-3">
+      <div class="small text-muted">油量 (L)</div>
+      <div class="fw-bold">{{ report.gas_volume|default:"--" }}</div>
+    </div>
   </div>
-
-  <!-- 里程 -->
-  <div class="col-auto">
-    <label class="form-label d-block">里程 (KM)</label> {{ report.mileage }} KM
+  <div class="card border-start border-4 border-info shadow-sm" style="min-width: 160px;">
+    <div class="card-body py-2 px-3">
+      <div class="small text-muted">里程 (KM)</div>
+      <div class="fw-bold">{{ report.mileage|default:"--" }}</div>
+    </div>
   </div>
 </div>
 
-
+<!-- 明细表 -->
 {% if report.items.all %}
-  <table border="1" style="width:100%;margin-bottom:1.5em;">
-    <thead>
-      <tr>
-        <th>时间</th>
-        <th>起点</th>
-        <th>终点</th>
-        <th>男</th>
-        <th>女</th>
-        <th>金额</th>
-        <th>支付方式</th>
-        <th>注释</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in report.items.all %}
-      <tr {% if item.note %} style="background:#fff9c4" {% endif %}>
-        <td>{{ item.ride_time }}</td>
-        <td>{{ item.ride_from }}</td>
-        <td>{{ item.ride_to }}</td>
-        <td>{{ item.num_male }}</td>
-        <td>{{ item.num_female }}</td>
-        <td>{{ item.meter_fee }}</td>
-        <td>{{ item.get_payment_method_display }}</td>
-        <td>
+<div class="card shadow-sm mt-4">
+  <div class="card-body p-0">
+    <table class="table table-bordered table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>时间</th>
+          <th>起点</th>
+          <th>终点</th>
+          <th>男</th>
+          <th>女</th>
+          <th>金额</th>
+          <th>支付方式</th>
+          <th>注释</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in report.items.all %}
+        <tr class="{% if item.note %}table-warning{% endif %}">
+          <td>{{ item.ride_time }}</td>
+          <td>{{ item.ride_from }}</td>
+          <td>{{ item.ride_to }}</td>
+          <td>{{ item.num_male }}</td>
+          <td>{{ item.num_female }}</td>
+          <td>{{ item.meter_fee }}</td>
+          <td>{{ item.get_payment_method_display }}</td>
+          <td>
             {{ item.note|default:"" }}
             {% if item.note %}<span title="有注释">📝</span>{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% else %}
-  <div style="color:#888;">无行程明细</div>
+<div class="text-muted mt-3">无行程明细</div>
 {% endif %}
 
-<p><a href="{% url 'my_daily_reports' %}">← 返回日报明细列表</a></p>
+<p class="mt-4">
+  <a href="{% url 'my_daily_reports' %}" class="btn btn-outline-secondary btn-sm">← 返回日报列表</a>
+</p>
 {% endblock %}
