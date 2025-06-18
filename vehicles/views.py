@@ -28,6 +28,7 @@ from requests.exceptions import RequestException
 
 # 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
 from staffbook.models import Driver, DriverDailyReport, DriverDailyReportItem
+from vehicles.models import Reservation
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
@@ -978,7 +979,21 @@ def my_dailyreports(request):
 @login_required
 def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
-    # 你可以在这里处理明细内容
+
+    reservation = Reservation.objects.filter(
+        driver=request.user,
+        actual_departure__date=report.date
+    ).order_by('actual_departure').first()
+
+    start_time = reservation.actual_departure if reservation else None
+    end_time = reservation.actual_return if reservation else None
+    duration = None
+    if start_time and end_time:
+        duration = end_time - start_time
+
     return render(request, 'vehicles/my_daily_report_detail.html', {
-        'report': report
+        'report': report,
+        'start_time': start_time,
+        'end_time': end_time,
+        'duration': duration,
     })

@@ -1,7 +1,39 @@
 {% extends 'base.html' %}
+{% load time_filters %}
 {% block content %}
 <h2>📝 {{ report.date }} 日报详细</h2>
 <h3>备注：{{ report.note|default:"无" }}</h3>
+
+<!-- 只读元数据展示区 -->
+  <div class="row g-3 mb-4 align-items-end">
+  <!-- 出勤時間 -->
+  <div class="col-auto">
+    <label class="form-label d-block">出勤時間</label>  {{ start_time|date:"Y年n月j日 H:i" }}
+  </div>
+
+  <!-- 退勤時間 -->
+  <div class="col-auto">
+    <label class="form-label d-block">退勤時間</label> {{ end_time|date:"Y年n月j日 H:i" }}
+  </div>
+
+  <!-- 総時長 -->
+  <div class="col-auto">
+    <label class="form-label d-block">総時長：</label>
+    <div>{{ duration|time_length }}</div>
+  </div>
+
+  <!-- ガソリン量 -->
+  <div class="col-auto ms-auto">
+    <label class="form-label d-block">ガソリン量 (L)</label>{{ report.gas_volume }} L
+  </div>
+
+  <!-- 里程 -->
+  <div class="col-auto">
+    <label class="form-label d-block">里程 (KM)</label> {{ report.mileage }} KM
+  </div>
+</div>
+
+
 {% if report.items.all %}
   <table border="1" style="width:100%;margin-bottom:1.5em;">
     <thead>
