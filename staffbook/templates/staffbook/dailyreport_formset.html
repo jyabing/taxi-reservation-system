@@ -2,9 +2,10 @@
 {% load time_filters %}
 {% block extra_css %}
 <style>
-  .table tbody tr.has-note {
-    background-color: #ffef9f !important;
-  }
+  .table tbody tr.has-note,
+  .table tbody tr.has-note td {
+    background-color: #fff3cd !important;
+}
 </style>
 {% endblock %}
 {% block content %}
@@ -33,6 +34,10 @@
     white-space: pre;
     font: inherit;
   }
+  .mark-checkbox {
+  transform: scale(1.3);
+  margin-top: 3px;
+}
 </style>
 
 <div class="container">
@@ -84,6 +89,7 @@
 <table class="table table-bordered table-sm">
   <thead class="table-light">
     <tr>
+      <th><strong>本日使用车辆：</strong></th>
       <th>出勤时间</th>
       <th>退勤时间</th>
       <th>总时长</th>
@@ -93,6 +99,14 @@
   </thead>
   <tbody>
     <tr>
+      <td>
+        {% if form.instance.vehicle %}
+          <span class="form-control-plaintext">{{ form.instance.vehicle }}</span>
+        {% else %}
+          <span class="text-muted">未选择</span>
+        {% endif %}
+        {{ form.vehicle }}  {# 用 HiddenInput 提交值 #}
+      </td>
       <td><input type="time" name="clock_in" value="{{ form.initial.clock_in|default_if_none:'' }}" class="form-control" /></td>
       <td><input type="time" name="clock_out" value="{{ form.initial.clock_out|default_if_none:'' }}" class="form-control" /></td>
       <td>{{ duration|time_length }}</td>
@@ -152,13 +166,13 @@
       <thead class="table-light">
         <tr>
           <th>#</th><th>时间</th><th>乗車地</th><th>経由</th><th>降車地</th>
-          <th>男</th><th>女</th><th>料金</th><th>支付</th><th>注释</th><th>操作</th>
+          <th>男</th><th>女</th><th>料金</th><th>支付</th><th>加亮</th><th>注释</th><th>操作</th>
         </tr>
       </thead>
      <tbody>
   {{ formset.management_form }}
   {% for form in formset.forms %}
-    <tr class="report-item-row{% if form.note.value|stringformat:'s'|length > 0 %} has-note{% endif %}">
+    <tr class="report-item-row{% if form.is_flagged.value %} has-note{% endif %}">
       {{ form.id }}
       <td>{{ forloop.counter }}</td>
       <td>{{ form.ride_time }}</td>
@@ -169,12 +183,8 @@
       <td>{{ form.num_female }}</td>
       <td>{{ form.meter_fee }}</td>
       <td>{{ form.payment_method }}</td>
-      <td class="{% if form.note.value|stringformat:'s'|length > 0 %}has-note{% endif %}">
-        {{ form.note }}
-        {% if form.note.value|stringformat:'s'|length > 0 %}
-          <span title="此单有备注" style="color: #d47d00; font-size:1.2em;">📝</span>
-        {% endif %}
-      </td>
+      <td class="text-center">{{ form.is_flagged }}</td>
+      <td>{{ form.note }}</td>
       <td>
         {% if form.instance.pk %}
           <span style="display:none;">{{ form.DELETE }}</span>
@@ -308,6 +318,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (row) {
           row.style.display = 'none';
         }
+      }
+    });
+  });
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.mark-checkbox').forEach(function (checkbox) {
+    checkbox.addEventListener('change', function () {
+      const row = this.closest('tr');
+      if (this.checked) {
+        row.classList.add('has-note');
+      } else {
+        row.classList.remove('has-note');
       }
     });
   });

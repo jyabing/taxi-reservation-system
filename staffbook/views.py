@@ -855,6 +855,17 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                     clock_out = timezone.localtime(res.actual_return).time()
                     initial['clock_out'] = clock_out
 
+                    # ✅ 自动设置车辆
+                if res.vehicle:
+                    initial['vehicle'] = res.vehicle
+
+                    
+
+                # ✅ 如果日报本身没有写入 vehicle，强制写入一次
+                if not report.vehicle:
+                    report.vehicle = res.vehicle
+                    report.save()
+
                     # ✅ 计算总时长（支持跨日）
                     dt_in = datetime.datetime.combine(report.date, clock_in)
                     dt_out = datetime.datetime.combine(report.date, clock_out)

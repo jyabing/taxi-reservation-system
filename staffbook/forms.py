@@ -100,8 +100,9 @@ class DriverDailySalesForm(forms.ModelForm):
 class DriverDailyReportForm(forms.ModelForm):
     class Meta:
         model  = DriverDailyReport
-        fields = ['date','note','has_issue','status','clock_in','clock_out','gas_volume','mileage']
+        fields = ['vehicle', 'date', 'note', 'has_issue', 'status', 'clock_in', 'clock_out', 'gas_volume', 'mileage']
         widgets = {
+            'vehicle': forms.HiddenInput(),
             'status':     forms.HiddenInput(),
             'date':       forms.DateInput(attrs={'type':'date','class':'form-control'}),
             'note':       forms.Textarea(attrs={'class':'form-control auto-width-input','rows':2}),
@@ -120,6 +121,9 @@ class DriverDailyReportForm(forms.ModelForm):
         apply_form_control_style(self.fields)
         self.fields['has_issue'].widget.attrs.update({'class': 'form-check-input'})
 
+        # ✅ 设置 vehicle 字段为只读
+        self.fields['vehicle'].disabled = True
+
         # 只有在 GET（无 POST 数据）且有 instance 时，才做自动注入
         if instance is not None and not self.data:
             # ① 从 DriverDailyReport 拿到关联的 DriverUser
@@ -130,6 +134,8 @@ class DriverDailyReportForm(forms.ModelForm):
                     Reservation.objects
                     .filter(
                         driver=driver_user,
+                        #reservation_date=instance.date,
+                        #vehicle__isnull=False
                         actual_departure__date=instance.date,
                         actual_departure__isnull=False
                     )
@@ -142,16 +148,16 @@ class DriverDailyReportForm(forms.ModelForm):
                     if res.actual_return:
                         self.fields['clock_out'].initial = res.actual_return.time()
 
+                    # ✅ 自动注入车辆字段
+                    if res.vehicle:
+                        self.fields['vehicle'].initial = res.vehicle
+
         
 # ✅ 日报明细表单
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReportItem
-        fields = [
-            'ride_time', 'ride_from', 'via', 'ride_to',
-            'num_male', 'num_female', 'meter_fee',
-            'payment_method', 'note'
-        ]
+        fields = '__all__'
         widgets = {
             'ride_time': forms.TextInput(attrs={'class': 'ride-time-input auto-width-input'}),
             'ride_from': forms.TextInput(attrs={'class': 'auto-width-input'}),
@@ -162,6 +168,7 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'meter_fee': forms.NumberInput(attrs={'class': 'meter-fee-input auto-width-input','min': '0','step': '1'}),
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
             'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
+            'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),
         }
 
 # ✅ 明细表单集合

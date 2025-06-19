@@ -3,6 +3,7 @@ from accounts.models import DriverUser
 from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator
+from vehicles.models import Vehicle
 
 PAYMENT_METHOD_CHOICES = [
     ('cash', '现金'),
@@ -239,6 +240,7 @@ class DriverDailyReport(models.Model):
         ('cancelled', '已取消'),
     ]
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_reports', verbose_name="司机")
+    vehicle = models.ForeignKey(Vehicle, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_reports', verbose_name='本日使用车辆')
     date = models.DateField('日期')
     note = models.TextField('备注', blank=True)
 
@@ -298,7 +300,7 @@ class DriverDailyReportItem(models.Model):
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)  # 新增字段
-    is_flagged = models.BooleanField(default=False)
+    is_flagged = models.BooleanField(default=False, verbose_name="标记为重点")
     has_issue = models.BooleanField("是否异常", default=False)  # 新增字段
 
     def save(self, *args, **kwargs):
@@ -386,3 +388,10 @@ class DriverReportImage(models.Model):
 
     def __str__(self):
         return f"{self.driver} - {self.date} 的图片"
+
+class Vehicle(models.Model):
+    name = models.CharField("车辆名", max_length=50)  # 如：シエンタ、白色皇冠等
+    plate_number = models.CharField("车牌号", max_length=20)  # 如：5001、足立500 あ12-34
+
+    def __str__(self):
+        return f"{self.plate_number}（{self.name}）"
