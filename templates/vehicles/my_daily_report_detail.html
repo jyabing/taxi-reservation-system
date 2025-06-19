@@ -8,6 +8,17 @@
   <strong>备注：</strong>{{ report.note|default:"无" }}
 </div>
 
+<!-- 车辆卡片 + 出退勤卡片区域 -->
+<div class="d-flex flex-wrap gap-3 my-4">
+  <div class="card border-start border-4 border-dark shadow-sm" style="min-width: 160px;">
+    <div class="card-body py-2 px-3">
+      <div class="small text-muted">本日使用车辆</div>
+      <div class="fw-bold">
+        {{ report.vehicle|default:"未选择" }}
+      </div>
+    </div>
+  </div>
+
 <!-- 出退勤卡片区域 -->
 <div class="d-flex flex-wrap gap-3 my-4">
   <div class="card border-start border-4 border-primary shadow-sm" style="min-width: 160px;">
@@ -16,18 +27,21 @@
       <div class="fw-bold">{{ start_time|time:'H:i'|default:"--:--" }}</div>
     </div>
   </div>
+  <!-- 退勤 -->
   <div class="card border-start border-4 border-danger shadow-sm" style="min-width: 160px;">
     <div class="card-body py-2 px-3">
       <div class="small text-muted">退勤時間</div>
       <div class="fw-bold">{{ end_time|time:'H:i'|default:"--:--" }}</div>
     </div>
   </div>
+  <!-- 油量 -->
   <div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
     <div class="card-body py-2 px-3">
       <div class="small text-muted">総時長</div>
       <div class="fw-bold text-primary">{{ duration|time_length|default:"--:--" }}</div>
     </div>
   </div>
+  <!-- 里程 -->
   <div class="card border-start border-4 border-warning shadow-sm" style="min-width: 160px;">
     <div class="card-body py-2 px-3">
       <div class="small text-muted">油量 (L)</div>
@@ -61,7 +75,7 @@
       </thead>
       <tbody>
         {% for item in report.items.all %}
-        <tr class="{% if item.note %}table-warning{% endif %}">
+        <tr class="{% if item.note or item.is_flagged %}table-warning{% endif %}">
           <td>{{ item.ride_time }}</td>
           <td>{{ item.ride_from }}</td>
           <td>{{ item.ride_to }}</td>
