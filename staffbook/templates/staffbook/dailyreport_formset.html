@@ -177,7 +177,8 @@
       </td>
       <td>
         {% if form.instance.pk %}
-          {{ form.DELETE }} 删除
+          <span style="display:none;">{{ form.DELETE }}</span>
+          <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
         {% else %}
           <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
         {% endif %}
@@ -291,6 +292,26 @@ document.addEventListener('DOMContentLoaded', () => {
     total.value = parseInt(total.value) + 1;
     document.forms[0].submit();
   };
+
+  document.addEventListener('DOMContentLoaded', function () {
+  // 已保存数据行的删除按钮
+  document.querySelectorAll('.confirm-delete').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (confirm('本行数据将被删除，确定吗？')) {
+        // 找到隐藏的 DELETE checkbox 并勾选
+        const deleteInput = btn.parentElement.querySelector('input[type="checkbox"]');
+        if (deleteInput) {
+          deleteInput.checked = true;
+        }
+        // 可选：隐藏整行
+        const row = btn.closest('tr');
+        if (row) {
+          row.style.display = 'none';
+        }
+      }
+    });
+  });
+});
 </script>
 
 {% endblock %}
