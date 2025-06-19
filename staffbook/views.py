@@ -842,6 +842,10 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         duration = None
         driver_user = report.driver.user
 
+        clock_in = None
+        clock_out = None
+
+
         if driver_user:
             res = (Reservation.objects
                    .filter(driver=driver_user, date=report.date)
@@ -859,19 +863,19 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                 if res.vehicle:
                     initial['vehicle'] = res.vehicle
 
-                    
-
                 # ✅ 如果日报本身没有写入 vehicle，强制写入一次
                 if not report.vehicle:
                     report.vehicle = res.vehicle
                     report.save()
 
                     # ✅ 计算总时长（支持跨日）
+                if clock_in and clock_out:
                     dt_in = datetime.datetime.combine(report.date, clock_in)
                     dt_out = datetime.datetime.combine(report.date, clock_out)
                     if dt_out <= dt_in:
                         dt_out += datetime.timedelta(days=1)
                     duration = dt_out - dt_in
+                    print("🕒 duration =", duration)
 
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
