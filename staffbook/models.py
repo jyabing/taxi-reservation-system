@@ -298,6 +298,7 @@ class DriverDailyReportItem(models.Model):
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)  # 新增字段
+    is_flagged = models.BooleanField(default=False)
     has_issue = models.BooleanField("是否异常", default=False)  # 新增字段
 
     def save(self, *args, **kwargs):
