@@ -206,27 +206,26 @@ def weekly_overview_view(request):
     now_dt = timezone.localtime()
     now_time = now_dt.time()
 
-    # 支持跳任意日期所在周
+    # 获取目标日期与周偏移
     date_str = request.GET.get('date')
     offset = int(request.GET.get('offset', 0))
 
     if date_str:
         try:
-            chosen_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except Exception:
-            chosen_date = today
-        base_date = chosen_date
+            base_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            base_date = today
     else:
         base_date = today
 
-    weekday = base_date.weekday()
-    monday = base_date - timedelta(days=weekday) + timedelta(weeks=offset)
-    week_dates = [monday + timedelta(days=i) for i in range(7)]
+    # ✅ 新规则：以 base_date 为“第1天”，向后生成7天
+    start_date = base_date + timedelta(days=offset * 7)
+    week_dates = [start_date + timedelta(days=i) for i in range(7)]
 
     vehicles = Vehicle.objects.all()
     reservations = Reservation.objects.filter(date__in=week_dates)
 
-    # ✅ 自动取消过期未出库预约，并记录当前用户的被取消记录
+    # 自动取消超时未出库预约
     canceled = []
     for r in reservations.filter(status='reserved', actual_departure__isnull=True):
         start_dt = make_aware(datetime.combine(r.date, r.start_time))
@@ -239,7 +238,7 @@ def weekly_overview_view(request):
     if canceled:
         messages.warning(request, f"你有 {len(canceled)} 条预约因超过1小时未出库已被自动取消，请重新预约。")
 
-    # 本日“已预约”或“出库中”的最大结束时间（冷却期用）
+    # 冷却期
     user_res_today = reservations.filter(
         driver=request.user,
         date=today,
@@ -251,6 +250,7 @@ def weekly_overview_view(request):
         end_dt = datetime.combine(last.end_date, last.end_time)
         cooldown_end = end_dt + timedelta(hours=10)
 
+    # 构建每辆车的每一天数据
     data = []
     for vehicle in vehicles:
         row = {'vehicle': vehicle, 'days': []}
@@ -279,9 +279,10 @@ def weekly_overview_view(request):
         'now_dt': now_dt,
         'now_time': now_time,
         'cooldown_end': cooldown_end,
+        'today': base_date,  # ✅ 注意：这里要传 base_date 给模板用
         'selected_date': date_str if date_str else today.strftime("%Y-%m-%d"),
     })
-
+    
 @login_required
 def timeline_selector_view(request):
     vehicles = Vehicle.objects.all()
