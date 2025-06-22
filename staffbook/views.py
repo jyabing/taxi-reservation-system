@@ -1,6 +1,8 @@
+import csv
 import datetime
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.http import HttpResponse
 
 from .permissions import is_staffbook_admin
 from django.contrib import messages
@@ -18,7 +20,7 @@ from django.db.models import Q, Sum, Case, When, F, DecimalField
 from django.forms import inlineformset_factory, modelformset_factory
 from django.utils import timezone
 from django import forms
-from datetime import timedelta
+
 from calendar import monthrange
 from django.utils.timezone import now
 from django.core.paginator import Paginator
@@ -761,9 +763,14 @@ def dailyreport_create_for_driver(request, driver_id):
         if report_form.is_valid() and formset.is_valid():
             dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
+
+            # ✅ 自动计算时间字段
+            dailyreport.calculate_work_times()
+
             dailyreport.save()
             formset.instance = dailyreport
             formset.save()
+
             messages.success(request, '新增日报成功')
             return redirect('staffbook:driver_basic_info', driver_id=driver.id)
         else:
@@ -811,11 +818,22 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
+            # ✅ 自动计算时间字段
+            inst.calculate_work_times()
+
+            # ✅ 设置编辑人
+            report.edited_by = request.user
+            report.save()
+            formset.instance = report
+            formset.save()
+
+            # ✅ 状态更新
             if inst.status in ['cancelled', 'pending'] and inst.clock_in and inst.clock_out:
                 inst.status = 'completed'
             if inst.clock_in and inst.clock_out:
                 inst.has_issue = False
 
+            # ✅ 保存主表
             inst.save()
             formset.instance = inst
             formset.save()
@@ -1060,3 +1078,50 @@ def dailyreport_overview(request):
         'keyword':   keyword,
         'totals':    totals,
     })
+
+@user_passes_test(is_staffbook_admin)
+def export_dailyreports_csv(request):
+    month_str = request.GET.get('month')  # 例: '2025-06'
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="dailyreports.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        '司机', '日期', '出勤时间', '退勤时间',
+        '勤務時間', '休憩時間', '実働時間', '残業時間'
+    ])
+
+    reports = DriverDailyReport.objects.all().order_by('-date')
+    
+    if month_str:
+        try:
+            year, month = map(int, month_str.split('-'))
+            start_date = datetime.date(year, month, 1)
+            if month == 12:
+                end_date = datetime.date(year + 1, 1, 1)
+            else:
+                end_date = datetime.date(year, month + 1, 1)
+            reports = reports.filter(date__gte=start_date, date__lt=end_date)
+        except Exception:
+            pass
+
+    def fmt(td):
+        if td is None:
+            return ''
+        total_minutes = int(td.total_seconds() // 60)
+        return f"{total_minutes // 60:02}:{total_minutes % 60:02}"
+
+    for report in reports:
+        writer.writerow([
+            report.driver.name,
+            report.date.strftime("%Y-%m-%d"),
+            report.clock_in.strftime("%H:%M") if report.clock_in else '',
+            report.clock_out.strftime("%H:%M") if report.clock_out else '',
+            fmt(report.勤務時間),
+            fmt(report.休憩時間),
+            fmt(report.実働時間),
+            fmt(report.残業時間),
+        ])
+
+    return response

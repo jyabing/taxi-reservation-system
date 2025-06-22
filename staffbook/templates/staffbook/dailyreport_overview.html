@@ -18,6 +18,14 @@
   </div>
 </form>
 
+<!-- ✅ 导出按钮 -->
+<div class="mb-3">
+  <a href="{% url 'staffbook:export_dailyreports_csv' %}?month={{ month|date:'Y-m' }}"
+     class="btn btn-success">
+    ⬇️ この月の乗務日報をCSVでダウンロード
+  </a>
+</div>
+
 <h2 class="mb-4 border-bottom pb-2">📊 乗務日報・月間サマリー（{{ month|date:"Y年n月" }}）</h2>
 
 {# 日式风格全員合計（金额（分成額）） #}

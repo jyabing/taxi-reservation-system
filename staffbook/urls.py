@@ -88,4 +88,6 @@ urlpatterns = [
 
     path('drivers/<int:driver_id>/dailyreport/<int:report_id>/edit/', views.dailyreport_edit_for_driver, name='driver_dailyreport_edit'),
     path('drivers/<int:driver_id>/dailyreport/<int:pk>/delete/', views.dailyreport_delete_for_driver, name='driver_dailyreport_delete'),
+
+    path('dailyreports/export/', views.export_dailyreports_csv, name='export_dailyreports_csv'),
 ]

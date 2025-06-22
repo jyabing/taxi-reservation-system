@@ -4,6 +4,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 from vehicles.models import Vehicle
+from datetime import datetime, timedelta
 
 PAYMENT_METHOD_CHOICES = [
     ('cash', '現金'),
@@ -259,6 +260,12 @@ class DriverDailyReport(models.Model):
     clock_in  = models.TimeField("出勤时间",  null=True, blank=True)
     clock_out = models.TimeField("退勤时间",  null=True, blank=True)
 
+    # —— 时间统计字段（自动计算） ——
+    勤務時間 = models.DurationField("勤務時間", null=True, blank=True)
+    休憩時間 = models.DurationField("休憩時間", null=True, blank=True, default=timedelta(minutes=20))
+    実働時間 = models.DurationField("実働時間", null=True, blank=True)
+    残業時間 = models.DurationField("残業時間", null=True, blank=True)
+
     gas_volume = models.DecimalField("ガソリン量 (L)",max_digits=6, decimal_places=2,default=0,validators=[MinValueValidator(0)])
     mileage = models.DecimalField("里程 (KM)",max_digits=7, decimal_places=2,default=0,validators=[MinValueValidator(0)])
 
@@ -286,6 +293,35 @@ class DriverDailyReport(models.Model):
 
     def __str__(self):
         return f"{self.driver} {self.date}"
+
+        # ✅ 新增：业务逻辑函数
+    def calculate_work_times(self):
+        """
+        自动计算 勤務時間 / 休憩時間 / 実働時間 / 残業時間
+        """
+        #from datetime import datetime, timedelta
+
+        if not self.clock_in or not self.clock_out:
+            self.勤務時間 = None
+            self.休憩時間 = timedelta(minutes=20)
+            self.実働時間 = None
+            self.残業時間 = None
+            return
+
+        in_dt = datetime.combine(datetime.today(), self.clock_in)
+        out_dt = datetime.combine(datetime.today(), self.clock_out)
+        if out_dt <= in_dt:
+            out_dt += timedelta(days=1)  # 跨午夜
+
+        work_duration = out_dt - in_dt
+        break_duration = timedelta(minutes=20)
+        actual_duration = work_duration - break_duration
+        overtime = max(actual_duration - timedelta(hours=8), timedelta(0))
+
+        self.勤務時間 = work_duration
+        self.休憩時間 = break_duration
+        self.実働時間 = actual_duration
+        self.残業時間 = overtime
 
 # ★ 新增！乘务日报明细，一天可有多条，归属于DriverDailyReport
 class DriverDailyReportItem(models.Model):
