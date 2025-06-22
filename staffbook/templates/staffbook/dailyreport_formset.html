@@ -132,10 +132,31 @@
             {% endif %}
             {{ form.vehicle }}
           </td>
-          <td style="max-width:110px;"><input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.initial.clock_in|default_if_none:'' }}"></td>
-          <td style="max-width:110px;"><input type="text" name="clock_out" class="form-control form-control-sm time-input" value="{{ form.initial.clock_out|default_if_none:'' }}"></td>
+          <td style="max-width:110px;">
+            <input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.initial.clock_in|default_if_none:'' }}">
+          </td>
+          <td style="max-width:110px;">
+            <input type="text" name="clock_out" class="form-control form-control-sm time-input" value="{{ form.initial.clock_out|default_if_none:'' }}">
+          </td>
           <td id="work-duration">--:--</td> <!--勤務時間-->
-          <td id="break-time">--:--</td><!--休憩時間-->
+
+          <!-- ✅ 修改休憩時間 -->
+          <td>
+              {% with raw_sec=form.instance.休憩時間.total_seconds|floatformat:0 %}
+                {% with user_min=raw_sec|add:"-1200"|floatformat:0 %}
+                  {% with hours=user_min|divisibleby:60 %}
+                    <input type="text" name="break_time_input" id="break-time-input"
+                            class="form-control form-control-sm text-center"
+                            maxlength="5" pattern="^\d{1,2}:\d{2}$"
+                            style="max-width:90px;"
+                            placeholder="0:00"
+                            value="{{ form.initial.break_time_input|default:'0:00' }}">
+                  {% endwith %}
+                {% endwith %}
+              {% endwith %}
+            <div class="small text-muted text-center" id="break-time">--:--</div>
+          </td>
+
           <td id="actual-work-time">--:--</td><!--実働時間-->
           <td id="overtime">--:--</td><!--残業時間-->
           <td style="max-width:90px;">{{ form.gas_volume|add_class:"form-control form-control-sm text-end" }}</td>
@@ -212,6 +233,8 @@ function debounceUpdateTotals() {
 function updateDuration() {
   const inVal = document.querySelector("input[name='clock_in']").value;
   const outVal = document.querySelector("input[name='clock_out']").value;
+  const breakInput = document.querySelector("input[name='break_time_input']");
+
   const workDisplay = document.getElementById("work-duration");
   const breakDisplay = document.getElementById("break-time");
   const actualDisplay = document.getElementById("actual-work-time");
@@ -225,41 +248,40 @@ function updateDuration() {
     return;
   }
 
-  // 1. 计算勤務時間（分钟）
   let [h1, m1] = inVal.split(':').map(Number);
   let [h2, m2] = outVal.split(':').map(Number);
   let d1 = new Date(2000, 0, 1, h1, m1);
   let d2 = new Date(2000, 0, 1, h2, m2);
-  if (d2 <= d1) d2.setDate(d2.getDate() + 1);  // 跨午夜
+  if (d2 <= d1) d2.setDate(d2.getDate() + 1);
 
-  const diffMin = Math.floor((d2 - d1) / 60000);
+  const workMin = Math.floor((d2 - d1) / 60000);
+  workDisplay.textContent = `${String(Math.floor(workMin / 60)).padStart(2, '0')}:${String(workMin % 60).padStart(2, '0')}`;
 
-  // 2. 勤務時間 显示
-  const workH = String(Math.floor(diffMin / 60)).padStart(2, '0');
-  const workM = String(diffMin % 60).padStart(2, '0');
-  workDisplay.textContent = `${workH}:${workM}`;
+  // 解析用户输入的休憩時間
+  let breakMin = 0;
+  if (breakInput && breakInput.value) {
+    const [bh, bm] = breakInput.value.split(':').map(Number);
+    if ((bh || 0) > 12) {
+      alert("休憩時間不能超过12小时！");
+      return;
+    }
+    breakMin = (bh || 0) * 60 + (bm || 0);
+  }
 
-  // 3. 休憩時間 = 勤務時間 + 20 分钟（你定义的特殊逻辑）
-  const breakMin = diffMin + 20;
-  const breakH = String(Math.floor(breakMin / 60)).padStart(2, '0');
-  const breakM = String(breakMin % 60).padStart(2, '0');
-  breakDisplay.textContent = `${breakH}:${breakM}`;
+  // ✅ 显示实际休憩（+20分钟）
+  const realBreak = breakMin + 20;
+  breakDisplay.textContent = `${String(Math.floor(realBreak / 60)).padStart(2, '0')}:${String(realBreak % 60).padStart(2, '0')}`;
 
-  // 4. 実働時間 = 勤務 - 休憩20分
-  const actualMin = diffMin - 20;
-  const actualH = String(Math.floor(actualMin / 60)).padStart(2, '0');
-  const actualM = String(actualMin % 60).padStart(2, '0');
-  actualDisplay.textContent = `${actualH}:${actualM}`;
+  // ✅ 实働時間 = 勤務 - (用户休憩 + 20)
+  const actualMin = workMin - realBreak;
+  actualDisplay.textContent = `${String(Math.floor(actualMin / 60)).padStart(2, '0')}:${String(actualMin % 60).padStart(2, '0')}`;
 
-  // 5. 残業時間 = max(実働 - 8h, 0)
-  let overtimeMin = actualMin - 480;
-  if (overtimeMin < 0) overtimeMin = 0;
-  const overH = String(Math.floor(overtimeMin / 60)).padStart(2, '0');
-  const overM = String(overtimeMin % 60).padStart(2, '0');
-  overtimeDisplay.textContent = `${overH}:${overM}`;
-
-  // 6. 超過 0 時的残業時間，红色提醒
-  overtimeDisplay.style.color = (overtimeMin > 0) ? 'red' : '';
+  // ✅ 残業 = 実働 - 8h
+  const overtimeMin = actualMin - 480;
+  const overH = String(Math.floor(Math.abs(overtimeMin) / 60)).padStart(2, '0');
+  const overM = String(Math.abs(overtimeMin % 60)).padStart(2, '0');
+  overtimeDisplay.textContent = `${(overtimeMin < 0 ? '-' : '')}${overH}:${overM}`;
+  overtimeDisplay.style.color = (overtimeMin >= 0) ? 'red' : 'blue';
 }
 
 function updateTotals() {
@@ -306,6 +328,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.querySelector("input[name='clock_in']").addEventListener('input', updateDuration);
   document.querySelector("input[name='clock_out']").addEventListener('input', updateDuration);
+
+  // ✅ 新增：监听休憩时间输入
+  const breakInput = document.querySelector("input[name='break_time_input']");
+  if (breakInput) {
+    breakInput.addEventListener('input', updateDuration);
+    breakInput.addEventListener('blur', updateDuration);
+  }  
 
   document.querySelectorAll('input[name$="-meter_fee"]').forEach(input => {
     input.addEventListener('input', debounceUpdateTotals);

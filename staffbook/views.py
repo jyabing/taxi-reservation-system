@@ -1,8 +1,8 @@
-import csv
-import datetime
+import csv, re, datetime
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse
+from datetime import timedelta
 
 from .permissions import is_staffbook_admin
 from django.contrib import messages
@@ -818,33 +818,46 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
+            # ✅ 解析休憩时间输入（minutes）
+            break_input = request.POST.get("break_time_input", "")
+            break_minutes = 0
+            match = re.match(r"(\d+)\s*[:時間h時]?\s*(\d{0,2})?", break_input)
+            if match:
+                bh = int(match.group(1)) if match.group(1) else 0
+                bm = int(match.group(2)) if match.group(2) else 0
+                break_minutes = bh * 60 + bm
+            elif break_input.strip().isdigit():
+                break_minutes = int(break_input.strip())
+
+            # ✅ 自动 +20分钟用于计算
+            inst.休憩時間 = timedelta(minutes=break_minutes)
+
             # ✅ 自动计算时间字段
             inst.calculate_work_times()
 
-            # ✅ 设置编辑人
-            report.edited_by = request.user
-            report.save()
-            formset.instance = report
-            formset.save()
-
-            # ✅ 状态更新
+            # ✅ 设置编辑人和状态
+            inst.edited_by = request.user
             if inst.status in ['cancelled', 'pending'] and inst.clock_in and inst.clock_out:
                 inst.status = 'completed'
             if inst.clock_in and inst.clock_out:
                 inst.has_issue = False
 
-            # ✅ 保存主表
+            # ✅ 保存日报主表
             inst.save()
+
+            # ✅ 保存明细
             formset.instance = inst
             formset.save()
 
-            # 出入库同步
+            # ✅ 出入库同步（可选）
             driver_user = inst.driver.user
             if driver_user and inst.clock_in:
-                res = (Reservation.objects
-                       .filter(driver=driver_user, date=inst.date)
-                       .order_by('start_time')
-                       .first())
+                res = (
+                    Reservation.objects
+                    .filter(driver=driver_user, date=inst.date)
+                    .order_by('start_time')
+                    .first()
+                )
                 if res:
                     tz = timezone.get_current_timezone()
                     res.actual_departure = timezone.make_aware(
@@ -858,20 +871,25 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                             datetime.datetime.combine(ret_date, inst.clock_out), tz
                         )
                     res.save()
+
             return redirect('staffbook:dailyreport_overview')
 
     else:
+        # 初始化 GET 请求（显示页面）
         initial = {'status': report.status}
         duration = None
         driver_user = report.driver.user
         clock_in = None
         clock_out = None
 
+        # 设置出勤和退勤时间（如果 Reservation 有记录）
         if driver_user:
-            res = (Reservation.objects
-                   .filter(driver=driver_user, date=report.date)
-                   .order_by('start_time')
-                   .first())
+            res = (
+                Reservation.objects
+                .filter(driver=driver_user, date=report.date)
+                .order_by('start_time')
+                .first()
+            )
             if res:
                 if res.actual_departure:
                     clock_in = timezone.localtime(res.actual_departure).time()
@@ -891,10 +909,19 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                         dt_out += datetime.timedelta(days=1)
                     duration = dt_out - dt_in
 
+        # ✅ 自动初始化 break_time_input（＝数据库字段减去20分钟）
+        if report.休憩時間:
+            user_break_min = int(report.休憩時間.total_seconds() / 60) - 20
+            user_h = user_break_min // 60
+            user_m = user_break_min % 60
+            initial['break_time_input'] = f"{user_h}:{str(user_m).zfill(2)}"
+        else:
+            initial['break_time_input'] = "0:00"
+        
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-    # 计算 totals
+    # 支付汇总面板构造（原样保留）
     rates = {
         'meter':   Decimal('0.9091'),
         'cash':    Decimal('0'),
@@ -915,24 +942,20 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if request.method == 'POST' and formset.is_valid()
         else [f.initial for f in formset.forms]
     )
-
     for row in data_iter:
         if row.get('DELETE'):
             continue
         amt = row.get('meter_fee') or Decimal('0')
         pay = row.get('payment_method') or ''
-
-        raw['meter']   += amt
+        raw['meter'] += amt
         split['meter'] += amt * rates['meter']
-
         if pay in ('barcode', 'wechat'):
-            raw['barcode']   += amt
+            raw['barcode'] += amt
             split['barcode'] += amt * rates['barcode']
         elif pay in rates:
-            raw[pay]   += amt
+            raw[pay] += amt
             split[pay] += amt * rates[pay]
 
-    # 组合 totals 字典
     totals = {}
     for k in rates:
         totals[f"{k}_raw"] = raw[k]
@@ -940,7 +963,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     totals['qr_raw'] = raw['barcode']
     totals['qr_split'] = split['barcode']
 
-    # summary_keys 用于合计面板 label 显示
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金(ながし)'),
@@ -1125,3 +1147,4 @@ def export_dailyreports_csv(request):
         ])
 
     return response
+

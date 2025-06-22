@@ -313,11 +313,20 @@ class DriverDailyReport(models.Model):
         if out_dt <= in_dt:
             out_dt += timedelta(days=1)  # 跨午夜
 
-        work_duration = out_dt - in_dt
-        break_duration = timedelta(minutes=20)
-        actual_duration = work_duration - break_duration
-        overtime = max(actual_duration - timedelta(hours=8), timedelta(0))
+        work_duration = out_dt - in_dt  # 勤務時間
 
+        # 如果用户未填写休憩時間，则设为20分钟
+        user_break = self.休憩時間 or timedelta()
+        if user_break.total_seconds() <= 0:
+            user_break = timedelta(minutes=0)
+
+        # ✅ 在用户填写基础上 +20分钟
+        break_duration = user_break + timedelta(minutes=20)  # 实际用于计算
+
+        actual_duration = work_duration - break_duration  # 実働時間
+        overtime = actual_duration - timedelta(hours=8)   # 残業時間，可为负数
+
+        # 赋值保存
         self.勤務時間 = work_duration
         self.休憩時間 = break_duration
         self.実働時間 = actual_duration
