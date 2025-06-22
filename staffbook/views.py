@@ -772,11 +772,31 @@ def dailyreport_create_for_driver(request, driver_id):
     else:
         report_form = DriverDailyReportForm()
         formset = ReportItemFormSet()
+
+    # ✅ 合计面板用的 key-label 对
+    summary_keys = [
+        ('meter', 'メーター(水揚)'),
+        ('cash', '現金(ながし)'),
+        ('uber', 'Uber'),
+        ('didi', 'Didi'),
+        ('credit', 'クレジ'),
+        ('kyokushin', '京交信'),
+        ('omron', 'オムロン'),
+        ('kyotoshi', '京都市他'),
+        ('qr', '扫码'),
+    ]
+
+    # ✅ 初始化所有合计为 0（用于模板展示）
+    totals = {f"total_{key}": 0 for key, _ in summary_keys}
+    totals.update({f"bonus_{key}": 0 for key, _ in summary_keys})
+
     return render(request, 'staffbook/dailyreport_formset.html', {
         'form': report_form,
         'formset': formset,
         'driver': driver,
         'is_edit': False,
+        'summary_keys': summary_keys,
+        'totals': totals,
     })
 
 # ✅ 编辑日报（管理员）
@@ -791,17 +811,8 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
-            print("📝 保存日报：", inst.date)
-            print("🕒 clock_in:", inst.clock_in)
-            print("🕒 clock_out:", inst.clock_out)
-            print("📦 当前状态:", inst.status)
-
-            # ✅ 状态为取消或申请中 + 填写了出退勤 → 自动设为 completed
             if inst.status in ['cancelled', 'pending'] and inst.clock_in and inst.clock_out:
                 inst.status = 'completed'
-                print("🚦 状态自动变更为 completed")
-
-            # ✅ 如果填写了出退勤 → 去除异常标记
             if inst.clock_in and inst.clock_out:
                 inst.has_issue = False
 
@@ -809,21 +820,18 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             formset.instance = inst
             formset.save()
 
-            # ✅ Reservation 同步写入实际出/入库时间
+            # 出入库同步
             driver_user = inst.driver.user
             if driver_user and inst.clock_in:
                 res = (Reservation.objects
                        .filter(driver=driver_user, date=inst.date)
                        .order_by('start_time')
                        .first())
-                print("🔍 查找到 Reservation:", res)
-
                 if res:
                     tz = timezone.get_current_timezone()
                     res.actual_departure = timezone.make_aware(
                         datetime.datetime.combine(inst.date, inst.clock_in), tz
                     )
-
                     if inst.clock_out:
                         ret_date = inst.date
                         if inst.clock_out < inst.clock_in:
@@ -831,20 +839,15 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                         res.actual_return = timezone.make_aware(
                             datetime.datetime.combine(ret_date, inst.clock_out), tz
                         )
-                        print("✅ 写入 actual_return:", res.actual_return)
-
                     res.save()
-
             return redirect('staffbook:dailyreport_overview')
 
     else:
         initial = {'status': report.status}
         duration = None
         driver_user = report.driver.user
-
         clock_in = None
         clock_out = None
-
 
         if driver_user:
             res = (Reservation.objects
@@ -858,44 +861,37 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                 if res.actual_return:
                     clock_out = timezone.localtime(res.actual_return).time()
                     initial['clock_out'] = clock_out
-
-                    # ✅ 自动设置车辆
                 if res.vehicle:
                     initial['vehicle'] = res.vehicle
-
-                # ✅ 如果日报本身没有写入 vehicle，强制写入一次
                 if not report.vehicle:
                     report.vehicle = res.vehicle
                     report.save()
-
-                    # ✅ 计算总时长（支持跨日）
                 if clock_in and clock_out:
                     dt_in = datetime.datetime.combine(report.date, clock_in)
                     dt_out = datetime.datetime.combine(report.date, clock_out)
                     if dt_out <= dt_in:
                         dt_out += datetime.timedelta(days=1)
                     duration = dt_out - dt_in
-                    print("🕒 duration =", duration)
 
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-
-    # 计算各支付方式的原始和分成金额
+    # 计算 totals
     rates = {
         'meter':   Decimal('0.9091'),
         'cash':    Decimal('0'),
         'uber':    Decimal('0.05'),
         'didi':    Decimal('0.05'),
         'credit':  Decimal('0.05'),
-        'ticket':  Decimal('0.05'),
         'barcode': Decimal('0.05'),
         'wechat':  Decimal('0.05'),
+        'kyokushin': Decimal('0.05'),
+        'omron': Decimal('0.05'),
+        'kyotoshi': Decimal('0.05'),
     }
-    raw   = {k: Decimal('0') for k in rates}
+    raw = {k: Decimal('0') for k in rates}
     split = {k: Decimal('0') for k in rates}
 
-    # 根据请求方法选择数据来源
     data_iter = (
         formset.cleaned_data
         if request.method == 'POST' and formset.is_valid()
@@ -908,11 +904,9 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         amt = row.get('meter_fee') or Decimal('0')
         pay = row.get('payment_method') or ''
 
-        # 累计里程费
         raw['meter']   += amt
         split['meter'] += amt * rates['meter']
 
-        # 累计支付方式
         if pay in ('barcode', 'wechat'):
             raw['barcode']   += amt
             split['barcode'] += amt * rates['barcode']
@@ -920,23 +914,46 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             raw[pay]   += amt
             split[pay] += amt * rates[pay]
 
-    # 组合 totals 并添加别名 qr
+    # 组合 totals 字典
     totals = {}
     for k in rates:
-        totals[f"{k}_raw"]   = raw[k]
+        totals[f"{k}_raw"] = raw[k]
         totals[f"{k}_split"] = split[k]
-    totals['qr_raw']   = raw['barcode']
+    totals['qr_raw'] = raw['barcode']
     totals['qr_split'] = split['barcode']
 
-    return render(request, 'staffbook/dailyreport_formset.html', {
-        'form':      form,
-        'formset':   formset,
-        'totals':    totals,
-        'driver_id': driver_id,
-        'report':    report,
-        'duration': duration,
-    })
+    # summary_keys 用于合计面板 label 显示
+    summary_keys = [
+        ('meter', 'メーター(水揚)'),
+        ('cash', '現金(ながし)'),
+        ('uber', 'Uber'),
+        ('didi', 'Didi'),
+        ('credit', 'クレジ'),
+        ('kyokushin', '京交信'),
+        ('omron', 'オムロン'),
+        ('kyotoshi', '京都市他'),
+        ('qr', '扫码'),
+    ]
 
+    summary_panel_data = []
+    for key, label in summary_keys:
+        summary_panel_data.append({
+            'key': key,
+            'label': label,
+            'raw': totals.get(f'{key}_raw', 0),
+            'split': totals.get(f'{key}_split', 0),
+        })
+
+    return render(request, 'staffbook/dailyreport_formset.html', {
+        'form': form,
+        'formset': formset,
+        'totals': totals,
+        'driver_id': driver_id,
+        'report': report,
+        'duration': duration,
+        'summary_keys': summary_keys,
+        'summary_panel_data': summary_panel_data,
+    })
 
 # ✅ 司机查看自己日报
 @login_required

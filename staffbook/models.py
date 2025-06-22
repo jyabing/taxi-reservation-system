@@ -6,12 +6,14 @@ from django.core.validators import MinValueValidator
 from vehicles.models import Vehicle
 
 PAYMENT_METHOD_CHOICES = [
-    ('cash', '现金'),
+    ('cash', '現金'),
     ('uber', 'Uber'),
     ('didi', 'Didi'),
-    ('credit', '信用卡'),
-    ('ticket', '乘车券'),
-    ('barcode', '扫码(PayPay/AuPay/支付宝/微信Pay等)'),
+    ('credit', 'クレジットカード'),
+    ('kyokushin', '京交信'),
+    ('omron', 'オムロン'),
+    ('kyotoshi', '京都市他'),
+    ('qr', '扫码(PayPay/AuPay/支付宝/微信Pay等)'),
 ]
 
 # 司机基本信息 + 台账扩展字段

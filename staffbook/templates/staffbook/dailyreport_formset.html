@@ -1,30 +1,42 @@
 {% extends "staffbook/base_staffbook.html" %}
+{% load widget_tweaks %}
 {% load time_filters %}
+{% load static %}
+
 {% block extra_css %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
+
+{% block extra_js %}
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      flatpickr(".time-input", {
+        enableTime: true,
+        noCalendar: true,
+        dateFormat: "H:i",
+        time_24hr: true,
+        locale: "ja"
+      });
+    });
+</script>
+{% endblock %}
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+
 <style>
   .table tbody tr.has-note,
   .table tbody tr.has-note td {
     background-color: #fff3cd !important;
-}
-</style>
-{% endblock %}
-{% block content %}
-
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-
-<style>
-    .table tbody tr.has-note {
-    background-color: #ffef9f !important;
-  }
-
-    td.has-note {
-    background-color: #fff3cd;
-    color: #000;
   }
   .auto-width-input {
     width: 2ch;
-    min-width: 4ch;
+    min-width: 60px;
+    max-width: 100px;
     box-sizing: content-box;
     transition: width 0.2s;
   }
@@ -35,14 +47,26 @@
     font: inherit;
   }
   .mark-checkbox {
-  transform: scale(1.3);
-  margin-top: 3px;
-}
+    transform: scale(1.3);
+    margin-top: 3px;
+  }
+  #payment-summary-panel {
+    font-size: 0.95rem;
+  }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
+  }
 </style>
 
-<div class="container">
+{% block content %}
+<div class="container mt-4">
   <h4><strong>{{ report.driver.name }}</strong>（{{ report.driver.driver_code }}）- 編集乗務日報</h4>
-  <p class="text-muted">日付：{{ form.date.value }}</p>
+  <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
 
   {% if report.pk %}
     {% if report.edited_by %}
@@ -56,8 +80,6 @@
     {% endif %}
   {% endif %}
 
-
-    <!-- 先把错误渲染出来 -->
   {% if form.errors %}
     <div class="alert alert-danger">
       <strong>表单错误：</strong>
@@ -76,262 +98,201 @@
     </div>
   {% endif %}
 
-  <!-- 然后正常渲染表单 -->
   <form method="post" autocomplete="off">
-  {% csrf_token %}
-  {{ form.status }}      {# 隐藏字段 #}
-  {{ form.date.as_hidden }}
+    {% csrf_token %}
+    {{ form.status }}
+    {{ form.date.as_hidden }}
 
-
-  <div class="col-md-3">
-    <label>备注:</label>{{ form.note }}</div>
-
-<table class="table table-bordered table-sm">
-  <thead class="table-light">
-    <tr>
-      <th><strong>本日使用车辆：</strong></th>
-      <th>出勤时间</th>
-      <th>退勤时间</th>
-      <th>总时长</th>
-      <th>油量 (L)</th>
-      <th>里程 (KM)</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>
-        {% if form.instance.vehicle %}
-          <span class="form-control-plaintext">{{ form.instance.vehicle }}</span>
-        {% else %}
-          <span class="text-muted">未选择</span>
-        {% endif %}
-        {{ form.vehicle }}  {# 用 HiddenInput 提交值 #}
-      </td>
-      <td><input type="time" name="clock_in" value="{{ form.initial.clock_in|default_if_none:'' }}" class="form-control" /></td>
-      <td><input type="time" name="clock_out" value="{{ form.initial.clock_out|default_if_none:'' }}" class="form-control" /></td>
-      <td>{{ duration|time_length }}</td>
-      <td>{{ form.gas_volume }}</td>
-      <td>{{ form.mileage }}</td>
-    </tr>
-  </tbody>
-
-</table>
-
-{# dailyreport_formset.html 的合计面板部分 #}
-<div class="d-flex flex-wrap mb-3" style="gap: 0.5rem;">
-  {# メーター(水揚) 合計 #}
-  <div class="border rounded px-3 py-2 text-center">
-    <div class="small text-muted">メーター(水揚)合計</div>
-    <div>{{ totals.meter_raw|floatformat:0 }}（{{ totals.meter_split|floatformat:0 }}）</div>
-  </div>
-
-  {# 現金(ながし) 合計 #}
-  <div class="border rounded px-3 py-2 text-center">
-    <div class="small text-muted">現金(ながし)合計</div>
-    <div>{{ totals.cash_raw|floatformat:0 }}（{{ totals.cash_split|floatformat:0 }}）</div>
-  </div>
-
-  {# Uber 合計 #}
-  <div class="border rounded px-3 py-2 text-center">
-    <div class="small text-muted">Uber 合計</div>
-    <div>{{ totals.uber_raw|floatformat:0 }}（{{ totals.uber_split|floatformat:0 }}）</div>
-  </div>
-
-  {# Didi 合計 #}
-  <div class="border rounded px-3 py-2 text-center">
-    <div class="small text-muted">Didi 合計</div>
-    <div>{{ totals.didi_raw|floatformat:0 }}（{{ totals.didi_split|floatformat:0 }}）</div>
-  </div>
-
-  {# クレジ 合計 #}
-  <div class="border rounded px-3 py-2 text-center">
-    <div class="small text-muted">クレジ 合計</div>
-    <div>{{ totals.credit_raw|floatformat:0 }}（{{ totals.credit_split|floatformat:0 }}）</div>
-  </div>
-
-  {# 乗車券 合計 #}
-  <div class="border rounded px-3 py-2 text-center">
-    <div class="small text-muted">乗車券 合計</div>
-    <div>{{ totals.ticket_raw|floatformat:0 }}（{{ totals.ticket_split|floatformat:0 }}）</div>
-  </div>
-
-  {# 扫码 合計 #}
-  <div class="border rounded px-3 py-2 text-center">
-    <div class="small text-muted">扫码 合計</div>
-    <div>{{ totals.qr_raw|floatformat:0 }}（{{ totals.qr_split|floatformat:0 }}）</div>
-  </div>
-</div>
+    <div class="mb-3">
+      <label class="form-label">备注:</label>
+      {{ form.note|add_class:"form-control form-control-sm"|attr:"rows:2"|attr:"style:width:100%; max-width:400px;" }}
+    </div>
 
     <table class="table table-bordered table-sm">
       <thead class="table-light">
         <tr>
-          <th>#</th><th>时间</th><th>乗車地</th><th>経由</th><th>降車地</th>
-          <th>男</th><th>女</th><th>料金</th><th>支付</th><th>加亮</th><th>注释</th><th>操作</th>
+          <th><strong>使用车辆</strong></th>
+          <th>出勤</th>
+          <th>退勤</th>
+          <th>勤務時間</th>
+          <th>休憩時間</th>
+          <th>残業時間</th>
+          <th>給油 (L)</th>
+          <th>走行距離 (KM)</th>
         </tr>
       </thead>
-     <tbody>
-  {{ formset.management_form }}
-  {% for form in formset.forms %}
-    <tr class="report-item-row{% if form.is_flagged.value %} has-note{% endif %}">
-      {{ form.id }}
-      <td>{{ forloop.counter }}</td>
-      <td>{{ form.ride_time }}</td>
-      <td>{{ form.ride_from }}</td>
-      <td>{{ form.via }}</td>
-      <td>{{ form.ride_to }}</td>
-      <td>{{ form.num_male }}</td>
-      <td>{{ form.num_female }}</td>
-      <td>{{ form.meter_fee }}</td>
-      <td>{{ form.payment_method }}</td>
-      <td class="text-center">{{ form.is_flagged }}</td>
-      <td>{{ form.note }}</td>
-      <td>
-        {% if form.instance.pk %}
-          <span style="display:none;">{{ form.DELETE }}</span>
-          <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
-        {% else %}
-          <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
-        {% endif %}
-      </td>
-    </tr>
-  {% endfor %}
-</tbody>
+      <tbody>
+        <tr>
+          <td>
+            {% if form.instance.vehicle %}
+              <span class="form-control-plaintext">{{ form.instance.vehicle }}</span>
+            {% else %}
+              <span class="text-muted">未選択</span>
+            {% endif %}
+            {{ form.vehicle }}
+          </td>
+          <td style="max-width:110px;"><input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.initial.clock_in|default_if_none:'' }}"></td>
+          <td style="max-width:110px;"><input type="text" name="clock_out" class="form-control form-control-sm time-input" value="{{ form.initial.clock_out|default_if_none:'' }}"></td>
+          <td id="total-duration">--:--</td>
+          <td id="total-duration">--:--</td>
+          <td id="total-duration">--:--</td>
+          <td style="max-width:90px;">{{ form.gas_volume|add_class:"form-control form-control-sm text-end" }}</td>
+          <td style="max-width:90px;">{{ form.mileage|add_class:"form-control form-control-sm text-end" }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div id="payment-summary-panel" class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
+      {% for item in summary_panel_data %}
+        <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+          <div class="small text-muted">{{ item.label }} 合計</div>
+          <div>
+            <span id="total_{{ item.key }}">{{ item.raw|floatformat:"0" }}</span>（<span id="bonus_{{ item.key }}">{{ item.split|floatformat:"0" }}</span>）
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <table class="table table-bordered table-sm">
+      <thead class="table-light">
+        <tr>
+          <th>#</th><th>時間</th><th>乗車地</th><th class="d-none">経由</th>
+          <th class="d-none">降車地</th>
+          <th class="d-none">男</th>
+          <th class="d-none">女</th><th>料金</th><th>支付</th><th>加亮</th><th>注釈</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ formset.management_form }}
+        {% for form in formset.forms %}
+          <tr class="report-item-row {% if form.is_flagged.value %}has-note{% endif %}">
+            {{ form.id }}
+            <td>{{ forloop.counter }}</td>
+            <td>{{ form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
+            <td style="min-width: 120px;">{{ form.ride_from|add_class:"form-control form-control-sm" }}</td>
+            <td style="min-width: 120px;" class="d-none">{{ form.via|add_class:"form-control form-control-sm" }}</td>
+            <td style="min-width: 120px;" class="d-none">{{ form.ride_to|add_class:"form-control form-control-sm" }}</td>
+            <td class="d-none">{{ form.num_male|add_class:"form-control form-control-sm text-end" }}</td>
+            <td class="d-none">{{ form.num_female|add_class:"form-control form-control-sm text-end" }}</td>
+            <td>{{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input"|attr:"type:text"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*" }}</td>
+            <td>{{ form.payment_method|add_class:"form-select form-select-sm" }}</td>
+            <td class="text-center">{{ form.is_flagged }}</td>
+            <td>{% if form.note.value %}📝{% endif %} {{ form.note }}</td>
+            <td>
+              {% if form.instance.pk %}
+                <span style="display:none;">{{ form.DELETE }}</span>
+                <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
+            {% else %}
+                <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
 
     <button type="submit" class="btn btn-primary">💾 保存</button>
-    
-    
   </form>
 
   <div class="text-center mt-3">
-    <button id="add-row-btn" class="btn btn-outline-dark">➕ 增加一行</button>
+    <button id="add-row-btn" class="btn btn-outline-dark">➕ 増加一行</button>
   </div>
 </div>
 
 <script>
 
-  
-// —— 计算并更新总时长 —— //
+let updateTimeout;
+function debounceUpdateTotals() {
+  clearTimeout(updateTimeout);
+  updateTimeout = setTimeout(updateTotals, 300);
+}
+
 function updateDuration() {
-  const inEl  = document.querySelector('input[name="clock_in"]');
-  const outEl = document.querySelector('input[name="clock_out"]');
-  const display = document.getElementById('total-duration');
-  const inVal  = inEl.value;
-  const outVal = outEl.value;
-
-  if (!inVal || !outVal) {
-    display.textContent = '--:--';
-    return;
-  }
-
-  // 构造两个 Date 对象（同一天），用于相减
-  const [h1, m1] = inVal.split(':').map(Number);
-  const [h2, m2] = outVal.split(':').map(Number);
-  let d1 = new Date(0,0,0,h1,m1);
-  let d2 = new Date(0,0,0,h2,m2);
-
-  // 如果退勤时间早于出勤，就跨天 +1 日
-  if (d2 <= d1) {
-    d2 = new Date(0,0,1,h2,m2);
-  }
-
-  const diffMs = d2 - d1;
-  const diffH = Math.floor(diffMs / (1000*60*60));
-  const diffM = Math.floor((diffMs % (1000*60*60)) / (1000*60));
-  // 两位数格式
-  const hh = String(diffH).padStart(2,'0');
-  const mm = String(diffM).padStart(2,'0');
+  const inVal = document.querySelector("input[name='clock_in']").value;
+  const outVal = document.querySelector("input[name='clock_out']").value;
+  const display = document.getElementById("total-duration");
+  if (!inVal || !outVal) return display.textContent = '--:--';
+  let [h1, m1] = inVal.split(':').map(Number);
+  let [h2, m2] = outVal.split(':').map(Number);
+  let d1 = new Date(2000, 0, 1, h1, m1);
+  let d2 = new Date(2000, 0, 1, h2, m2);
+  if (d2 <= d1) d2 = new Date(d2.getTime() + 24 * 60 * 60 * 1000);
+  let ms = d2 - d1;
+  let hh = String(Math.floor(ms / 3600000)).padStart(2, '0');
+  let mm = String(Math.floor((ms % 3600000) / 60000)).padStart(2, '0');
   display.textContent = `${hh}:${mm}`;
 }
 
-// 监听两输入框的变化
-document.addEventListener('DOMContentLoaded', () => {
+function updateTotals() {
+  const PAYMENT_METHODS = {
+    meter: 'メーター(水揚)', cash: '現金(ながし)', uber: 'Uber', didi: 'Didi', credit: 'クレジ',
+    kyokushin: '京交信', omron: 'オムロン', kyotoshi: '京都市他', qr: '扫码'
+  };
+  const METHOD_ALIAS = {
+    '現金': 'cash', 'Uber': 'uber', 'Didi': 'didi', 'クレジットカード': 'credit',
+    '京交信': 'kyokushin', 'オムロン': 'omron', '京都市他': 'kyotoshi',
+    '扫码（PayPay等）': 'qr', 'barcode': 'qr', 'wechat': 'qr', 'qr': 'qr'
+  };
+  const sum = { meter: 0 }, count = {};
+  Object.keys(PAYMENT_METHODS).forEach(k => { sum[k] = 0; count[k] = 0 });
+
+  document.querySelectorAll('tr.report-item-row').forEach(row => {
+    const feeInput = row.querySelector('input[name$="-meter_fee"]');
+    const methodSelect = row.querySelector('select[name$="-payment_method"]');
+    if (!feeInput || !methodSelect) return;
+    let rawVal = (feeInput.value || '').replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 65248)).replace(/[^\d.]/g, '');
+    const fee = Math.floor(parseFloat(rawVal) || 0);
+    feeInput.value = fee ? Math.floor(fee) : '';
+    const raw = methodSelect.options[methodSelect.selectedIndex]?.text.trim();
+    const method = METHOD_ALIAS[raw] || Object.keys(PAYMENT_METHODS).find(k => PAYMENT_METHODS[k] === raw);
+    sum.meter += fee;
+    if (method && sum.hasOwnProperty(method)) {
+      sum[method] += fee;
+      count[method] += 1;
+    }
+  });
+
+  Object.keys(PAYMENT_METHODS).forEach(key => {
+    const total = document.getElementById(`total_${key}`);
+    const bonus = document.getElementById(`bonus_${key}`);
+    if (total) total.textContent = sum[key];
+    if (bonus) bonus.textContent = Math.floor(sum[key] * 0.05);
+  });
+}
+
+
+document.addEventListener("DOMContentLoaded", () => {
   updateDuration();
-  document.querySelector('input[name="clock_in"]').addEventListener('input', updateDuration);
-  document.querySelector('input[name="clock_out"]').addEventListener('input', updateDuration);
-});
+  updateTotals();
 
-  // ➊ 自适应宽度
-  document.querySelectorAll('.auto-width-input').forEach(function(input) {
-    const span = document.createElement('span');
-    span.className = 'mirror-span';
-    document.body.appendChild(span);
-    const sync = () => {
-      span.style.font = window.getComputedStyle(input).font;
-      span.textContent = input.value || input.placeholder || '';
-      input.style.width = (span.offsetWidth + 20) + 'px';
-    };
-    sync();
-    input.addEventListener('input', sync);
+  document.querySelector("input[name='clock_in']").addEventListener('input', updateDuration);
+  document.querySelector("input[name='clock_out']").addEventListener('input', updateDuration);
+
+  document.querySelectorAll('input[name$="-meter_fee"]').forEach(input => {
+    input.addEventListener('input', debounceUpdateTotals);
+    input.addEventListener('change', updateTotals);
+    input.addEventListener('blur', updateTotals);
   });
 
-  // ➋ 合计计算
-  function updateTotals() {
-    let sum = {meter:0, uber:0, cash:0, didi:0, credit:0, ticket:0, qr:0};
-    document.querySelectorAll('tr.report-item-row').forEach(row => {
-      const fee = parseFloat(row.querySelector('.meter-fee-input')?.value || 0);
-      const pay = row.querySelector('.payment-method-select')?.value || '';
-      sum.meter += fee;
-      if (pay === 'uber') sum.uber += fee;
-      else if (pay === 'cash') sum.cash += fee;
-      else if (pay === 'didi') sum.didi += fee;
-      else if (pay === 'credit') sum.credit += fee;
-      else if (pay === 'ticket') sum.ticket += fee;
-      else if (['barcode', 'wechat'].includes(pay)) sum.qr += fee;
+  document.querySelectorAll('.confirm-delete').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (confirm('确定删除此行？')) {
+        const checkbox = btn.closest('tr').querySelector('input[type="checkbox"]');
+        if (checkbox) checkbox.checked = true;
+        btn.closest('tr').style.display = 'none';
+      }
     });
-    document.getElementById('total_meter').value = sum.meter.toFixed(2);
-    document.getElementById('total_uber').value = sum.uber.toFixed(2);
-    document.getElementById('total_cash').value = sum.cash.toFixed(2);
-    document.getElementById('total_didi').value = sum.didi.toFixed(2);
-    document.getElementById('total_card').value = sum.credit.toFixed(2);
-    document.getElementById('total_ticket').value = sum.ticket.toFixed(2);
-    document.getElementById('total_qr').value = sum.qr.toFixed(2);
-  }
-  document.addEventListener('input', updateTotals);
-  document.addEventListener('DOMContentLoaded', function(){
-    flatpickr('.ride-time-input', {
-      enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true
-    });
-    updateTotals();
   });
 
-  // ➌ 增加一行
-  document.getElementById('add-row-btn').onclick = () => {
+  document.getElementById('add-row-btn').addEventListener('click', () => {
     const total = document.querySelector('input[name$="-TOTAL_FORMS"]');
-    if (parseInt(total.value) >= 40) return alert("最多 40 行");
     total.value = parseInt(total.value) + 1;
     document.forms[0].submit();
-  };
-
-  document.addEventListener('DOMContentLoaded', function () {
-  // 已保存数据行的删除按钮
-  document.querySelectorAll('.confirm-delete').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      if (confirm('本行数据将被删除，确定吗？')) {
-        // 找到隐藏的 DELETE checkbox 并勾选
-        const deleteInput = btn.parentElement.querySelector('input[type="checkbox"]');
-        if (deleteInput) {
-          deleteInput.checked = true;
-        }
-        // 可选：隐藏整行
-        const row = btn.closest('tr');
-        if (row) {
-          row.style.display = 'none';
-        }
-      }
-    });
   });
-});
 
-document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('.mark-checkbox').forEach(function (checkbox) {
-    checkbox.addEventListener('change', function () {
-      const row = this.closest('tr');
-      if (this.checked) {
-        row.classList.add('has-note');
-      } else {
-        row.classList.remove('has-note');
-      }
+  document.querySelectorAll('.mark-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      cb.closest('tr').classList.toggle('has-note', cb.checked);
     });
   });
 });
