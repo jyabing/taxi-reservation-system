@@ -1,0 +1,32 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% load static %}
+{% block content %}
+
+<div class="container mt-4">
+  <h4 class="mb-3">{{ driver.name }} さんの この月の乗務日報を追加</h4>
+  <p>現在の月：<strong>{{ current_month }}</strong></p>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="mb-3 row">
+      <label for="selected_date" class="col-sm-2 col-form-label">日付を選択</label>
+      <div class="col-sm-4">
+        <input type="date"
+               name="selected_date"
+               id="selected_date"
+               class="form-control"
+               required
+               min="{{ year }}-{{ month|stringformat:'02d' }}-01"
+               max="{{ year }}-{{ month|stringformat:'02d' }}-31">
+        <small class="text-muted">※ この月の中から日付を選んでください</small>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <button type="submit" class="btn btn-primary">この日付で作成</button>
+      <a href="{% url 'staffbook:driver_dailyreport_month' driver.id %}" class="btn btn-secondary ms-2">戻る</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

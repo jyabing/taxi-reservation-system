@@ -5,8 +5,9 @@
 <div class="container mt-4">
   <div class="card shadow" style="width: 96vw; max-width: 1600px; margin:0 auto;">
     <div class="card-header bg-white" style="font-size:1.3em;">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0"><strong>{{ driver.name }}</strong> 的日報</h4>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h4 class="mb-0"><strong>{{ driver.name }}</strong>  {{ selected_month }}的日報</h4>
+        <a href="{% url 'staffbook:driver_dailyreport_add_selector' driver.id %}" class="btn btn-outline-primary">＋この月の乗務日報</a>
         <a href="{% url 'staffbook:driver_basic_info' driver.id %}" class="btn btn-outline-secondary">
     ← {{ driver.name }}さんの基本情報へ戻る
         </a>
@@ -29,7 +30,6 @@
           <a href="?month={{ today|date:'Y-m' }}" class="btn btn-outline-secondary">本月</a>
         </div>
       </form>
-
       
       <table class="table table-bordered table-sm align-middle">
         <thead class="table-light">
@@ -50,11 +50,13 @@
               <a href="{% url 'staffbook:driver_dailyreport_edit' driver.id report.id %}">编辑</a>
               <a href="{% url 'staffbook:driver_dailyreport_delete' driver.id report.id %}">删除</a>
             </td>
+            
           </tr>
         {% empty %}
           <tr><td colspan="4">暂无日报</td></tr>
         {% endfor %}
         </tbody>
+        
       </table>
     </div>
   </div>

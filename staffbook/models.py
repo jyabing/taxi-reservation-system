@@ -237,10 +237,14 @@ class Pension(models.Model):
 
 # 核心：乘务日报（一天一条），不再保存单独的金额等，而是所有明细归属于这张日报
 class DriverDailyReport(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_COMPLETED = 'completed'
+    STATUS_CANCELLED = 'cancelled'
+    
     STATUS_CHOICES = [
-        ('pending',   '待处理'),
-        ('completed', '已完成'),
-        ('cancelled', '已取消'),
+        (STATUS_PENDING,   '待处理'),
+        (STATUS_COMPLETED, '已完成'),
+        (STATUS_CANCELLED, '已取消'),
     ]
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_reports', verbose_name="司机")
     vehicle = models.ForeignKey(Vehicle, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_reports', verbose_name='本日使用车辆')

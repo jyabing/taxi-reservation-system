@@ -103,11 +103,16 @@
                   <span class="text-danger">{{ d.note }}</span>
                 {% endif %}
               </td>
-              <td>
+              <td class="d-flex flex-wrap gap-1">
                 <a href="{% url 'staffbook:driver_dailyreport_month' d.driver.id %}?month={{ d.month_str }}"
                    class="btn btn-sm btn-outline-primary">
                   ▶ 月報一覧を見る
                 </a>
+                {% if d.note %}
+                  <a class="btn btn-outline-success btn-sm" title="この従業員の初回日報を作成"
+                    href="{% url 'staffbook:driver_dailyreport_add_selector' d.driver.id %}"> ➕ 新規作成
+                  </a>
+                {% endif %}
               </td>
             </tr>
           {% empty %}

@@ -14,7 +14,7 @@ from .forms import (
 from .models import (
     DriverDailySales, DriverDailyReport, DriverDailyReportItem, Driver, DrivingExperience, 
     Insurance, FamilyMember, DriverLicense, LicenseType, Qualification, Aptitude,
-    Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord 
+    Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord
     )
 from django.db.models import Q, Sum, Case, When, F, DecimalField
 from django.forms import inlineformset_factory, modelformset_factory
@@ -49,7 +49,7 @@ def dailyreport_create(request):
             return redirect('staffbook:dailyreport_list')
     else:
         form = DriverDailyReportForm()
-    return render(request, 'staffbook/dailyreport_formset.html', {'form': form})
+    return render(request, 'staffbook/driver_dailyreport_edit.html', {'form': form})
 
 # ✅ 编辑日报
 @user_passes_test(is_staffbook_admin)
@@ -62,7 +62,7 @@ def dailyreport_edit(request, pk):
             return redirect('staffbook:dailyreport_list')
     else:
         form = DriverDailyReportForm(instance=report)
-    return render(request, 'staffbook/dailyreport_formset.html', {'form': form})
+    return render(request, 'staffbook/driver_dailyreport_edit.html', {'form': form})
 
 # ✅ 提交销售额（司机自己）
 @login_required
@@ -753,6 +753,82 @@ def driver_dailyreport_month(request, driver_id):
         'selected_date': selected_date,
     })
 
+@user_passes_test(is_staffbook_admin)
+def dailyreport_add_selector(request, driver_id):
+    from datetime import datetime, date
+    driver = get_object_or_404(Driver, pk=driver_id)
+    today = date.today()
+    current_month = today.strftime("%Y-%m")
+    
+    # ✅ 构造日历日期与预约状态
+    num_days = monthrange(today.year, today.month)[1]
+    all_dates = [date(today.year, today.month, d) for d in range(1, num_days + 1)]
+
+    reserved_dates = set()
+    if driver.user:
+        reserved_dates = set(
+            Reservation.objects
+            .filter(driver=driver.user, date__year=today.year, date__month=today.month)
+            .values_list("date", flat=True)
+        )
+
+    calendar_dates = [
+        {
+            "date": d,
+            "enabled": d in reserved_dates,
+        }
+        for d in all_dates
+    ]
+
+
+    if request.method == "POST":
+        selected_date_str = request.POST.get("selected_date")
+        try:
+            selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            messages.error(request, "无效的日期")
+            return redirect(request.path)
+
+        # ✅ 检查该司机该日是否有预约记录
+        if not driver.user or not Reservation.objects.filter(driver=driver.user, date=selected_date).exists():
+            messages.warning(request, f"{selected_date.strftime('%Y年%m月%d日')} は出勤予約がありません。日報を作成できません。")
+            return redirect(request.path)
+
+        # ✅ 获取或创建日报
+        report, created = DriverDailyReport.objects.get_or_create(
+            driver=driver,
+            date=selected_date,
+            defaults={"status": "pending"}
+        )
+
+        # ✅ 如果新建则预填 Reservation 信息
+        if created:
+            res = (
+                Reservation.objects
+                .filter(driver=driver.user, date=selected_date)
+                .order_by('start_time')
+                .first()
+            )
+            if res:
+                if res.vehicle:
+                    report.vehicle = res.vehicle
+                if res.actual_departure:
+                    report.clock_in = timezone.localtime(res.actual_departure).time()
+                if res.actual_return:
+                    report.clock_out = timezone.localtime(res.actual_return).time()
+                report.save()
+
+        return redirect("staffbook:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
+
+    return render(request, "staffbook/driver_dailyreport_add.html", {
+        "driver": driver,
+        "current_month": today.strftime("%Y年%m月"),
+        "year": today.year,
+        "month": today.month,
+        "calendar_dates": calendar_dates,
+    })
+
+
 # ✅ 管理员新增日报给某员工
 @user_passes_test(is_staffbook_admin)
 def dailyreport_create_for_driver(request, driver_id):
@@ -797,7 +873,7 @@ def dailyreport_create_for_driver(request, driver_id):
     totals = {f"total_{key}": 0 for key, _ in summary_keys}
     totals.update({f"bonus_{key}": 0 for key, _ in summary_keys})
 
-    return render(request, 'staffbook/dailyreport_formset.html', {
+    return render(request, 'staffbook/driver_dailyreport_edit.html', {
         'form': report_form,
         'formset': formset,
         'driver': driver,
@@ -809,7 +885,13 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 编辑日报（管理员）
 @user_passes_test(is_staffbook_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
+    import re
+    from decimal import Decimal
+    from datetime import timedelta
+    from django.utils import timezone
+
     report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
+    duration = timedelta()  # ✅ 无论 GET/POST，duration 都有定义
 
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
@@ -818,7 +900,12 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
-            # ✅ 解析休憩时间输入（minutes）
+            # ✅ 补全 status，防止后台验证失败
+            if not inst.status:
+                inst.status = STATUS_PENDING
+
+
+            # ✅ 解析用户输入的休憩時間（并 +20分）
             break_input = request.POST.get("break_time_input", "")
             break_minutes = 0
             match = re.match(r"(\d+)\s*[:時間h時]?\s*(\d{0,2})?", break_input)
@@ -829,16 +916,16 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             elif break_input.strip().isdigit():
                 break_minutes = int(break_input.strip())
 
-            # ✅ 自动 +20分钟用于计算
-            inst.休憩時間 = timedelta(minutes=break_minutes)
+            inst.休憩時間 = timedelta(minutes=break_minutes + 20)
 
-            # ✅ 自动计算时间字段
+            # ✅ 自动计算実働時間、残業時間等
             inst.calculate_work_times()
 
-            # ✅ 设置编辑人和状态
+            # ✅ 设置编辑人、状态、是否有问题
             inst.edited_by = request.user
-            if inst.status in ['cancelled', 'pending'] and inst.clock_in and inst.clock_out:
-                inst.status = 'completed'
+
+            if inst.status in [DriverDailyReport.STATUS_PENDING, DriverDailyReport.STATUS_CANCELLED] and inst.clock_in and inst.clock_out:
+                inst.status = DriverDailyReport.STATUS_COMPLETED
             if inst.clock_in and inst.clock_out:
                 inst.has_issue = False
 
@@ -849,7 +936,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             formset.instance = inst
             formset.save()
 
-            # ✅ 出入库同步（可选）
+            # ✅ 同步 Reservation 出入库时间（可选）
             driver_user = inst.driver.user
             if driver_user and inst.clock_in:
                 res = (
@@ -872,17 +959,21 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                         )
                     res.save()
 
+            # ✅ 更新 has_issue 状态（重新检查明细）
+            inst.has_issue = inst.items.filter(has_issue=True).exists()
+            inst.save(update_fields=["has_issue"])
+
             return redirect('staffbook:dailyreport_overview')
 
     else:
-        # 初始化 GET 请求（显示页面）
+        # GET 请求 - 初始化初值
         initial = {'status': report.status}
-        duration = None
+        duration = timedelta()  # ✅ 加这一行，避免后面模板访问出错
         driver_user = report.driver.user
         clock_in = None
         clock_out = None
 
-        # 设置出勤和退勤时间（如果 Reservation 有记录）
+        # ✅ 获取打卡时间与车辆信息（Reservation）
         if driver_user:
             res = (
                 Reservation.objects
@@ -909,7 +1000,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                         dt_out += datetime.timedelta(days=1)
                     duration = dt_out - dt_in
 
-        # ✅ 自动初始化 break_time_input（＝数据库字段减去20分钟）
+        # ✅ 初始化休憩時間（用户输入 = 数据库字段 - 20分钟）
         if report.休憩時間:
             user_break_min = int(report.休憩時間.total_seconds() / 60) - 20
             user_h = user_break_min // 60
@@ -917,11 +1008,11 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             initial['break_time_input'] = f"{user_h}:{str(user_m).zfill(2)}"
         else:
             initial['break_time_input'] = "0:00"
-        
+
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-    # 支付汇总面板构造（原样保留）
+    # ✅ 合计汇总逻辑
     rates = {
         'meter':   Decimal('0.9091'),
         'cash':    Decimal('0'),
@@ -975,16 +1066,17 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         ('qr', '扫码'),
     ]
 
-    summary_panel_data = []
-    for key, label in summary_keys:
-        summary_panel_data.append({
+    summary_panel_data = [
+        {
             'key': key,
             'label': label,
             'raw': totals.get(f'{key}_raw', 0),
             'split': totals.get(f'{key}_split', 0),
-        })
+        }
+        for key, label in summary_keys
+    ]
 
-    return render(request, 'staffbook/dailyreport_formset.html', {
+    return render(request, 'staffbook/driver_dailyreport_edit.html', {
         'form': form,
         'formset': formset,
         'totals': totals,
@@ -994,6 +1086,33 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'summary_keys': summary_keys,
         'summary_panel_data': summary_panel_data,
     })
+
+@user_passes_test(is_staffbook_admin)
+def driver_dailyreport_add_unassigned(request):
+    driver_id = request.GET.get("driver_id")
+    if not driver_id:
+        messages.warning(request, "未选择员工，无法添加日报。")
+        return redirect("staffbook:dailyreport_overview")
+
+    driver = get_object_or_404(Driver, id=driver_id, user__isnull=True)
+
+    today = date.today()
+    report, created = DriverDailyReport.objects.get_or_create(
+        driver=driver,
+        date=today,
+        defaults={"status": "草稿"}
+    )
+
+    # ✅ 加在这里：命令行中会输出 driver 和 report 的主键
+    print("🚗 创建日报：", driver.id, report.id, "是否新建：", created)
+
+    if created:
+        messages.success(request, f"已为 {driver.name} 创建 {today} 的日报。")
+    else:
+        messages.info(request, f"{driver.name} 今天的日报已存在，跳转到编辑页面。")
+
+    return redirect("staffbook:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
+
 
 # ✅ 司机查看自己日报
 @login_required
@@ -1032,13 +1151,11 @@ def dailyreport_overview(request):
     except ValueError:
         month = today.replace(day=1)
 
-    # 3. 构建 reports，只按 month 和 keyword 过滤
+    # 3. 构建 reports，只按 month 过滤
     reports = DriverDailyReport.objects.filter(
         date__year=month.year,
         date__month=month.month
     )
-    if keyword:
-        reports = reports.filter(driver__name__icontains=keyword)
 
     # 4. 全员明细聚合
     items = DriverDailyReportItem.objects.filter(report__in=reports)
@@ -1080,19 +1197,31 @@ def dailyreport_overview(request):
         'qr_split':     split('qr'),
     })
 
-    # 7. 按司机小计 & 分页
-    driver_ids = reports.values_list('driver', flat=True).distinct()
+    # 7. 遍历全体司机，构造每人合计（无日报也显示）
+    driver_qs = Driver.objects.all()
+    if keyword:
+        driver_qs = driver_qs.filter(name__icontains=keyword)
+
     driver_data = []
-    for d in Driver.objects.filter(id__in=driver_ids):
+    for d in driver_qs:
         dr_reps = reports.filter(driver=d)
+        total = sum(r.total_meter_fee for r in dr_reps)
+        if dr_reps.exists():
+            note = "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else ""
+        else:
+            note = "（未報告）"
+
         driver_data.append({
             'driver':    d,
-            'total_fee': sum(r.total_meter_fee for r in dr_reps),
-            'note':      "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else "",
+            'total_fee': total,
+            'note':      note,
+            'month_str': month_str,
         })
+
+    # 8. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
 
-    # 8. 渲染
+    # 9. 渲染
     return render(request, 'staffbook/dailyreport_overview.html', {
         'page_obj':  page_obj,
         'month':     month,
@@ -1100,7 +1229,7 @@ def dailyreport_overview(request):
         'keyword':   keyword,
         'totals':    totals,
     })
-
+    
 @user_passes_test(is_staffbook_admin)
 def export_dailyreports_csv(request):
     month_str = request.GET.get('month')  # 例: '2025-06'
