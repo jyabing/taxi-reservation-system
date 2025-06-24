@@ -204,7 +204,7 @@
             <td style="min-width: 120px;" class="d-none">{{ form.ride_to|add_class:"form-control form-control-sm" }}</td>
             <td class="d-none">{{ form.num_male|add_class:"form-control form-control-sm text-end" }}</td>
             <td class="d-none">{{ form.num_female|add_class:"form-control form-control-sm text-end" }}</td>
-            <td style="min-width: 70px;">{{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input"|attr:"type:text"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*" }}</td>
+            <td style="min-width: 70px;">{{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input"|attr:"type:number"|attr:"step:1"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*" }}</td>
             <td style="min-width: 100px;">{{ form.payment_method|add_class:"form-select form-select-sm" }}</td>
             <td class="text-center">{{ form.is_flagged }}</td>
             <td>{% if form.note.value %}📝{% endif %} {{ form.note }}</td>

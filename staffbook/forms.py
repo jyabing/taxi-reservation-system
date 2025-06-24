@@ -165,7 +165,7 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'ride_to': forms.TextInput(attrs={'class': 'auto-width-input'}),
             'num_male': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'num_female': forms.NumberInput(attrs={'class': 'auto-width-input'}),
-            'meter_fee': forms.NumberInput(attrs={'class': 'meter-fee-input auto-width-input','min': '0','step': '1'}),
+            'meter_fee': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end auto-width-input','type': 'number','step': '1','inputmode': 'numeric','pattern': '[0-9]*'}),
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
             'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
             'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),
