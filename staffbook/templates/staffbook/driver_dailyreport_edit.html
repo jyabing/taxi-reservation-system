@@ -106,7 +106,7 @@
     </div>
   {% endif %}
 
-  <form method="post" autocomplete="off">
+  <form method="post" action="{% url 'staffbook:dailyreport_edit_for_driver' driver_id=driver_id report_id=report.id %}" autocomplete="off">
     {% csrf_token %}
     {{ form.status.as_hidden }}
     {{ form.date.as_hidden }}
