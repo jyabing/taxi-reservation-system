@@ -66,10 +66,24 @@
   </div>
 
   <div class="me-3 text-center">
-    <label class="form-label small">乗車券合計</label>
+    <label class="form-label small">京交信合計</label>
     <input type="text" readonly
             class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_ticket|floatformat:'0' }}（{{ totals.ticket_split|floatformat:'-0' }}）">
+            value="{{ totals.total_kyokushin|floatformat:'0' }}（{{ totals.kyokushin_split|floatformat:'0' }}）">
+  </div>
+
+  <div class="me-3 text-center">
+    <label class="form-label small">オムロン合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_omron|floatformat:'0' }}（{{ totals.omron_split|floatformat:'0' }}）">
+  </div>
+
+  <div class="me-3 text-center">
+    <label class="form-label small">京都市他合計</label>
+    <input type="text" readonly
+            class="form-control form-control-sm text-end auto-width-input"
+            value="{{ totals.total_kyotoshi|floatformat:'0' }}（{{ totals.kyotoshi_split|floatformat:'0' }}）">
   </div>
 
   <div class="text-center">
@@ -108,10 +122,12 @@
                    class="btn btn-sm btn-outline-primary">
                   ▶ 月報一覧を見る
                 </a>
-                {% if d.note %}
+                {% if d.driver and d.driver.id %}
                   <a class="btn btn-outline-success btn-sm" title="この従業員の初回日報を作成"
-                    href="{% url 'staffbook:driver_dailyreport_add_selector' d.driver.id %}"> ➕ 新規作成
+                    href="{% url 'staffbook:driver_dailyreport_add_selector' d.driver.id %}?month={{ d.month_str }}"> ➕ 新規作成
                   </a>
+                {% else %}
+                  <span class="text-muted">作成不可</span>
                 {% endif %}
               </td>
             </tr>

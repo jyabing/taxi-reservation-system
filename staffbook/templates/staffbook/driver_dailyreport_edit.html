@@ -1,6 +1,7 @@
 {% extends "staffbook/base_staffbook.html" %}
 {% load widget_tweaks %}
 {% load time_filters %}
+{% load custom_totals %}
 {% load static %}
 
 {% block extra_css %}
@@ -49,6 +50,13 @@
   .mark-checkbox {
     transform: scale(1.3);
     margin-top: 3px;
+  }
+  .scrollable-input {
+    overflow-x: auto;
+    white-space: nowrap;
+    min-width: 50px;
+    width: 100%;
+    max-width: 100px;
   }
   #payment-summary-panel {
     font-size: 0.95rem;
@@ -111,15 +119,15 @@
     <table class="table table-bordered table-sm">
       <thead class="table-light">
         <tr>
-          <th><strong>使用车辆</strong></th>
-          <th>出勤</th>
-          <th>退勤</th>
-          <th>勤務時間</th>
-          <th>休憩時間</th>
-          <th><span class="text-info">実働時間</span></th>
-          <th class="text-danger">残業時間</th>
-          <th>給油 (L)</th>
-          <th>走行距離 (KM)</th>
+          <th style="white-space: nowrap;"><strong>使用车辆</strong></th>
+          <th style="white-space: nowrap;">出勤</th>
+          <th style="white-space: nowrap;">退勤</th>
+          <th style="white-space: nowrap;">勤務時間</th>
+          <th style="white-space: nowrap;">休憩時間</th>
+          <th style="white-space: nowrap;"><span class="text-info">実働時間</span></th>
+          <th class="text-danger" style="white-space: nowrap;">残業時間</th>
+          <th style="white-space: nowrap;">給油 (L)</th>
+          <th style="white-space: nowrap;">走行距離 (KM)</th>
         </tr>
       </thead>
       <tbody>
@@ -133,10 +141,10 @@
             {{ form.vehicle }}
           </td>
           <td style="max-width:110px;">
-            <input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.initial.clock_in|default_if_none:'' }}">
+            <input type="text" name="clock_in" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_in|default_if_none:'' }}">
           </td>
-          <td style="max-width:110px;">
-            <input type="text" name="clock_out" class="form-control form-control-sm time-input" value="{{ form.initial.clock_out|default_if_none:'' }}">
+          <td style="max-width:110px;" >
+            <input type="text" name="clock_out" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_out|default_if_none:'' }}">
           </td>
           <td id="work-duration">--:--</td> <!--勤務時間-->
 
@@ -160,17 +168,17 @@
           <td id="actual-work-time">--:--</td><!--実働時間-->
           <td id="overtime">--:--</td><!--残業時間-->
           <td style="max-width:90px;">{{ form.gas_volume|add_class:"form-control form-control-sm text-end" }}</td>
-          <td style="max-width:90px;">{{ form.mileage|add_class:"form-control form-control-sm text-end" }}</td>
+          <td >{{ form.mileage|add_class:"form-control form-control-sm text-end" }}</td>
         </tr>
       </tbody>
     </table>
 
     <div id="payment-summary-panel" class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
-      {% for item in summary_panel_data %}
+      {% for key, label in summary_keys %}
         <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-          <div class="small text-muted">{{ item.label }} 合計</div>
+          <div class="small text-muted">{{ label }} 合計</div>
           <div>
-            <span id="total_{{ item.key }}">{{ item.raw|floatformat:"0" }}</span>（<span id="bonus_{{ item.key }}">{{ item.split|floatformat:"0" }}</span>）
+            <span id="total_{{ key }}">{{ totals|get_total:key|floatformat:"0" }}</span>（<span id="bonus_{{ key }}">{{ totals|get_bonus:key|floatformat:"0" }}</span>）
           </div>
         </div>
       {% endfor %}
@@ -179,10 +187,10 @@
     <table class="table table-bordered table-sm">
       <thead class="table-light">
         <tr>
-          <th>#</th><th>時間</th><th>乗車地</th><th class="d-none">経由</th>
+          <th>#</th><th style="white-space: nowrap;">時間</th><th style="white-space: nowrap;">乗車地</th><th class="d-none">経由</th>
           <th class="d-none">降車地</th>
           <th class="d-none">男</th>
-          <th class="d-none">女</th><th>料金</th><th>支付</th><th>加亮</th><th>注釈</th><th>操作</th>
+          <th class="d-none">女</th><th style="white-space: nowrap;">料金</th><th style="white-space: nowrap;">支付</th><th style="white-space: nowrap;">加亮</th><th>注釈</th><th style="white-space: nowrap;">操作</th>
         </tr>
       </thead>
       <tbody>
@@ -191,23 +199,25 @@
           <tr class="report-item-row {% if form.is_flagged.value %}has-note{% endif %}">
             {{ form.id }}
             <td>{{ forloop.counter }}</td>
-            <td>{{ form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
-            <td style="min-width: 120px;">{{ form.ride_from|add_class:"form-control form-control-sm" }}</td>
-            <td style="min-width: 120px;" class="d-none">{{ form.via|add_class:"form-control form-control-sm" }}</td>
+            <td style="min-width: 70px;">{{ form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
+            <td style="min-width: 70px;">{{ form.ride_from|add_class:"form-control form-control-sm" }}</td>
+            <td style="min-width: 70px;" class="d-none">{{ form.via|add_class:"form-control form-control-sm" }}</td>
             <td style="min-width: 120px;" class="d-none">{{ form.ride_to|add_class:"form-control form-control-sm" }}</td>
             <td class="d-none">{{ form.num_male|add_class:"form-control form-control-sm text-end" }}</td>
             <td class="d-none">{{ form.num_female|add_class:"form-control form-control-sm text-end" }}</td>
-            <td>{{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input"|attr:"type:text"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*" }}</td>
-            <td>{{ form.payment_method|add_class:"form-select form-select-sm" }}</td>
+            <td style="min-width: 70px;">{{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input"|attr:"type:text"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*" }}</td>
+            <td style="min-width: 100px;">{{ form.payment_method|add_class:"form-select form-select-sm" }}</td>
             <td class="text-center">{{ form.is_flagged }}</td>
             <td>{% if form.note.value %}📝{% endif %} {{ form.note }}</td>
-            <td>
-              {% if form.instance.pk %}
-                <span style="display:none;">{{ form.DELETE }}</span>
-                <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
-            {% else %}
-                <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
-            {% endif %}
+            <td style="white-space: nowrap;">
+              <div class="d-flex flex-row gap-1">
+                {% if form.instance.pk %}
+                  <span style="display:none;">{{ form.DELETE }}</span>
+                  <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
+                {% else %}
+                  <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+                {% endif %}
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -220,22 +230,6 @@
   <div class="text-center mt-3">
     <button id="add-row-btn" class="btn btn-outline-dark">➕ 増加一行</button>
   </div>
-</div>
-
-<!-- ✅ 增加：未分配司机的日报新增入口 -->
-<div class="mt-5">
-  <h5>🚗 未分配司机日报</h5>
-  <p class="text-muted">为尚未绑定司机账号的员工添加日报：</p>
-  <form method="get" action="{% url 'staffbook:driver_dailyreport_add_unassigned' %}" class="form-inline">
-    <div class="input-group" style="max-width: 300px;">
-      <select name="driver_id" class="form-select">
-        {% for driver in unassigned_drivers %}
-          <option value="{{ driver.id }}">{{ driver.name }}（{{ driver.driver_code }}）</option>
-        {% endfor %}
-      </select>
-      <button type="submit" class="btn btn-outline-primary">➕ 添加日报</button>
-    </div>
-  </form>
 </div>
 
 <script>

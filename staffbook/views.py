@@ -757,18 +757,29 @@ def driver_dailyreport_month(request, driver_id):
 def dailyreport_add_selector(request, driver_id):
     from datetime import datetime, date
     driver = get_object_or_404(Driver, pk=driver_id)
-    today = date.today()
-    current_month = today.strftime("%Y-%m")
-    
-    # ✅ 构造日历日期与预约状态
-    num_days = monthrange(today.year, today.month)[1]
-    all_dates = [date(today.year, today.month, d) for d in range(1, num_days + 1)]
+
+    # ✅ 解析 ?month=2025-03 参数
+    month_str = request.GET.get("month")
+    try:
+        if month_str:
+            target_year, target_month = map(int, month_str.split("-"))
+            display_date = date(target_year, target_month, 1)
+        else:
+            display_date = date.today()
+    except ValueError:
+        display_date = date.today()
+
+    current_month = display_date.strftime("%Y-%m")
+
+    # ✅ 构造当月所有日期与是否有预约
+    num_days = monthrange(display_date.year, display_date.month)[1]
+    all_dates = [date(display_date.year, display_date.month, d) for d in range(1, num_days + 1)]
 
     reserved_dates = set()
     if driver.user:
         reserved_dates = set(
             Reservation.objects
-            .filter(driver=driver.user, date__year=today.year, date__month=today.month)
+            .filter(driver=driver.user, date__year=display_date.year, date__month=display_date.month)
             .values_list("date", flat=True)
         )
 
@@ -780,7 +791,7 @@ def dailyreport_add_selector(request, driver_id):
         for d in all_dates
     ]
 
-
+    # ✅ 提交处理
     if request.method == "POST":
         selected_date_str = request.POST.get("selected_date")
         try:
@@ -789,19 +800,16 @@ def dailyreport_add_selector(request, driver_id):
             messages.error(request, "无效的日期")
             return redirect(request.path)
 
-        # ✅ 检查该司机该日是否有预约记录
         if not driver.user or not Reservation.objects.filter(driver=driver.user, date=selected_date).exists():
             messages.warning(request, f"{selected_date.strftime('%Y年%m月%d日')} は出勤予約がありません。日報を作成できません。")
-            return redirect(request.path)
+            return redirect(request.path + f"?month={current_month}")
 
-        # ✅ 获取或创建日报
         report, created = DriverDailyReport.objects.get_or_create(
             driver=driver,
             date=selected_date,
             defaults={"status": "pending"}
         )
 
-        # ✅ 如果新建则预填 Reservation 信息
         if created:
             res = (
                 Reservation.objects
@@ -820,12 +828,36 @@ def dailyreport_add_selector(request, driver_id):
 
         return redirect("staffbook:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
 
+    # ✅ 渲染模板
     return render(request, "staffbook/driver_dailyreport_add.html", {
         "driver": driver,
-        "current_month": today.strftime("%Y年%m月"),
-        "year": today.year,
-        "month": today.month,
+        "current_month": display_date.strftime("%Y年%m月"),
+        "year": display_date.year,
+        "month": display_date.month,
         "calendar_dates": calendar_dates,
+    })
+
+def dailyreport_add_by_month(request, driver_id):
+    driver = get_object_or_404(Driver, pk=driver_id)
+
+    month_str = request.GET.get("month")  # 格式："2025-03"
+    if not month_str:
+        return redirect("staffbook:driver_dailyreport_add_selector", driver_id=driver_id)
+
+    try:
+        year, month = map(int, month_str.split("-"))
+        # 校验是否是合法月份
+        assert 1 <= month <= 12
+    except (ValueError, AssertionError):
+        return redirect("staffbook:driver_dailyreport_add_selector", driver_id=driver_id)
+
+    current_month = f"{year}年{month}月"
+
+    return render(request, "staffbook/dailyreport_add_month.html", {
+        "driver": driver,
+        "year": year,
+        "month": month,
+        "current_month": current_month,
     })
 
 

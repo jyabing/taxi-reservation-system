@@ -35,6 +35,9 @@ urlpatterns = [
     # ✅ 使用“选择日期”的新方式新增日报（推荐）
     path('drivers/<int:driver_id>/dailyreport/add/', views.dailyreport_add_selector, name='driver_dailyreport_add_selector'),
 
+    # ✅ ⬇️ 新增：通过 URL 参数指定月份的日报添加视图
+path('drivers/<int:driver_id>/dailyreport/add/month/', views.dailyreport_add_by_month, name='driver_dailyreport_add_month'),
+
     # 直接新建日报（可改名 direct_add/ 保留旧功能）
     path('drivers/<int:driver_id>/dailyreport/direct_add/', views.dailyreport_create_for_driver, name='driver_dailyreport_direct_add'),
 
