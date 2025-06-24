@@ -1,6 +1,7 @@
 {% extends "staffbook/base_staffbook.html" %}
 {% load humanize %}
-
+{% load time_filters %}
+{% load custom_totals %}
 {% block content %}
 
 <!-- ✅ 搜索栏 -->
@@ -28,70 +29,16 @@
 
 <h2 class="mb-4 border-bottom pb-2">📊 乗務日報・月間サマリー（{{ month|date:"Y年n月" }}）</h2>
 
-{# 日式风格全員合計（金额（分成額）） #}
-<div class="d-flex flex-wrap align-items-end mb-4">
-  <div class="me-3 text-center">
-    <label class="form-label small">メーター(水揚)合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_meter|floatformat:'0' }}（{{ totals.meter_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="me-3 text-center">
-    <label class="form-label small">現金(ながし)合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-           value="{{ totals.total_cash|floatformat:'0' }}（{{ totals.cash_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="me-3 text-center">
-    <label class="form-label small">Uber合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_uber|floatformat:'0' }}（{{ totals.uber_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="me-3 text-center">
-    <label class="form-label small">Didi合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_didi|floatformat:'0' }}（{{ totals.didi_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="me-3 text-center">
-    <label class="form-label small">クレジ合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_credit|floatformat:'0' }}（{{ totals.credit_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="me-3 text-center">
-    <label class="form-label small">京交信合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_kyokushin|floatformat:'0' }}（{{ totals.kyokushin_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="me-3 text-center">
-    <label class="form-label small">オムロン合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_omron|floatformat:'0' }}（{{ totals.omron_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="me-3 text-center">
-    <label class="form-label small">京都市他合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_kyotoshi|floatformat:'0' }}（{{ totals.kyotoshi_split|floatformat:'0' }}）">
-  </div>
-
-  <div class="text-center">
-    <label class="form-label small">扫码合計</label>
-    <input type="text" readonly
-            class="form-control form-control-sm text-end auto-width-input"
-            value="{{ totals.total_qr|floatformat:'0' }}（{{ totals.qr_split|floatformat:'0' }}）">
-  </div>
+{# ✅ 日式风格全員合計（金额（分成額）） #}
+<div class="d-flex flex-wrap align-items-end mb-4" id="payment-summary-panel">
+  {% for key, label in summary_keys %}
+    <div class="me-3 text-center">
+      <label class="form-label small">{{ label }}合計</label>
+      <input type="text" readonly
+              class="form-control form-control-sm text-end auto-width-input"
+              value="{{ totals|get_total:key|floatformat:'0' }}（{{ totals|get_bonus:key|floatformat:'0' }}）">
+    </div>
+  {% endfor %}
 </div>
 
 <!-- ✅ 卡片包裹的表格 -->
