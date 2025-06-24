@@ -995,7 +995,11 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             inst.has_issue = inst.items.filter(has_issue=True).exists()
             inst.save(update_fields=["has_issue"])
 
-            return redirect('staffbook:dailyreport_overview')
+            # ✅ 添加保存成功提示
+            messages.success(request, f"✅ 保存成功（{timezone.now().strftime('%Y年%m月%d日 %H:%M')}）")
+
+            # ✅ 跳转回当前编辑页
+            return redirect('staffbook:driver_dailyreport_edit', driver_id=driver_id, report_id=inst.pk)
 
     else:
         # GET 请求 - 初始化初值
