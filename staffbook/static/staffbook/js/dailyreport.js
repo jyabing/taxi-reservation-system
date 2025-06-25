@@ -274,6 +274,34 @@ window.addEventListener('DOMContentLoaded', () => {
     bindRowEvents(newRow);
   });
 
+  document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("break-time-input");
+  const display = document.getElementById("break-time-display");
+
+  function updateBreakTimeDisplay() {
+    const value = input.value.trim();
+    if (!value.match(/^\d{1,2}:\d{2}$/)) {
+      display.textContent = "--:--";
+      return;
+    }
+
+    const [hours, minutes] = value.split(":").map(Number);
+    if (isNaN(hours) || isNaN(minutes)) {
+      display.textContent = "--:--";
+      return;
+    }
+
+    let totalMinutes = hours * 60 + minutes + 20;
+    const newH = Math.floor(totalMinutes / 60);
+    const newM = totalMinutes % 60;
+    display.textContent = `${newH}:${newM.toString().padStart(2, "0")}`;
+  }
+
+  input.addEventListener("input", updateBreakTimeDisplay);
+  input.addEventListener("blur", updateBreakTimeDisplay);
+  updateBreakTimeDisplay();  // 页面初次加载时执行一次
+});
+
   document.querySelectorAll('.insert-below').forEach(btn => {
     btn.addEventListener('click', () => {
       const tbody = document.querySelector('table tbody');

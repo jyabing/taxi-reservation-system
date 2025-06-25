@@ -270,6 +270,9 @@ class DriverDailyReport(models.Model):
     実働時間 = models.DurationField("実働時間", null=True, blank=True)
     残業時間 = models.DurationField("残業時間", null=True, blank=True)
 
+    deposit_amount = models.PositiveIntegerField("入金額", null=True, blank=True, help_text="手动输入的入金金额")
+    deposit_difference = models.IntegerField("過不足額", null=True, blank=True, help_text="入金 − 現金")
+
     gas_volume = models.DecimalField("ガソリン量 (L)",max_digits=6, decimal_places=2,default=0,validators=[MinValueValidator(0)])
     mileage = models.DecimalField("里程 (KM)",max_digits=7, decimal_places=2,default=0,validators=[MinValueValidator(0)])
 

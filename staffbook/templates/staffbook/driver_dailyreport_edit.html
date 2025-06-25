@@ -140,7 +140,7 @@ table.table tr.has-note td {
             {{ form.vehicle }}
           </td>
           <td style="max-width:110px;">
-            <input type="text" name="clock_in" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_in|default_if_none:'' }}">
+            <input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.clock_in.value|default_if_none:'' }}">
           </td>
           <td style="max-width:110px;" >
             <input type="text" name="clock_out" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_out|default_if_none:'' }}">
@@ -155,6 +155,10 @@ table.table tr.has-note td {
                   style="max-width:90px;"
                   placeholder="0:00"
                   value="{{ break_time_h }}:{{ break_time_m }}">
+                  <div class="form-text mt-1">+20分</div>
+
+                  <!-- ✅ 新增隐藏字段 -->
+                  <input type="hidden" name="break_time_plus20" id="break-time-plus20">
           </td>
 
           <!-- 実働時間 -->
@@ -185,7 +189,19 @@ table.table tr.has-note td {
           </div>
         </div>
       {% endfor %}
-    </div>
+
+
+      <!-- ✅ 新增区域开始 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 80px;">
+        <label class="small text-muted">入金額</label>
+        {{ form.deposit_amount|add_class:"form-control form-control-sm text-end"|attr:"id:deposit-input"|attr:"style:min-width:80px;"|attr:"placeholder:0" }}
+
+        <label class="small text-muted mt-2 d-block">過不足（入金 - 現金）</label>
+          <div id="difference-output" class="form-control-plaintext text-end small text-muted" style="min-height: 1.5em;">
+          {{ form.deposit_difference.value|default:"--" }}
+          </div>
+        </div>
+      <!-- ✅ 新增区域结束 -->
 
     <table class="table table-bordered table-sm">
       <thead class="table-light">
@@ -301,6 +317,12 @@ table.table tr.has-note td {
   </div>
   
 </div>
+{% if form.errors %}
+  <div class="alert alert-danger">主表单验证失败：{{ form.errors }}</div>
+{% endif %}
+{% if formset.non_form_errors %}
+  <div class="alert alert-danger">明细验证失败：{{ formset.non_form_errors }}</div>
+{% endif %}
 
 {% endblock %}
 
@@ -314,11 +336,6 @@ table.table tr.has-note td {
       background-color: #fff8b3 !important;
     }
   </style>
+
 {% endblock %}
 
-{% if form.errors %}
-  <div class="alert alert-danger">主表单验证失败：{{ form.errors }}</div>
-{% endif %}
-{% if formset.non_form_errors %}
-  <div class="alert alert-danger">明细验证失败：{{ formset.non_form_errors }}</div>
-{% endif %}

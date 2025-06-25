@@ -100,7 +100,7 @@ class DriverDailySalesForm(forms.ModelForm):
 class DriverDailyReportForm(forms.ModelForm):
     class Meta:
         model  = DriverDailyReport
-        fields = ['vehicle', 'date', 'note', 'has_issue', 'status', 'clock_in', 'clock_out', 'gas_volume', 'mileage']
+        fields = ['vehicle', 'date', 'note', 'has_issue', 'status', 'clock_in', 'clock_out', 'gas_volume', 'mileage','deposit_amount','deposit_difference']
         widgets = {
             'vehicle': forms.HiddenInput(),
             'status':     forms.HiddenInput(),

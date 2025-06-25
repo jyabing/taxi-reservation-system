@@ -877,6 +877,15 @@ def dailyreport_create_for_driver(request, driver_id):
             # ✅ 自动计算时间字段
             dailyreport.calculate_work_times()
 
+            # ✅ 新增：计算現金合计
+            cash_total = sum(
+                item.cleaned_data.get('meter_fee') or 0
+                for item in formset.forms
+                if item.cleaned_data.get('payment_method') == 'cash' and not item.cleaned_data.get('DELETE', False)
+            )
+            deposit = dailyreport.deposit_amount or 0
+            dailyreport.deposit_difference = deposit - cash_total
+
             dailyreport.save()
             formset.instance = dailyreport
             formset.save()
@@ -933,6 +942,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
+            # ✅ 这里处理休憩時間
             break_input = request.POST.get("break_time_input", "").strip()
             break_minutes = 0
             try:
@@ -944,9 +954,18 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             except Exception:
                 break_minutes = 0
 
-            inst.休憩時間 = datetime.timedelta(minutes=break_minutes + 20)
+            inst.休憩時間 = datetime.timedelta(minutes=break_minutes)
             inst.calculate_work_times()
             inst.edited_by = request.user
+
+            # ✅ 插入这里：自动计算過不足額
+            cash_total = sum(
+                item.cleaned_data.get('meter_fee') or 0
+                for item in formset.forms
+                if item.cleaned_data.get('payment_method') == 'cash' and not item.cleaned_data.get('DELETE', False)
+            )
+            deposit = inst.deposit_amount or 0
+            inst.deposit_difference = deposit - cash_total
 
             if inst.status in [DriverDailyReport.STATUS_PENDING, DriverDailyReport.STATUS_CANCELLED] and inst.clock_in and inst.clock_out:
                 inst.status = DriverDailyReport.STATUS_COMPLETED
