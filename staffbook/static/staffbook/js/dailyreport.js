@@ -99,6 +99,7 @@ function updateTotals() {
 }
 
 function bindRowEvents(row) {
+  // Flatpickr 绑定
   row.querySelectorAll('.time-input').forEach(input => flatpickr(input, {
     enableTime: true,
     noCalendar: true,
@@ -107,27 +108,33 @@ function bindRowEvents(row) {
     locale: "ja"
   }));
 
+  // ✅ 加亮复选框绑定逻辑（初始化 + 变更）
   const checkbox = row.querySelector('.mark-checkbox');
   if (checkbox) {
+    // 页面加载时就加高亮
+    if (checkbox.checked) {
+      row.classList.add('has-note');
+    }
+    // 勾选变更时切换高亮
     checkbox.addEventListener('change', () => {
       row.classList.toggle('has-note', checkbox.checked);
     });
   }
 
+  // 删除按钮逻辑
   const delBtn = row.querySelector('.confirm-delete, .remove-row');
-if (delBtn) {
-  delBtn.addEventListener('click', () => {
-    if (confirm('确定删除此行？')) {
-      const checkbox = row.querySelector('input[name$="-DELETE"]');
-      if (checkbox) {
-        checkbox.setAttribute('checked', 'checked');  // DOM 层设置
-        checkbox.checked = true;                      // JS 层同步
+  if (delBtn) {
+    delBtn.addEventListener('click', () => {
+      if (confirm('确定删除此行？')) {
+        const checkbox = row.querySelector('input[name$="-DELETE"]');
+        if (checkbox) {
+          checkbox.setAttribute('checked', 'checked');  // DOM 层设置
+          checkbox.checked = true;                      // JS 层同步
+        }
+        row.style.display = 'none';
       }
-      row.style.display = 'none';
-    }
-  });
-}
-
+    });
+  }
 }
 
 // ✅ 初始化逻辑

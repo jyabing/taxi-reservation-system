@@ -14,10 +14,12 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
 
 <style>
-  .table tbody tr.has-note,
-  .table tbody tr.has-note td {
-    background-color: #fff3cd !important;
-  }
+/* 强化优先级：tr + td 都加 */
+table.table tr.has-note,
+table.table tr.has-note td {
+  background-color: #fff3cd !important;
+}
+
   .auto-width-input {
     width: 2ch;
     min-width: 60px;
@@ -188,13 +190,18 @@
           <th class="d-none">経由</th>
           <th class="d-none">降車地</th>
           <th class="d-none">男</th>
-          <th class="d-none">女</th><th style="white-space: nowrap;">料金</th><th style="white-space: nowrap;">支付</th><th style="white-space: nowrap;">加亮</th><th>注釈</th><th style="white-space: nowrap;">操作</th>
+          <th class="d-none">女</th>
+          <th style="white-space: nowrap;">料金</th>
+          <th style="white-space: nowrap;">支付</th>
+          <th style="white-space: nowrap;">加亮</th>
+          <th>注釈</th>
+          <th style="white-space: nowrap;">操作</th>
         </tr>
       </thead>
       <tbody>
         {{ formset.management_form }}
         {% for form in formset.forms %}
-          <tr class="report-item-row {% if form.is_flagged.value %}has-note{% endif %}">
+          <tr class="report-item-row">
             {{ form.id }}
             <td class="row-number">{{ forloop.counter }}</td>
             <td style="min-width: 70px;">
@@ -271,12 +278,12 @@
             <td style="white-space: nowrap;">
               <div class="d-flex flex-row gap-1">
                 {% if form.instance.pk %}
-                  {{ form.DELETE }}
+                  {{ form.DELETE.as_hidden }}
                   <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
                 {% endif %}
-                  <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕插入</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下插入行</button>
             </div>
           </td>
         </tr>
@@ -299,6 +306,12 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
   <script src="{% static 'staffbook/js/dailyreport.js' %}"></script>
+  <style>
+    table.table tr.has-note td,
+    table.table tr.has-note {
+      background-color: #fff8b3 !important;
+    }
+  </style>
 {% endblock %}
 
 {% if form.errors %}
