@@ -999,7 +999,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             messages.success(request, f"✅ 保存成功（{timezone.now().strftime('%Y年%m月%d日 %H:%M')}）")
 
             # ✅ 跳转回当前编辑页
-            return redirect('staffbook:driver_dailyreport_edit', driver_id=driver_id, report_id=inst.pk)
+            return redirect('staffbook:driver_dailyreport_month', driver_id=driver_id, report_id=inst.pk)
 
     else:
         # GET 请求 - 初始化初值
