@@ -171,6 +171,12 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ✅ 显式取消必填，避免“这个字段是必填项”错误
+        self.fields['num_male'].required = False
+        self.fields['num_female'].required = False
+
 # ✅ 明细表单集合
 ReportItemFormSet = inlineformset_factory(
     DriverDailyReport,

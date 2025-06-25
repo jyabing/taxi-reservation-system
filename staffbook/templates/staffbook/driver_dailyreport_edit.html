@@ -4,7 +4,6 @@
 {% load custom_totals %}
 {% load static %}
 
-
 {% block extra_css %}
 
 {% endblock %}
@@ -69,7 +68,7 @@
   {% endif %}
 
   <h4><strong>{{ report.driver.name }}</strong>（{{ report.driver.driver_code }}）- 編集乗務日報</h4>
-  
+  {{ form.meter_fee|add_class:"form-control" }}
   <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
 
   {% if report.pk %}
@@ -198,25 +197,85 @@
           <tr class="report-item-row {% if form.is_flagged.value %}has-note{% endif %}">
             {{ form.id }}
             <td class="row-number">{{ forloop.counter }}</td>
-            <td style="min-width: 70px;">{{ form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
-            <td style="min-width: 70px;">{{ form.ride_from|add_class:"form-control form-control-sm" }}</td>
-            <td style="min-width: 70px;" class="d-none">{{ form.via|add_class:"form-control form-control-sm" }}</td>
-            <td style="min-width: 120px;" class="d-none">{{ form.ride_to|add_class:"form-control form-control-sm" }}</td>
-            <td class="d-none">{{ form.num_male|add_class:"form-control form-control-sm text-end" }}</td>
-            <td class="d-none">{{ form.num_female|add_class:"form-control form-control-sm text-end" }}</td>
-            <td style="min-width: 70px;">{{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input"|attr:"type:number"|attr:"step:1"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*" }}</td>
-            <td style="min-width: 100px;">{{ form.payment_method|add_class:"form-select form-select-sm" }}</td>
-            <td class="text-center">{{ form.is_flagged }}</td>
-            <td>{% if form.note.value %}📝{% endif %} {{ form.note }}</td>
+            <td style="min-width: 70px;">
+              {% if form.ride_time.errors %}
+                <div class="text-danger small">{{ form.ride_time.errors.0 }}</div>
+              {% endif %}
+              {{ form.ride_time|add_class:"form-control form-control-sm time-input" }}
+            </td>
+
+            <td style="min-width: 70px;">
+              {% if form.ride_from.errors %}
+                <div class="text-danger small">{{ form.ride_from.errors.0 }}</div>
+              {% endif %}
+              {{ form.ride_from|add_class:"form-control form-control-sm" }}
+            </td>
+
+            <td style="min-width: 70px;" class="d-none">
+              {% if form.via.errors %}
+                <div class="text-danger small">{{ form.via.errors.0 }}</div>
+              {% endif %}
+              {{ form.via|add_class:"form-control form-control-sm" }}
+            </td>
+
+            <td style="min-width: 120px;" class="d-none">
+              {% if form.ride_to.errors %}
+                <div class="text-danger small">{{ form.ride_to.errors.0 }}</div>
+              {% endif %}
+              {{ form.ride_to|add_class:"form-control form-control-sm" }}
+            </td>
+
+            <td class="d-none">
+              {% if form.num_male.errors %}
+                <div class="text-danger small">{{ form.num_male.errors.0 }}</div>
+              {% endif %}
+              {{ form.num_male|add_class:"form-control form-control-sm text-end" }}
+            </td>
+
+            <td class="d-none">
+              {% if form.num_female.errors %}
+                <div class="text-danger small">{{ form.num_female.errors.0 }}</div>
+              {% endif %}
+              {{ form.num_female|add_class:"form-control form-control-sm text-end" }}
+            </td>
+
+            <td style="min-width: 70px;">
+              {% if form.meter_fee.errors %}
+                <div class="text-danger small">{{ form.meter_fee.errors.0 }}</div>
+              {% endif %}
+              {{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input" }}
+            </td>
+
+            <td style="min-width: 100px;">
+              {% if form.payment_method.errors %}
+                <div class="text-danger small">{{ form.payment_method.errors.0 }}</div>
+              {% endif %}
+              {{ form.payment_method|add_class:"form-select form-select-sm" }}
+            </td>
+
+            <td class="text-center">
+              {% if form.is_flagged.errors %}
+                <div class="text-danger small">{{ form.is_flagged.errors.0 }}</div>
+              {% endif %}
+              {{ form.is_flagged }}
+            </td>
+
+            <td>
+              {% if form.note.value %}📝{% endif %}
+              {% if form.note.errors %}
+                <div class="text-danger small">{{ form.note.errors.0 }}</div>
+              {% endif %}
+              {{ form.note }}
+            </td>
+
             <td style="white-space: nowrap;">
               <div class="d-flex flex-row gap-1">
                 {% if form.instance.pk %}
-                  <span style="display:none;">{{ form.DELETE }}</span>
+                  {{ form.DELETE }}
                   <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
                 {% endif %}
-                <!-- ✅ 新增插入按钮 -->
                   <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕插入</button>
             </div>
           </td>
@@ -241,3 +300,10 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
   <script src="{% static 'staffbook/js/dailyreport.js' %}"></script>
 {% endblock %}
+
+{% if form.errors %}
+  <div class="alert alert-danger">主表单验证失败：{{ form.errors }}</div>
+{% endif %}
+{% if formset.non_form_errors %}
+  <div class="alert alert-danger">明细验证失败：{{ formset.non_form_errors }}</div>
+{% endif %}

@@ -115,15 +115,19 @@ function bindRowEvents(row) {
   }
 
   const delBtn = row.querySelector('.confirm-delete, .remove-row');
-  if (delBtn) {
-    delBtn.addEventListener('click', () => {
-      if (confirm('确定删除此行？')) {
-        const checkbox = row.querySelector('input[name$="-DELETE"]');
-        if (checkbox) checkbox.checked = true;
-        row.style.display = 'none';
+if (delBtn) {
+  delBtn.addEventListener('click', () => {
+    if (confirm('确定删除此行？')) {
+      const checkbox = row.querySelector('input[name$="-DELETE"]');
+      if (checkbox) {
+        checkbox.setAttribute('checked', 'checked');  // DOM 层设置
+        checkbox.checked = true;                      // JS 层同步
       }
-    });
-  }
+      row.style.display = 'none';
+    }
+  });
+}
+
 }
 
 // ✅ 初始化逻辑

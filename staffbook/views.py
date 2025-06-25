@@ -837,6 +837,7 @@ def dailyreport_add_selector(request, driver_id):
         "calendar_dates": calendar_dates,
     })
 
+@user_passes_test(is_staffbook_admin)
 def dailyreport_add_by_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
 
@@ -929,7 +930,14 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         form = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
 
+        # ✅ 自动标记所有“空白的未打勾 DELETE 的表单”为删除（防止验证失败）
+        for form_item in formset.forms:
+            # 判断该行是否所有字段都是空的（你可根据实际字段做更细致判断）
+            if not form_item.has_changed():
+                form_item.fields['DELETE'].initial = True
+
         if form.is_valid() and formset.is_valid():
+            print("✅ 表单验证成功")
             inst = form.save(commit=False)
 
             # ✅ 补全 status，防止后台验证失败
@@ -1000,6 +1008,11 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
             # ✅ 跳转回当前编辑页
             return redirect('staffbook:driver_dailyreport_month', driver_id=driver_id)
+
+        else:
+            print("❌ 表单验证失败")
+            print("form errors:", form.errors)
+            print("formset errors:", formset.errors)
 
     else:
         # GET 请求 - 初始化初值
