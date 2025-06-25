@@ -65,9 +65,6 @@
         <tr>
           <th>时间</th>
           <th>起点</th>
-          <th>终点</th>
-          <th>男</th>
-          <th>女</th>
           <th>金额</th>
           <th>支付方式</th>
           <th>注释</th>
@@ -78,9 +75,6 @@
         <tr class="{% if item.note or item.is_flagged %}table-warning{% endif %}">
           <td>{{ item.ride_time }}</td>
           <td>{{ item.ride_from }}</td>
-          <td>{{ item.ride_to }}</td>
-          <td>{{ item.num_male }}</td>
-          <td>{{ item.num_female }}</td>
           <td>{{ item.meter_fee }}</td>
           <td>{{ item.get_payment_method_display }}</td>
           <td>
