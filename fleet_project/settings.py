@@ -167,3 +167,4 @@ USE_L10N = False  # 禁用本地化，以便使用上面自定义格式
 
 LEDGER_API_HOST = os.getenv('LEDGER_API_HOST', 'taxi-reservation.onrender.com')
 
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000

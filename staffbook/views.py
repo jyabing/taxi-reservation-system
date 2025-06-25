@@ -3,6 +3,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse
 from datetime import timedelta
+from collections import defaultdict
 
 from .permissions import is_staffbook_admin
 from django.contrib import messages
@@ -918,50 +919,33 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 编辑日报（管理员）
 @user_passes_test(is_staffbook_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
-    import re
-    from decimal import Decimal
-    from datetime import timedelta
-    from django.utils import timezone
-
     report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
-    duration = timedelta()  # ✅ 无论 GET/POST，duration 都有定义
+    duration = datetime.timedelta()
 
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
 
-        # ✅ 自动标记所有“空白的未打勾 DELETE 的表单”为删除（防止验证失败）
         for form_item in formset.forms:
-            # 判断该行是否所有字段都是空的（你可根据实际字段做更细致判断）
             if not form_item.has_changed():
                 form_item.fields['DELETE'].initial = True
 
         if form.is_valid() and formset.is_valid():
-            print("✅ 表单验证成功")
             inst = form.save(commit=False)
 
-            # ✅ 补全 status，防止后台验证失败
-            if not inst.status:
-                inst.status = STATUS_PENDING
-
-
-            # ✅ 解析用户输入的休憩時間（并 +20分）
-            break_input = request.POST.get("break_time_input", "")
+            break_input = request.POST.get("break_time_input", "").strip()
             break_minutes = 0
-            match = re.match(r"(\d+)\s*[:時間h時]?\s*(\d{0,2})?", break_input)
-            if match:
-                bh = int(match.group(1)) if match.group(1) else 0
-                bm = int(match.group(2)) if match.group(2) else 0
-                break_minutes = bh * 60 + bm
-            elif break_input.strip().isdigit():
-                break_minutes = int(break_input.strip())
+            try:
+                if ":" in break_input:
+                    h, m = map(int, break_input.split(":"))
+                else:
+                    h, m = 0, int(break_input)
+                break_minutes = h * 60 + m
+            except Exception:
+                break_minutes = 0
 
-            inst.休憩時間 = timedelta(minutes=break_minutes + 20)
-
-            # ✅ 自动计算実働時間、残業時間等
+            inst.休憩時間 = datetime.timedelta(minutes=break_minutes + 20)
             inst.calculate_work_times()
-
-            # ✅ 设置编辑人、状态、是否有问题
             inst.edited_by = request.user
 
             if inst.status in [DriverDailyReport.STATUS_PENDING, DriverDailyReport.STATUS_CANCELLED] and inst.clock_in and inst.clock_out:
@@ -969,67 +953,39 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             if inst.clock_in and inst.clock_out:
                 inst.has_issue = False
 
-            # ✅ 保存日报主表
             inst.save()
-
-            # ✅ 保存明细
             formset.instance = inst
             formset.save()
 
-            # ✅ 同步 Reservation 出入库时间（可选）
+            # 更新 Reservation 出入库
             driver_user = inst.driver.user
             if driver_user and inst.clock_in:
-                res = (
-                    Reservation.objects
-                    .filter(driver=driver_user, date=inst.date)
-                    .order_by('start_time')
-                    .first()
-                )
+                res = Reservation.objects.filter(driver=driver_user, date=inst.date).order_by('start_time').first()
                 if res:
                     tz = timezone.get_current_timezone()
-                    res.actual_departure = timezone.make_aware(
-                        datetime.datetime.combine(inst.date, inst.clock_in), tz
-                    )
+                    res.actual_departure = timezone.make_aware(datetime.datetime.combine(inst.date, inst.clock_in), tz)
                     if inst.clock_out:
                         ret_date = inst.date
                         if inst.clock_out < inst.clock_in:
                             ret_date += datetime.timedelta(days=1)
-                        res.actual_return = timezone.make_aware(
-                            datetime.datetime.combine(ret_date, inst.clock_out), tz
-                        )
+                        res.actual_return = timezone.make_aware(datetime.datetime.combine(ret_date, inst.clock_out), tz)
                     res.save()
 
-            # ✅ 更新 has_issue 状态（重新检查明细）
             inst.has_issue = inst.items.filter(has_issue=True).exists()
             inst.save(update_fields=["has_issue"])
 
-            # ✅ 添加保存成功提示
-            messages.success(request, f"✅ 保存成功（{timezone.now().strftime('%Y年%m月%d日 %H:%M')}）")
-
-            # ✅ 跳转回当前编辑页
+            messages.success(request, "✅ 保存成功")
             return redirect('staffbook:driver_dailyreport_month', driver_id=driver_id)
-
         else:
-            print("❌ 表单验证失败")
-            print("form errors:", form.errors)
-            print("formset errors:", formset.errors)
-
+            messages.error(request, "❌ 保存失败，请检查输入内容")
     else:
-        # GET 请求 - 初始化初值
         initial = {'status': report.status}
-        duration = timedelta()  # ✅ 加这一行，避免后面模板访问出错
-        driver_user = report.driver.user
         clock_in = None
         clock_out = None
+        driver_user = report.driver.user
 
-        # ✅ 获取打卡时间与车辆信息（Reservation）
         if driver_user:
-            res = (
-                Reservation.objects
-                .filter(driver=driver_user, date=report.date)
-                .order_by('start_time')
-                .first()
-            )
+            res = Reservation.objects.filter(driver=driver_user, date=report.date).order_by('start_time').first()
             if res:
                 if res.actual_departure:
                     clock_in = timezone.localtime(res.actual_departure).time()
@@ -1049,19 +1005,20 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                         dt_out += datetime.timedelta(days=1)
                     duration = dt_out - dt_in
 
-        # ✅ 初始化休憩時間（用户输入 = 数据库字段 - 20分钟）
         if report.休憩時間:
             user_break_min = int(report.休憩時間.total_seconds() / 60) - 20
             user_h = user_break_min // 60
             user_m = user_break_min % 60
             initial['break_time_input'] = f"{user_h}:{str(user_m).zfill(2)}"
         else:
+            user_h = 0
+            user_m = 0
             initial['break_time_input'] = "0:00"
 
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-    # ✅ 合计汇总逻辑
+    # ✅ 汇总逻辑
     rates = {
         'meter':   Decimal('0.9091'),
         'cash':    Decimal('0'),
@@ -1080,13 +1037,21 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     data_iter = (
         formset.cleaned_data
         if request.method == 'POST' and formset.is_valid()
-        else [f.initial for f in formset.forms]
+        else [f.instance for f in formset.forms]
     )
+
     for row in data_iter:
-        if row.get('DELETE'):
-            continue
-        amt = row.get('meter_fee') or Decimal('0')
-        pay = row.get('payment_method') or ''
+        if isinstance(row, dict):
+            if row.get('DELETE'):
+                continue
+            amt = row.get('meter_fee', Decimal('0')) or Decimal('0')
+            pay = row.get('payment_method', '') or ''
+        else:
+            if getattr(row, 'DELETE', False):
+                continue
+            amt = getattr(row, 'meter_fee', Decimal('0')) or Decimal('0')
+            pay = getattr(row, 'payment_method', '') or ''
+
         raw['meter'] += amt
         split['meter'] += amt * rates['meter']
         if pay in ('barcode', 'wechat'):
@@ -1134,6 +1099,8 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'duration': duration,
         'summary_keys': summary_keys,
         'summary_panel_data': summary_panel_data,
+        'break_time_h': user_h,
+        'break_time_m': f"{user_m:02}",
     })
 
 @user_passes_test(is_staffbook_admin)

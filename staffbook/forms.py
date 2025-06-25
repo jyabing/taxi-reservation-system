@@ -113,6 +113,22 @@ class DriverDailyReportForm(forms.ModelForm):
             'mileage':     forms.NumberInput(attrs={'step':'0.01','class':'form-control auto-width-input','placeholder':'0.00 KM'}),
         }
 
+        def clean(self):
+            cleaned_data = super().clean()
+
+            # 获取前端输入的 "hh:mm" 格式字符串
+            break_time_str = self.data.get('break_time_input', '')
+            if break_time_str:
+                try:
+                    h, m = map(int, break_time_str.strip().split(':'))
+                    
+                    # 保存原始输入，不再额外加20分钟
+                    cleaned_data['休憩時間'] = timedelta(minutes=total_minutes)
+                except ValueError:
+                    self.add_error('break_time_input', '休憩時間の形式は「HH:MM」で入力してください')
+
+            return cleaned_data
+
     def __init__(self, *args, **kwargs):
         instance = kwargs.get('instance', None)
         super().__init__(*args, **kwargs)
@@ -166,7 +182,8 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'num_male': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'num_female': forms.NumberInput(attrs={'class': 'auto-width-input'}),
             'meter_fee': forms.NumberInput(attrs={
-                'class': 'form-control form-control-sm text-end auto-width-input',
+                'step': '1',
+                'class': 'form-control form-control-sm text-end auto-width-input meter-fee-input',  # ← 就是这段
                 'type': 'number',
                 'step': '1',
                 'inputmode': 'numeric',

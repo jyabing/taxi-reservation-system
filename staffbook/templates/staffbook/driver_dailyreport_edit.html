@@ -2,7 +2,9 @@
 {% load widget_tweaks %}
 {% load time_filters %}
 {% load custom_totals %}
+
 {% load static %}
+{% load driver_extras %}
 
 {% block extra_css %}
 
@@ -147,23 +149,26 @@ table.table tr.has-note td {
 
           <!-- ✅ 修改休憩時間 -->
           <td>
-              {% with raw_sec=form.instance.休憩時間.total_seconds|floatformat:0 %}
-                {% with user_min=raw_sec|add:"-1200"|floatformat:0 %}
-                  {% with hours=user_min|divisibleby:60 %}
-                    <input type="text" name="break_time_input" id="break-time-input"
-                            class="form-control form-control-sm text-center"
-                            maxlength="5" pattern="^\d{1,2}:\d{2}$"
-                            style="max-width:90px;"
-                            placeholder="0:00"
-                            value="{{ form.initial.break_time_input|default:'0:00' }}">
-                  {% endwith %}
-                {% endwith %}
-              {% endwith %}
-            <div class="small text-muted text-center" id="break-time">--:--</div>
+              <input type="text" name="break_time_input" id="break-time-input"
+                  class="form-control form-control-sm text-center"
+                  maxlength="5" pattern="^\d{1,2}:\d{2}$"
+                  style="max-width:90px;"
+                  placeholder="0:00"
+                  value="{{ break_time_h }}:{{ break_time_m }}">
           </td>
 
-          <td id="actual-work-time">--:--</td><!--実働時間-->
-          <td id="overtime">--:--</td><!--残業時間-->
+          <!-- 実働時間 -->
+          <td class="text-center text-primary" id="actual-work-time">
+            {% if form.instance.実働時間 %}
+              {{ form.instance.実働時間 }}
+            {% else %}
+              --:--
+            {% endif %}
+          </td>
+
+          <!-- 残業時間 -->
+          <td class="text-danger text-center">{{ form.instance.残業時間|format_duration }}</td>
+          
           <td style="max-width:90px;">{{ form.gas_volume|add_class:"form-control form-control-sm text-end" }}</td>
           <td >{{ form.mileage|add_class:"form-control form-control-sm text-end" }}</td>
         </tr>
@@ -175,7 +180,8 @@ table.table tr.has-note td {
         <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
           <div class="small text-muted">{{ label }} 合計</div>
           <div>
-            <span id="total_{{ key }}">{{ totals|get_total:key|floatformat:"0" }}</span>（<span id="bonus_{{ key }}">{{ totals|get_bonus:key|floatformat:"0" }}</span>）
+            <span id="total_{{ key }}">{{ totals|get_total:key|floatformat:"0" }}</span>
+            （<span id="bonus_{{ key }}">{{ totals|get_bonus:key|floatformat:"0" }}</span>）
           </div>
         </div>
       {% endfor %}
@@ -201,7 +207,7 @@ table.table tr.has-note td {
       <tbody>
         {{ formset.management_form }}
         {% for form in formset.forms %}
-          <tr class="report-item-row">
+          <tr class="report-item-row {% if form.instance.is_flagged %}has-note{% endif %}">
             {{ form.id }}
             <td class="row-number">{{ forloop.counter }}</td>
             <td style="min-width: 70px;">
@@ -246,11 +252,7 @@ table.table tr.has-note td {
               {{ form.num_female|add_class:"form-control form-control-sm text-end" }}
             </td>
 
-            <td style="min-width: 70px;">
-              {% if form.meter_fee.errors %}
-                <div class="text-danger small">{{ form.meter_fee.errors.0 }}</div>
-              {% endif %}
-              {{ form.meter_fee|add_class:"form-control form-control-sm text-end auto-width-input" }}
+            <td style="min-width: 70px;">{{ form.meter_fee }}
             </td>
 
             <td style="min-width: 100px;">
@@ -278,7 +280,7 @@ table.table tr.has-note td {
             <td style="white-space: nowrap;">
               <div class="d-flex flex-row gap-1">
                 {% if form.instance.pk %}
-                  {{ form.DELETE.as_hidden }}
+                  {{ form.DELETE }}
                   <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>

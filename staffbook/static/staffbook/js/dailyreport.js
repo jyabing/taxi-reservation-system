@@ -1,3 +1,4 @@
+
 // ✅ flatpickr 时间控件绑定（初始化）
 flatpickr(".time-input", {
   enableTime: true,
@@ -65,24 +66,47 @@ function updateDuration() {
 
 function updateTotals() {
   const PAYMENT_METHODS = {
-    meter: 'メーター(水揚)', cash: '現金(ながし)', uber: 'Uber', didi: 'Didi', credit: 'クレジ',
-    kyokushin: '京交信', omron: 'オムロン', kyotoshi: '京都市他', qr: '扫码'
+    meter: 'メーター(水揚)',
+    cash: '現金(ながし)',
+    uber: 'Uber',
+    didi: 'Didi',
+    credit: 'クレジ',
+    kyokushin: '京交信',
+    omron: 'オムロン',
+    kyotoshi: '京都市他',
+    qr: '扫码'
   };
+
   const METHOD_ALIAS = {
-    '現金': 'cash', 'Uber': 'uber', 'Didi': 'didi', 'クレジットカード': 'credit',
-    '京交信': 'kyokushin', 'オムロン': 'omron', '京都市他': 'kyotoshi',
-    '扫码（PayPay等）': 'qr', 'barcode': 'qr', 'wechat': 'qr', 'qr': 'qr'
+    '現金': 'cash',
+    'Uber': 'uber',
+    'Didi': 'didi',
+    'クレジットカード': 'credit',
+    '京交信': 'kyokushin',
+    'オムロン': 'omron',
+    '京都市他': 'kyotoshi',
+    '扫码（PayPay等）': 'qr',
+    'barcode': 'qr',
+    'wechat': 'qr',
+    'qr': 'qr'
   };
+
   const sum = {}, count = {};
-  Object.keys(PAYMENT_METHODS).forEach(k => { sum[k] = 0; count[k] = 0 });
+  Object.keys(PAYMENT_METHODS).forEach(k => {
+    sum[k] = 0;
+    count[k] = 0;
+  });
 
   document.querySelectorAll('tr.report-item-row').forEach(row => {
-    const feeInput = row.querySelector('input[name$="-meter_fee"]');
+    const feeInput = row.querySelector('.meter-fee-input');
     const methodSelect = row.querySelector('select[name$="-payment_method"]');
     if (!feeInput || !methodSelect) return;
+
     const fee = parseFloat(feeInput.value.replace(/[^\d.]/g, '')) || 0;
     const label = methodSelect.options[methodSelect.selectedIndex]?.text.trim();
     const method = METHOD_ALIAS[label] || Object.keys(PAYMENT_METHODS).find(k => PAYMENT_METHODS[k] === label);
+
+    // ✅ 统计所有金额为 sum.meter（总额），再根据支付方式分类
     sum.meter += fee;
     if (method && sum.hasOwnProperty(method)) {
       sum[method] += fee;
@@ -94,12 +118,12 @@ function updateTotals() {
     const total = document.getElementById(`total_${key}`);
     const bonus = document.getElementById(`bonus_${key}`);
     if (total) total.textContent = sum[key];
-    if (bonus) bonus.textContent = Math.floor(sum[key] * 0.05);
+    if (bonus) bonus.textContent = Math.floor(sum[key] * 0.05);  // 例如 5% 提成
   });
 }
 
+
 function bindRowEvents(row) {
-  // Flatpickr 绑定
   row.querySelectorAll('.time-input').forEach(input => flatpickr(input, {
     enableTime: true,
     noCalendar: true,
@@ -108,14 +132,9 @@ function bindRowEvents(row) {
     locale: "ja"
   }));
 
-  // ✅ 加亮复选框绑定逻辑（初始化 + 变更）
   const checkbox = row.querySelector('.mark-checkbox');
   if (checkbox) {
-    // 页面加载时就加高亮
-    if (checkbox.checked) {
-      row.classList.add('has-note');
-    }
-    // 勾选变更时切换高亮
+    if (checkbox.checked) row.classList.add('has-note');
     checkbox.addEventListener('change', () => {
       row.classList.toggle('has-note', checkbox.checked);
     });
@@ -128,16 +147,85 @@ function bindRowEvents(row) {
       if (confirm('确定删除此行？')) {
         const checkbox = row.querySelector('input[name$="-DELETE"]');
         if (checkbox) {
-          checkbox.setAttribute('checked', 'checked');  // DOM 层设置
-          checkbox.checked = true;                      // JS 层同步
+          checkbox.checked = true;  // ✅ 设置 JS 层
+          checkbox.setAttribute('checked', 'checked');  // ✅ 设置 HTML 层（非必须，但安全）
         }
-        row.style.display = 'none';
+        row.style.display = 'none';  // ✅ 隐藏这行，不删除 DOM 结构
       }
     });
   }
 }
 
-// ✅ 初始化逻辑
+function removeDecimalOnBlur() {
+  document.querySelectorAll('input[name$="-meter_fee"]').forEach(input => {
+    input.addEventListener('blur', () => {
+      const val = parseFloat(input.value);
+      if (!isNaN(val)) {
+        input.value = Math.round(val);
+      }
+    });
+  });
+}
+
+function enforceIntegerInput() {
+  document.querySelectorAll('input[name$="-meter_fee"]').forEach(input => {
+    input.addEventListener('input', () => {
+      // 清除非数字
+      input.value = input.value.replace(/[^\d]/g, '');
+
+      // 限制最大值（可改为你需要的数字）
+      const max = 99999;
+      const val = parseInt(input.value || '0');
+      if (val > max) {
+        alert("金額不能超過 99999！");
+        input.value = max;
+      }
+    });
+  });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  removeDecimalOnBlur();     // ✅ 失焦后去掉小数
+  enforceIntegerInput();     // ✅ 输入时强制为整数
+});
+
+function checkFormStructure() {
+  const rows = document.querySelectorAll('tr.report-item-row');
+  const errors = [];
+  const seenIndexes = new Set();
+
+  rows.forEach((row, index) => {
+    const rideTime = row.querySelector(`input[name$="-ride_time"]`);
+    const rideFrom = row.querySelector(`input[name$="-ride_from"]`);
+    const fee = row.querySelector(`input[name$="-meter_fee"]`);
+    const method = row.querySelector(`select[name$="-payment_method"]`);
+    const deleteBox = row.querySelector(`input[name$="-DELETE"]`);
+
+    const nameMatch = (rideTime?.name || '').match(/-(\d+)-ride_time/);
+    const currentIndex = nameMatch ? parseInt(nameMatch[1]) : null;
+
+    if (currentIndex === null || seenIndexes.has(currentIndex)) {
+      errors.push(`❌ 第 ${index + 1} 行 index 错误或重复`);
+    } else {
+      seenIndexes.add(currentIndex);
+    }
+
+    if (!rideTime) errors.push(`❌ 第 ${index + 1} 行缺少 ride_time`);
+    if (!rideFrom) errors.push(`❌ 第 ${index + 1} 行缺少 ride_from`);
+    if (!fee) errors.push(`❌ 第 ${index + 1} 行缺少 meter_fee`);
+    if (!method) errors.push(`❌ 第 ${index + 1} 行缺少 payment_method`);
+    if (!deleteBox) errors.push(`❌ 第 ${index + 1} 行缺少 DELETE 隐藏框`);
+  });
+
+  if (errors.length > 0) {
+    alert("🧪 表单结构异常：\n\n" + errors.join("\n"));
+    console.warn("🧪 表单结构异常：", errors);
+  } else {
+    alert("✅ 表单结构无异常！");
+    console.info("✅ 表单结构检查通过");
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   updateDuration();
   updateTotals();
@@ -178,7 +266,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const idHidden = newRow.querySelector('input[name$="-id"]');
     if (idHidden) idHidden.value = '';
-
     const delBox = newRow.querySelector('input[name$="-DELETE"]');
     if (delBox) delBox.checked = false;
 
@@ -216,4 +303,9 @@ window.addEventListener('DOMContentLoaded', () => {
       bindRowEvents(newRow);
     });
   });
+
+  const checkBtn = document.getElementById('check-structure-btn');
+  if (checkBtn) {
+    checkBtn.addEventListener('click', checkFormStructure);
+  }
 });

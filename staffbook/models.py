@@ -306,10 +306,10 @@ class DriverDailyReport(models.Model):
         #from datetime import datetime, timedelta
 
         if not self.clock_in or not self.clock_out:
-            self.勤務時間 = None
-            self.休憩時間 = timedelta(minutes=20)
-            self.実働時間 = None
-            self.残業時間 = None
+            self.勤務時間 = self.clock_out - self.clock_in
+            self.休憩時間 = self.休憩時間 or timedelta(minutes=20)
+            self.実働時間 = self.勤務時間 - self.休憩時間
+            self.残業時間 = max(timedelta(), self.実働時間 - timedelta(hours=8))
             return
 
         in_dt = datetime.combine(datetime.today(), self.clock_in)
