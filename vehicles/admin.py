@@ -72,9 +72,21 @@ class ReservationAdmin(admin.ModelAdmin):
         'vehicle', 'driver', 'date', 'start_time', 'end_time',
         'status', 'approved', 'approved_by_system', 'approval_time'
     )
-    list_filter = ('status', 'approved_by_system', ('date', DateRangeFilter))
+    list_filter = (
+        'status',
+        'approved_by_system',
+        'driver',
+        'vehicle',
+        ('date', DateRangeFilter),
+    )
+    search_fields = (
+        'driver__username',
+        'driver__first_name',
+        'driver__last_name',
+        'vehicle__license_plate',
+    )
     actions = ['approve_reservations']
-    list_per_page = 20   # ✅ 新增：每页显示20条数据（你可以改成30、50都可以）
+    list_per_page = 20 # ✅ 新增：每页显示20条数据（你可以改成30、50都可以） 
 
     @admin.action(description="✅ 通过选中预约")
     def approve_reservations(self, request, queryset):
