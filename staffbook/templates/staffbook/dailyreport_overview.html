@@ -36,7 +36,7 @@
       <label class="form-label small">{{ label }}合計</label>
       <input type="text" readonly
               class="form-control form-control-sm text-end auto-width-input"
-              value="{{ totals|get_total:key|floatformat:'0' }}（{{ totals|get_bonus:key|floatformat:'0' }}）">
+              value="{{ totals_all|get_total:key|floatformat:'0' }}（{{ totals_all|get_bonus:key|floatformat:'0' }}）">
     </div>
   {% endfor %}
 </div>

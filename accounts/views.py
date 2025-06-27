@@ -8,7 +8,7 @@ from vehicles.models import CarouselImage, Tip
 from django.utils.timezone import localdate
 from staffbook.forms import DriverReportImageForm, DriverDailyReportForm
 from staffbook.models import DriverDailyReport, DriverReportImage, DriverDailySales, Driver
-from staffbook.utils import extract_text_from_image
+#from staffbook.utils import extract_text_from_image
 from datetime import datetime
 from calendar import monthrange
 import re

@@ -31,6 +31,10 @@ from decimal import Decimal, ROUND_HALF_UP
 from vehicles.models import Reservation 
 
 from accounts.utils import check_module_permission
+from staffbook.utils import (
+    calculate_totals_from_queryset,
+    calculate_totals_from_formset,  # 👈 加上这一行
+)
 
 def driver_card(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
@@ -867,9 +871,11 @@ def dailyreport_add_by_month(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def dailyreport_create_for_driver(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
+
     if request.method == 'POST':
         report_form = DriverDailyReportForm(request.POST)
         formset = ReportItemFormSet(request.POST)
+
         if report_form.is_valid() and formset.is_valid():
             dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
@@ -912,9 +918,9 @@ def dailyreport_create_for_driver(request, driver_id):
         ('qr', '扫码'),
     ]
 
-    # ✅ 初始化所有合计为 0（用于模板展示）
-    totals = {f"total_{key}": 0 for key, _ in summary_keys}
-    totals.update({f"bonus_{key}": 0 for key, _ in summary_keys})
+    # ✅ 实际统计金额与分成额
+    data_iter = [f.instance for f in formset.forms]
+    totals = calculate_totals_from_queryset(queryset)
 
     return render(request, 'staffbook/driver_dailyreport_edit.html', {
         'form': report_form,
@@ -1039,16 +1045,15 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
     # ✅ 汇总逻辑
     rates = {
-        'meter':   Decimal('0.9091'),
-        'cash':    Decimal('0'),
-        'uber':    Decimal('0.05'),
-        'didi':    Decimal('0.05'),
-        'credit':  Decimal('0.05'),
-        'barcode': Decimal('0.05'),
-        'wechat':  Decimal('0.05'),
+        'meter':  Decimal('0.9091'),
+        'cash':   Decimal('0'),
+        'uber':   Decimal('0.05'),
+        'didi':   Decimal('0.05'),
+        'credit': Decimal('0.05'),
         'kyokushin': Decimal('0.05'),
-        'omron': Decimal('0.05'),
-        'kyotoshi': Decimal('0.05'),
+        'omron':     Decimal('0.05'),
+        'kyotoshi':  Decimal('0.05'),
+        'qr':     Decimal('0.05'),
     }
     raw = {k: Decimal('0') for k in rates}
     split = {k: Decimal('0') for k in rates}
@@ -1059,33 +1064,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         else [f.instance for f in formset.forms]
     )
 
-    for row in data_iter:
-        if isinstance(row, dict):
-            if row.get('DELETE'):
-                continue
-            amt = row.get('meter_fee', Decimal('0')) or Decimal('0')
-            pay = row.get('payment_method', '') or ''
-        else:
-            if getattr(row, 'DELETE', False):
-                continue
-            amt = getattr(row, 'meter_fee', Decimal('0')) or Decimal('0')
-            pay = getattr(row, 'payment_method', '') or ''
-
-        raw['meter'] += amt
-        split['meter'] += amt * rates['meter']
-        if pay in ('barcode', 'wechat'):
-            raw['barcode'] += amt
-            split['barcode'] += amt * rates['barcode']
-        elif pay in rates:
-            raw[pay] += amt
-            split[pay] += amt * rates[pay]
-
-    totals = {}
-    for k in rates:
-        totals[f"{k}_raw"] = raw[k]
-        totals[f"{k}_split"] = split[k]
-    totals['qr_raw'] = raw['barcode']
-    totals['qr_split'] = split['barcode']
+    totals = calculate_totals_from_formset(data_iter)
 
     summary_keys = [
         ('meter', 'メーター(水揚)'),
@@ -1215,7 +1194,9 @@ def dailyreport_overview(request):
         'uber':   Decimal('0.05'),
         'didi':   Decimal('0.05'),
         'credit': Decimal('0.05'),
-        'ticket': Decimal('0.05'),
+        'kyokushin': Decimal('0.05'),
+        'omron':     Decimal('0.05'),
+        'kyotoshi':  Decimal('0.05'),
         'qr':     Decimal('0.05'),
     }
     def split(key):
@@ -1228,9 +1209,41 @@ def dailyreport_overview(request):
         'uber_split':   split('uber'),
         'didi_split':   split('didi'),
         'credit_split': split('credit'),
-        'ticket_split': split('ticket'),
+        'kyokushin': Decimal('0.05'),
+        'omron':     Decimal('0.05'),
+        'kyotoshi':  Decimal('0.05'),
         'qr_split':     split('qr'),
     })
+
+    # ✅ 6.5 重新构建 totals_all 给模板使用（使用 xxx_raw + xxx_split 命名）
+    totals_all = {
+        "meter_raw":  totals.get("total_meter")  or Decimal('0'),
+        "meter_split": totals.get("meter_split") or Decimal('0'),
+
+        "cash_raw":  totals.get("total_cash")  or Decimal('0'),
+        "cash_split": totals.get("cash_split") or Decimal('0'),
+
+        "uber_raw":  totals.get("total_uber")  or Decimal('0'),
+        "uber_split": totals.get("uber_split") or Decimal('0'),
+
+        "didi_raw":  totals.get("total_didi")  or Decimal('0'),
+        "didi_split": totals.get("didi_split") or Decimal('0'),
+
+        "credit_raw":  totals.get("total_credit")  or Decimal('0'),
+        "credit_split": totals.get("credit_split") or Decimal('0'),
+
+        "kyokushin_raw": totals.get("total_kyokushin") or Decimal('0'),
+        "kyokushin_split": totals.get("kyokushin_split") or Decimal('0'),
+
+        "omron_raw":     totals.get("total_omron")     or Decimal('0'),
+        "omron_split":   totals.get("omron_split")     or Decimal('0'),
+
+        "kyotoshi_raw":  totals.get("total_kyotoshi")  or Decimal('0'),
+        "kyotoshi_split":totals.get("kyotoshi_split")  or Decimal('0'),
+
+        "qr_raw": totals.get("qr_raw") or Decimal('0'),
+        "qr_split": totals.get("qr_split") or Decimal('0'),
+    }
 
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
     driver_qs = Driver.objects.all()
@@ -1256,13 +1269,27 @@ def dailyreport_overview(request):
     # 8. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
 
-    # 9. 渲染
+    # ✅ 9. 添加合计栏用的 key-label 对（显示：メーター / 現金 / QR 等）
+    summary_keys = [
+        ('meter', 'メーター'),
+        ('cash', '現金'),
+        ('uber', 'Uber'),
+        ('didi', 'Didi'),
+        ('credit', 'クレジットカード'),
+        ('kyokushin', '京交信'),
+        ('omron', 'オムロン'),
+        ('kyotoshi', '京都市他'),
+        ('qr', '扫码'),
+    ]
+
+    # 10. 渲染模板
     return render(request, 'staffbook/dailyreport_overview.html', {
         'page_obj':  page_obj,
         'month':     month,
         'month_str': month_str,
         'keyword':   keyword,
-        'totals':    totals,
+        'totals_all':    totals_all,
+        'summary_keys':  summary_keys,
     })
     
 @user_passes_test(is_staffbook_admin)
