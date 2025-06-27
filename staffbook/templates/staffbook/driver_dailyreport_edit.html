@@ -139,9 +139,13 @@ table.table tr.has-note td {
             {% endif %}
             {{ form.vehicle }}
           </td>
+
+          <!-- 出勤 -->
           <td style="max-width:110px;">
             <input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.clock_in.value|default_if_none:'' }}">
           </td>
+
+          <!-- 退勤 -->
           <td style="max-width:110px;" >
             <input type="text" name="clock_out" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_out|default_if_none:'' }}">
           </td>

@@ -1179,8 +1179,10 @@ def dailyreport_overview(request):
         total_uber   = Sum(Case(When(payment_method='uber',    then=F('meter_fee')), default=0, output_field=DecimalField())),
         total_didi   = Sum(Case(When(payment_method='didi',    then=F('meter_fee')), default=0, output_field=DecimalField())),
         total_credit = Sum(Case(When(payment_method='credit',  then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_ticket = Sum(Case(When(payment_method='ticket',  then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_qr     = Sum(Case(When(payment_method__in=['barcode','wechat'], then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_kyokushin = Sum(Case(When(payment_method='kyokushin', then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_omron     = Sum(Case(When(payment_method='omron',     then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_kyotoshi  = Sum(Case(When(payment_method='kyotoshi',  then=F('meter_fee')), default=0, output_field=DecimalField())),
+        total_qr     = Sum(Case(When(payment_method='qr', then=F('meter_fee')), default=0, output_field=DecimalField())),
     )
 
     # 5. 税前计算
@@ -1217,32 +1219,42 @@ def dailyreport_overview(request):
 
     # ✅ 6.5 重新构建 totals_all 给模板使用（使用 xxx_raw + xxx_split 命名）
     totals_all = {
-        "meter_raw":  totals.get("total_meter")  or Decimal('0'),
-        "meter_split": totals.get("meter_split") or Decimal('0'),
-
-        "cash_raw":  totals.get("total_cash")  or Decimal('0'),
-        "cash_split": totals.get("cash_split") or Decimal('0'),
-
-        "uber_raw":  totals.get("total_uber")  or Decimal('0'),
-        "uber_split": totals.get("uber_split") or Decimal('0'),
-
-        "didi_raw":  totals.get("total_didi")  or Decimal('0'),
-        "didi_split": totals.get("didi_split") or Decimal('0'),
-
-        "credit_raw":  totals.get("total_credit")  or Decimal('0'),
-        "credit_split": totals.get("credit_split") or Decimal('0'),
-
-        "kyokushin_raw": totals.get("total_kyokushin") or Decimal('0'),
-        "kyokushin_split": totals.get("kyokushin_split") or Decimal('0'),
-
-        "omron_raw":     totals.get("total_omron")     or Decimal('0'),
-        "omron_split":   totals.get("omron_split")     or Decimal('0'),
-
-        "kyotoshi_raw":  totals.get("total_kyotoshi")  or Decimal('0'),
-        "kyotoshi_split":totals.get("kyotoshi_split")  or Decimal('0'),
-
-        "qr_raw": totals.get("qr_raw") or Decimal('0'),
-        "qr_split": totals.get("qr_split") or Decimal('0'),
+        "meter": {
+            "total": totals.get("total_meter") or Decimal('0'),
+            "bonus": totals.get("meter_split") or Decimal('0'),
+        },
+        "cash": {
+            "total": totals.get("total_cash") or Decimal('0'),
+            "bonus": totals.get("cash_split") or Decimal('0'),
+        },
+        "uber": {
+            "total": totals.get("total_uber") or Decimal('0'),
+            "bonus": totals.get("uber_split") or Decimal('0'),
+        },
+        "didi": {
+            "total": totals.get("total_didi") or Decimal('0'),
+            "bonus": totals.get("didi_split") or Decimal('0'),
+        },
+        "credit": {
+            "total": totals.get("total_credit") or Decimal('0'),
+            "bonus": totals.get("credit_split") or Decimal('0'),
+        },
+        "kyokushin": {
+            "total": totals.get("total_kyokushin") or Decimal('0'),
+            "bonus": split("kyokushin"),
+        },
+        "omron": {
+            "total": totals.get("total_omron") or Decimal('0'),
+            "bonus": split("omron"),
+        },
+        "kyotoshi": {
+            "total": totals.get("total_kyotoshi") or Decimal('0'),
+            "bonus": split("kyotoshi"),
+        },
+        "qr": {
+            "total": totals.get("total_qr") or Decimal('0'),
+            "bonus": totals.get("qr_split") or Decimal('0'),
+        },
     }
 
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
