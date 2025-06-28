@@ -1,4 +1,5 @@
 {% extends "staffbook/base_staffbook.html" %}
+{% load humanize %}
 {% block content %}
 {% load driver_extras %}
 
@@ -44,7 +45,7 @@
         {% for report in reports %}
           <tr>
             <td>{{ report.date|date:"Y年n月j日" }}</td>
-            <td>{{ report.total_meter_fee }}</td>
+            <td>¥{{ report.total_meter_fee|floatformat:0|intcomma }}</td>
             <td>{{ report.note|default:"" }}</td>
             <td>
               <a href="{% url 'staffbook:driver_dailyreport_edit' driver.id report.id %}">编辑</a>

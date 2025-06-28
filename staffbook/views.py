@@ -918,9 +918,13 @@ def dailyreport_create_for_driver(request, driver_id):
         ('qr', '扫码'),
     ]
 
-    # ✅ 实际统计金额与分成额
-    data_iter = [f.instance for f in formset.forms]
-    totals = calculate_totals_from_queryset(queryset)
+    # ✅ 修复：统计合计时使用 cleaned_data 而不是 instance
+    if request.method == 'POST' and formset.is_valid():
+        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
+    else:
+        data_iter = [f.instance for f in formset.forms]
+    totals = calculate_totals_from_formset(data_iter)
+    print("🔥 DEBUG: totals = ", totals)  # 👈 添加这行
 
     return render(request, 'staffbook/driver_dailyreport_edit.html', {
         'form': report_form,
@@ -1058,13 +1062,20 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     raw = {k: Decimal('0') for k in rates}
     split = {k: Decimal('0') for k in rates}
 
-    data_iter = (
-        formset.cleaned_data
-        if request.method == 'POST' and formset.is_valid()
-        else [f.instance for f in formset.forms]
-    )
-
+    if request.method == 'POST' and formset.is_valid():
+        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
+    else:
+        data_iter = [
+            {
+                'meter_fee': f.initial.get('meter_fee'),
+                'payment_method': f.initial.get('payment_method'),
+                'DELETE': f.initial.get('DELETE', False)
+            }
+            for f in formset.forms if f.initial.get('meter_fee') and not f.initial.get('DELETE', False)
+        ]
     totals = calculate_totals_from_formset(data_iter)
+    print("🧪 data_iter =", data_iter)
+    print("🧪 totals =", totals)
 
     summary_keys = [
         ('meter', 'メーター(水揚)'),

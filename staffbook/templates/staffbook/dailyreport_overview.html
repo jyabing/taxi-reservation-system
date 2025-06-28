@@ -30,13 +30,15 @@
 <h2 class="mb-4 border-bottom pb-2">📊 乗務日報・月間サマリー（{{ month|date:"Y年n月" }}）</h2>
 
 {# ✅ 日式风格全員合計（金额（分成額）） #}
-<div class="d-flex flex-wrap align-items-end mb-4" id="payment-summary-panel">
+<div class="d-flex flex-wrap gap-3 mb-4" id="payment-summary-panel">
   {% for key, label in summary_keys %}
-    <div class="me-3 text-center">
-      <label class="form-label small">{{ label }}合計</label>
-      <input type="text" readonly
-              class="form-control form-control-sm text-end auto-width-input"
-              value="{{ totals_all|get_total:key|floatformat:'0' }}（{{ totals_all|get_bonus:key|floatformat:'0' }}）">
+    <div class="card shadow-sm text-center" style="min-width: 140px;">
+      <div class="card-body p-2">
+        <div class="small text-muted">{{ label }}合計</div>
+        <div class="fw-bold fs-5">
+          {{ totals_all|get_total:key|floatformat:'0' }}（{{ totals_all|get_bonus:key|floatformat:'0' }}）
+        </div>
+      </div>
     </div>
   {% endfor %}
 </div>
@@ -58,7 +60,7 @@
           {% for d in page_obj %}
             <tr class="{% if d.note %}table-warning{% endif %}">
               <td>{{ d.driver.name }}</td>
-              <td>¥{{ d.total_fee|intcomma }}</td>
+              <td>¥{{ d.total_fee|floatformat:0|intcomma }}</td>
               <td>
                 {% if d.note %}
                   <span class="text-danger">{{ d.note }}</span>
@@ -120,6 +122,8 @@
   document.querySelectorAll('.auto-width-input').forEach(function(input) {
     const span = document.createElement('span');
     span.className = 'mirror-span';
+    span.style.position = 'absolute';
+    span.style.visibility = 'hidden';
     document.body.appendChild(span);
     const sync = () => {
       span.style.font = window.getComputedStyle(input).font;
