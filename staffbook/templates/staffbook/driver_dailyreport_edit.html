@@ -207,7 +207,7 @@ table.table tr.has-note td {
         </div>
       <!-- ✅ 新增区域结束 -->
 
-    <table class="table table-bordered table-sm">
+    <table class="table table-bordered table-sm report-table">
       <thead class="table-light">
         <tr>
           <th class="row-number-header">#</th>
@@ -311,6 +311,53 @@ table.table tr.has-note td {
         </tr>
         {% endfor %}
       </tbody>
+
+      <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
+      <tbody id="empty-form-template" class="d-none">
+        <tr class="report-item-row">
+          {{ formset.empty_form.id }}
+          <td class="row-number">__num__</td>
+          <td>
+            {{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}
+          </td>
+          <td>
+            {{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}
+          </td>
+          <td class="d-none">
+            {{ formset.empty_form.via|add_class:"form-control form-control-sm" }}
+          </td>
+          <td class="d-none">
+            {{ formset.empty_form.ride_to|add_class:"form-control form-control-sm" }}
+          </td>
+          <td class="d-none">
+            {{ formset.empty_form.num_male|add_class:"form-control form-control-sm text-end" }}
+          </td>
+          <td class="d-none">
+            {{ formset.empty_form.num_female|add_class:"form-control form-control-sm text-end" }}
+          </td>
+          <td>
+            {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end" }}
+          </td>
+          <td>
+            {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}
+          </td>
+          <td class="text-center">
+            {{ formset.empty_form.is_flagged }}
+          </td>
+          <td>
+            {% if formset.empty_form.note.value %}📝{% endif %}
+            {{ formset.empty_form.note }}
+          </td>
+          <td>
+            <div class="d-flex flex-row gap-1">
+              <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+              <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下插入行</button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <!-- ✅ 新增结束 -->
+
     </table>
 
     <button type="submit" class="btn btn-primary">💾 保存</button>
