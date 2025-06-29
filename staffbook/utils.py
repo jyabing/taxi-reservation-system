@@ -35,6 +35,10 @@ def calculate_totals_from_formset(data_iter):
         fee = item.get('meter_fee') or Decimal('0')
         method = item.get('payment_method')
 
+        # ✅ 无论支付方式如何，都加总至 meter_raw 和 meter_split
+        result["meter_raw"] += fee
+        result["meter_split"] += fee * rates['meter']
+
         if method in rates:
             result[f"{method}_raw"] += fee
             result[f"{method}_split"] += (fee * rates[method])

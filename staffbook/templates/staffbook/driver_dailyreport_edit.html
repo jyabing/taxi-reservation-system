@@ -272,7 +272,8 @@ table.table tr.has-note td {
               {{ form.num_female|add_class:"form-control form-control-sm text-end" }}
             </td>
 
-            <td style="min-width: 70px;">{{ form.meter_fee }}
+            <td style="min-width: 70px;">
+              {{ form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
             </td>
 
             <td style="min-width: 100px;">
@@ -336,7 +337,7 @@ table.table tr.has-note td {
             {{ formset.empty_form.num_female|add_class:"form-control form-control-sm text-end" }}
           </td>
           <td>
-            {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end" }}
+            {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
           </td>
           <td>
             {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}

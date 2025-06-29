@@ -1294,7 +1294,7 @@ def dailyreport_overview(request):
 
     # ✅ 9. 添加合计栏用的 key-label 对（显示：メーター / 現金 / QR 等）
     summary_keys = [
-        ('meter', 'メーター'),
+        ('meter', 'メーター(水揚)'),
         ('cash', '現金'),
         ('uber', 'Uber'),
         ('didi', 'Didi'),

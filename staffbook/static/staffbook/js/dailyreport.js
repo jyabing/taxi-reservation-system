@@ -135,6 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const checkbox = row.querySelector('input[name$="-DELETE"]');
           if (checkbox) checkbox.checked = true;
           row.style.display = 'none';
+          updateRowNumbersAndIndexes();  // ✅ 删除后更新序号
         }
       });
     }
@@ -227,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 function updateRowNumbersAndIndexes() {
-  const rows = document.querySelectorAll('.report-table tbody tr.report-item-row');
+  const rows = document.querySelectorAll('tr.report-item-row:not([style*="display: none"])');
   let visibleIndex = 0;
 
   rows.forEach((row, i) => {
