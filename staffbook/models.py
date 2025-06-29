@@ -307,13 +307,23 @@ class DriverDailyReport(models.Model):
         自动计算 勤務時間 / 休憩時間 / 実働時間 / 残業時間
         """
         #from datetime import datetime, timedelta
-
+        """
         if not self.clock_in or not self.clock_out:
             # 任一为空就跳过计算
             self.勤務時間 = self.clock_out - self.clock_in
             self.休憩時間 = self.休憩時間 or timedelta(minutes=20)
             self.実働時間 = self.勤務時間 - self.休憩時間
             self.残業時間 = max(timedelta(), self.実働時間 - timedelta(hours=8))
+            return
+        """
+        print("🧪 DEBUG: clock_in =", self.clock_in, "clock_out =", self.clock_out)
+
+        # ✅ 任一时间为空，跳过计算，赋值为 None
+        if not self.clock_in or not self.clock_out:
+            self.勤務時間 = None
+            self.休憩時間 = None
+            self.実働時間 = None
+            self.残業時間 = None
             return
 
         # 合成 datetime 对象用于跨日判断

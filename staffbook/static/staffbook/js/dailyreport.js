@@ -110,16 +110,32 @@ document.addEventListener('DOMContentLoaded', () => {
     Object.keys(PAYMENT_METHODS).forEach(key => {
       const total = document.getElementById(`total_${key}`);
       const bonus = document.getElementById(`bonus_${key}`);
-      if (total) total.textContent = sum[key];
-      if (bonus) bonus.textContent = Math.floor(sum[key] * 0.05);
+      if (total) total.textContent = sum[key].toLocaleString();  // ← ✅ 添加千位逗号
+      if (bonus) bonus.textContent = Math.floor(sum[key] * 0.05).toLocaleString();  // ← ✅ 添加千位逗号
     });
   }
 
   function bindRowEvents(row) {
+    // 绑定 flatpickr 时间选择器
     row.querySelectorAll('.time-input').forEach(input => flatpickr(input, {
       enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, locale: "ja"
     }));
 
+    // ✅ 削除 / 移除按钮逻辑
+    const delBtn = row.querySelector('.confirm-delete, .remove-row');
+    if (delBtn) {
+      console.log("✅ 绑定削除按钮:", delBtn);  // ← 调试提示，控制台能看到
+      delBtn.addEventListener('click', () => {
+        if (confirm('确定删除此行？')) {
+          const checkbox = row.querySelector('input[name$="-DELETE"]');
+          if (checkbox) checkbox.checked = true;
+          row.style.display = 'none';
+          updateRowNumbersAndIndexes();  // 删除后更新行号
+        }
+      });
+    }
+
+    // ✅ 行高亮（如果勾选了标记）
     const checkbox = row.querySelector('.mark-checkbox');
     if (checkbox) {
       if (checkbox.checked) row.classList.add('has-note');
@@ -127,19 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
         row.classList.toggle('has-note', checkbox.checked);
       });
     }
-
-    const delBtn = row.querySelector('.confirm-delete, .remove-row');
-    if (delBtn) {
-      delBtn.addEventListener('click', () => {
-        if (confirm('确定删除此行？')) {
-          const checkbox = row.querySelector('input[name$="-DELETE"]');
-          if (checkbox) checkbox.checked = true;
-          row.style.display = 'none';
-          updateRowNumbersAndIndexes();  // ✅ 删除后更新序号
-        }
-      });
-    }
   }
+
 
   // ✅ 工具函数
   function enforceIntegerInput() {
