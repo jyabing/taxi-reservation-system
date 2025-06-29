@@ -179,6 +179,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tbody.appendChild(tempRow);
     bindRowEvents(tempRow);
     totalFormsInput.value = currentCount + 1;
+
+    updateRowNumbersAndIndexes();
   });
 
   // ✅ 向下插入一行
@@ -197,6 +199,8 @@ document.addEventListener('DOMContentLoaded', () => {
       currentRow.after(tempRow);
       bindRowEvents(tempRow);
       totalFormsInput.value = currentCount + 1;
+
+      updateRowNumbersAndIndexes();
     }
   });
 
@@ -220,3 +224,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelectorAll('tr.report-item-row').forEach(bindRowEvents);
 });
+
+
+function updateRowNumbersAndIndexes() {
+  const rows = document.querySelectorAll('.report-table tbody tr.report-item-row');
+  let visibleIndex = 0;
+
+  rows.forEach((row, i) => {
+    if (row.style.display === 'none') return;
+
+    // 更新左侧序号显示
+    const numCell = row.querySelector('.row-number');
+    if (numCell) numCell.textContent = visibleIndex + 1;
+
+    // 替换字段名中的索引
+    row.querySelectorAll('input, select, textarea, label').forEach(el => {
+      ['name', 'id', 'for'].forEach(attr => {
+        if (el.hasAttribute(attr)) {
+          el.setAttribute(attr, el.getAttribute(attr).replace(/-\d+-/, `-${visibleIndex}-`));
+        }
+      });
+    });
+
+    visibleIndex++;
+  });
+
+  const totalFormsInput = document.querySelector('input[name$="-TOTAL_FORMS"]');
+  if (totalFormsInput) totalFormsInput.value = visibleIndex;
+}
