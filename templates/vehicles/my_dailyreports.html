@@ -1,23 +1,32 @@
 {# vehicles/templates/vehicles/my_dailyreports.html #}
 {% extends 'base.html' %}
+{% load custom_filters %}
 {% block content %}
 
-<h2>📅 日报明细</h2>
+{# ✅ 新增：当前显示说明（按月 or 按日） #}
+<h2 class="ms-1 fw-bold">
+  <strong>{{ selected_year }}年{{ selected_month }}月</strong> 的日報明細
+</h2>
 
 <form method="get" class="mb-3 d-flex align-items-center">
-  <label class="me-2 mb-0">按日期：</label>
-  <input
-    type="date"
-    name="date"
-    value="{{ selected_date|default:'' }}"
-    class="form-control form-control-sm d-inline-block me-2"
-    style="width: 8rem;"
-  />
+  <label class="me-2 mb-0">按年月：</label>
+
+  <select name="year" class="form-select form-select-sm me-2" style="width:auto;">
+    {% for y in 2023|to:2031 %}
+      <option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}年</option>
+    {% endfor %}
+  </select>
+
+  <select name="month" class="form-select form-select-sm me-2" style="width:auto;">
+    {% for m in 1|to:13 %}
+      <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}月</option>
+    {% endfor %}
+  </select>
+
   <button type="submit" class="btn btn-outline-secondary btn-sm">查询</button>
-  {% if selected_date %}
-    <a href="{% url 'my_dailyreports' %}" class="btn btn-light btn-sm ms-2">重置</a>
-  {% endif %}
 </form>
+
+
 
 <table class="table table-bordered mb-4">
   <thead class="table-light">

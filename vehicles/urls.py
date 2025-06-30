@@ -42,6 +42,6 @@ urlpatterns = [
     path('admin/', views.admin_index, name='staffbook_admin_index'),
     path('admin/list/', views.admin_list, name='vehicle_admin_list'),
 
-    path('my_dailyreports/', views.my_dailyreports, name='my_daily_reports'),
+    path('my_dailyreports/', views.my_dailyreports, name='my_dailyreports'),
     path('my_dailyreport/<int:report_id>/', views.my_daily_report_detail, name='my_daily_report_detail'),
 ]

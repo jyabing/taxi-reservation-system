@@ -63,6 +63,7 @@ def driver_dashboard(request):
     return render(request, 'accounts/dashboard.html', {
         'user': user,
         'staff_type': staff_type,
+        'tips': tips,  # ✅ 添加这一行
     })
 
 @login_required

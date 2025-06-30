@@ -80,17 +80,49 @@
     </span>
   </div>
 
-  <div class="btn-group">
-    <a href="{% url 'reservation_dashboard' %}" class="btn-dashboard">🚗 查看预约菜单</a>
-    <a href="{% url 'vehicle_status' %}" class="btn-dashboard">📋 查看车辆状态</a>
-    <a href="{% url 'my_reservations' %}" class="btn-dashboard">📌 我的预约记录</a>
+  <div class="d-flex justify-content-between align-items-start mt-4" style="gap: 30px;">
 
-    <form method="post" action="{% url 'logout' %}">
-      {% csrf_token %}
-      <button type="submit" class="btn-logout">🚪 退出登录</button>
-    </form>
+    <!-- 左侧：按钮组 -->
+    <div class="btn-group" style="flex: 1;">
+      <a href="{% url 'reservation_dashboard' %}" class="btn-dashboard">🚗 查看预约菜单</a>
+      <a href="{% url 'vehicle_status' %}" class="btn-dashboard">📋 查看车辆状态</a>
+      <a href="{% url 'my_reservations' %}" class="btn-dashboard">📌 我的预约记录</a>
+
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-logout">🚪 退出登录</button>
+      </form>
+    </div>
+
+    <!-- 右侧：系统提示展示 -->
+    <div class="tip-area" style="width: 300px; background: #f8f9fa; border-left: 4px solid #2196F3; padding: 10px 12px; border-radius: 6px;">
+      <div id="tip-display" class="text-muted small" style="font-size: 15px; line-height: 1.6;">
+        💡 {{ tips.0.content }}
+      </div>
+    </div>
+
   </div>
 
 </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const tips = [
+      {% for tip in tips %}
+        "{{ tip.content|escapejs }}",
+      {% endfor %}
+    ].filter(Boolean);  // ✅ 过滤空值防止出错
+
+    let index = 0;
+    const display = document.getElementById("tip-display");
+
+    if (tips.length > 1) {
+      setInterval(() => {
+        index = (index + 1) % tips.length;
+        display.innerHTML = "💡 " + tips[index];
+      }, 5000);  // 每5秒切换一次
+    }
+  });
+</script>
 
 {% endblock %}

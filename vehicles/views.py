@@ -28,7 +28,7 @@ from requests.exceptions import RequestException
 
 # 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
 from staffbook.models import Driver, DriverDailyReport, DriverDailyReportItem
-from vehicles.models import Reservation
+from vehicles.models import Reservation, Tip
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
@@ -454,7 +454,8 @@ def my_reservations_view(request):
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
 
-    tips = list(Tip.objects.filter(is_active=True).values('content'))
+    all_tips = Tip.objects.filter(is_active=True).order_by('-created_at')
+    tips = [tip for tip in all_tips if tip.is_visible(request.user)]
 
     return render(request, 'vehicles/my_reservations.html', {
         'page_obj': page_obj,
@@ -932,18 +933,24 @@ def my_dailyreports(request):
 
     # 2. 如果有 ?date=YYYY-MM-DD，就只看那一天，否则就全部
     selected_date = request.GET.get('date', '').strip()
-    if selected_date:
-        try:
-            day = timezone.datetime.strptime(selected_date, "%Y-%m-%d").date()
-            qs = DriverDailyReport.objects.filter(driver=driver, date=day)
-        except ValueError:
-            qs = DriverDailyReport.objects.none()
-    else:
-        qs = DriverDailyReport.objects.filter(driver=driver)
+    today = timezone.localdate()
 
-    qs = qs.order_by('-date')
+    # 默认使用当前年月
+    try:
+        year = int(request.GET.get('year', today.year))
+        month = int(request.GET.get('month', today.month))
+    except ValueError:
+        year = today.year
+        month = today.month
 
-    # 3. 聚合原始里程费
+    # 只筛选该年月
+    qs = DriverDailyReport.objects.filter(
+        driver=driver,
+        date__year=year,
+        date__month=month
+    ).order_by('-date')
+
+    # 3. 汇总聚合原始里程费
     agg = (
         DriverDailyReportItem.objects
         .filter(report__in=qs)
@@ -956,6 +963,7 @@ def my_dailyreports(request):
     coef = Decimal('0.9091')
     reports_data = []
     total_raw = Decimal('0')
+
     for rpt in qs:
         raw = raw_map.get(rpt.id, Decimal('0'))
         split = (raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
@@ -971,10 +979,13 @@ def my_dailyreports(request):
     total_split = (total_raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
     return render(request, 'vehicles/my_dailyreports.html', {
-        'reports_data':  reports_data,
-        'total_raw':     total_raw,
-        'total_split':   total_split,
-        'selected_date': selected_date,
+        'reports_data':      reports_data,
+        'total_raw':         total_raw,
+        'total_split':       total_split,
+        'selected_date':     selected_date,
+        'selected_year':     year,     # ✅ 添加
+        'selected_month':    month,    # ✅ 添加
+        'current_month':     today.strftime("%Y年%-m月"),
     })
 
 @login_required

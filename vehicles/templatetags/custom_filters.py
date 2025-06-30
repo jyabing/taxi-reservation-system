@@ -16,9 +16,7 @@ def to(start, end):
 
 @register.filter
 def to_int(value):
-    """
-    将数字或数字字符串转成 int，失败时返回 0
-    """
+    """将数字或数字字符串转成 int，失败时返回 0"""
     try:
         return int(float(value))
     except (ValueError, TypeError):
@@ -27,8 +25,6 @@ def to_int(value):
 @register.filter
 def display_datetime(value):
     return value.strftime('%Y-%m-%d %H:%M')
-
-register = template.Library()
 
 @register.filter
 def cutover(value, max_value):
