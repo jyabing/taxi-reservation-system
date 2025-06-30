@@ -1,0 +1,82 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="card shadow" style="width:90vw;max-width:1400px;margin:0 auto;">
+    <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
+        <i class="fa fa-user me-2"></i>
+        <b>{{ driver.name }}</b>
+        <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
+        <span class="ms-auto" style="font-size:0.95em;">
+            事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+        </span>
+    </div>
+    <div class="card-body">
+
+      {% include "staffbook/driver_tab_nav.html" %}
+
+      <form method="post" class="mt-4">
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="mb-3 row align-items-center">
+            <label for="{{ field.id_for_label }}" class="col-sm-2 col-form-label">{{ field.label }}</label>
+            <div class="col-sm-6">
+              {{ field }}
+              {% if field.errors %}
+                <div class="text-danger small">{{ field.errors.0 }}</div>
+              {% endif %}
+            </div>
+
+            {# 提示：当 residence_status 为 “特定技能46号” 时显示 #}
+            {% if field.name == 'residence_status' %}
+              <div class="col-sm-4">
+                <span id="skill-tip"
+                      class="badge bg-info text-dark"
+                      style="display:none; cursor:pointer;"
+                      data-bs-toggle="tooltip"
+                      title="特定技能46号とは、14分野の特定技能1号の総称です。介護、外食業、宿泊業などが含まれます。">
+                  💡提示
+                </span>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+
+        <div class="text-end mt-4">
+          <button type="submit" class="btn btn-primary">保存する</button>
+          <a href="{% url 'staffbook:driver_certificate_info' driver.id %}" class="btn btn-secondary ms-2">キャンセル</a>
+        </div>
+      </form>
+
+    </div>
+  </div>
+</div>
+
+{# ✅ Bootstrap 5.3 Tooltip 支持 #}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const select = document.getElementById('id_residence_status');
+  const tip = document.getElementById('skill-tip');
+
+  if (!select || !tip) return;
+
+  // 初始化 tooltip
+  const tooltip = new bootstrap.Tooltip(tip);
+
+  // 控制提示显示
+  function checkStatus() {
+    if (select.value === '特定技能46号') {
+      tip.style.display = 'inline-block';
+    } else {
+      tip.style.display = 'none';
+    }
+  }
+
+  select.addEventListener('change', checkStatus);
+  checkStatus();  // 页面加载时也检测
+});
+</script>
+{% endblock %}

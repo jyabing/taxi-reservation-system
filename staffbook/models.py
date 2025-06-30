@@ -6,6 +6,22 @@ from django.core.validators import MinValueValidator
 from vehicles.models import Vehicle
 from datetime import datetime, timedelta
 
+# 📌 插入在 import 之后，模型定义之前
+RESIDENCE_STATUS_CHOICES = [
+    ('日本人の配偶者等', '日本人の配偶者等'),
+    ('永住者', '永住者'),
+    ('定住者', '定住者'),
+    ('家族滞在', '家族滞在'),
+    ('技術・人文知識・国際業務', '技術・人文知識・国際業務'),
+    ('技能', '技能'),
+    ('技能実習', '技能実習'),
+    ('特定技能46号', '特定技能46号'),
+    ('留学', '留学'),
+    ('研修', '研修'),
+    ('短期滞在', '短期滞在'),
+    ('その他', 'その他'),
+]
+
 PAYMENT_METHOD_CHOICES = [
     ('cash', '現金'),
     ('uber', 'Uber'),
@@ -68,8 +84,33 @@ class Driver(models.Model):
     workers_insurance_join_date = models.DateField(blank=True, null=True, verbose_name="労災保険加入日")
     pension_fund_no = models.CharField(max_length=32, blank=True, null=True, verbose_name="厚生年金基金番号")
     pension_fund_join_date = models.DateField(blank=True, null=True, verbose_name="厚生年金基金加入日")
+
+    # 🌐 外国籍・在留管理（用于签证在留tab页）
+    is_foreign = models.BooleanField(default=False, verbose_name="外国籍")
+    nationality = models.CharField(max_length=32, blank=True, null=True, verbose_name="国籍")
+    residence_status = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        choices=RESIDENCE_STATUS_CHOICES,  # ✅ 选择项绑定
+        verbose_name="在留資格"
+    )
+    residence_expiry = models.DateField(blank=True, null=True, verbose_name="在留期限")
+    residence_card_image = models.ImageField(upload_to='residence_cards/', blank=True, null=True, verbose_name="在留カード画像")
+    work_permission_confirmed = models.BooleanField(default=False, verbose_name="就労資格確認済")
+
+    # 🧾 入社资料提出状况（可逐步扩展）
+    has_health_check = models.BooleanField(default=False, verbose_name="健康診断書提出済")
+    has_residence_certificate = models.BooleanField(default=False, verbose_name="住民票提出済")
+    has_tax_form = models.BooleanField(default=False, verbose_name="扶養控除等申告書提出済")
+    has_license_copy = models.BooleanField(default=False, verbose_name="免許証コピー提出済")
+
+
+
     # 其它
     remark = models.CharField(max_length=256, blank=True, null=True, verbose_name="特記事項")
+
+
     # 可根据需要继续添加其他字段（如身份证号、入职日期、状态等）
 
     class Meta:

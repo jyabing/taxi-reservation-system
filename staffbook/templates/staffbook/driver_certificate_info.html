@@ -12,11 +12,52 @@
         </span>
     </div>
     <div class="card-body">
-        {% include "staffbook/driver_tab_nav.html" %}
-        <form>
-            <div class="mt-4 text-center text-muted">签证在留页尚未建设</div>
-        </form>
-        </div>
+      {% include "staffbook/driver_tab_nav.html" %}
+
+      <div class="d-flex justify-content-between mt-3 mb-2">
+        <h4>🛂 在留資格・签证情報</h4>
+        <a href="{% url 'staffbook:driver_certificate_edit' driver.id %}" class="btn btn-outline-primary btn-sm">
+          <i class="fa fa-edit"></i> 編集
+        </a>
+      </div>
+
+      <table class="table table-bordered">
+        <tr><th style="width:180px;">外国籍</th><td>{{ driver.is_foreign|yesno:"✅ 是,❌ 否" }}</td></tr>
+        <tr><th>国籍</th><td>{{ driver.nationality }}</td></tr>
+        <tr><th>在留資格</th><td>{{ driver.residence_status }}</td></tr>
+        <tr><th>在留期限</th>
+            <td>
+              {% if driver.residence_expiry %}
+                {% if driver.residence_expiry|date:"Y-m-d" <= today|date:"Y-m-d"|add:"30" %}
+                  <span class="text-danger fw-bold">{{ driver.residence_expiry }}</span> ⏰
+                {% else %}
+                  {{ driver.residence_expiry }}
+                {% endif %}
+              {% else %}
+                未設定
+              {% endif %}
+            </td>
+        </tr>
+        <tr><th>在留カード</th>
+            <td>
+              {% if driver.residence_card_image %}
+                <a href="{{ driver.residence_card_image.url }}" target="_blank">📎 閲覧する</a>
+              {% else %}
+                ❌ 未上传
+              {% endif %}
+            </td>
+        </tr>
+        <tr><th>就労資格確認</th><td>{{ driver.work_permission_confirmed|yesno:"✅ 済,❌ 未確認" }}</td></tr>
+      </table>
+
+      <h5 class="mt-4">📎 入社資料提出状況</h5>
+      <table class="table table-sm table-striped">
+        <tr><th style="width:200px;">健康診断書</th><td>{{ driver.has_health_check|yesno:"✅ 済,❌ 未提出" }}</td></tr>
+        <tr><th>住民票</th><td>{{ driver.has_residence_certificate|yesno:"✅ 済,❌ 未提出" }}</td></tr>
+        <tr><th>扶養控除等申告書</th><td>{{ driver.has_tax_form|yesno:"✅ 済,❌ 未提出" }}</td></tr>
+        <tr><th>免許証コピー</th><td>{{ driver.has_license_copy|yesno:"✅ 済,❌ 未提出" }}</td></tr>
+      </table>
+    </div>
   </div>
 </div>
 {% endblock %}

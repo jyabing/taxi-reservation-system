@@ -10,7 +10,7 @@ from django.contrib import messages
 from .forms import (
     DriverDailySalesForm, DriverDailyReportForm, DriverForm, 
     ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, 
-    DriverBasicForm, RewardForm, DriverPayrollRecordForm
+    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm
     )
 from .models import (
     DriverDailySales, DriverDailyReport, DriverDailyReportItem, Driver, DrivingExperience, 
@@ -273,13 +273,32 @@ def driver_certificate_info(request, driver_id):
         'driver': driver,
         'main_tab': 'basic',
         'tab': 'certificate',
+        'today': datetime.date.today(),  # ⬅ 用于模板中比较日期
     })
 
 @user_passes_test(is_staffbook_admin)
 def driver_certificate_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    return render(request, 'staffbook/driver_certificate_info.html', {
+
+    if request.method == 'POST':
+        form = DriverCertificateForm(request.POST, request.FILES, instance=driver)
+        if form.is_valid():
+            form.save()
+            return redirect('staffbook:driver_certificate_info', driver_id=driver.id)
+    else:
+        form = DriverCertificateForm(instance=driver)
+
+    # 签证即将到期提醒
+    alert_expiry = False
+    if driver.residence_expiry:
+        delta = (driver.residence_expiry - datetime.date.today()).days
+        if delta <= 30:
+            alert_expiry = True
+
+    return render(request, 'staffbook/driver_certificate_edit.html', {
         'driver': driver,
+        'form': form,
+        'alert_expiry': alert_expiry,
         'main_tab': 'basic',
         'tab': 'certificate',
     })

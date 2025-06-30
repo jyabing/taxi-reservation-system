@@ -264,3 +264,27 @@ class DriverPayrollRecordForm(forms.ModelForm):
         widgets = {
             'month': forms.DateInput(attrs={'type': 'month'}),
         }
+
+# ✅ 签证在留信息表单
+class DriverCertificateForm(forms.ModelForm):
+    class Meta:
+        model = Driver
+        fields = [
+            'is_foreign', 'nationality', 'residence_status', 'residence_expiry',
+            'residence_card_image', 'work_permission_confirmed',
+            'has_health_check', 'has_residence_certificate',
+            'has_tax_form', 'has_license_copy'
+        ]
+        widgets = {
+            'residence_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'nationality': forms.TextInput(attrs={'class': 'form-control'}),
+            'residence_status': forms.Select(attrs={'class': 'form-select'}),
+            'residence_card_image': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        apply_form_control_style(
+            self.fields,
+            exclude_types=(forms.CheckboxInput, forms.ClearableFileInput)
+        )
