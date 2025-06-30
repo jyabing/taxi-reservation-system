@@ -115,12 +115,36 @@ def dailyreport_list(request):
 def driver_list(request):
     keyword = request.GET.get('keyword', '').strip()
     if keyword:
-        drivers = Driver.objects.filter(
+        drivers_qs = Driver.objects.filter(
             Q(name__icontains=keyword) | Q(driver_code__icontains=keyword)
         )
     else:
-        drivers = Driver.objects.all()
-    return render(request, 'staffbook/driver_list.html', {'drivers': drivers})
+        drivers_qs = Driver.objects.all()
+
+    driver_list = []
+    for driver in drivers_qs:
+        missing = []
+        if driver.is_foreign:
+            if not driver.residence_card_image:
+                missing.append("在留カード")
+            if not driver.work_permission_confirmed:
+                missing.append("就労資格")
+        if not driver.has_health_check:
+            missing.append("健康診断")
+        if not driver.has_residence_certificate:
+            missing.append("住民票")
+        if not driver.has_license_copy:
+            missing.append("免許コピー")
+
+        driver_list.append({
+            'driver': driver,
+            'missing_flags': missing,
+        })
+
+    return render(request, 'staffbook/driver_list.html', {
+        'driver_list': driver_list,  # ✅ 确保这个键名
+        'keyword': keyword,
+    })
 
 # ✅ 新增员工
 @user_passes_test(is_staffbook_admin)
@@ -172,10 +196,28 @@ def driver_edit(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_basic_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
+
+    # ✅ 新增：检查缺失项
+    missing_items = []
+
+    if driver.is_foreign:
+        if not driver.residence_card_image:
+            missing_items.append(("在留カード未上传", f"/staffbook/drivers/{driver.id}/certificate/"))
+        if not driver.work_permission_confirmed:
+            missing_items.append(("就労資格未確認", f"/staffbook/drivers/{driver.id}/certificate/"))
+
+    if not driver.has_health_check:
+        missing_items.append(("健康診断書未提出", f"/staffbook/drivers/{driver.id}/certificate/"))
+    if not driver.has_residence_certificate:
+        missing_items.append(("住民票未提出", f"/staffbook/drivers/{driver.id}/certificate/"))
+    if not driver.has_license_copy:
+        missing_items.append(("免許証コピー未提出", f"/staffbook/drivers/{driver.id}/certificate/"))
+
     return render(request, 'staffbook/driver_basic_info.html', {
         'driver': driver,
         'main_tab': 'basic',
         'tab': 'basic',
+        'missing_items': missing_items,  # ✅ 新增 context
     })
 
 @user_passes_test(is_staffbook_admin)

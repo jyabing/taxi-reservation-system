@@ -7,10 +7,34 @@
       <i class="fa fa-user me-2"></i>
       <b>{{ driver.name }}</b>
       <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
-      <span class="ms-auto" style="font-size:0.95em;">
-        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+
+      <span class="ms-auto d-flex align-items-center" style="font-size:0.95em;">
+        <span>
+          事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+        </span>
+
+        {% if missing_items %}
+          <span class="badge bg-danger ms-3" style="font-size:0.85em;">
+            ⚠ 未提出資料あり
+          </span>
+        {% endif %}
       </span>
     </div>
+
+    <div class="card-body">
+      {% include "staffbook/driver_tab_nav.html" %}
+
+      {% if missing_items %}
+        <div class="alert alert-warning mt-3">
+          <h5>📌 この従業員は、以下の入社資料が未完了です：</h5>
+          <ul class="mb-0">
+            {% for label, link in missing_items %}
+              <li>❌ <a href="{{ link }}">{{ label }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
     <div class="card-body">
       {% include "staffbook/driver_tab_nav.html" %}
       <!-- 基本信息表 -->
