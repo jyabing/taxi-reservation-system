@@ -123,9 +123,13 @@
     </div>
 
     <!-- 右侧：系统提示展示 -->
-    <div class="tip-area" style="width: 300px; background: #f8f9fa; border-left: 4px solid #2196F3; padding: 10px 12px; border-radius: 6px;">
+    <div class="tip-area" style="flex: 0 0 300px; background: #f8f9fa; border-left: 4px solid #2196F3; padding: 10px 12px; border-radius: 6px;">
       <div id="tip-display" class="text-muted small" style="font-size: 15px; line-height: 1.6;">
-        💡 {{ tips.0.content }}
+        {% if tips %}
+          💡 {{ tips.0.content }}
+        {% else %}
+          💡 当前暂无提示
+        {% endif %}
       </div>
     </div>
 
@@ -139,7 +143,7 @@
       {% for tip in tips %}
         "{{ tip.content|escapejs }}",
       {% endfor %}
-    ].filter(Boolean);  // ✅ 过滤空值防止出错
+    ].filter(Boolean);
 
     let index = 0;
     const display = document.getElementById("tip-display");
