@@ -1002,6 +1002,10 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
     duration = datetime.timedelta()
 
+    # ✅ 添加这两行防止变量未赋值
+    user_h = 0
+    user_m = 0
+
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
@@ -1068,6 +1072,13 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             return redirect('staffbook:driver_dailyreport_month', driver_id=driver_id)
         else:
             messages.error(request, "❌ 保存失败，请检查输入内容")
+
+            # ✅ 打印错误详情（推荐）
+            print("📛 主表（form）错误：", form.errors)
+            print("📛 明细表（formset）错误：")
+            for i, f in enumerate(formset.forms):
+                if f.errors:
+                    print(f"  - 第{i+1}行: {f.errors}")
     else:
         initial = {'status': report.status}
         clock_in = None
@@ -1101,8 +1112,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             user_m = user_break_min % 60
             initial['break_time_input'] = f"{user_h}:{str(user_m).zfill(2)}"
         else:
-            user_h = 0
-            user_m = 0
             initial['break_time_input'] = "0:00"
 
         form = DriverDailyReportForm(instance=report, initial=initial)
