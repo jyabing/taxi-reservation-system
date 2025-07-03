@@ -1,18 +1,20 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>⚠️ 确认删除车辆</h2>
+<div class="container py-4">
+  <h2 class="text-danger mb-4">⚠️ 确认删除车辆</h2>
 
-<p>你确定要删除车辆 <strong>{{ car }}</strong> 吗？</p>
+  <p class="lead">你确定要删除以下车辆吗？该操作不可撤销。</p>
 
-<ul>
-    <li><strong>名称：</strong>{{ car.name }}</li>
-    <li><strong>型号：</strong>{{ car.model }}</li>
-    <li><strong>车牌：</strong>{{ car.license_plate }}</li>
-</ul>
+  <ul class="list-group mb-4">
+    <li class="list-group-item"><strong>名称：</strong> {{ car.name }}</li>
+    <li class="list-group-item"><strong>型号：</strong> {{ car.model }}</li>
+    <li class="list-group-item"><strong>车牌：</strong> {{ car.license_plate }}</li>
+  </ul>
 
-<form method="post">
+  <form method="post">
     {% csrf_token %}
-    <button type="submit" class="btn btn-danger">🗑️ 确认删除</button>
+    <button type="submit" class="btn btn-danger me-2">🗑️ 确认删除</button>
     <a href="{% url 'carinfo:car_list' %}" class="btn btn-secondary">取消</a>
-</form>
+  </form>
+</div>
 {% endblock %}

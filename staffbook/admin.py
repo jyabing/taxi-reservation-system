@@ -50,6 +50,7 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
     list_display = ['driver', 'date', 'note']
     list_filter = ['driver', 'date']
     search_fields = ('driver__username', 'note')
+    list_per_page = 20  # ✅ 每页最多显示 20 条
 
 @admin.register(DriverPayrollRecord)
 class DriverPayrollRecordAdmin(admin.ModelAdmin):

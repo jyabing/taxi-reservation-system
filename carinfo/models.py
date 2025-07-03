@@ -14,12 +14,40 @@ class Car(models.Model):
     model = models.CharField("型号", max_length=50, blank=True)
     year = models.PositiveIntegerField("出厂年份", null=True, blank=True)
 
+    # 🇯🇵 --- 日本法规扩展字段 ---
+    registration_number = models.CharField("登録番号", max_length=20, blank=True)
+    first_registration_date = models.DateField("初度登録年月", null=True, blank=True)
+    engine_displacement = models.DecimalField("排气量（L）", max_digits=4, decimal_places=2, null=True, blank=True)
+    model_code = models.CharField("型式", max_length=30, blank=True)
+    vehicle_weight = models.DecimalField("车辆重量（kg）", max_digits=6, decimal_places=1, null=True, blank=True)
+
+    # ✅ 新增字段：車両寸法
+    length = models.IntegerField(null=True, blank=True, verbose_name="長さ（mm）")
+    width = models.IntegerField(null=True, blank=True, verbose_name="幅（mm）")
+    height = models.IntegerField(null=True, blank=True, verbose_name="高さ（mm）")
+
     # --- 使用与状态 ---
     status = models.CharField("车辆状态", max_length=20, choices=STATUS_CHOICES, default='available')
     is_active = models.BooleanField("是否启用", default=True)
     mileage = models.PositiveIntegerField("当前里程（km）", null=True, blank=True)
     fuel_type = models.CharField("燃料类型", max_length=20, blank=True)  # 例：汽油、电动、混动
     color = models.CharField("车身颜色", max_length=30, blank=True)
+
+    # --- 🟡 车辆台账信息（日本式） ---
+    registration_number = models.CharField("登録番号", max_length=50, blank=True)
+    first_registration = models.DateField("初度登録年月", null=True, blank=True)
+    usage = models.CharField("用途", max_length=50, blank=True)  # 自家用 / 业务用
+    body_shape = models.CharField("车体形状", max_length=50, blank=True)
+
+    car_type_code = models.CharField("型式", max_length=50, blank=True)
+    engine_model = models.CharField("原动机型号", max_length=50, blank=True)
+    engine_displacement = models.DecimalField("总排气量（L）", max_digits=4, decimal_places=2, null=True, blank=True)
+
+    length = models.PositiveIntegerField("长度（mm）", null=True, blank=True)
+    width = models.PositiveIntegerField("宽度（mm）", null=True, blank=True)
+    height = models.PositiveIntegerField("高度（mm）", null=True, blank=True)
+    vehicle_weight = models.PositiveIntegerField("车重（kg）", null=True, blank=True)
+    gross_weight = models.PositiveIntegerField("总重（kg）", null=True, blank=True)
 
     # --- 证件与设备 ---
     inspection_date = models.DateField("车检到期日", null=True, blank=True)

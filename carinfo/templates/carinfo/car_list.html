@@ -1,99 +1,95 @@
 {% extends "base.html" %}
 {% load static %}
+{% load tz %}
+{% now "Y-m-d" as today_str %}
+{% with today_str|date:"Y-m-d" as today %}
+{% with today|add:"30" as today_plus_30 %}
+
 {% block content %}
 <div class="container py-4">
-  <h2 class="mb-4">🚗 车辆总览</h2>
+  <h2 class="mb-4">🚘 車両一覧</h2>
 
-  <!-- 搜索 + 状态过滤 -->
-  <form method="get" class="row g-2 mb-3">
-    <div class="col-md-4">
-      <input type="text" name="q" class="form-control" placeholder="搜索车牌 / 品牌 / 负责人" value="{{ request.GET.q }}">
-    </div>
-    <div class="col-md-3">
-      <select name="status" class="form-select">
-        <option value="">🚦 全部状态</option>
-        <option value="available" {% if request.GET.status == 'available' %}selected{% endif %}>✅ 可用</option>
-        <option value="repair" {% if request.GET.status == 'repair' %}selected{% endif %}>🔧 维修中</option>
-        <option value="retired" {% if request.GET.status == 'retired' %}selected{% endif %}>🛑 已报废</option>
-      </select>
-    </div>
-    <div class="col-md-2">
-      <button type="submit" class="btn btn-primary w-100">筛选</button>
-    </div>
-    <div class="col-md-3 text-end">
-      <a href="{% url 'carinfo:car_create' %}" class="btn btn-success">➕ 添加车辆</a>
-    </div>
-  </form>
+  <div class="mb-3">
+    <a href="{% url 'carinfo:car_create' %}" class="btn btn-success">➕ 車両追加</a>
+  </div>
 
-  <!-- 车辆表格 -->
-  <div class="table-responsive">
-    <table class="table table-bordered table-hover align-middle">
-      <thead class="table-light">
-        <tr>
-          <th>封面</th>
-          <th>车牌号</th>
-          <th>品牌</th>
-          <th>型号</th>
-          <th>状态</th>
-          <th>负责人</th>
-          <th>保险</th>
-          <th>车检</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for car in cars %}
+  <table class="table table-striped table-bordered">
+    <thead class="table-light">
+      <tr>
+        <th>写真</th>
+        <th>ナンバー</th>
+        <th>ブランド</th>
+        <th>型式</th>
+        <th>寸法<br>(長/幅/高)</th>
+        <th>状態</th>
+        <th>責任者</th>
+        <th>保険期限</th>
+        <th>検査期限</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for car_info in cars %}
+        {% with car=car_info.obj %}
         <tr>
           <td>
             {% if car.image %}
               <img src="{{ car.image.url }}" style="height: 50px;">
-            {% else %}
-              -
-            {% endif %}
+            {% else %}-{% endif %}
           </td>
           <td>
-            <a href="{% url 'carinfo:car_detail' car.pk %}">
-              {{ car.license_plate }}
-            </a>
+            <a href="{% url 'carinfo:car_detail' car.pk %}">{{ car.license_plate }}</a>
           </td>
           <td>{{ car.brand }}</td>
           <td>{{ car.model }}</td>
           <td>
+            {% if car.obj.length %}
+              {{ car.obj.length }} × {{ car.obj.width }} × {{ car.obj.height }} <span class="text-muted small">mm</span>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
             {% if car.status == 'available' %}
-              <span class="badge bg-success">可用</span>
+              <span class="badge bg-success">使用可</span>
             {% elif car.status == 'repair' %}
-              <span class="badge bg-warning text-dark">维修中</span>
+              <span class="badge bg-warning text-dark">修理中</span>
             {% elif car.status == 'retired' %}
-              <span class="badge bg-secondary">已报废</span>
+              <span class="badge bg-secondary">廃車済</span>
             {% endif %}
           </td>
           <td>{{ car.manager_name }}</td>
+
           <td>
             {% if car.insurance_expiry %}
               {{ car.insurance_expiry }}
-            {% else %}
-              -
-            {% endif %}
+              {% if car.insurance_expiry|stringformat:"s" <= today_plus_30|stringformat:"s" %}
+                <span class="text-danger">⚠️</span>
+              {% endif %}
+            {% else %}-{% endif %}
           </td>
+
           <td>
             {% if car.inspection_date %}
               {{ car.inspection_date }}
-            {% else %}
-              -
-            {% endif %}
+              {% if car.inspection_date|stringformat:"s" <= today_plus_30|stringformat:"s" %}
+                <span class="text-danger">⚠️</span>
+              {% endif %}
+            {% else %}-{% endif %}
           </td>
+
           <td>
-            <a href="{% url 'carinfo:car_edit' car.pk %}" class="btn btn-sm btn-outline-primary">编辑</a>
-            <a href="{% url 'carinfo:car_delete' car.pk %}" class="btn btn-sm btn-outline-danger">删除</a>
+            <a href="{% url 'carinfo:car_edit' car.pk %}" class="btn btn-sm btn-outline-primary">✏️ 編集</a>
+            <a href="{% url 'carinfo:car_delete' car.pk %}" class="btn btn-sm btn-outline-danger">🗑️ 削除</a>
           </td>
         </tr>
-        {% empty %}
-        <tr>
-          <td colspan="9" class="text-center">暂无车辆记录</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+        {% endwith %}
+      {% empty %}
+        <tr><td colspan="9" class="text-center">🚫 データがありません</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}
+{% endwith %}
+{% endwith %}

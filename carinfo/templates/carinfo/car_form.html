@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container py-4">
+  <h2 class="mb-4">🚘 車両情報編集</h2>
+  <form method="post" enctype="multipart/form-data" class="needs-validation" novalidate>
+    {% csrf_token %}
+
+    <!-- 📝 基本情報 -->
+    <div class="mb-4 border rounded p-3 bg-light-subtle">
+      <h5 class="fw-bold text-primary mb-3">📝 基本情報</h5>
+      <div class="row g-3">
+        <div class="col-md-4">{{ form.name.label_tag }} {{ form.name }}</div>
+        <div class="col-md-4">{{ form.license_plate.label_tag }} {{ form.license_plate }}</div>
+        <div class="col-md-4">{{ form.registration_number.label_tag }} {{ form.registration_number }}</div>
+        <div class="col-md-4">{{ form.brand.label_tag }} {{ form.brand }}</div>
+        <div class="col-md-4">{{ form.model.label_tag }} {{ form.model }}</div>
+        <div class="col-md-4">{{ form.year.label_tag }} {{ form.year }}</div>
+        <div class="col-md-4">{{ form.first_registration_date.label_tag }} {{ form.first_registration_date }}</div>
+        <div class="col-md-4">{{ form.model_code.label_tag }} {{ form.model_code }}</div>
+        <div class="col-md-4">{{ form.engine_displacement.label_tag }} {{ form.engine_displacement }}</div>
+        <div class="col-md-4">{{ form.vehicle_weight.label_tag }} {{ form.vehicle_weight }}</div>
+      </div>
+    </div>
+
+    <!-- 📏 車両寸法 -->
+    <div class="mb-4 border rounded p-3 bg-light-subtle">
+      <h5 class="fw-bold text-primary mb-3">📏 車両寸法（ミリメートル）</h5>
+      <div class="row g-3">
+        <div class="col-md-4">
+          {{ form.length.label_tag }} {{ form.length }}
+          {% if form.length.help_text %}<div class="form-text text-muted">{{ form.length.help_text }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          {{ form.width.label_tag }} {{ form.width }}
+          {% if form.width.help_text %}<div class="form-text text-muted">{{ form.width.help_text }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          {{ form.height.label_tag }} {{ form.height }}
+          {% if form.height.help_text %}<div class="form-text text-muted">{{ form.height.help_text }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 🚦 使用状況 -->
+    <div class="mb-4 border rounded p-3 bg-light">
+      <h5 class="fw-bold text-primary mb-3">🚦 使用状況</h5>
+      <div class="row g-3">
+        <div class="col-md-4">{{ form.status.label_tag }} {{ form.status }}</div>
+        <div class="col-md-4">{{ form.is_active.label_tag }} {{ form.is_active }}</div>
+        <div class="col-md-4">{{ form.mileage.label_tag }} {{ form.mileage }}</div>
+        <div class="col-md-4">{{ form.fuel_type.label_tag }} {{ form.fuel_type }}</div>
+        <div class="col-md-4">{{ form.color.label_tag }} {{ form.color }}</div>
+      </div>
+    </div>
+
+    <!-- 📄 装備・証明書 -->
+    <div class="mb-4 border rounded p-3 bg-light-subtle">
+      <h5 class="fw-bold text-primary mb-3">📄 装備・証明書</h5>
+      <div class="row g-3">
+        <div class="col-md-4">{{ form.inspection_date.label_tag }} {{ form.inspection_date }}</div>
+        <div class="col-md-4">{{ form.insurance_expiry.label_tag }} {{ form.insurance_expiry }}</div>
+        <div class="col-md-4">{{ form.etc_device.label_tag }} {{ form.etc_device }}</div>
+        <div class="col-md-4">{{ form.fuel_card_number.label_tag }} {{ form.fuel_card_number }}</div>
+        <div class="col-md-4">{{ form.gps_device_id.label_tag }} {{ form.gps_device_id }}</div>
+        <div class="col-md-4">{{ form.pos_terminal_id.label_tag }} {{ form.pos_terminal_id }}</div>
+      </div>
+    </div>
+
+    <!-- 👤 所属・責任者 -->
+    <div class="mb-4 border rounded p-3 bg-light">
+      <h5 class="fw-bold text-primary mb-3">👤 所属・責任者</h5>
+      <div class="row g-3">
+        <div class="col-md-4">{{ form.department.label_tag }} {{ form.department }}</div>
+        <div class="col-md-4">{{ form.manager_name.label_tag }} {{ form.manager_name }}</div>
+        <div class="col-md-4">{{ form.manager_phone.label_tag }} {{ form.manager_phone }}</div>
+      </div>
+    </div>
+
+    <!-- 📝 備考・写真 -->
+    <div class="mb-4 border rounded p-3 bg-light-subtle">
+      <h5 class="fw-bold text-primary mb-3">📝 備考・写真</h5>
+      <div class="mb-3">
+        {{ form.notes.label_tag }} {{ form.notes }}
+      </div>
+      <div class="mb-3">
+        {{ form.image.label_tag }} {{ form.image }}
+        {% if form.instance.image %}
+          <div class="mt-2">
+            <img src="{{ form.instance.image.url }}" alt="車両画像" class="img-thumbnail" style="max-height: 150px;">
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ボタン -->
+    <div class="d-flex justify-content-between">
+      <a href="{% url 'carinfo:car_list' %}" class="btn btn-secondary">← 戻る</a>
+      <button type="submit" class="btn btn-primary">💾 保存</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
