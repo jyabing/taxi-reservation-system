@@ -3,31 +3,11 @@ from django.utils.html import format_html
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
-
-class Vehicle(models.Model):
-    STATUS_CHOICES = [
-        ('available', '可预约'),
-        ('reserved', '已预约'),
-        ('out', '已出库'),
-        ('maintenance', '维修中'),
-    ]
-
-    license_plate = models.CharField(max_length=20, unique=True, verbose_name="车牌号")
-    model = models.CharField(max_length=50, verbose_name="车型")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available', verbose_name="状态")
-    inspection_date = models.DateField(blank=True, null=True, verbose_name="车检日期")
-    notes = models.TextField(blank=True, verbose_name="备注")
-
-    def __str__(self):
-        return f"{self.license_plate}({self.model})"
-
-    class Meta:
-        verbose_name = "车辆"
-        verbose_name_plural = "车辆"
+from carinfo.models import Car
 
 class VehicleImage(models.Model):
     vehicle = models.ForeignKey(
-        Vehicle,
+        Car,
         on_delete=models.CASCADE,
         related_name='images',
         verbose_name=_("车辆")
@@ -47,9 +27,12 @@ class VehicleImage(models.Model):
     preview.short_description = "预览图"
     preview.allow_tags = True
 
+
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")
-    vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE, verbose_name="车辆")
+    
+    vehicle = models.ForeignKey(Car, on_delete=models.CASCADE, verbose_name="车辆")
+
     date = models.DateField(verbose_name="预约日期")
     end_date = models.DateField(verbose_name="结束日期")
     start_time = models.TimeField(verbose_name="开始时间")

@@ -3,7 +3,7 @@ from accounts.models import DriverUser
 from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator
-from vehicles.models import Vehicle
+from carinfo.models import Car
 from datetime import datetime, timedelta
 
 # 📌 插入在 import 之后，模型定义之前
@@ -290,7 +290,7 @@ class DriverDailyReport(models.Model):
         (STATUS_CANCELLED, '已取消'),
     ]
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_reports', verbose_name="司机")
-    vehicle = models.ForeignKey(Vehicle, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_reports', verbose_name='本日使用车辆')
+    vehicle = models.ForeignKey(Car, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_reports', verbose_name='本日使用车辆')
     date = models.DateField('日期')
     note = models.TextField('备注', blank=True)
 

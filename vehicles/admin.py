@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.utils.html import format_html
 from django import forms
 from django.utils.safestring import mark_safe
-from .models import Vehicle, Reservation, CarouselImage, VehicleImage, Tip
+from .models import Reservation, CarouselImage, VehicleImage, Tip
 from rangefilter.filters import DateRangeFilter
 
 # 🚗 自定义 Inline 表单（隐藏 image 输入框）
@@ -52,18 +52,6 @@ class VehicleImageInline(admin.TabularInline):
             '<input type="file" class="upload-btn" accept="image/*"><br><span class="upload-status"></span>'
         )
 
-# ✅ 车辆管理页（包含缩略图预览 + 图片上传）
-@admin.register(Vehicle)
-class VehicleAdmin(admin.ModelAdmin):
-    inlines = [VehicleImageInline]
-    list_display = ('id', 'license_plate', 'first_preview', 'notes')
-
-    def first_preview(self, obj):
-        first = obj.images.first()
-        if first and first.image and hasattr(first.image, 'url'):
-            return format_html('<img src="{}" style="height:40px;" />', first.image.url)
-        return ""
-    first_preview.short_description = "封面缩略"
 
 # ✅ 预约管理
 @admin.register(Reservation)

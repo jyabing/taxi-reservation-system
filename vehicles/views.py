@@ -17,11 +17,12 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.conf import settings
 from django.core.paginator import Paginator
+from carinfo.models import Car
 
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Vehicle, Reservation, Tip
+from .models import Reservation, Tip
 from .forms import ReservationForm, MonthForm, AdminStatsForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
@@ -53,12 +54,12 @@ require_vehicles_admin = user_passes_test(is_vehicles_admin)
 
 @login_required
 def vehicle_list(request):
-    vehicles = Vehicle.objects.all()
+    vehicles = Car.objects.all()
     return render(request, 'vehicles/vehicle_list.html', {'vehicles': vehicles})
 
 @login_required
 def vehicle_detail(request, pk):
-    vehicle = get_object_or_404(Vehicle.objects.prefetch_related('images'), pk=pk)
+    vehicle = get_object_or_404(Car.objects.prefetch_related('images'), pk=pk)
     reservations = Reservation.objects.filter(vehicle=vehicle).order_by('-date')[:5]
     return render(request, 'vehicles/vehicle_detail.html', {
         'vehicle': vehicle,
@@ -70,7 +71,7 @@ def vehicle_status_view(request):
     date_str = request.GET.get('date')
     selected_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else timezone.localdate()
     reservations = Reservation.objects.filter(date=selected_date)
-    vehicles = Vehicle.objects.all()
+    vehicles = Car.objects.all()
     status_map = {}
     now_dt = timezone.localtime()
 
@@ -133,7 +134,7 @@ def vehicle_status_view(request):
 
 @login_required
 def make_reservation_view(request, vehicle_id):
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    vehicle = get_object_or_404(Car, id=vehicle_id)
     min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
     if vehicle.status == 'maintenance':
         messages.error(request, "维修中车辆不可预约")
@@ -189,7 +190,7 @@ def vehicle_timeline_view(request, vehicle_id):
     is_past = is_today and timezone.localtime().time() > time(0, 30)
     # 0:30之后不允许新预约
 
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    vehicle = get_object_or_404(Car, id=vehicle_id)
     reservations = Reservation.objects.filter(vehicle=vehicle, date=selected_date).order_by('start_time')
     
     return render(request, 'vehicles/timeline_view.html', {
@@ -222,7 +223,7 @@ def weekly_overview_view(request):
     start_date = base_date + timedelta(days=offset * 7)
     week_dates = [start_date + timedelta(days=i) for i in range(7)]
 
-    vehicles = Vehicle.objects.all()
+    vehicles = Car.objects.all()
     reservations = Reservation.objects.filter(date__in=week_dates)
 
     # 自动取消超时未出库预约
@@ -285,7 +286,7 @@ def weekly_overview_view(request):
     
 @login_required
 def timeline_selector_view(request):
-    vehicles = Vehicle.objects.all()
+    vehicles = Car.objects.all()
 
     if request.method == 'POST':
         vehicle_id = request.POST.get('vehicle_id')
@@ -305,7 +306,7 @@ def weekly_selector_view(request):
 
 @login_required
 def vehicle_monthly_gantt_view(request, vehicle_id):
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    vehicle = get_object_or_404(Car, id=vehicle_id)
 
     # 1. 读取当前月份参数或默认今天
     month_str = request.GET.get('date')  # 例：2025-05
@@ -403,7 +404,7 @@ def daily_overview_view(request):
         selected_date = timezone.localdate()
 
     now_dt = timezone.localtime()  # ✅ 改名避免与函数 now 冲突
-    vehicles = Vehicle.objects.all()
+    vehicles = Car.objects.all()
     reservations = Reservation.objects.filter(date=selected_date)
 
     data = []
@@ -573,7 +574,7 @@ def delete_reservation_view(request, reservation_id):
 
 @login_required
 def vehicle_detail_view(request, vehicle_id):
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    vehicle = get_object_or_404(Car, id=vehicle_id)
     reservations = Reservation.objects.filter(vehicle=vehicle).order_by('-date')[:5]
     return render(request, 'vehicles/vehicle_detail.html', {
         'vehicle': vehicle,
@@ -626,7 +627,7 @@ def vehicle_status_with_photo(request):
         selected_date = timezone.localdate()
 
     reservations = Reservation.objects.filter(date=selected_date)
-    vehicles = Vehicle.objects.all()
+    vehicles = Car.objects.all()
     status_map = {}
 
     for vehicle in vehicles:
@@ -649,13 +650,13 @@ def vehicle_status_with_photo(request):
     })
 
 def vehicle_image_list_view(request, vehicle_id):
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    vehicle = get_object_or_404(Car, id=vehicle_id)
     images = vehicle.images.all()
     data = [{'url': img.image.url} for img in images]
     return JsonResponse({'images': data})
 
 def vehicle_image_delete_view(request, vehicle_id, index):
-    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+    vehicle = get_object_or_404(Car, id=vehicle_id)
     images = list(vehicle.images.all())
 
     if 0 <= index < len(images):

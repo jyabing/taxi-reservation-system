@@ -4,6 +4,8 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse
 from datetime import timedelta
 from collections import defaultdict
+from carinfo.models import Car
+from vehicles.models import Reservation
 
 from .permissions import is_staffbook_admin
 from django.contrib import messages
@@ -15,7 +17,7 @@ from .forms import (
 from .models import (
     DriverDailySales, DriverDailyReport, DriverDailyReportItem, Driver, DrivingExperience, 
     Insurance, FamilyMember, DriverLicense, LicenseType, Qualification, Aptitude,
-    Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord
+    Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord 
     )
 from django.db.models import Q, Sum, Case, When, F, DecimalField
 from django.forms import inlineformset_factory, modelformset_factory
@@ -27,8 +29,6 @@ from django.utils.timezone import now
 from django.core.paginator import Paginator
 from django.urls import reverse
 from decimal import Decimal, ROUND_HALF_UP
-
-from vehicles.models import Reservation 
 
 from accounts.utils import check_module_permission
 from staffbook.utils import (
