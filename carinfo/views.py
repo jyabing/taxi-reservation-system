@@ -13,6 +13,12 @@ def car_list(request):
 
 @login_required
 @check_module_permission('carinfo')
+def car_detail(request, pk):
+    car = get_object_or_404(Car, pk=pk)
+    return render(request, 'carinfo/car_detail.html', {'car': car})
+
+@login_required
+@check_module_permission('carinfo')
 def car_create(request):
     if request.method == 'POST':
         form = CarForm(request.POST)

@@ -1,32 +1,99 @@
 {% extends "base.html" %}
+{% load static %}
 {% block content %}
-<h2>🚗 车辆列表</h2>
-<a href="{% url 'carinfo:car_create' %}" class="btn btn-primary">添加新车辆</a>
-<table>
-  <thead>
-    <tr>
-      <th>车牌号</th>
-      <th>名称</th>
-      <th>状态</th>
-      <th>品牌</th>
-      <th>型号</th>
-      <th>操作</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for car in cars %}
-    <tr>
-      <td>{{ car.license_plate }}</td>
-      <td>{{ car.name }}</td>
-      <td>{{ car.get_status_display }}</td>
-      <td>{{ car.brand }}</td>
-      <td>{{ car.model }}</td>
-      <td>
-        <a href="{% url 'carinfo:car_edit' car.pk %}">编辑</a> |
-        <a href="{% url 'carinfo:car_delete' car.pk %}">删除</a>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="container py-4">
+  <h2 class="mb-4">🚗 车辆总览</h2>
+
+  <!-- 搜索 + 状态过滤 -->
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-md-4">
+      <input type="text" name="q" class="form-control" placeholder="搜索车牌 / 品牌 / 负责人" value="{{ request.GET.q }}">
+    </div>
+    <div class="col-md-3">
+      <select name="status" class="form-select">
+        <option value="">🚦 全部状态</option>
+        <option value="available" {% if request.GET.status == 'available' %}selected{% endif %}>✅ 可用</option>
+        <option value="repair" {% if request.GET.status == 'repair' %}selected{% endif %}>🔧 维修中</option>
+        <option value="retired" {% if request.GET.status == 'retired' %}selected{% endif %}>🛑 已报废</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-primary w-100">筛选</button>
+    </div>
+    <div class="col-md-3 text-end">
+      <a href="{% url 'carinfo:car_create' %}" class="btn btn-success">➕ 添加车辆</a>
+    </div>
+  </form>
+
+  <!-- 车辆表格 -->
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>封面</th>
+          <th>车牌号</th>
+          <th>品牌</th>
+          <th>型号</th>
+          <th>状态</th>
+          <th>负责人</th>
+          <th>保险</th>
+          <th>车检</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for car in cars %}
+        <tr>
+          <td>
+            {% if car.image %}
+              <img src="{{ car.image.url }}" style="height: 50px;">
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'carinfo:car_detail' car.pk %}">
+              {{ car.license_plate }}
+            </a>
+          </td>
+          <td>{{ car.brand }}</td>
+          <td>{{ car.model }}</td>
+          <td>
+            {% if car.status == 'available' %}
+              <span class="badge bg-success">可用</span>
+            {% elif car.status == 'repair' %}
+              <span class="badge bg-warning text-dark">维修中</span>
+            {% elif car.status == 'retired' %}
+              <span class="badge bg-secondary">已报废</span>
+            {% endif %}
+          </td>
+          <td>{{ car.manager_name }}</td>
+          <td>
+            {% if car.insurance_expiry %}
+              {{ car.insurance_expiry }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            {% if car.inspection_date %}
+              {{ car.inspection_date }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'carinfo:car_edit' car.pk %}" class="btn btn-sm btn-outline-primary">编辑</a>
+            <a href="{% url 'carinfo:car_delete' car.pk %}" class="btn btn-sm btn-outline-danger">删除</a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="9" class="text-center">暂无车辆记录</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% endblock %}

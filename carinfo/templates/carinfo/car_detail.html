@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <h3 class="mb-3">🚗 车辆详情：{{ car.license_plate }}</h3>
+
+  <div class="row mb-4">
+    <div class="col-md-4">
+      {% if car.image %}
+        <img src="{{ car.image.url }}" class="img-fluid rounded border" style="max-height: 240px;">
+      {% else %}
+        <div class="text-muted">暂无车辆图片</div>
+      {% endif %}
+    </div>
+    <div class="col-md-8">
+      <table class="table table-bordered">
+        <tr><th>名称</th><td>{{ car.name }}</td></tr>
+        <tr><th>品牌/型号</th><td>{{ car.brand }} / {{ car.model }}</td></tr>
+        <tr><th>车牌号</th><td>{{ car.license_plate }}</td></tr>
+        <tr><th>出厂年份</th><td>{{ car.year }}</td></tr>
+        <tr><th>燃料类型</th><td>{{ car.fuel_type }}</td></tr>
+        <tr><th>颜色</th><td>{{ car.color }}</td></tr>
+        <tr><th>当前状态</th><td>{{ car.get_status_display }}</td></tr>
+        <tr><th>负责人</th><td>{{ car.manager_name }}（{{ car.manager_phone }}）</td></tr>
+        <tr><th>部门</th><td>{{ car.department }}</td></tr>
+        <tr><th>保险到期</th><td>{{ car.insurance_expiry }}</td></tr>
+        <tr><th>车检到期</th><td>{{ car.inspection_date }}</td></tr>
+        <tr><th>ETC编号</th><td>{{ car.etc_device }}</td></tr>
+        <tr><th>油卡号</th><td>{{ car.fuel_card_number }}</td></tr>
+        <tr><th>刷卡机编号</th><td>{{ car.pos_terminal_id }}</td></tr>
+        <tr><th>GPS编号</th><td>{{ car.gps_device_id }}</td></tr>
+        <tr><th>备注</th><td>{{ car.notes|linebreaksbr }}</td></tr>
+      </table>
+      <div class="mt-3">
+        <a href="{% url 'carinfo:car_edit' car.pk %}" class="btn btn-primary">✏️ 编辑</a>
+        <a href="{% url 'carinfo:car_list' %}" class="btn btn-secondary">返回列表</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

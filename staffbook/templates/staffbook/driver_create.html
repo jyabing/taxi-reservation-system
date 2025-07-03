@@ -94,6 +94,38 @@
           </button>
         </div>
       </form>
+
+      <script>
+document.addEventListener('DOMContentLoaded', function () {
+  const employTypeField = document.querySelector('[name="employ_type"]');
+  const resignedDateField = document.querySelector('[name="resigned_date"]');
+
+  function checkResignedWarning() {
+    const val = employTypeField.value;
+    if (val === '3') {
+      resignedDateField.required = true;
+      resignedDateField.classList.add('is-invalid');
+      if (!document.getElementById('resign-warning')) {
+        const warning = document.createElement('div');
+        warning.className = 'text-danger mt-1';
+        warning.id = 'resign-warning';
+        warning.textContent = '⚠ 在職類型が「退職者」の場合、退職日を必ず入力してください。';
+        resignedDateField.insertAdjacentElement('afterend', warning);
+      }
+    } else {
+      resignedDateField.required = false;
+      resignedDateField.classList.remove('is-invalid');
+      const warning = document.getElementById('resign-warning');
+      if (warning) warning.remove();
+    }
+  }
+
+  if (employTypeField && resignedDateField) {
+    employTypeField.addEventListener('change', checkResignedWarning);
+    checkResignedWarning();
+  }
+});
+</script>
     </div>
   </div>
 </div>

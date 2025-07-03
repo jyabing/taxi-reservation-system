@@ -20,7 +20,7 @@ class DriverForm(forms.ModelForm):
         model = Driver
         fields = [
             'driver_code', 'name', 'kana', 'company', 'workplace', 'department',
-            'position', 'birth_date', 'gender', 'blood_type',
+            'position', 'birth_date', 'gender', 'blood_type', 'resigned_date',
             'hire_date', 'appointment_date', 'create_date', 'remark'
         ]
         widgets = {
@@ -28,6 +28,7 @@ class DriverForm(forms.ModelForm):
             'blood_type': forms.Select(attrs={'class': 'form-select'}),
             'birth_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'hire_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'resigned_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),  # ✅ 新增
             'appointment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'create_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
@@ -36,6 +37,14 @@ class DriverForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         apply_form_control_style(self.fields)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        employ_type = cleaned_data.get('employ_type')
+        resigned_date = cleaned_data.get('resigned_date')
+
+        if employ_type == '3' and not resigned_date:
+            self.add_error('resigned_date', '退職者は退職日を入力してください。')
 
 # ✅ 驾照信息表单
 class DriverLicenseForm(forms.ModelForm):

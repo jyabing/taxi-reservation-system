@@ -33,6 +33,20 @@
     transform: scale(1.02);
   }
 
+  .staff-code-item.resigned {
+  background: #f0f0f0 !important;
+  color: #888 !important;
+  border: 1px dashed #bbb;
+  opacity: 0.9;
+  cursor: default;
+}
+.staff-code-item.resigned:hover {
+  box-shadow: none;
+  background: #f0f0f0;
+  color: #888;
+  transform: none;
+}
+
   @media (max-width: 750px) {
     .staff-code-list {
       gap: 0.8em;
@@ -94,11 +108,30 @@
   <button type="submit" style="padding:0.5em 1.5em; border-radius:2em; border:none; background:#1677ff; color:white;">搜索</button>
 </form>
 
+<div style="text-align:center; margin-bottom: 1rem;">
+  {% if not show_all %}
+    <a href="?show_all=1{% if keyword %}&keyword={{ keyword }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+      すべて表示（含退職者）
+    </a>
+  {% else %}
+    <a href="?{% if keyword %}keyword={{ keyword }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+      在職者のみ表示
+    </a>
+  {% endif %}
+</div>
+
 <!-- 中部员工代码列表 -->
 <div class="staff-code-list">
   {% for item in driver_list %}
-    <a class="staff-code-item position-relative" href="{% url 'staffbook:driver_basic_info' item.driver.id %}">
+    <a class="staff-code-item position-relative {% if item.driver.employ_type == '3' %} resigned {% endif %}"
+       href="{% url 'staffbook:driver_basic_info' item.driver.id %}">
+
       {{ item.driver.driver_code }} - {{ item.driver.name }}
+
+      {% if item.driver.employ_type == '3' %}
+        <span class="badge bg-danger ms-2">退職</span>
+      {% endif %}
+
       {% if item.missing_flags %}
         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
               style="font-size: 0.7em;" title="未提交资料：{{ item.missing_flags|join:', ' }}">

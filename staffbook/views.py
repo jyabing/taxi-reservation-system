@@ -114,12 +114,17 @@ def dailyreport_list(request):
 @user_passes_test(is_staffbook_admin)
 def driver_list(request):
     keyword = request.GET.get('keyword', '').strip()
+    show_all = request.GET.get('show_all') == '1'  # ✅ 新增：控制是否显示退職者
+
+    # 初步筛选
+    drivers_qs = Driver.objects.all()
+    if not show_all:
+        drivers_qs = drivers_qs.exclude(employ_type='3')  # ✅ 默认排除退職者
+
     if keyword:
-        drivers_qs = Driver.objects.filter(
+        drivers_qs = drivers_qs.filter(
             Q(name__icontains=keyword) | Q(driver_code__icontains=keyword)
         )
-    else:
-        drivers_qs = Driver.objects.all()
 
     driver_list = []
     for driver in drivers_qs:
@@ -142,8 +147,9 @@ def driver_list(request):
         })
 
     return render(request, 'staffbook/driver_list.html', {
-        'driver_list': driver_list,  # ✅ 确保这个键名
+        'driver_list': driver_list,
         'keyword': keyword,
+        'show_all': show_all,  # ✅ 传入模板判断切换按钮
     })
 
 # ✅ 新增员工

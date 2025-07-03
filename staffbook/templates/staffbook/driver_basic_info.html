@@ -2,11 +2,15 @@
 {% block content %}
 {% load driver_extras %}
 <div class="container mt-4">
-  <div class="card shadow" style="width:90vw;max-width:1400px;margin:0 auto;">
+  <div class="card shadow {% if driver.employ_type == '3' %} bg-light text-muted {% endif %}" style="width:90vw;max-width:1400px;margin:0 auto;">
     <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
       <i class="fa fa-user me-2"></i>
       <b>{{ driver.name }}</b>
       <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
+
+      {% if driver.employ_type == '3' %}
+        <span class="badge bg-danger ms-2" style="font-size:0.85em;">退職者</span>
+      {% endif %}
 
       <span class="ms-auto d-flex align-items-center" style="font-size:0.95em;">
         <span>
@@ -35,8 +39,17 @@
         </div>
       {% endif %}
 
-    <div class="card-body">
-      {% include "staffbook/driver_tab_nav.html" %}
+      {% if driver.employ_type == '3' %}
+        <div class="alert alert-warning mt-3">
+          <b>⚠ この従業員は退職済みです。</b><br>
+          {% if driver.resigned_date %}
+            退職日：<strong>{{ driver.resigned_date|date:"Y/m/d" }}</strong>
+          {% else %}
+            退職日未入力
+          {% endif %}
+        </div>
+      {% endif %}
+
       <!-- 基本信息表 -->
       <form>
       <div class="row">
