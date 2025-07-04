@@ -10,12 +10,12 @@ from vehicles.models import Reservation
 from .permissions import is_staffbook_admin
 from django.contrib import messages
 from .forms import (
-    DriverDailySalesForm, DriverDailyReportForm, DriverForm, 
+    DriverDailyReportForm, DriverForm, 
     ReportItemFormSet, DriverPersonalInfoForm, DriverLicenseForm, 
     DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm
     )
 from .models import (
-    DriverDailySales, DriverDailyReport, DriverDailyReportItem, Driver, DrivingExperience, 
+    DriverDailyReport, DriverDailyReportItem, Driver, DrivingExperience, 
     Insurance, FamilyMember, DriverLicense, LicenseType, Qualification, Aptitude,
     Reward, Accident, Education, Insurance, Pension, DriverPayrollRecord 
     )
@@ -68,20 +68,6 @@ def dailyreport_edit(request, pk):
     else:
         form = DriverDailyReportForm(instance=report)
     return render(request, 'staffbook/driver_dailyreport_edit.html', {'form': form})
-
-# ✅ 提交销售额（司机自己）
-@login_required
-def submit_sales(request):
-    if request.method == 'POST':
-        form = DriverDailySalesForm(request.POST)
-        if form.is_valid():
-            sales = form.save(commit=False)
-            sales.driver = request.user
-            sales.save()
-            return redirect('staffbook:sales_thanks')
-    else:
-        form = DriverDailySalesForm()
-    return render(request, 'staffbook/submit_sales.html', {'form': form})
 
 @login_required
 def sales_thanks(request):

@@ -9,10 +9,6 @@ urlpatterns = [
     # 📋 日报功能（所有日报相关）
     # -----------------------------------
 
-    # 提交卖上（司机）
-    path('submit_sales/', views.submit_sales, name='submit_sales'),
-    path('sales_thanks/', views.sales_thanks, name='sales_thanks'),
-
     # 日报总览 / 列表 / 导出
     path('dailyreports/', views.dailyreport_list, name='dailyreport_list'),  # 所有日报（管理员或司机）
     path('dailyreports/overview/', views.dailyreport_overview, name='dailyreport_overview'),

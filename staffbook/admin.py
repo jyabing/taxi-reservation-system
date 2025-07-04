@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.contrib.auth import get_user_model
 from .models import (
-    Driver, DriverDailySales, DriverDailyReport, DriverPayrollRecord,
+    Driver, DriverDailyReport, DriverPayrollRecord,
     DriverReportImage, DrivingExperience, Insurance, FamilyMember
 )
 
@@ -38,12 +38,6 @@ class DriverAdmin(admin.ModelAdmin):
             )
             obj.user = user
         super().save_model(request, obj, form, change)
-
-@admin.register(DriverDailySales)
-class DriverDailySalesAdmin(admin.ModelAdmin):
-    list_display = ('driver', 'date', 'cash_amount', 'card_amount', 'ride_count', 'mileage')
-    list_filter = ('date', 'driver')
-    search_fields = ('driver__username',)
 
 @admin.register(DriverDailyReport)
 class DriverDailyReportAdmin(admin.ModelAdmin):

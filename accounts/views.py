@@ -7,8 +7,7 @@ from django.urls import reverse_lazy
 from vehicles.models import CarouselImage, Tip
 from django.utils.timezone import localdate
 from staffbook.forms import DriverReportImageForm, DriverDailyReportForm
-from staffbook.models import DriverDailyReport, DriverReportImage, DriverDailySales, Driver
-#from staffbook.utils import extract_text_from_image
+from staffbook.models import DriverDailyReport, DriverReportImage, Driver
 from datetime import datetime
 from calendar import monthrange
 import re
@@ -155,9 +154,7 @@ def monthly_reports_view(request):
 
     # 查找日报 & 销售记录
     reports = DriverDailyReport.objects.filter(driver=driver, date__range=(first_day, last_day)).order_by('date')
-    sales_map = {
-        s.date: s for s in DriverDailySales.objects.filter(driver=driver, date__range=(first_day, last_day))
-    }
+    sales_map = {}
 
     return render(request, 'accounts/monthly_reports.html', {
         'selected_month': selected_month,

@@ -116,8 +116,8 @@ class Driver(models.Model):
     # 可根据需要继续添加其他字段（如身份证号、入职日期、状态等）
 
     class Meta:
-        verbose_name = "司机资料"
-        verbose_name_plural = "司机资料"
+        verbose_name = "员工资料"
+        verbose_name_plural = "员工资料"
     
     def __str__(self):
         return f"{self.driver_code} - {self.name}"
@@ -145,24 +145,6 @@ class FamilyMember(models.Model):
 
     def __str__(self):
         return f"{self.driver.name} - {self.name}({self.relation})"
-
-# 日销售（不变）
-class DriverDailySales(models.Model):
-    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_sales')
-    date = models.DateField('日期')
-    cash_amount = models.DecimalField('现金', max_digits=8, decimal_places=2, default=0)
-    card_amount = models.DecimalField('刷卡', max_digits=8, decimal_places=2, default=0)
-    ride_count = models.IntegerField('乘车次数', default=0)
-    mileage = models.DecimalField('里程', max_digits=6, decimal_places=1, default=0)
-
-    class Meta:
-        unique_together = ('driver', 'date')
-        ordering = ['-date']
-        verbose_name = "司机日销售"
-        verbose_name_plural = "司机日销售"
-
-    def __str__(self):
-        return f"{self.driver} - {self.date}"
 
 class LicenseType(models.Model):
     """驾驶证种类，如：大型、中型、准中型、普通等"""

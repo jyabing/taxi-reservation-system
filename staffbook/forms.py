@@ -1,7 +1,6 @@
 from django import forms
 from .models import (
-    Driver, DriverLicense, Accident,
-    DriverDailySales, DriverDailyReport, DriverDailyReportItem,
+    Driver, DriverLicense, Accident, DriverDailyReport, DriverDailyReportItem,
     DriverPayrollRecord, DriverReportImage, Reward, Insurance,
 )
 from django.forms import inlineformset_factory
@@ -95,15 +94,6 @@ class DriverBasicForm(forms.ModelForm):
             'birth_date', 'gender', 'blood_type', 'postal_code', 'address',
             'phone_number', 'photo', 'photo_date', 'remark'
         ]
-
-# ✅ 日销售数据表单
-class DriverDailySalesForm(forms.ModelForm):
-    class Meta:
-        model = DriverDailySales
-        fields = ['date', 'cash_amount', 'card_amount', 'ride_count', 'mileage']
-        widgets = {
-            'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-        }
 
 # ✅ 日报主表表单
 class DriverDailyReportForm(forms.ModelForm):
