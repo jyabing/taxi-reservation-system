@@ -13,6 +13,8 @@ from django.urls import reverse
 from django.utils.timezone import now, make_aware, localdate
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.db.models.functions import Cast
+from django.db.models import TimeField
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.conf import settings
@@ -993,6 +995,11 @@ def my_dailyreports(request):
 def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
 
+    # ✅ 新增：按时间排序的明细记录
+    items = report.items.annotate(
+        time_cast=Cast('ride_time', TimeField())
+    ).order_by('time_cast')
+
     reservation = Reservation.objects.filter(
         driver=request.user,
         actual_departure__date=report.date
@@ -1006,6 +1013,7 @@ def my_daily_report_detail(request, report_id):
 
     return render(request, 'vehicles/my_daily_report_detail.html', {
         'report': report,
+        'items': items,  # ✅ 添加进上下文
         'start_time': start_time,
         'end_time': end_time,
         'duration': duration,

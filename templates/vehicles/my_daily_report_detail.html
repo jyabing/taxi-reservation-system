@@ -57,38 +57,38 @@
 </div>
 
 <!-- 明细表 -->
-{% if report.items.all %}
-<div class="card shadow-sm mt-4">
-  <div class="card-body p-0">
-    <table class="table table-bordered table-sm mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>时间</th>
-          <th>起点</th>
-          <th>金额</th>
-          <th>支付方式</th>
-          <th>注释</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in report.items.all %}
-        <tr class="{% if item.note or item.is_flagged %}table-warning{% endif %}">
-          <td>{{ item.ride_time }}</td>
-          <td>{{ item.ride_from }}</td>
-          <td>{{ item.meter_fee }}</td>
-          <td>{{ item.get_payment_method_display }}</td>
-          <td>
-            {{ item.note|default:"" }}
-            {% if item.note %}<span title="有注释">📝</span>{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+{% if items %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-body p-0">
+      <table class="table table-bordered table-sm mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>时间</th>
+            <th>起点</th>
+            <th>金额</th>
+            <th>支付方式</th>
+            <th>注释</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+            <tr class="{% if item.note or item.is_flagged %}table-warning{% endif %}">
+              <td>{{ item.ride_time }}</td>
+              <td>{{ item.ride_from }}</td>
+              <td>{{ item.meter_fee }}</td>
+              <td>{{ item.get_payment_method_display }}</td>
+              <td>
+                {{ item.note|default:"" }}
+                {% if item.note %}<span title="有注释">📝</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
-</div>
 {% else %}
-<div class="text-muted mt-3">无行程明细</div>
+  <div class="text-muted mt-3">无行程明细</div>
 {% endif %}
 
 <p class="mt-4">

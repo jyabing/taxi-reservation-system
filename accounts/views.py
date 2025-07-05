@@ -21,7 +21,7 @@ def home_view(request):
     user = request.user
 
     if user.is_superuser:
-        return redirect('admin_dashboard')
+        return render(request, 'home.html')
     elif hasattr(user, 'staff_profile'):
         return redirect('staff_dashboard')  # ✅ 事务员跳转目标
     elif hasattr(user, 'driver_profile'):
