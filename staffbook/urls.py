@@ -13,6 +13,10 @@ urlpatterns = [
     path('dailyreports/', views.dailyreport_list, name='dailyreport_list'),  # 所有日报（管理员或司机）
     path('dailyreports/overview/', views.dailyreport_overview, name='dailyreport_overview'),
     path('dailyreports/export/', views.export_dailyreports_csv, name='export_dailyreports_csv'),
+
+    # ✅ ✅ ✅ 这行必须存在
+    path('monthly_summary/export/', views.export_monthly_summary_csv, name='export_monthly_summary_csv'),
+
     path('my_dailyreports/', views.my_dailyreports, name='my_dailyreports'),  # 当前用户
 
     # 管理员：直接新增日报（旧方式）→ 建议改路径避免冲突
@@ -49,6 +53,9 @@ urlpatterns = [
     # -----------------------------------
     path('dashboard/', views.staffbook_dashboard, name='dashboard'),
     path('drivers/', views.driver_list, name='driver_list'),
+    # 🔻✅ 新增这一行：资料未提交一览
+    path('driver_documents/', views.driver_documents_status, name='driver_documents_status'),
+
     path('drivers/create/', views.driver_create, name='driver_create'),
     path('drivers/<int:driver_id>/edit/', views.driver_edit, name='driver_edit'),
     path('bind_missing_users/', views.bind_missing_users, name='bind_missing_users'),

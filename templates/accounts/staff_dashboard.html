@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+  <h2>事務員ダッシュボード</h2>
+  <p>ようこそ，{{ staff.name }} さん。</p>
+
+  <hr>
+  <div class="mb-4">
+    <a href="{% url 'staffbook:driver_list' %}" class="btn btn-primary me-2">司机一览</a>
+    <a href="{% url 'staffbook:driver_documents_status' %}" class="btn btn-warning">资料未提交一览</a>
+  </div>
+
+  <p>您可以在这里管理：</p>
+  <ul>
+    <li>司机资料审核</li>
+    <li>入社资料处理</li>
+    <li>工资核算等</li>
+  </ul>
+</div>
+{% endblock %}

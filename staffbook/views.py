@@ -138,6 +138,28 @@ def driver_list(request):
         'show_all': show_all,  # ✅ 传入模板判断切换按钮
     })
 
+# ✅ 新增：司机资料提交状况一览
+@login_required
+def driver_documents_status(request):
+    if not request.user.is_authenticated or not hasattr(request.user, 'staff_profile'):
+        return redirect('home')
+
+    drivers = Driver.objects.filter(
+        has_health_check=False
+    ) | Driver.objects.filter(
+        has_residence_certificate=False
+    ) | Driver.objects.filter(
+        has_tax_form=False
+    ) | Driver.objects.filter(
+        has_license_copy=False
+    )
+
+    drivers = drivers.distinct().order_by('driver_code')
+
+    return render(request, 'staffbook/driver_documents.html', {
+        'drivers': drivers,
+    })
+
 # ✅ 新增员工
 @user_passes_test(is_staffbook_admin)
 def driver_create(request):
@@ -1424,3 +1446,61 @@ def export_dailyreports_csv(request):
 
     return response
 
+def export_monthly_summary_csv(request):
+    target_month = request.GET.get('month')  # 例：2025-07
+    reports = DriverDailyReport.objects.filter(date__startswith=target_month).select_related('driver')
+
+    # 按员工聚合
+    summary = defaultdict(lambda: defaultdict(int))
+
+    for report in reports:
+        driver = report.driver
+        code = driver.driver_code or ''
+        key = f"{driver.name}（{code}）"
+
+        summary[key]['uber'] += getattr(report, 'uber_fee', 0) or 0
+        summary[key]['credit'] += getattr(report, 'credit_fee', 0) or 0
+        summary[key]['didi'] += getattr(report, 'didi_fee', 0) or 0
+        summary[key]['qr'] += getattr(report, 'qr_fee', 0) or 0
+        summary[key]['omron'] += getattr(report, 'omron_fee', 0) or 0
+        summary[key]['kyotoshi'] += getattr(report, 'kyotoshi_fee', 0) or 0
+        summary[key]['gasoline'] += getattr(report, 'gasoline_fee', 0) or 0
+        summary[key]['distance_km'] += getattr(report, 'distance_km', 0) or 0
+        summary[key]['smoke'] += getattr(report, 'smoke_fee', 0) or 0
+        summary[key]['refund_lack'] += getattr(report, 'refund_lack', 0) or 0
+
+    response = HttpResponse(content_type='text/csv')
+    filename = f"月报汇总_{target_month}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    writer = csv.writer(response)
+
+    # 表头
+    writer.writerow([
+        '従業員（コード）', '空車', 'ETC', '楽券', '子機料',
+        'Uber売上', 'クレジット売上', 'DIDI売上', 'PayPay売上',
+        'オムロン売上', '京交信市他売上', '水揚合計',
+        'ガソリン', '里程KM', '煙草', '返金不足'
+    ])
+
+    for key, data in summary.items():
+        total = sum([
+            data['uber'], data['credit'], data['didi'], data['qr'],
+            data['omron'], data['kyotoshi']
+        ])
+        writer.writerow([
+            key,
+            0, 0, 0, 0,  # 空車 ETC 楽券 子機料 默认填0
+            data['uber'],
+            data['credit'],
+            data['didi'],
+            data['qr'],
+            data['omron'],
+            data['kyotoshi'],
+            total,
+            data['gasoline'],
+            data['distance_km'],
+            data['smoke'],
+            data['refund_lack'],
+        ])
+
+    return response

@@ -480,6 +480,36 @@ class DriverReportImage(models.Model):
     def __str__(self):
         return f"{self.driver} - {self.date} 的图片"
 
+# ✅【新增 Staff 模型】
+class Staff(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='staff_profile',
+        null=True, blank=True,
+        verbose_name='绑定用户'
+    )
+    staff_code = models.CharField('職員番号', max_length=20, unique=True)
+    name = models.CharField('氏名', max_length=32)
+    department = models.CharField('部門', max_length=32, blank=True)
+    position = models.CharField('職種', max_length=32, choices=[
+        ('事務', '事務'),
+        ('経理', '経理'),
+        ('管理者', '管理者'),
+        ('その他', 'その他'),
+    ])
+    hire_date = models.DateField(blank=True, null=True, verbose_name="入社年月日")
+    resigned_date = models.DateField(blank=True, null=True, verbose_name="退職日")
+    phone_number = models.CharField(max_length=32, blank=True, null=True, verbose_name="電話番号")
+    note = models.TextField('備考', blank=True)
+
+    class Meta:
+        verbose_name = "事务员资料"
+        verbose_name_plural = "事务员资料"
+
+    def __str__(self):
+        return f"{self.staff_code} - {self.name}"
+
 class Vehicle(models.Model):
     name = models.CharField("车辆名", max_length=50)  # 如：シエンタ、白色皇冠等
     plate_number = models.CharField("车牌号", max_length=20)  # 如：5001、足立500 あ12-34

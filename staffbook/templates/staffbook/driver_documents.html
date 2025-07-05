@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3>📄 司机资料提交状况</h3>
+  <p>以下为所有司机的提交状态，未提交部分将以 <span class="text-danger fw-bold">红色标记</span>。</p>
+
+  <table class="table table-bordered table-hover mt-4">
+    <thead class="table-light">
+      <tr>
+        <th>编号</th>
+        <th>姓名</th>
+        <th>健康诊断</th>
+        <th>在留卡</th>
+        <th>扶养控除申告</th>
+        <th>免许复印件</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in drivers %}
+      <tr>
+        <td>{{ d.driver_code }}</td>
+        <td>{{ d.name }}</td>
+        <td class="{% if not d.has_health_check %}table-danger{% endif %}">
+          {% if d.has_health_check %}✅{% else %}❌{% endif %}
+        </td>
+        <td class="{% if not d.has_residence_certificate %}table-danger{% endif %}">
+          {% if d.has_residence_certificate %}✅{% else %}❌{% endif %}
+        </td>
+        <td class="{% if not d.has_tax_form %}table-danger{% endif %}">
+          {% if d.has_tax_form %}✅{% else %}❌{% endif %}
+        </td>
+        <td class="{% if not d.has_license_copy %}table-danger{% endif %}">
+          {% if d.has_license_copy %}✅{% else %}❌{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

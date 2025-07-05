@@ -25,6 +25,9 @@
      class="btn btn-success">
     ⬇️ この月の乗務日報をCSVでダウンロード
   </a>
+  <a href="{% url 'staffbook:export_monthly_summary_csv' %}?month={{ target_month }}" class="btn btn-outline-primary">
+  📤 月报CSVダウンロード（汇总版）
+  </a>
 </div>
 
 <h2 class="mb-4 border-bottom pb-2">📊 乗務日報・月間サマリー（{{ month|date:"Y年n月" }}）</h2>

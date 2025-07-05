@@ -3,7 +3,7 @@ from django.contrib.auth import views as auth_views
 from .views import (
     login_view, logout_view, login_success_view,
     driver_dashboard, profile_view, edit_profile,
-    admin_dashboard, MyPasswordChangeView, monthly_reports_view
+    admin_dashboard, MyPasswordChangeView, monthly_reports_view, staff_dashboard
 )
 
 urlpatterns = [
@@ -19,4 +19,6 @@ urlpatterns = [
 
     path('password/change/', MyPasswordChangeView.as_view(), name='change_password'),
     path('daily_reports/', monthly_reports_view, name='my_monthly_reports'),
+
+    path('staff/dashboard/', staff_dashboard, name='staff_dashboard'),
 ]

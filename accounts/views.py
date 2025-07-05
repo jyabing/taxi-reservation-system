@@ -19,13 +19,18 @@ User = get_user_model()
 @login_required(login_url='/accounts/login/')
 def home_view(request):
     user = request.user
+
     if user.is_superuser:
-        #return redirect('/admin/')
-        return render(request, 'home.html')
+        return redirect('admin_dashboard')
+    elif hasattr(user, 'staff_profile'):
+        return redirect('staff_dashboard')  # ✅ 事务员跳转目标
+    elif hasattr(user, 'driver_profile'):
+        return redirect('driver_dashboard')  # ✅ 司机跳转
     elif user.is_staff:
-        return redirect('admin_dashboard')  # 系统总览页
+        return redirect('admin_dashboard')  # 一般后台账号
     else:
-        return redirect('driver_dashboard')  # 配车首页（普通用户）或你配车首页的 name
+        return render(request, 'home.html')  # 默认展示页
+
 
 def login_view(request):
     context = {}
@@ -53,6 +58,48 @@ def logout_view(request):
 @login_required
 def admin_dashboard(request):
     return render(request, 'accounts/admin_dashboard.html')
+
+# 添加事务员首页 staff_dashboard() 视图函数
+# staff_dashboard()
+#    → staff_driver_list()
+#    → staff_driver_documents()
+#    → driver_dashboard()
+@login_required
+def staff_dashboard(request):
+    user = request.user
+    staff = getattr(user, "staff_profile", None)
+    return render(request, 'accounts/staff_dashboard.html', {
+        'staff': staff,
+    })
+
+# ✅ 添加事务员司机列表 staff_driver_list() 视图函数
+@login_required
+def staff_driver_list(request):
+    if not hasattr(request.user, 'staff_profile'):
+        return redirect('home')
+
+    query = request.GET.get('q', '')
+    drivers = Driver.objects.all()
+    if query:
+        drivers = drivers.filter(name__icontains=query)
+
+    return render(request, 'driver_list.html', {
+        'drivers': drivers,
+        'query': query,
+    })
+
+
+# ✅ 紧接着插入这个：资料提交状况
+@login_required
+def staff_driver_documents(request):
+    if not hasattr(request.user, 'staff_profile'):
+        return redirect('home')
+
+    drivers = Driver.objects.all().order_by('driver_code')
+
+    return render(request, 'accounts/staff_driver_documents.html', {
+        'drivers': drivers,
+    })
 
 @login_required
 def driver_dashboard(request):

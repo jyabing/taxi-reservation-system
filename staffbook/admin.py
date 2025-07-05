@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.contrib.auth import get_user_model
 from .models import (
     Driver, DriverDailyReport, DriverPayrollRecord,
-    DriverReportImage, DrivingExperience, Insurance, FamilyMember
+    DriverReportImage, DrivingExperience, Insurance, FamilyMember, Staff
 )
 
 User = get_user_model()
@@ -73,3 +73,32 @@ class DriverReportImageAdmin(admin.ModelAdmin):
             return format_html('<img src="{}" style="max-height:80px;max-width:120px;" />', obj.image.url)
         return "-"
     image_tag.short_description = "图片预览"
+
+
+# ✅【新增】Staff 后台管理类（插在这里）
+@admin.register(Staff)
+class StaffAdmin(admin.ModelAdmin):
+    list_display = ('staff_code', 'name', 'department', 'position', 'user')
+    search_fields = ('staff_code', 'name')
+
+    def save_model(self, request, obj, form, change):
+        # ✅ 自动创建并绑定 User 用户
+        if not obj.user:
+            username = obj.staff_code  # 使用职员编号作为用户名
+            user, created = User.objects.get_or_create(
+                username=username,
+                defaults={
+                    'is_active': True,
+                    'first_name': obj.name
+                }
+            )
+            # 设置初始密码（🛡️可后续修改为随机）
+            # 进入 /admin/staffbook/staff/ 添加事务员；
+            # 只填姓名、编号等，不填“绑定用户”；
+            # 点击保存后，会自动创建一个 User 账号，绑定好；
+            # 登录地址照常使用 /accounts/login/，用 staff_code 和 staff123 登录测试即可。
+            if created:
+                user.set_password('staff123')
+                user.save()
+            obj.user = user
+        super().save_model(request, obj, form, change)
