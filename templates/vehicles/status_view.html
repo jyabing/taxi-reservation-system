@@ -27,6 +27,7 @@
     <tr>
       <td>
         <a href="{% url 'vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a>
+        <button class="btn btn-sm btn-outline-info ms-2" onclick="openCarModal({{ vehicle.id }})">最近预约</button>
       </td>
       <td>{{ vehicle.model }}</td>
       <td class="text-start">
@@ -39,6 +40,31 @@
     {% endfor %}
   </tbody>
 </table>
+
+<!-- ✅ 共用模态框区域：车辆详情 Ajax 弹窗 -->
+<div class="modal fade" id="carModal" tabindex="-1" aria-labelledby="carModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content" id="carModalContent">
+      <!-- Ajax 加载内容将插入此处 -->
+    </div>
+  </div>
+</div>
+
+<script>
+  function openCarModal(carId) {
+    fetch(`/carinfo/modal/${carId}/`)
+      .then(response => response.text())
+      .then(html => {
+        document.getElementById('carModalContent').innerHTML = html;
+        const modal = new bootstrap.Modal(document.getElementById('carModal'));
+        modal.show();
+      })
+      .catch(error => {
+        console.error('车辆详情加载失败:', error);
+        alert("车辆详情加载失败，请稍后再试。");
+      });
+  }
+</script>
 
 {% include 'partials/_check_io_popup.html' %}
 {% endblock %}

@@ -3,7 +3,10 @@ from datetime import date
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.http import JsonResponse
+from django.template.loader import get_template
 from accounts.utils import check_module_permission
+from vehicles.models import Reservation
 from .models import Car
 from .forms import CarForm
 
@@ -203,3 +206,52 @@ def export_car_list_excel(request):
     )
     response['Content-Disposition'] = f'attachment; filename=车辆台账_{today}.xlsx'
     return response
+
+# ✅ 车辆详情弹窗视图（用于Ajax模态框）
+@login_required
+#check_module_permission('carinfo')
+def car_detail_modal(request, pk):
+    print(f"[DEBUG] Ajax 请求收到，车辆 ID：{pk}")  # ✅ 后台调试用
+
+    # ✅ 尝试加载模板，确认是否能找到
+    try:
+        template = get_template('carinfo/car_detail_modal.html')
+        print('[TEMPLATE FOUND] 模板已找到：carinfo/car_detail_modal.html')
+    except Exception as e:
+        print('[TEMPLATE ERROR] 模板无法找到：', e)
+
+
+    car = get_object_or_404(Car, pk=pk)
+
+    current_year = datetime.date.today().year
+    car_age = current_year - car.year if car.year else None
+
+    next_inspection = None
+    inspection_cycle = "未知"
+
+    if car.first_registration_date:
+        years_since_first = current_year - car.first_registration_date.year
+        if years_since_first < 6:
+            next_inspection = car.first_registration_date.replace(year=car.first_registration_date.year + 2)
+            inspection_cycle = "前6年每2年"
+        else:
+            if car.inspection_date:
+                next_inspection = car.inspection_date.replace(year=car.inspection_date.year + 1)
+            inspection_cycle = "每年一次"
+
+    # ✅ 权限判断：只有管理员或有权限者能看到管理信息
+    show_management = request.user.is_superuser or request.user.has_perm("carinfo.view_management_info")
+
+    # ✅ 追加：最近预约记录
+    recent_reservations = Reservation.objects.filter(
+        vehicle=car
+    ).select_related('driver').order_by('-start_time')[:5]
+
+    return render(request, 'carinfo/car_detail_modal.html', {
+        'car': car,
+        'car_age': car_age,
+        'next_inspection': next_inspection,
+        'inspection_cycle': inspection_cycle,
+        'show_management': show_management,
+        'recent_reservations': recent_reservations,  # ✅ 传给模板
+})

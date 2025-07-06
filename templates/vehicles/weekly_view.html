@@ -64,7 +64,7 @@
     {% for row in vehicle_data %}
       <tr>
         <td class="text-center">
-          <a href="{% url 'vehicle_detail' row.vehicle.id %}">
+          <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;">
             {{ row.vehicle.license_plate }}
           </a>
         </td>
@@ -118,4 +118,40 @@
   <a href="{% url 'vehicle_status' %}">← 返回车辆状态</a>
 </p>
 
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+function showCarDetailModal(carId) {
+  fetch(`/carinfo/modal/${carId}/`)
+    .then(response => response.text())
+    .then(html => {
+      document.getElementById('carDetailModalBody').innerHTML = html;
+      new bootstrap.Modal(document.getElementById('carDetailModal')).show();
+    })
+    .catch(error => {
+      console.error('车辆详情加载失败:', error);
+      alert('加载车辆详情失败');
+    });
+}
+</script>
+
+<!-- 🚗 模态框结构 -->
+<div class="modal fade" id="carDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">车辆信息</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <div class="modal-body" id="carDetailModalBody">
+        <!-- Ajax 加载内容插入这里 -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

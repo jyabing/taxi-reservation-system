@@ -12,27 +12,13 @@ def index(sequence, position):
 
 @register.filter
 def to(start, end):
+    """生成 range(start, end)，用于模板中 {% for i in x|to:y %}"""
     return range(start, end)
 
 @register.filter
 def to_int(value):
-    """将数字或数字字符串转成 int，失败时返回 0"""
+    """将字符串或浮点数转换为整数，失败时返回 0"""
     try:
         return int(float(value))
     except (ValueError, TypeError):
         return 0
-
-@register.filter
-def display_datetime(value):
-    return value.strftime('%Y-%m-%d %H:%M')
-
-@register.filter
-def cutover(value, max_value):
-    try:
-        return min(float(value), float(max_value))
-    except:
-        return value
-
-@register.filter
-def make_range(start, end):
-    return range(start, end)
