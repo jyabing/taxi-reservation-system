@@ -70,15 +70,25 @@
       {% csrf_token %}
       <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
     </form>
+
   {% elif r.status == 'reserved' and not r.actual_departure %}
     <a href="{% url 'edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
     <form method="post" action="{% url 'delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
       {% csrf_token %}
       <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
     </form>
-    {% if today == r.date %}
-      <button type="button" class="btn btn-sm btn-success" onclick="showDepartureModal({{ r.id }})">🚗 出庫</button>
+    {% if r.status == 'reserved' and not r.actual_departure %}
+      <button type="button" class="btn btn-sm btn-success"
+        onclick="showDepartureModal(this)"
+        data-id="{{ r.id }}"
+        {% with info=reservation_infos.r.id %}
+          {% if info.last_return %}
+            data-last-return="{{ info.last_return|date:'Y-m-d\\TH:i' }}"
+          {% endif %}
+        {% endwith %}
+      >🚗 出庫</button>
     {% endif %}
+
   {% elif r.status == 'reserved' and r.actual_departure and not r.actual_return %}
     <button type="button" class="btn btn-sm btn-warning" onclick="showReturnModal({{ r.id }})">🅿️ 入庫</button>
   {% elif r.status == 'out' and not r.actual_return %}
@@ -92,6 +102,31 @@
   {% endif %}
 </td>
       </tr>
+
+      <!-- ✅ 插入新的提示行 -->
+      <tr>
+        <td colspan="4" style="font-size: 13px; color: #666; background-color: #f9f9f9;">
+          {% with info=reservation_infos.r.id %}
+            {% if info.last_return %}
+              🕓 上次入库时间：{{ info.last_return|date:"Y-m-d H:i" }}，
+              与本次预约起始相隔 {{ info.diff_from_last_return }} 小时。
+              {% if info.diff_from_last_return < 10 %}
+                <span style="color: red;">⚠️ 不足 10 小时，请注意休息。</span>
+              {% endif %}
+              <br>
+            {% endif %}
+            {% if info.next_reservation %}
+              ⏭️ 下次预约时间：{{ info.next_reservation|date:"Y-m-d H:i" }}，
+              与本次预约结束相隔 {{ info.diff_to_next }} 小时。
+              {% if info.diff_to_next < 10 %}
+                <span style="color: red;">⚠️ 不足 10 小时，系统将自动顺延。</span>
+              {% endif %}
+            {% endif %}
+          {% endwith %}
+        </td>
+      </tr>
+
+
     {% empty %}
       <tr>
         <td colspan="4" class="empty-row">📭 ご予約履歴が見つかりませんでした。</td>
@@ -166,17 +201,23 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-function showDepartureModal(reservationId) {
-  const now = new Date();
-  document.getElementById('actualDepartureInput').value = now.toISOString().slice(0,16);
-  document.getElementById('reservationIdInput').value = reservationId;
+function showDepartureModal(button) {
+  const id = button.getAttribute('data-id');
+  const lastReturn = button.getAttribute('data-last-return');
+
+  let suggestTime;
+  if (lastReturn) {
+    const baseTime = new Date(lastReturn);
+    baseTime.setHours(baseTime.getHours() + 10);
+    suggestTime = baseTime.toISOString().slice(0, 16);
+  } else {
+    const now = new Date();
+    suggestTime = now.toISOString().slice(0, 16);
+  }
+
+  document.getElementById('reservationIdInput').value = id;
+  document.getElementById('actualDepartureInput').value = suggestTime;
   new bootstrap.Modal(document.getElementById('departureModal')).show();
-}
-function showReturnModal(reservationId) {
-  const now = new Date();
-  document.getElementById('actualReturnInput').value = now.toISOString().slice(0,16);
-  document.getElementById('returnReservationIdInput').value = reservationId;
-  new bootstrap.Modal(document.getElementById('returnModal')).show();
 }
 </script>
 {% endblock %}

@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block extra_head %}
+  <!-- flatpickr 样式 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+{% endblock %}
+
+{% block content %}
+
+{% include 'partials/_messages.html' %}
+
+<h2>📝 申请预约车辆：{{ vehicle.license_plate }}</h2>
+
+{% if messages %}
+  <ul class="messages">
+    {% for message in messages %}
+      <li {% if message.tags %} class="{{ message.tags }}" {% endif %}>
+        {{ message }}
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+
+  <!-- 多日选择 -->
+  <label for="selected_dates">预约日期（最多选择 7 天）：</label>
+  <input type="text" id="selected_dates" name="selected_dates" class="form-control" required>
+
+  <!-- 时间段选择 -->
+  <label for="start_time">开始时间：</label>
+  <input type="time" id="start_time" name="start_time" class="form-control" required>
+
+  <label for="end_time">结束时间：</label>
+  <input type="time" id="end_time" name="end_time" class="form-control" required>
+
+  <!-- 用途说明 -->
+  <label for="purpose">用途说明：</label>
+  <input type="text" id="purpose" name="purpose" class="form-control" required>
+
+  <button type="submit" class="btn btn-primary mt-3">提交预约</button>
+</form>
+
+<a href="{% url 'vehicle_status' %}">← 返回状态页</a>
+
+{% endblock %}
+
+{% block extra_js %}
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    // 限制多选日期最大为 7 天
+    flatpickr("#selected_dates", {
+      mode: "multiple",
+      dateFormat: "Y-m-d",
+      maxDate: new Date().fp_incr(30),  // 最远30天
+      onChange: function(selectedDates, dateStr, instance) {
+        if (selectedDates.length > 7) {
+          alert("最多只能选择 7 天！");
+          selectedDates.pop();
+          instance.setDate(selectedDates);
+        }
+      }
+    });
+
+    // 限制时间段不得超过 13 小时
+    document.querySelector("form").addEventListener("submit", function(e) {
+      const start = document.getElementById("start_time").value;
+      const end = document.getElementById("end_time").value;
+      if (!start || !end) return; // 忽略空值
+
+      const [sh, sm] = start.split(":").map(Number);
+      const [eh, em] = end.split(":").map(Number);
+      const startMin = sh * 60 + sm;
+      const endMin = eh * 60 + em;
+
+      if (endMin <= startMin) {
+        alert("结束时间必须晚于开始时间");
+        e.preventDefault();
+        return;
+      }
+
+      const duration = endMin - startMin;
+      if (duration > 13 * 60) {
+        alert("每天预约时间不能超过 13 小时！");
+        e.preventDefault();
+      }
+    });
+  </script>
+{% endblock %}
+
+<style>
+  .messages { list-style: none; padding: 0; }
+  .messages li.error { color: red; font-weight: bold; }
+  .messages li.success { color: green; font-weight: bold; }
+</style>

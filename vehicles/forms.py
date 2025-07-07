@@ -8,18 +8,27 @@ from accounts.models import DriverUser
 class ReservationForm(forms.ModelForm):
     class Meta:
         model = Reservation
-        fields = ['date', 'start_time', 'end_date', 'end_time', 'purpose']
+        fields = ['start_time', 'end_time', 'purpose']
         widgets = {
-            'date': forms.TextInput(attrs={'type': 'text', 'class': 'flat-date'}),
-            'end_date': forms.TextInput(attrs={'type': 'text', 'class': 'flat-date'}),
-            'start_time': forms.TextInput(attrs={'type': 'text', 'class': 'flat-time'}),
-            'end_time': forms.TextInput(attrs={'type': 'text', 'class': 'flat-time'}),
-            'purpose': forms.TextInput(attrs={'placeholder': '用途说明'}),
+            'start_time': forms.TextInput(attrs={'class': 'form-control flat-time'}),
+            'end_time': forms.TextInput(attrs={'class': 'form-control flat-time'}),
+            'purpose': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '用途说明'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        # ⛳️ 把 driver 从视图传进来（可选）
+        self.request = kwargs.pop('request', None)
+        super().__init__(*args, **kwargs)
+
+        # ✅ 如果 instance 没有 driver，而外部传进来的 request.user 存在，就先写入 initial
+        if not self.instance.pk and self.request:
+            self.initial['driver'] = getattr(self.request, 'user', None)
 
     def clean(self):
         cleaned = super().clean()
-        driver = self.instance.driver or self.initial.get('driver')
+
+        # ✅ 优先用 instance 中的 driver，再回退到 initial 中的 driver
+        driver = self.initial.get('driver')
         date = cleaned.get('date')
         end_date = cleaned.get('end_date')
         start_time = cleaned.get('start_time')

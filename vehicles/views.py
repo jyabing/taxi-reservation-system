@@ -1,4 +1,4 @@
-import calendar, requests, random, os
+import calendar, requests, random, os, json
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 
@@ -24,8 +24,8 @@ from carinfo.models import Car
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Reservation, Tip
-from .forms import ReservationForm, MonthForm, AdminStatsForm
+from .models import Reservation, Tip, Car
+from .forms import MonthForm, AdminStatsForm, ReservationForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
 
@@ -138,41 +138,79 @@ def vehicle_status_view(request):
 def make_reservation_view(request, vehicle_id):
     vehicle = get_object_or_404(Car, id=vehicle_id)
     min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
+
     if vehicle.status == 'maintenance':
         messages.error(request, "维修中车辆不可预约")
         return redirect('vehicle_status')
 
     allow_submit = vehicle.status == 'available'
+
     if request.method == 'POST':
         if not allow_submit:
             messages.error(request, "当前车辆状态不可预约，请选择其他车辆")
             return redirect('vehicle_status')
 
         form = ReservationForm(request.POST)
-        form.instance.driver = request.user
-        if form.is_valid():
+        form.instance.driver = request.user  # ✅ 关键一行，避免 clean() 中访问 None 出错
+        selected_dates_raw = request.POST.get('selected_dates', '')
+        selected_dates = json.loads(selected_dates_raw) if selected_dates_raw else []
+
+        if form.is_valid() and selected_dates:
             cleaned = form.cleaned_data
-            start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
-            end_dt = datetime.combine(cleaned['end_date'], cleaned['end_time'])
-            if end_dt <= start_dt:
-                messages.error(request, "结束时间必须晚于开始时间（请检查跨日设置）")
-            else:
-                new_res = form.save(commit=False)
-                new_res.vehicle = vehicle
-                new_res.status = 'pending'
-                new_res.save()
-                notify_admin_about_new_reservation(new_res)  # 邮件通知
-                messages.success(request, "已提交申请，等待审批")
-                return redirect('vehicle_status')
+            start_time = cleaned['start_time']
+            end_time = cleaned['end_time']
+            purpose = cleaned['purpose']
+
+            for date_str in selected_dates:
+                try:
+                    date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    start_dt = datetime.combine(date, start_time)
+
+                    # ⏱️ 跨日处理
+                    if end_time <= start_time:
+                        end_date = date + timedelta(days=1)
+                    else:
+                        end_date = date
+
+                    end_dt = datetime.combine(end_date, end_time)
+                    if end_dt <= start_dt:
+                        print(f"⚠️ 跳过非法时间段: {start_dt} ~ {end_dt}")
+                        continue
+
+                    # ✅ 创建预约
+                    new_res = Reservation.objects.create(
+                        driver=request.user,
+                        vehicle=vehicle,
+                        date=date,
+                        end_date=end_date,
+                        start_time=start_time,
+                        end_time=end_time,
+                        purpose=purpose,
+                        status='pending'
+                    )
+                    new_res.save()  # 🟢 显式调用 save 后，driver 字段才可安全访问
+
+                    print(f"✅ 创建成功: Driver={new_res.driver.username}, 车牌={vehicle.license_plate}, {start_dt} ~ {end_dt}")
+
+                except ValueError as e:
+                    print(f"❌ 日期转换错误: {e}")
+                    continue
+
+            messages.success(request, "✅ 已成功提交预约记录！")
+            return redirect('vehicle_status')
+
+        else:
+            messages.error(request, "请填写所有字段，并选择预约日期（最多7天）")
+
     else:
         initial = {
-            'date': request.GET.get('date', ''),
             'start_time': request.GET.get('start', ''),
-            'end_date': request.GET.get('end_date', ''),
             'end_time': request.GET.get('end', ''),
+            'purpose': request.GET.get('purpose', ''),
         }
-        form = ReservationForm(initial=initial)
-    return render(request, 'vehicles/reservation_form.html', {
+        form = ReservationForm(initial={**initial, 'driver': request.user})
+
+    return render(request, 'vehicles/reserve_vehicle.html', {
         'vehicle': vehicle,
         'form': form,
         'min_time': min_time,
@@ -441,7 +479,7 @@ def my_reservations_view(request):
         driver=request.user
     ).order_by('-date', '-start_time')
 
-    # ✅ 处理“超时未出库”的预约
+    # ✅ 自动取消超时未出库的预约
     canceled_any = False
     for r in all_reservations:
         if r.status == 'reserved' and not r.actual_departure:
@@ -451,6 +489,39 @@ def my_reservations_view(request):
                 r.status = 'canceled'
                 r.save()
                 canceled_any = True
+
+    # ✅ 计算预约相关时间间隔
+    reservation_infos = {}
+    for r in all_reservations:
+        info = {}
+
+        # 上次入库
+        last_return = Reservation.objects.filter(
+            driver=r.driver,
+            actual_return__isnull=False,
+            actual_return__lt=datetime.combine(r.date, r.start_time)
+        ).order_by('-actual_return').first()
+
+        if last_return:
+            diff = datetime.combine(r.date, r.start_time) - last_return.actual_return
+            info['last_return'] = last_return.actual_return
+            info['diff_from_last_return'] = round(diff.total_seconds() / 3600, 1)
+
+        # 下次预约
+        next_res = Reservation.objects.filter(
+            driver=r.driver,
+            status__in=['pending', 'reserved'],
+            date__gt=r.end_date
+        ).order_by('date', 'start_time').first()
+
+        if next_res:
+            current_end_dt = datetime.combine(r.end_date, r.end_time)
+            next_start_dt = datetime.combine(next_res.date, next_res.start_time)
+            diff_next = next_start_dt - current_end_dt
+            info['next_reservation'] = next_start_dt
+            info['diff_to_next'] = round(diff_next.total_seconds() / 3600, 1)
+
+        reservation_infos[r.id] = info
 
     # 分页
     paginator = Paginator(all_reservations, 10)
@@ -466,7 +537,8 @@ def my_reservations_view(request):
         'today': timezone.localdate(),
         'now': timezone.localtime(),
         'tips': tips,
-        'canceled_any': canceled_any,  # ✅ 传给模板
+        'canceled_any': canceled_any,
+        'reservation_infos': reservation_infos,  # ✅ 新增
     })
 
 @staff_member_required
@@ -536,9 +608,15 @@ def my_reservations_view(request):
 
 @login_required
 def edit_reservation_view(request, reservation_id):
-    reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
+    reservation = get_object_or_404(Reservation, id=reservation_id)
+
+    # ✅ 权限判断：仅本人或管理员可访问
+    if reservation.driver != request.user and not request.user.is_superuser:
+        return HttpResponseForbidden("⛔️ 无权修改他人预约。")
+
+    # ✅ 状态限制
     if reservation.status not in ['pending', 'reserved']:
-        return HttpResponseForbidden("已确认预约无法修改。")
+        return HttpResponseForbidden("⛔️ 当前状态不可修改。")
 
     if request.method == 'POST':
         form = ReservationForm(request.POST, instance=reservation)
@@ -546,11 +624,16 @@ def edit_reservation_view(request, reservation_id):
             cleaned = form.cleaned_data
             start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
             end_dt = datetime.combine(cleaned['end_date'], cleaned['end_time'])
+
             if end_dt <= start_dt:
-                messages.error(request, "结束时间必须晚于开始时间")
+                messages.error(request, "⚠️ 结束时间必须晚于开始时间")
             else:
-                form.save()
-                messages.success(request, "预约已修改")
+                updated_res = form.save(commit=False)
+                # ✅ 防止 driver 为空
+                if not updated_res.driver:
+                    updated_res.driver = request.user
+                updated_res.save()
+                messages.success(request, "✅ 预约已修改")
                 return redirect('my_reservations')
     else:
         form = ReservationForm(instance=reservation)
@@ -586,39 +669,80 @@ def vehicle_detail_view(request, vehicle_id):
 @require_POST
 @login_required
 def confirm_check_io(request):
-    reservation_id = request.POST.get('reservation_id')
-    action = request.POST.get('action_type')       # 'departure' 或 'return'
-    actual_time = request.POST.get('actual_time')  # ISO格式 '2025-06-17T12:30'
+    reservation_id = request.POST.get("reservation_id")
+    action_type = request.POST.get("action_type")
+    actual_time_str = request.POST.get("actual_time")
+    actual_time = datetime.strptime(actual_time_str, "%Y-%m-%dT%H:%M")
 
     reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
 
-    try:
-        dt = timezone.datetime.fromisoformat(actual_time)
-        dt = timezone.make_aware(dt) if timezone.is_naive(dt) else dt
-    except Exception:
-        messages.error(request, "时间格式错误")
-        return redirect('my_reservations')
+    if action_type == "departure":
+        # ✅ 查找上次入库
+        last_return = Reservation.objects.filter(
+            driver=request.user,
+            actual_return__isnull=False,
+            actual_return__lt=actual_time
+        ).order_by("-actual_return").first()
 
-    if action == 'departure':
-        if reservation.status != 'reserved':
-            return HttpResponseForbidden("当前预约不允许出库登记")
-        reservation.actual_departure = dt
-        reservation.status = 'out'
-        reservation.vehicle.status = 'out'
-        messages.success(request, "🚗 实际出库时间已登记，状态更新为“出库中”")
-    elif action == 'return':
-        if reservation.status != 'out':
-            return HttpResponseForbidden("当前预约不允许入库登记")
-        reservation.actual_return = dt
-        reservation.status = 'completed'
-        reservation.vehicle.status = 'available'
-        messages.success(request, "🅿️ 实际入库时间已登记，预约完成，车辆空闲中")
+        if last_return:
+            diff = actual_time - last_return.actual_return
+            if diff < timedelta(hours=10):
+                next_allowed = last_return.actual_return + timedelta(hours=10)
+                messages.error(request, f"距上次入库还未满10小时，请于 {next_allowed.strftime('%H:%M')} 后再试出库。")
+                return redirect("my_reservations")
+
+        # ✅ 更新状态
+        reservation.actual_departure = timezone.make_aware(actual_time)
+        reservation.status = "out"
+        reservation.save()
+        messages.success(request, "✅ 出库记录已保存。")
+        return redirect("my_reservations")
+
+    elif action_type == "return":
+        reservation.actual_return = timezone.make_aware(actual_time)
+
+        # ✅ 检查后续预约是否不足 10 小时，自动延后
+        next_res = Reservation.objects.filter(
+            driver=request.user,
+            date__gte=reservation.date,
+            status__in=['pending', 'reserved']
+        ).exclude(id=reservation.id).order_by("date", "start_time").first()
+
+        if next_res:
+            current_return = timezone.make_aware(actual_time)
+            next_start = timezone.make_aware(datetime.combine(next_res.date, next_res.start_time))
+            if next_start - current_return < timedelta(hours=10):
+                new_start = current_return + timedelta(hours=10)
+                next_res.date = new_start.date()
+                next_res.start_time = new_start.time()
+                next_res.save()
+                messages.warning(request, f"⚠️ 下次预约时间已自动顺延至 {new_start.strftime('%Y-%m-%d %H:%M')}")
+
+        reservation.status = "completed"
+        reservation.save()
+        messages.success(request, "✅ 入库记录已保存。")
+        return redirect("my_reservations")
+
     else:
-        return HttpResponseForbidden("未知操作类型")
+        messages.error(request, "❌ 无效的操作类型。")
+        return redirect("my_reservations")
 
-    reservation.vehicle.save()
-    reservation.save()
-    return redirect('my_reservations')
+@login_required
+def confirm_check_io_view(request, reservation_id):
+    reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
+    action = request.GET.get("action")
+
+    if action not in ['departure', 'return']:
+        return HttpResponseForbidden("非法操作类型")
+
+    default_time = timezone.localtime().strftime("%Y-%m-%dT%H:%M")  # 用于 datetime-local 输入默认值
+
+    return render(request, "vehicles/confirm_check_io.html", {
+        "reservation": reservation,
+        "action": action,
+        "default_time": default_time,
+    })
+
 
 @login_required
 def vehicle_status_with_photo(request):
@@ -915,8 +1039,61 @@ def reservation_home(request):
 def reservation_status(request):
     return render(request, 'vehicles/reservation_status.html')
 
-def create_reservation(request):
-    return render(request, 'vehicles/create_reservation.html')
+@login_required
+def create_reservation(request, vehicle_id):
+    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+
+    if request.method == "POST":
+        try:
+            # 获取 POST 字段
+            date_list_raw = request.POST.get("selected_dates")  # 字符串："2025-07-07,2025-07-08"
+            start_time_str = request.POST.get("start_time")  # "09:00"
+            end_time_str = request.POST.get("end_time")      # "21:00"
+            purpose = request.POST.get("purpose")
+
+            if not date_list_raw or not start_time_str or not end_time_str:
+                messages.error(request, "请输入完整预约信息。")
+                return redirect(request.path)
+
+            date_list = [d.strip() for d in date_list_raw.split(",")]
+            start_time = datetime.strptime(start_time_str, "%H:%M").time()
+            end_time = datetime.strptime(end_time_str, "%H:%M").time()
+
+            # 校验时间段不超过13小时
+            duration = (
+                datetime.combine(datetime.today(), end_time) -
+                datetime.combine(datetime.today(), start_time)
+            ).total_seconds() / 3600
+
+            if duration > 13:
+                messages.error(request, "预约时段不能超过13小时。")
+                return redirect(request.path)
+
+            # 循环创建多条预约记录
+            for date_str in date_list:
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+
+                start_dt = make_aware(datetime.combine(date_obj, start_time))
+                end_dt = make_aware(datetime.combine(date_obj, end_time))
+
+                Reservation.objects.create(
+                    user=request.user,
+                    vehicle=vehicle,
+                    start_datetime=start_dt,
+                    end_datetime=end_dt,
+                    purpose=purpose,
+                )
+
+            messages.success(request, f"成功创建 {len(date_list)} 条预约记录！")
+            return redirect('vehicle_status')
+
+        except Exception as e:
+            messages.error(request, f"发生错误：{str(e)}")
+            return redirect(request.path)
+
+    return render(request, 'vehicles/create_reservation.html', {
+        'vehicle': vehicle,
+    })
 
 def reservation_approval(request):
     return render(request, 'vehicles/reservation_approval.html')
