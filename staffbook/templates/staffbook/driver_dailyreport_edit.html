@@ -317,43 +317,44 @@ table.table tr.has-note td {
       <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
       <tbody id="empty-form-template" class="d-none">
         <tr class="report-item-row">
-          <!-- ✅ 加入隐藏 id 字段，避免“id 是必填项”错误 -->
-          <td colspan="12" class="d-none">
-            {{ formset.empty_form.id }}
-            {{ formset.empty_form.DELETE }}
-          </td>
+          <!-- ✅ 隐藏字段：id 和 DELETE 放到 tr 内部 -->
+          <input type="hidden" name="form-__prefix__-id" id="id_form-__prefix__-id">
+          <input type="hidden" name="form-__prefix__-DELETE" id="id_form-__prefix__-DELETE">
 
           <td class="row-number">__num__</td>
           <td>
-            {{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}
+            <input type="text" name="form-__prefix__-ride_time" class="form-control form-control-sm time-input">
           </td>
           <td>
-            {{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}
+            <input type="text" name="form-__prefix__-ride_from" class="form-control form-control-sm">
           </td>
           <td class="d-none">
-            {{ formset.empty_form.via|add_class:"form-control form-control-sm" }}
+            <input type="text" name="form-__prefix__-via" class="form-control form-control-sm">
           </td>
           <td class="d-none">
-            {{ formset.empty_form.ride_to|add_class:"form-control form-control-sm" }}
+            <input type="text" name="form-__prefix__-ride_to" class="form-control form-control-sm">
           </td>
           <td class="d-none">
-            {{ formset.empty_form.num_male|add_class:"form-control form-control-sm text-end" }}
+            <input type="number" name="form-__prefix__-num_male" class="form-control form-control-sm text-end">
           </td>
           <td class="d-none">
-            {{ formset.empty_form.num_female|add_class:"form-control form-control-sm text-end" }}
+            <input type="number" name="form-__prefix__-num_female" class="form-control form-control-sm text-end">
           </td>
           <td>
-            {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
+            <input type="number" name="form-__prefix__-meter_fee" class="form-control form-control-sm text-end meter-fee-input">
           </td>
           <td>
-            {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}
+            <select name="form-__prefix__-payment_method" class="form-select form-select-sm">
+              {% for key, label in formset.empty_form.fields.payment_method.choices %}
+              <option value="{{ key }}">{{ label }}</option>
+              {% endfor %}
+            </select>
           </td>
           <td class="text-center">
-            {{ formset.empty_form.is_flagged }}
+            <input type="checkbox" name="form-__prefix__-is_flagged">
           </td>
           <td>
-            {% if formset.empty_form.note.value %}📝{% endif %}
-            {{ formset.empty_form.note }}
+            <textarea name="form-__prefix__-note" class="form-control form-control-sm"></textarea>
           </td>
           <td>
             <div class="d-flex flex-row gap-1">
