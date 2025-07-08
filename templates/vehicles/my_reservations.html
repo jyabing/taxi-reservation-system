@@ -219,5 +219,21 @@ function showDepartureModal(button) {
   document.getElementById('actualDepartureInput').value = suggestTime;
   new bootstrap.Modal(document.getElementById('departureModal')).show();
 }
+
+function showReturnModal(reservationId) {
+  const modal = document.getElementById('returnModal');
+  if (!modal) {
+    console.error("入庫モーダルが見つかりません。");
+    return;
+  }
+
+  const now = new Date();
+  const suggestTime = now.toISOString().slice(0, 16);
+
+  document.getElementById('returnReservationIdInput').value = reservationId;
+  document.getElementById('actualReturnInput').value = suggestTime;
+
+  new bootstrap.Modal(modal).show();
+}
 </script>
 {% endblock %}

@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateRowNumbersAndIndexes();
   });
 
-  // ✅ 向下插入一行
+  // ✅ 向下插入一行（安全版本）
   document.addEventListener('click', function (e) {
     if (e.target.classList.contains('insert-below')) {
       const template = document.querySelector('#empty-form-template');
@@ -197,16 +197,29 @@ document.addEventListener('DOMContentLoaded', () => {
       const currentCount = parseInt(totalFormsInput.value);
       const currentRow = e.target.closest('tr');
 
-      const newHtml = template.innerHTML.replace(/__prefix__/g, currentCount).replace(/__num__/g, currentCount + 1);
-      const tempRow = document.createElement('tr');
-      tempRow.innerHTML = newHtml;
-      tempRow.classList.add('report-item-row');
+      const newHtml = template.innerHTML
+        .replace(/__prefix__/g, currentCount)
+        .replace(/__num__/g, currentCount + 1);
 
+      // ✅ 安全解析 HTML 字符串
+      const wrapper = document.createElement('tbody');
+      wrapper.innerHTML = newHtml;
+      const tempRow = wrapper.querySelector('tr');
+
+      // ✅ 插入真实 DOM
       currentRow.after(tempRow);
       bindRowEvents(tempRow);
-      totalFormsInput.value = currentCount + 1;
+      flatpickr(tempRow.querySelector('.time-input'), {
+        enableTime: true,
+        noCalendar: true,
+        dateFormat: 'H:i',
+        time_24hr: true,
+        locale: 'ja'
+      });
 
+      totalFormsInput.value = currentCount + 1;
       updateRowNumbersAndIndexes();
+      updateTotals();
     }
   });
 

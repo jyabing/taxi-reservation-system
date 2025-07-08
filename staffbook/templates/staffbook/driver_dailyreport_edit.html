@@ -317,7 +317,12 @@ table.table tr.has-note td {
       <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
       <tbody id="empty-form-template" class="d-none">
         <tr class="report-item-row">
-          {{ formset.empty_form.id }}
+          <!-- ✅ 加入隐藏 id 字段，避免“id 是必填项”错误 -->
+          <td colspan="12" class="d-none">
+            {{ formset.empty_form.id }}
+            {{ formset.empty_form.DELETE }}
+          </td>
+
           <td class="row-number">__num__</td>
           <td>
             {{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}

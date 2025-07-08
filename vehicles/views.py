@@ -672,7 +672,11 @@ def confirm_check_io(request):
     reservation_id = request.POST.get("reservation_id")
     action_type = request.POST.get("action_type")
     actual_time_str = request.POST.get("actual_time")
+
+    # ✅ 显式转换为 aware datetime（带时区）
     actual_time = datetime.strptime(actual_time_str, "%Y-%m-%dT%H:%M")
+    if timezone.is_naive(actual_time):
+        actual_time = timezone.make_aware(actual_time)
 
     reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
 
@@ -692,14 +696,14 @@ def confirm_check_io(request):
                 return redirect("my_reservations")
 
         # ✅ 更新状态
-        reservation.actual_departure = timezone.make_aware(actual_time)
+        reservation.actual_departure = actual_time
         reservation.status = "out"
         reservation.save()
         messages.success(request, "✅ 出库记录已保存。")
         return redirect("my_reservations")
 
     elif action_type == "return":
-        reservation.actual_return = timezone.make_aware(actual_time)
+        reservation.actual_return = actual_time
 
         # ✅ 检查后续预约是否不足 10 小时，自动延后
         next_res = Reservation.objects.filter(
@@ -709,10 +713,12 @@ def confirm_check_io(request):
         ).exclude(id=reservation.id).order_by("date", "start_time").first()
 
         if next_res:
-            current_return = timezone.make_aware(actual_time)
             next_start = timezone.make_aware(datetime.combine(next_res.date, next_res.start_time))
-            if next_start - current_return < timedelta(hours=10):
-                new_start = current_return + timedelta(hours=10)
+            if timezone.is_naive(next_start):
+                next_start = timezone.make_aware(next_start)
+
+            if next_start - actual_time < timedelta(hours=10):
+                new_start = actual_time + timedelta(hours=10)
                 next_res.date = new_start.date()
                 next_res.start_time = new_start.time()
                 next_res.save()
