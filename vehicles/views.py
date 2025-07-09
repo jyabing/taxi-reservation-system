@@ -32,7 +32,7 @@ from accounts.models import DriverUser
 from requests.exceptions import RequestException
 
 # 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
-from staffbook.models import Driver, DriverDailyReport, DriverDailyReportItem
+from dailyreport.models import Driver, DriverDailyReport, DriverDailyReportItem
 from vehicles.models import Reservation, Tip
 
 # ✅ 邮件通知工具
@@ -828,7 +828,7 @@ def vehicle_image_delete_view(request, vehicle_id, index):
 
 @login_required
 def my_stats_view(request):
-    from staffbook.models import DriverDailyReportItem  # <--- 新增或提前导入
+    from dailyreport.models import DriverDailyReportItem  # <--- 新增或提前导入
 
     today = timezone.localdate()
     default_month = today.replace(day=1)

@@ -48,10 +48,11 @@ INSTALLED_APPS = [
     
     # 你的 app
     'accounts.apps.AccountsConfig',  # ✅ 保留这个
-    'vehicles',
+    'vehicles',        # ✅ 自主配车系统（原 reservation）：预约、审批、出入库等
     'rangefilter',
-    'staffbook',
-    'carinfo',
+    'staffbook',        # ✅ 员工系统：人事台账、保险、资格证等
+    'dailyreport',     # ✅ 日报系统：乘务日报、统计、明细、出勤、分析
+    'carinfo',          # ✅ 车辆管理系统：台账、维修、照片等
     'django.contrib.humanize',
     'widget_tweaks',
 ]

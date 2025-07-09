@@ -21,11 +21,11 @@
 
 <!-- ✅ 导出按钮 -->
 <div class="mb-3">
-  <a href="{% url 'staffbook:export_dailyreports_csv' %}?month={{ month|date:'Y-m' }}"
+  <a href="{% url 'dailyreport:export_dailyreports_csv' %}?month={{ month|date:'Y-m' }}"
      class="btn btn-success">
     ⬇️ この月の乗務日報をCSVでダウンロード
   </a>
-  <a href="{% url 'staffbook:export_monthly_summary_csv' %}?month={{ target_month }}" class="btn btn-outline-primary">
+  <a href="{% url 'dailyreport:export_monthly_summary_csv' %}?month={{ target_month }}" class="btn btn-outline-primary">
   📤 月报CSVダウンロード（汇总版）
   </a>
 </div>
@@ -70,13 +70,13 @@
                 {% endif %}
               </td>
               <td class="d-flex flex-wrap gap-1">
-                <a href="{% url 'staffbook:driver_dailyreport_month' d.driver.id %}?month={{ d.month_str }}"
+                <a href="{% url 'dailyreport:driver_dailyreport_month' d.driver.id %}?month={{ d.month_str }}"
                    class="btn btn-sm btn-outline-primary">
                   ▶ 月報一覧を見る
                 </a>
                 {% if d.driver and d.driver.id %}
                   <a class="btn btn-outline-success btn-sm" title="この従業員の初回日報を作成"
-                    href="{% url 'staffbook:driver_dailyreport_add_selector' d.driver.id %}?month={{ d.month_str }}"> ➕ 新規作成
+                    href="{% url 'dailyreport:driver_dailyreport_add_selector' d.driver.id %}?month={{ d.month_str }}"> ➕ 新規作成
                   </a>
                 {% else %}
                   <span class="text-muted">作成不可</span>

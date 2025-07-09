@@ -1,11 +1,8 @@
-from django import forms
 from .models import (
-    Driver, DriverLicense, Accident, DriverDailyReport, DriverDailyReportItem,
-    DriverPayrollRecord, DriverReportImage, Reward, Insurance,
+    Driver, DriverLicense,
 )
-from django.forms import inlineformset_factory
-from vehicles.models import Reservation
-
+from django import forms
+from staffbook.models import Accident, Reward, DriverInsurance, DriverPayrollRecord # ✅ 保险、事故、奖励等模型
 
 # ✅ 通用样式自动添加工具函数
 def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
@@ -95,126 +92,6 @@ class DriverBasicForm(forms.ModelForm):
             'phone_number', 'photo', 'photo_date', 'remark'
         ]
 
-# ✅ 日报主表表单
-class DriverDailyReportForm(forms.ModelForm):
-    class Meta:
-        model  = DriverDailyReport
-        fields = ['vehicle', 'date', 'note', 'has_issue', 'status', 'clock_in', 'clock_out', 'gas_volume', 'mileage','deposit_amount','deposit_difference']
-        widgets = {
-            'vehicle': forms.HiddenInput(),
-            'status':     forms.HiddenInput(),
-            'date':       forms.DateInput(attrs={'type':'date','class':'form-control'}),
-            'note':       forms.Textarea(attrs={'class':'form-control auto-width-input','rows':2}),
-            'has_issue':  forms.CheckboxInput(attrs={'class':'form-check-input'}),
-            'clock_in':   forms.TimeInput(attrs={'type':'time','class':'form-control auto-width-input'}),
-            'clock_out':  forms.TimeInput(attrs={'type':'time','class':'form-control auto-width-input'}),
-            'gas_volume':  forms.NumberInput(attrs={'step':'0.01','class':'form-control auto-width-input','placeholder':'0.00 L'}),
-            'mileage':     forms.NumberInput(attrs={'step':'0.01','class':'form-control auto-width-input','placeholder':'0.00 KM'}),
-        }
-
-        def clean(self):
-            cleaned_data = super().clean()
-
-            # 获取前端输入的 "hh:mm" 格式字符串
-            break_time_str = self.data.get('break_time_input', '')
-            if break_time_str:
-                try:
-                    h, m = map(int, break_time_str.strip().split(':'))
-                    
-                    # 保存原始输入，不再额外加20分钟
-                    cleaned_data['休憩時間'] = timedelta(minutes=total_minutes)
-                except ValueError:
-                    self.add_error('break_time_input', '休憩時間の形式は「HH:MM」で入力してください')
-
-            return cleaned_data
-
-    def __init__(self, *args, **kwargs):
-        instance = kwargs.get('instance', None)
-        super().__init__(*args, **kwargs)
-
-        # 样式初始化
-        apply_form_control_style(self.fields)
-        self.fields['has_issue'].widget.attrs.update({'class': 'form-check-input'})
-
-        # ✅ 设置 vehicle 字段为只读
-        self.fields['vehicle'].disabled = True
-
-        # 只有在 GET（无 POST 数据）且有 instance 时，才做自动注入
-        if instance is not None and not self.data:
-            # ① 从 DriverDailyReport 拿到关联的 DriverUser
-            driver_user = instance.driver.user
-            if driver_user:
-                # ② 按日期筛选出当天所有已有 actual_departure 的 Reservation，再倒序取最新一条
-                res = (
-                    Reservation.objects
-                    .filter(
-                        driver=driver_user,
-                        #reservation_date=instance.date,
-                        #vehicle__isnull=False
-                        actual_departure__date=instance.date,
-                        actual_departure__isnull=False
-                    )
-                    .order_by('-actual_departure')
-                    .first()
-                )
-                # ③ 如果找到，就把时间注入到表单的 initial
-                if res:
-                    self.fields['clock_in'].initial  = res.actual_departure.time()
-                    if res.actual_return:
-                        self.fields['clock_out'].initial = res.actual_return.time()
-
-                    # ✅ 自动注入车辆字段
-                    if res.vehicle:
-                        self.fields['vehicle'].initial = res.vehicle
-
-        
-# ✅ 日报明细表单
-class DriverDailyReportItemForm(forms.ModelForm):
-    class Meta:
-        model = DriverDailyReportItem
-        fields = '__all__'
-        widgets = {
-            'ride_time': forms.TextInput(attrs={'class': 'ride-time-input auto-width-input'}),
-            'ride_from': forms.TextInput(attrs={'class': 'auto-width-input'}),
-            'via': forms.TextInput(attrs={'class': 'auto-width-input'}),
-            'ride_to': forms.TextInput(attrs={'class': 'auto-width-input'}),
-            'num_male': forms.NumberInput(attrs={'class': 'auto-width-input'}),
-            'num_female': forms.NumberInput(attrs={'class': 'auto-width-input'}),
-            'meter_fee': forms.NumberInput(attrs={
-                'step': '1',
-                'class': 'form-control form-control-sm text-end auto-width-input meter-fee-input',  # ← 就是这段
-                'type': 'number',
-                'step': '1',
-                'inputmode': 'numeric',
-                'pattern': '[0-9]*',
-            }),
-            'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
-            'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
-            'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),  # ✅ 已添加
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # ✅ 显式取消必填，避免“这个字段是必填项”错误
-        self.fields['num_male'].required = False
-        self.fields['num_female'].required = False
-
-# ✅ 明细表单集合
-ReportItemFormSet = inlineformset_factory(
-    DriverDailyReport,
-    DriverDailyReportItem,
-    form=DriverDailyReportItemForm,
-    extra=1,
-    can_delete=True,
-    max_num=40
-)
-
-# ✅ 日报上传图片
-class DriverReportImageForm(forms.ModelForm):
-    class Meta:
-        model = DriverReportImage
-        fields = ['image']
-
 # ✅ 司机个人信息编辑
 class DriverPersonalInfoForm(forms.ModelForm):
     class Meta:
@@ -247,9 +124,9 @@ class RewardForm(forms.ModelForm):
         }
 
 # ✅ 保险表单
-class InsuranceForm(forms.ModelForm):
+class DriverInsuranceForm(forms.ModelForm):
     class Meta:
-        model = Insurance
+        model = DriverInsurance
         fields = ['kind', 'join_date', 'number']
         widgets = {
             'join_date': forms.DateInput(attrs={'type': 'date'}),

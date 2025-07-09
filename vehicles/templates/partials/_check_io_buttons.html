@@ -1,0 +1,35 @@
+{# 出库 / 入库 / 删除 / 修正按钮统一模板 #}
+
+{% if r.status == 'pending' %}
+  <a href="{% url 'edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
+  <form method="post" action="{% url 'delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
+  </form>
+
+{% elif r.status == 'reserved' and not r.actual_departure %}
+  <a href="{% url 'edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
+  <form method="post" action="{% url 'delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
+  </form>
+  <button type="button" class="btn btn-sm btn-success"
+          onclick="openTimePopup({{ r.id }}, 'departure')">🚗 出庫</button>
+
+{% elif r.status == 'reserved' and r.actual_departure and not r.actual_return %}
+  <button type="button" class="btn btn-sm btn-warning"
+          onclick="openTimePopup({{ r.id }}, 'return')">🅿️ 入庫</button>
+
+{% elif r.status == 'out' and r.actual_departure and not r.actual_return %}
+  <button type="button" class="btn btn-sm btn-warning"
+          onclick="openTimePopup({{ r.id }}, 'return')">🅿️ 入庫</button>
+
+{% elif r.status == 'completed' %}
+  <span style="color:gray;">✅ 完了</span>
+
+{% elif r.status == 'canceled' %}
+  <span style="color:gray;">❌ キャンセル</span>
+
+{% else %}
+  <span style="color:#aaa;">—</span>
+{% endif %}

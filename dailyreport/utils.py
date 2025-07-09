@@ -1,6 +1,5 @@
 from decimal import Decimal
 from collections import defaultdict
-from django.contrib.auth.decorators import user_passes_test
 
 # ⛳ 共通关键词映射（用于模糊匹配支付方式）
 PAYMENT_KEYWORDS = {
@@ -105,18 +104,3 @@ def calculate_totals_from_queryset(queryset):
         totals[f"{k}_raw"] = raw[k]
         totals[f"{k}_split"] = split[k]
     return totals
-
-def apply_form_control_style(fields):
-    """
-    给所有表单字段添加 Bootstrap 的 'form-control' 样式（跳过 checkbox 和 radio）
-    """
-    for field in fields.values():
-        if not getattr(field.widget, 'input_type', '') in ['checkbox', 'radio']:
-            existing_class = field.widget.attrs.get('class', '')
-            field.widget.attrs['class'] = (existing_class + ' form-control').strip()
-
-def is_dailyreport_admin(user):
-    return user.is_superuser or getattr(user, 'is_dailyreport_admin', False)
-
-# 可选：用于视图装饰器
-dailyreport_admin_required = user_passes_test(is_dailyreport_admin)

@@ -32,7 +32,7 @@ class ReservationForm(forms.ModelForm):
         end_time = cleaned.get('end_time')
 
         if not all([driver, date, start_time, end_time]):
-            return cleaned
+            return cleaned  # 不足信息则不做校验
 
         # ✅ 判断是否跨日
         if end_time < start_time:
@@ -47,6 +47,7 @@ class ReservationForm(forms.ModelForm):
         start_dt = datetime.combine(date, start_time)
         end_dt = datetime.combine(end_date, end_time)
 
+        # ✅ 查找重叠时间的预约
         qs = Reservation.objects.filter(
             driver=driver,
             date__lte=end_date,
@@ -60,6 +61,7 @@ class ReservationForm(forms.ModelForm):
             if start_dt < r_end and end_dt > r_start:
                 raise forms.ValidationError("您在该时间段已有预约，不能重叠。")
 
+            # ✅ 间隔小于 10 小时
             gap = (start_dt - r_end).total_seconds() / 3600
             if 0 < gap < 10:
                 raise forms.ValidationError("两次预约必须间隔至少 10 小时。")
