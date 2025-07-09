@@ -1,0 +1,44 @@
+{# templates/partials/_check_io_popup.html #}
+<div id="popup" style="display:none;
+                      position:fixed;
+                      top:30%;
+                      left:35%;
+                      background:#fff;
+                      border:1px solid #ccc;
+                      padding:20px;
+                      z-index:1050;
+                      box-shadow: 0 0 12px rgba(0,0,0,0.15);">
+
+  <form method="post" action="{% url 'confirm_check_io' %}">
+    {% csrf_token %}
+    <input type="hidden" name="reservation_id" id="popup_reservation_id">
+    <input type="hidden" name="action_type"    id="popup_action_type">
+
+    <label for="popup_actual_time">实际时间：</label><br>
+    <input type="datetime-local" name="actual_time" id="popup_actual_time" class="form-control" required>
+
+    <div class="mt-3 d-flex justify-content-between">
+      <button type="submit" class="btn btn-primary">确认</button>
+      <button type="button" class="btn btn-secondary"
+              onclick="document.getElementById('popup').style.display='none'">
+        取消
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+function openTimePopup(reservationId, actionType, suggestTime = null) {
+  document.getElementById('popup_reservation_id').value = reservationId;
+  document.getElementById('popup_action_type').value = actionType;
+
+  if (suggestTime) {
+    document.getElementById('popup_actual_time').value = suggestTime;
+  } else {
+    const now = new Date();
+    document.getElementById('popup_actual_time').value = now.toISOString().slice(0, 16);
+  }
+
+  document.getElementById('popup').style.display = 'block';
+}
+</script>

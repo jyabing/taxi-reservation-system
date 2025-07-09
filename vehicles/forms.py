@@ -16,26 +16,33 @@ class ReservationForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        # ⛳️ 把 driver 从视图传进来（可选）
         self.request = kwargs.pop('request', None)
+        self.date = kwargs.pop('date', None)  # ✅ 从视图传入 date
         super().__init__(*args, **kwargs)
 
-        # ✅ 如果 instance 没有 driver，而外部传进来的 request.user 存在，就先写入 initial
         if not self.instance.pk and self.request:
             self.initial['driver'] = getattr(self.request, 'user', None)
 
     def clean(self):
         cleaned = super().clean()
 
-        # ✅ 优先用 instance 中的 driver，再回退到 initial 中的 driver
         driver = self.initial.get('driver')
-        date = cleaned.get('date')
-        end_date = cleaned.get('end_date')
+        date = self.initial.get('date') or getattr(self.instance, 'date', None)
         start_time = cleaned.get('start_time')
         end_time = cleaned.get('end_time')
 
-        if not all([driver, date, end_date, start_time, end_time]):
+        if not all([driver, date, start_time, end_time]):
             return cleaned
+
+        # ✅ 判断是否跨日
+        if end_time < start_time:
+            end_date = date + timedelta(days=1)
+        else:
+            end_date = date
+
+        # ✅ 存入 cleaned_data 中，供后续保存使用
+        cleaned['date'] = date
+        cleaned['end_date'] = end_date
 
         start_dt = datetime.combine(date, start_time)
         end_dt = datetime.combine(end_date, end_time)
@@ -58,6 +65,7 @@ class ReservationForm(forms.ModelForm):
                 raise forms.ValidationError("两次预约必须间隔至少 10 小时。")
 
         return cleaned
+
 
 class MonthForm(forms.Form):
     month = forms.DateField(

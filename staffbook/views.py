@@ -8,6 +8,7 @@ from django.utils.timezone import make_aware, is_naive
 from collections import defaultdict
 from carinfo.models import Car
 from vehicles.models import Reservation
+from django.forms import inlineformset_factory
 
 from .permissions import is_staffbook_admin
 from django.contrib import messages
@@ -62,14 +63,36 @@ def dailyreport_create(request):
 @user_passes_test(is_staffbook_admin)
 def dailyreport_edit(request, pk):
     report = get_object_or_404(DriverDailyReport, pk=pk)
+
+    ReportItemFormSet = inlineformset_factory(
+        DriverDailyReport,
+        DriverDailyReportItem,
+        form=DriverDailyReportItemForm,
+        extra=0,
+        can_delete=True
+    )
+
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
-        if form.is_valid():
+        formset = ReportItemFormSet(request.POST, instance=report)
+
+        if form.is_valid() and formset.is_valid():
+            print("🧪 cleaned_data:", formset.cleaned_data)
             form.save()
-            return redirect('staffbook:dailyreport_list')
+            formset.save()
+            messages.success(request, "保存成功！")
+            return redirect('staffbook:dailyreport_edit', pk=report.pk)
+        else:
+            messages.error(request, "保存失败，请检查输入内容")
     else:
         form = DriverDailyReportForm(instance=report)
-    return render(request, 'staffbook/driver_dailyreport_edit.html', {'form': form})
+        formset = ReportItemFormSet(instance=report)
+
+    return render(request, 'staffbook/driver_dailyreport_edit.html', {
+        'form': form,
+        'formset': formset,
+        'report': report
+    })
 
 @login_required
 def sales_thanks(request):

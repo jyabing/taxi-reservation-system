@@ -1,6 +1,7 @@
 import calendar, requests, random, os, json
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
+from .models import Reservation, Car as Vehicle
 
 from django import forms
 from decimal import Decimal, ROUND_HALF_UP
@@ -19,6 +20,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.conf import settings
 from django.core.paginator import Paginator
+from django.core.mail import send_mail
 from carinfo.models import Car
 
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
@@ -135,15 +137,15 @@ def vehicle_status_view(request):
     })
 
 @login_required
-def make_reservation_view(request, vehicle_id):
-    vehicle = get_object_or_404(Car, id=vehicle_id)
+def reserve_vehicle_view(request, car_id):
+    car = get_object_or_404(Car, id=car_id)
     min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
-    if vehicle.status == 'maintenance':
+    if car.status == 'maintenance':
         messages.error(request, "维修中车辆不可预约")
         return redirect('vehicle_status')
 
-    allow_submit = vehicle.status == 'available'
+    allow_submit = car.status == 'available'
 
     if request.method == 'POST':
         if not allow_submit:
@@ -151,7 +153,7 @@ def make_reservation_view(request, vehicle_id):
             return redirect('vehicle_status')
 
         form = ReservationForm(request.POST)
-        form.instance.driver = request.user  # ✅ 关键一行，避免 clean() 中访问 None 出错
+        form.instance.driver = request.user  # ✅ 避免 clean() 中访问 None 出错
         selected_dates_raw = request.POST.get('selected_dates', '')
         selected_dates = json.loads(selected_dates_raw) if selected_dates_raw else []
 
@@ -180,7 +182,7 @@ def make_reservation_view(request, vehicle_id):
                     # ✅ 创建预约
                     new_res = Reservation.objects.create(
                         driver=request.user,
-                        vehicle=vehicle,
+                        vehicle=car,
                         date=date,
                         end_date=end_date,
                         start_time=start_time,
@@ -190,7 +192,23 @@ def make_reservation_view(request, vehicle_id):
                     )
                     new_res.save()  # 🟢 显式调用 save 后，driver 字段才可安全访问
 
-                    print(f"✅ 创建成功: Driver={new_res.driver.username}, 车牌={vehicle.license_plate}, {start_dt} ~ {end_dt}")
+                    print(f"✅ 创建成功: Driver={new_res.driver.username}, 车牌={car.license_plate}, {start_dt} ~ {end_dt}")
+
+                    # ✅ 邮件通知管理员（每条预约单独通知）
+                    subject = "【新预约通知】车辆预约提交"
+                    message = (
+                        f"预约人：{request.user.get_full_name() or request.user.username}\n"
+                        f"车辆：{car.license_plate}（{getattr(car, 'model', '未登记型号')}）\n"
+                        f"日期：{date} ~ {end_date}  {start_time} - {end_time}\n"
+                        f"用途：{purpose}"
+                    )
+                    send_mail(
+                        subject,
+                        message,
+                        settings.DEFAULT_FROM_EMAIL,  # ✅ 使用 settings 中配置的发件人
+                        ['jiabing.msn@gmail.com'],     # ✅ 实际管理员收件人
+                        fail_silently=False
+                    )
 
                 except ValueError as e:
                     print(f"❌ 日期转换错误: {e}")
@@ -211,7 +229,7 @@ def make_reservation_view(request, vehicle_id):
         form = ReservationForm(initial={**initial, 'driver': request.user})
 
     return render(request, 'vehicles/reserve_vehicle.html', {
-        'vehicle': vehicle,
+        'vehicle': car,
         'form': form,
         'min_time': min_time,
         'allow_submit': allow_submit,
@@ -619,9 +637,15 @@ def edit_reservation_view(request, reservation_id):
         return HttpResponseForbidden("⛔️ 当前状态不可修改。")
 
     if request.method == 'POST':
-        form = ReservationForm(request.POST, instance=reservation)
+        form = ReservationForm(request.POST, instance=reservation, initial={'date': reservation.date, 'driver': reservation.driver})
+        
         if form.is_valid():
             cleaned = form.cleaned_data
+
+            # ✅ 加入调试打印语句
+            print("🧪 cleaned_data keys:", cleaned.keys())
+            print("🧪 cleaned_data values:", cleaned)
+
             start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
             end_dt = datetime.combine(cleaned['end_date'], cleaned['end_time'])
 
@@ -632,11 +656,17 @@ def edit_reservation_view(request, reservation_id):
                 # ✅ 防止 driver 为空
                 if not updated_res.driver:
                     updated_res.driver = request.user
+                updated_res.date = cleaned['date']         # 👈 必须明确写入
+                updated_res.end_date = cleaned['end_date'] # 👈 必须明确写入
                 updated_res.save()
                 messages.success(request, "✅ 预约已修改")
                 return redirect('my_reservations')
     else:
-        form = ReservationForm(instance=reservation)
+        form = ReservationForm(
+            instance=reservation,
+            request=request,
+            initial={'date': reservation.date, 'driver': reservation.driver}
+        )
 
     return render(request, 'vehicles/edit_reservation.html', {
         'form': form,

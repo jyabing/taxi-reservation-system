@@ -213,10 +213,6 @@ table.table tr.has-note td {
           <th class="row-number-header">#</th>
           <th style="white-space: nowrap;">時間</th>
           <th style="white-space: nowrap;">乗車地</th>
-          <th class="d-none">経由</th>
-          <th class="d-none">降車地</th>
-          <th class="d-none">男</th>
-          <th class="d-none">女</th>
           <th style="white-space: nowrap;">料金</th>
           <th style="white-space: nowrap;">支付</th>
           <th style="white-space: nowrap;">加亮</th>
@@ -242,34 +238,6 @@ table.table tr.has-note td {
                 <div class="text-danger small">{{ form.ride_from.errors.0 }}</div>
               {% endif %}
               {{ form.ride_from|add_class:"form-control form-control-sm" }}
-            </td>
-
-            <td style="min-width: 70px;" class="d-none">
-              {% if form.via.errors %}
-                <div class="text-danger small">{{ form.via.errors.0 }}</div>
-              {% endif %}
-              {{ form.via|add_class:"form-control form-control-sm" }}
-            </td>
-
-            <td style="min-width: 120px;" class="d-none">
-              {% if form.ride_to.errors %}
-                <div class="text-danger small">{{ form.ride_to.errors.0 }}</div>
-              {% endif %}
-              {{ form.ride_to|add_class:"form-control form-control-sm" }}
-            </td>
-
-            <td class="d-none">
-              {% if form.num_male.errors %}
-                <div class="text-danger small">{{ form.num_male.errors.0 }}</div>
-              {% endif %}
-              {{ form.num_male|add_class:"form-control form-control-sm text-end" }}
-            </td>
-
-            <td class="d-none">
-              {% if form.num_female.errors %}
-                <div class="text-danger small">{{ form.num_female.errors.0 }}</div>
-              {% endif %}
-              {{ form.num_female|add_class:"form-control form-control-sm text-end" }}
             </td>
 
             <td style="min-width: 70px;">
@@ -317,44 +285,27 @@ table.table tr.has-note td {
       <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
       <tbody id="empty-form-template" class="d-none">
         <tr class="report-item-row">
-          <!-- ✅ 隐藏字段：id 和 DELETE 放到 tr 内部 -->
-          <input type="hidden" name="form-__prefix__-id" id="id_form-__prefix__-id">
-          <input type="hidden" name="form-__prefix__-DELETE" id="id_form-__prefix__-DELETE">
-
+          {{ formset.empty_form.id }}
           <td class="row-number">__num__</td>
           <td>
-            <input type="text" name="form-__prefix__-ride_time" class="form-control form-control-sm time-input">
+            {{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}
           </td>
           <td>
-            <input type="text" name="form-__prefix__-ride_from" class="form-control form-control-sm">
+            {{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}
           </td>
-          <td class="d-none">
-            <input type="text" name="form-__prefix__-via" class="form-control form-control-sm">
-          </td>
-          <td class="d-none">
-            <input type="text" name="form-__prefix__-ride_to" class="form-control form-control-sm">
-          </td>
-          <td class="d-none">
-            <input type="number" name="form-__prefix__-num_male" class="form-control form-control-sm text-end">
-          </td>
-          <td class="d-none">
-            <input type="number" name="form-__prefix__-num_female" class="form-control form-control-sm text-end">
+          
+          <td>
+            {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
           </td>
           <td>
-            <input type="number" name="form-__prefix__-meter_fee" class="form-control form-control-sm text-end meter-fee-input">
-          </td>
-          <td>
-            <select name="form-__prefix__-payment_method" class="form-select form-select-sm">
-              {% for key, label in formset.empty_form.fields.payment_method.choices %}
-              <option value="{{ key }}">{{ label }}</option>
-              {% endfor %}
-            </select>
+            {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}
           </td>
           <td class="text-center">
-            <input type="checkbox" name="form-__prefix__-is_flagged">
+            {{ formset.empty_form.is_flagged }}
           </td>
           <td>
-            <textarea name="form-__prefix__-note" class="form-control form-control-sm"></textarea>
+            {% if formset.empty_form.note.value %}📝{% endif %}
+            {{ formset.empty_form.note }}
           </td>
           <td>
             <div class="d-flex flex-row gap-1">

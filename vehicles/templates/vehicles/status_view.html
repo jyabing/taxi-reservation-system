@@ -30,10 +30,22 @@
         <button class="btn btn-sm btn-outline-info ms-2" onclick="openCarModal({{ vehicle.id }})">最近预约</button>
       </td>
       <td>{{ vehicle.model }}</td>
+      
       <td class="text-start">
         {% include 'partials/_reservation_status.html' with vehicle=vehicle info=info selected_date=selected_date today=today %}
         {% include 'partials/_my_reservation_controls.html' with user_reservation=info.user_reservation %}
+
+        {% if info.user_reservation %}
+          {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
+            <button type="button" class="btn btn-success btn-sm mt-2"
+                    onclick="openTimePopup({{ info.user_reservation.id }}, 'departure')">🚗 出庫</button>
+          {% elif info.user_reservation.status == 'reserved' and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
+            <button type="button" class="btn btn-warning btn-sm mt-2"
+                    onclick="openTimePopup({{ info.user_reservation.id }}, 'return')">🅿️ 入庫</button>
+          {% endif %}
+        {% endif %}
       </td>
+
       <td style="white-space: pre-wrap;">{{ info.reserver_name|default:"—"|safe }}</td>
       <td style="white-space: pre-wrap; word-break: break-word;">{{ vehicle.notes|default:"—" }}</td>
     </tr>
@@ -67,4 +79,5 @@
 </script>
 
 {% include 'partials/_check_io_popup.html' %}
+<script src="{% static 'vehicles/js/check_io.js' %}"></script>
 {% endblock %}

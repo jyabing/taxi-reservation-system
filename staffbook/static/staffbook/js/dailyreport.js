@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     locale: "ja"
   });
 
-  // ✅ 休憩・実働時間計算
+  // ✅ 时长与休憩计算
   function updateDuration() {
     const inVal = document.querySelector("input[name='clock_in']")?.value;
     const outVal = document.querySelector("input[name='clock_out']")?.value;
@@ -18,8 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const breakDisplay = document.getElementById("break-time");
     const actualDisplay = document.getElementById("actual-work-time");
     const overtimeDisplay = document.getElementById("overtime");
-
-    if (!workDisplay || !breakDisplay || !actualDisplay || !overtimeDisplay) return;
 
     if (!inVal || !outVal) {
       workDisplay.textContent = breakDisplay.textContent = actualDisplay.textContent = overtimeDisplay.textContent = '--:--';
@@ -60,7 +58,6 @@ document.addEventListener('DOMContentLoaded', () => {
     overtimeDisplay.style.color = (overtimeMin >= 0) ? 'red' : 'blue';
   }
 
-  // ✅ 金額統計
   function updateTotals() {
     const PAYMENT_METHODS = {
       meter: 'メーター(水揚)',
@@ -89,7 +86,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const sum = {}, count = {};
-    Object.keys(PAYMENT_METHODS).forEach(k => { sum[k] = 0; count[k] = 0; });
+    Object.keys(PAYMENT_METHODS).forEach(k => {
+      sum[k] = 0;
+      count[k] = 0;
+    });
 
     document.querySelectorAll('tr.report-item-row').forEach(row => {
       const feeInput = row.querySelector('.meter-fee-input');
@@ -110,29 +110,32 @@ document.addEventListener('DOMContentLoaded', () => {
     Object.keys(PAYMENT_METHODS).forEach(key => {
       const total = document.getElementById(`total_${key}`);
       const bonus = document.getElementById(`bonus_${key}`);
-      if (total) total.textContent = sum[key].toLocaleString();
-      if (bonus) bonus.textContent = Math.floor(sum[key] * 0.05).toLocaleString();
+      if (total) total.textContent = sum[key].toLocaleString();  // ← ✅ 添加千位逗号
+      if (bonus) bonus.textContent = Math.floor(sum[key] * 0.05).toLocaleString();  // ← ✅ 添加千位逗号
     });
   }
 
-  // ✅ 绑定行内事件
   function bindRowEvents(row) {
+    // 绑定 flatpickr 时间选择器
     row.querySelectorAll('.time-input').forEach(input => flatpickr(input, {
       enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, locale: "ja"
     }));
 
+    // ✅ 削除 / 移除按钮逻辑
     const delBtn = row.querySelector('.confirm-delete, .remove-row');
     if (delBtn) {
+      console.log("✅ 绑定削除按钮:", delBtn);  // ← 调试提示，控制台能看到
       delBtn.addEventListener('click', () => {
         if (confirm('确定删除此行？')) {
           const checkbox = row.querySelector('input[name$="-DELETE"]');
           if (checkbox) checkbox.checked = true;
           row.style.display = 'none';
-          updateRowNumbersAndIndexes();
+          updateRowNumbersAndIndexes();  // 删除后更新行号
         }
       });
     }
 
+    // ✅ 行高亮（如果勾选了标记）
     const checkbox = row.querySelector('.mark-checkbox');
     if (checkbox) {
       if (checkbox.checked) row.classList.add('has-note');
@@ -142,12 +145,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ✅ 保证整数输入
+
+  // ✅ 工具函数
   function enforceIntegerInput() {
     document.querySelectorAll('input[name$="-meter_fee"]').forEach(input => {
       input.addEventListener('input', () => {
         input.value = input.value.replace(/[^\d]/g, '');
-        if (parseInt(input.value || '0') > 99999) input.value = '99999';
+        const max = 99999;
+        const val = parseInt(input.value || '0');
+        if (val > max) {
+          alert("金額不能超過 99999！");
+          input.value = max;
+        }
       });
     });
   }
@@ -161,21 +170,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ✅ 新增一行按钮
+  // ✅ 新增一行
   document.getElementById('add-row-btn')?.addEventListener('click', () => {
     const template = document.querySelector('#empty-form-template');
     const totalFormsInput = document.querySelector('input[name$="-TOTAL_FORMS"]');
     const tbody = document.querySelector('.report-table tbody');
     const currentCount = parseInt(totalFormsInput.value);
 
-    const newHtml = template.innerHTML
-      .replace(/form-__prefix__-/g, `form-${currentCount}-`)
-      .replace(/__prefix__/g, currentCount)
-      .replace(/__num__/g, currentCount + 1);
-
-    const wrapper = document.createElement('tbody');
-    wrapper.innerHTML = newHtml;
-    const tempRow = wrapper.querySelector('tr');
+    const newHtml = template.innerHTML.replace(/__prefix__/g, currentCount).replace(/__num__/g, currentCount + 1);
+    const tempRow = document.createElement('tr');
+    tempRow.innerHTML = newHtml;
     tempRow.classList.add('report-item-row');
 
     tbody.appendChild(tempRow);
@@ -193,29 +197,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const currentCount = parseInt(totalFormsInput.value);
       const currentRow = e.target.closest('tr');
 
-      const newHtml = template.innerHTML
-        .replace(/form-__prefix__-/g, `form-${currentCount}-`)
-        .replace(/__prefix__/g, currentCount)
-        .replace(/__num__/g, currentCount + 1);
-
-      const wrapper = document.createElement('tbody');
-      wrapper.innerHTML = newHtml;
-      const tempRow = wrapper.querySelector('tr');
+      const newHtml = template.innerHTML.replace(/__prefix__/g, currentCount).replace(/__num__/g, currentCount + 1);
+      const tempRow = document.createElement('tr');
+      tempRow.innerHTML = newHtml;
       tempRow.classList.add('report-item-row');
 
       currentRow.after(tempRow);
       bindRowEvents(tempRow);
-      flatpickr(tempRow.querySelector('.time-input'), {
-        enableTime: true, noCalendar: true, dateFormat: 'H:i', time_24hr: true, locale: 'ja'
-      });
-
       totalFormsInput.value = currentCount + 1;
+
       updateRowNumbersAndIndexes();
-      updateTotals();
     }
   });
 
-  // ✅ 初始化
+  // ✅ 初始化监听
   updateDuration();
   updateTotals();
   removeDecimalOnBlur();
@@ -236,19 +231,23 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('tr.report-item-row').forEach(bindRowEvents);
 });
 
-// ✅ 全行编号与索引更新函数
+
 function updateRowNumbersAndIndexes() {
   const rows = document.querySelectorAll('tr.report-item-row:not([style*="display: none"])');
   let visibleIndex = 0;
 
-  rows.forEach((row) => {
+  rows.forEach((row, i) => {
+    if (row.style.display === 'none') return;
+
+    // 更新左侧序号显示
     const numCell = row.querySelector('.row-number');
     if (numCell) numCell.textContent = visibleIndex + 1;
 
+    // 替换字段名中的索引
     row.querySelectorAll('input, select, textarea, label').forEach(el => {
       ['name', 'id', 'for'].forEach(attr => {
         if (el.hasAttribute(attr)) {
-          el.setAttribute(attr, el.getAttribute(attr).replace(/(form-)\d+(-)/g, `$1${visibleIndex}$2`));
+          el.setAttribute(attr, el.getAttribute(attr).replace(/-\d+-/, `-${visibleIndex}-`));
         }
       });
     });

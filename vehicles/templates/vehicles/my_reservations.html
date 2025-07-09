@@ -79,20 +79,13 @@
     </form>
     {% if r.status == 'reserved' and not r.actual_departure %}
       <button type="button" class="btn btn-sm btn-success"
-        onclick="showDepartureModal(this)"
-        data-id="{{ r.id }}"
-        {% with info=reservation_infos.r.id %}
-          {% if info.last_return %}
-            data-last-return="{{ info.last_return|date:'Y-m-d\\TH:i' }}"
-          {% endif %}
-        {% endwith %}
-      >🚗 出庫</button>
+        onclick="openTimePopup({{ r.id }}, 'departure')">🚗 出庫</button>
     {% endif %}
 
   {% elif r.status == 'reserved' and r.actual_departure and not r.actual_return %}
-    <button type="button" class="btn btn-sm btn-warning" onclick="showReturnModal({{ r.id }})">🅿️ 入庫</button>
+    <button type="button" class="btn btn-sm btn-warning" onclick="openTimePopup({{ r.id }})">🅿️ 入庫</button>
   {% elif r.status == 'out' and not r.actual_return %}
-    <button type="button" class="btn btn-sm btn-warning" onclick="showReturnModal({{ r.id }})">🅿️ 入庫</button>
+    <button type="button" class="btn btn-sm btn-warning" onclick="openTimePopup({{ r.id }})">🅿️ 入庫</button>
   {% elif r.status == 'completed' %}
     <span style="color:gray;">✅ 完了</span>
   {% elif r.status == 'canceled' %}
@@ -200,40 +193,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-function showDepartureModal(button) {
-  const id = button.getAttribute('data-id');
-  const lastReturn = button.getAttribute('data-last-return');
 
-  let suggestTime;
-  if (lastReturn) {
-    const baseTime = new Date(lastReturn);
-    baseTime.setHours(baseTime.getHours() + 10);
-    suggestTime = baseTime.toISOString().slice(0, 16);
-  } else {
-    const now = new Date();
-    suggestTime = now.toISOString().slice(0, 16);
-  }
+{% include 'partials/_check_io_popup.html' %}
+<script src="{% static 'vehicles/js/check_io.js' %}"></script>
 
-  document.getElementById('reservationIdInput').value = id;
-  document.getElementById('actualDepartureInput').value = suggestTime;
-  new bootstrap.Modal(document.getElementById('departureModal')).show();
-}
-
-function showReturnModal(reservationId) {
-  const modal = document.getElementById('returnModal');
-  if (!modal) {
-    console.error("入庫モーダルが見つかりません。");
-    return;
-  }
-
-  const now = new Date();
-  const suggestTime = now.toISOString().slice(0, 16);
-
-  document.getElementById('returnReservationIdInput').value = reservationId;
-  document.getElementById('actualReturnInput').value = suggestTime;
-
-  new bootstrap.Modal(modal).show();
-}
-</script>
 {% endblock %}
