@@ -1,8 +1,16 @@
 {# templates/partials/_messages.html #}
 {% if messages %}
-  <ul style="background:#fff3cd; border:1px solid #ffeeba; padding:10px; color:#856404; list-style:none; margin-bottom:20px;">
+  <div class="mb-3">
     {% for message in messages %}
-      <li>{{ message }}</li>
+      <div class="alert 
+        {% if message.tags %}
+          alert-{{ message.tags }}
+        {% else %}
+          alert-info
+        {% endif %}
+        mb-2" role="alert">
+        {{ message }}
+      </div>
     {% endfor %}
-  </ul>
+  </div>
 {% endif %}

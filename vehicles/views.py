@@ -72,6 +72,9 @@ def vehicle_detail(request, pk):
 
 @login_required
 def vehicle_status_view(request):
+    # ✅ 清空旧 messages（避免预约页跳转带入错误提示）
+    list(messages.get_messages(request))  # 消耗掉所有旧消息
+
     date_str = request.GET.get('date')
     selected_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else timezone.localdate()
     reservations = Reservation.objects.filter(date=selected_date)
@@ -82,20 +85,16 @@ def vehicle_status_view(request):
     for vehicle in vehicles:
         res_list = reservations.filter(vehicle=vehicle).order_by('start_time')
 
-        # ✅ 如果是过去的日期，则不能预约
+        # 默认状态
         if selected_date < timezone.localdate():
             status = 'expired'
         else:
             status = 'available'
 
-        # 是否有出库中
-        active = res_list.filter(
-            status='out', actual_departure__isnull=False, actual_return__isnull=True
-        )
-        if active.exists():
+        # 出库中优先
+        if res_list.filter(status='out', actual_departure__isnull=False, actual_return__isnull=True).exists():
             status = 'out'
         else:
-            # 是否有未出库的预约
             future_reserved = res_list.filter(status='reserved', actual_departure__isnull=True)
             for r in future_reserved:
                 start_dt = timezone.make_aware(datetime.combine(r.date, r.start_time))
@@ -109,20 +108,13 @@ def vehicle_status_view(request):
                     status = 'reserved'
                     break
 
-        # 当前登录用户的预约记录（用于按钮）
+        # 构造显示数据
         user_reservation = res_list.filter(driver=request.user).first()
-
-        # 新增：查找当日该车的预约者姓名（取第一条预约）
-        #r = res_list.first()
-        #reserver_name = r.driver.get_full_name() if r else ''
-        names = res_list.values_list('driver__first_name', 'driver__last_name')
-        #reserver_names = []
-        reserver_labels = []
-        for r in res_list:
-            name = (r.driver.first_name or '') + (r.driver.last_name or '')
-            label = f"{r.start_time.strftime('%H:%M')}~{r.end_time.strftime('%H:%M')} {name}"
-            reserver_labels.append(label)
-        reserver_name = '<br>'.join(reserver_labels) if reserver_labels else ''        
+        reserver_labels = [
+            f"{r.start_time.strftime('%H:%M')}~{r.end_time.strftime('%H:%M')} {(r.driver.first_name or '') + (r.driver.last_name or '')}"
+            for r in res_list
+        ]
+        reserver_name = '<br>'.join(reserver_labels) if reserver_labels else ''
 
         status_map[vehicle] = {
             'status': status,
@@ -130,10 +122,14 @@ def vehicle_status_view(request):
             'reserver_name': reserver_name,
         }
 
+    # ✅ 只在真正所有车辆都不可预约时才提示
+    if not any(info['status'] == 'available' for info in status_map.values()):
+        messages.warning(request, "当前车辆状态不可预约，请选择其他车辆")
+
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
-        'today': localdate(),  # ✅ 加上 today 给模板组件比较
+        'today': localdate(),
     })
 
 @login_required
@@ -141,19 +137,9 @@ def reserve_vehicle_view(request, car_id):
     car = get_object_or_404(Car, id=car_id)
     min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
-    if car.status == 'maintenance':
-        messages.error(request, "维修中车辆不可预约")
-        return redirect('vehicle_status')
-
-    allow_submit = car.status == 'available'
-
     if request.method == 'POST':
-        if not allow_submit:
-            messages.error(request, "当前车辆状态不可预约，请选择其他车辆")
-            return redirect('vehicle_status')
-
         form = ReservationForm(request.POST)
-        form.instance.driver = request.user  # ✅ 避免 clean() 中访问 None 出错
+        form.instance.driver = request.user  # 必须设置 driver 否则 clean() 可能报错
         selected_dates_raw = request.POST.get('selected_dates', '')
         selected_dates = json.loads(selected_dates_raw) if selected_dates_raw else []
 
@@ -168,18 +154,28 @@ def reserve_vehicle_view(request, car_id):
                     date = datetime.strptime(date_str, '%Y-%m-%d').date()
                     start_dt = datetime.combine(date, start_time)
 
-                    # ⏱️ 跨日处理
+                    # 跨日处理
                     if end_time <= start_time:
                         end_date = date + timedelta(days=1)
                     else:
                         end_date = date
-
                     end_dt = datetime.combine(end_date, end_time)
-                    if end_dt <= start_dt:
-                        print(f"⚠️ 跳过非法时间段: {start_dt} ~ {end_dt}")
+
+                    # 冲突检查（避免预约同一车、时间段重叠）
+                    conflict_exists = Reservation.objects.filter(
+                        vehicle=car,
+                        date__lte=end_date,
+                        end_date__gte=date,
+                        start_time__lt=end_time,
+                        end_time__gt=start_time,
+                        status__in=['reserved', 'out']
+                    ).exists()
+
+                    if conflict_exists:
+                        messages.warning(request, f"{date} 已存在预约冲突，已跳过。")
                         continue
 
-                    # ✅ 创建预约
+                    # 创建预约
                     new_res = Reservation.objects.create(
                         driver=request.user,
                         vehicle=car,
@@ -188,13 +184,11 @@ def reserve_vehicle_view(request, car_id):
                         start_time=start_time,
                         end_time=end_time,
                         purpose=purpose,
-                        status='pending'
+                        status='pending',
                     )
-                    new_res.save()  # 🟢 显式调用 save 后，driver 字段才可安全访问
+                    new_res.save()
 
-                    print(f"✅ 创建成功: Driver={new_res.driver.username}, 车牌={car.license_plate}, {start_dt} ~ {end_dt}")
-
-                    # ✅ 邮件通知管理员（每条预约单独通知）
+                    # 邮件通知管理员
                     subject = "【新预约通知】车辆预约提交"
                     message = (
                         f"预约人：{request.user.get_full_name() or request.user.username}\n"
@@ -205,10 +199,12 @@ def reserve_vehicle_view(request, car_id):
                     send_mail(
                         subject,
                         message,
-                        settings.DEFAULT_FROM_EMAIL,  # ✅ 使用 settings 中配置的发件人
-                        ['jiabing.msn@gmail.com'],     # ✅ 实际管理员收件人
+                        settings.DEFAULT_FROM_EMAIL,
+                        ['jiabing.msn@gmail.com'],
                         fail_silently=False
                     )
+
+                    print(f"✅ 创建成功: {car.license_plate} @ {start_dt} ~ {end_dt}")
 
                 except ValueError as e:
                     print(f"❌ 日期转换错误: {e}")
@@ -216,7 +212,6 @@ def reserve_vehicle_view(request, car_id):
 
             messages.success(request, "✅ 已成功提交预约记录！")
             return redirect('vehicle_status')
-
         else:
             messages.error(request, "请填写所有字段，并选择预约日期（最多7天）")
 
@@ -232,7 +227,6 @@ def reserve_vehicle_view(request, car_id):
         'vehicle': car,
         'form': form,
         'min_time': min_time,
-        'allow_submit': allow_submit,
     })
 
 @login_required
