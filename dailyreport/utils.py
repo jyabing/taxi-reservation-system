@@ -1,7 +1,8 @@
 from decimal import Decimal
 from collections import defaultdict
+from django import forms
 
-# ⛳ 共通关键词映射（用于模糊匹配支付方式）
+# ⛳ 支付方式关键字与费率配置
 PAYMENT_KEYWORDS = {
     'qr':        ['qr', 'コード', '扫码', 'barcode', 'wechat', 'paypay', '支付宝', 'aupay', 'line', 'スマホ'],
     'kyokushin': ['京交信タクチケ'],
@@ -9,98 +10,95 @@ PAYMENT_KEYWORDS = {
     'kyotoshi':  ['京都市'],
 }
 
-# ✅ 用于表单页：FormSet 汇总
-def calculate_totals_from_formset(data_iter):
-    result = {}
-    rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':        Decimal('0.05'),
-    }
+PAYMENT_RATES = {
+    'meter':     Decimal('0.9091'),
+    'cash':      Decimal('0'),
+    'uber':      Decimal('0.05'),
+    'didi':      Decimal('0.05'),
+    'credit':    Decimal('0.05'),
+    'kyokushin': Decimal('0.05'),
+    'omron':     Decimal('0.05'),
+    'kyotoshi':  Decimal('0.05'),
+    'qr':        Decimal('0.05'),
+}
 
-    for key in rates:
-        result[f"{key}_raw"] = Decimal('0')
-        result[f"{key}_split"] = Decimal('0')
 
-    for item in data_iter:
+# ✅ 清理并识别支付方式
+def resolve_payment_method(raw_payment: str) -> str:
+    if not raw_payment:
+        return ""
+
+    cleaned = (
+        raw_payment.replace("　", "")
+                   .replace("（", "")
+                   .replace("）", "")
+                   .replace("(", "")
+                   .replace(")", "")
+                   .replace("\n", "")
+                   .strip()
+                   .lower()
+    )
+
+    for key, keywords in PAYMENT_KEYWORDS.items():
+        if any(keyword.lower() in cleaned for keyword in keywords):
+            return key
+
+    if cleaned in PAYMENT_RATES:
+        return cleaned
+
+    return ""  # 未识别支付方式
+
+
+# ✅ 共通合计逻辑（传入 (fee, method) 数据对）
+def calculate_totals_from_items(item_iterable):
+    raw_totals   = defaultdict(lambda: Decimal('0'))
+    split_totals = defaultdict(lambda: Decimal('0'))
+
+    for fee, method in item_iterable:
+        fee = fee or Decimal('0')
+        key = resolve_payment_method(method)
+
+        # 总是加入 meter 的统计
+        raw_totals['meter']   += fee
+        split_totals['meter'] += fee * PAYMENT_RATES['meter']
+
+        if key in PAYMENT_RATES:
+            raw_totals[key]   += fee
+            split_totals[key] += fee * PAYMENT_RATES[key]
+
+    # 返回标准化键名：xxx_raw / xxx_split
+    totals = {}
+    for k in PAYMENT_RATES:
+        totals[f"{k}_raw"]   = raw_totals[k]
+        totals[f"{k}_split"] = split_totals[k]
+    return totals
+
+
+# ✅ 表单页用：从 FormSet cleaned_data 计算
+def calculate_totals_from_formset(form_data_list):
+    pairs = []
+    for item in form_data_list:
         if item.get('DELETE'):
             continue
-
-        fee = item.get('meter_fee') or Decimal('0')
+        fee = item.get('meter_fee')
         method = item.get('payment_method')
-
-        # ✅ 无论支付方式如何，都加总至 meter_raw 和 meter_split
-        result["meter_raw"] += fee
-        result["meter_split"] += fee * rates['meter']
-
-        if method in rates:
-            result[f"{method}_raw"] += fee
-            result[f"{method}_split"] += (fee * rates[method])
-
-    return result
+        pairs.append((fee, method))
+    return calculate_totals_from_items(pairs)
 
 
-# ✅ 用于 overview 页：QuerySet 汇总
+# ✅ 数据库页用：从 QuerySet 计算
 def calculate_totals_from_queryset(queryset):
-    rates = {
-        'meter':     Decimal('0.9091'),
-        'cash':      Decimal('0'),
-        'uber':      Decimal('0.05'),
-        'didi':      Decimal('0.05'),
-        'credit':    Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':        Decimal('0.05'),
-    }
-
-    raw   = defaultdict(lambda: Decimal('0'))
-    split = defaultdict(lambda: Decimal('0'))
-
-    print("🚨 当前获取记录数：", len(queryset))
+    pairs = []
     for item in queryset:
-        print("🔎 支払方式：", item.payment_method, "金額：", item.meter_fee)
-        amt = item.meter_fee or Decimal('0')
-        pay = item.payment_method or ''
+        fee = getattr(item, 'meter_fee', Decimal('0'))
+        method = getattr(item, 'payment_method', '')
+        pairs.append((fee, method))
+    return calculate_totals_from_items(pairs)
 
-        pay_clean = (
-            pay.replace("　", "")
-               .replace("（", "")
-               .replace("）", "")
-               .replace("(", "")
-               .replace(")", "")
-               .replace("\n", "")
-               .strip()
-               .lower()
-        )
-
-        raw['meter'] += amt
-        split['meter'] += amt * rates['meter']
-
-        print(f"🔍 原始: '{pay}' -> clean: '{pay_clean}'")
-
-        matched = False
-        for key, keywords in PAYMENT_KEYWORDS.items():
-            if any(keyword.lower() in pay_clean for keyword in keywords):
-                print(f"✅ 匹配成功: {key} <- {pay_clean}")
-                raw[key] += amt
-                split[key] += amt * rates[key]
-                matched = True
-                break
-
-        if not matched and pay_clean in rates:
-            print(f"📌 直接命中 key: {pay_clean}")
-            raw[pay_clean] += amt
-            split[pay_clean] += amt * rates[pay_clean]
-
-    totals = {}
-    for k in rates:
-        totals[f"{k}_raw"] = raw[k]
-        totals[f"{k}_split"] = split[k]
-    return totals
+# ✅ 通用样式工具：为所有字段添加 Bootstrap class
+def apply_form_control_style(fields):
+    for name, field in fields.items():
+        widget = field.widget
+        if not isinstance(widget, (forms.CheckboxInput, forms.RadioSelect, forms.HiddenInput)):
+            existing_class = widget.attrs.get('class', '')
+            widget.attrs['class'] = f"{existing_class} form-control".strip()

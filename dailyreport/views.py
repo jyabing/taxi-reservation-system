@@ -1,9 +1,11 @@
 import datetime
 
 from django.contrib.auth.decorators import user_passes_test, login_required
+from django.contrib import messages
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
+from django.utils import timezone
 from django.db.models import Sum, Case, When, F, DecimalField, Q
 
 from .models import DriverDailyReport, DriverDailyReportItem
@@ -13,6 +15,7 @@ from staffbook.services import get_driver_info
 from staffbook.utils import is_dailyreport_admin
 from staffbook.models import Driver
 
+from vehicles.models import Reservation
 
 from .utils import (
     calculate_totals_from_formset,
@@ -21,6 +24,7 @@ from .utils import (
 )
 
 from decimal import Decimal, ROUND_HALF_UP
+from calendar import monthrange, month_name
 
 
 
@@ -766,7 +770,14 @@ def dailyreport_overview(request):
     }
 
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
-    driver_qs = Driver.objects.all()
+    first_day_of_month = month.replace(day=1)
+
+    # ✅ 筛选未离职或离职日期在本月之后的司机
+    driver_qs = Driver.objects.filter(
+        Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day_of_month)
+    )
+
+    # ✅ 上方已经定义了 driver_qs，直接在这里加关键字过滤
     if keyword:
         driver_qs = driver_qs.filter(name__icontains=keyword)
 

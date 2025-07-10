@@ -8,7 +8,7 @@
     <div class="card-header bg-white" style="font-size:1.3em;">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h4 class="mb-0"><strong>{{ driver.name }}</strong>  {{ selected_month }}的日報</h4>
-        <a href="{% url 'staffbook:driver_dailyreport_add_selector' driver.id %}?month={{ selected_month }}" class="btn btn-outline-primary">＋この月の乗務日報</a>
+        <a href="{% url 'dailyreport:driver_dailyreport_add_selector' driver.id %}?month={{ selected_month }}" class="btn btn-outline-primary">＋この月の乗務日報</a>
         <a href="{% url 'staffbook:driver_basic_info' driver.id %}" class="btn btn-outline-secondary">
     ← {{ driver.name }}さんの基本情報へ戻る
         </a>
@@ -48,8 +48,8 @@
             <td>¥{{ report.total_meter_fee|floatformat:0|intcomma }}</td>
             <td>{{ report.note|default:"" }}</td>
             <td>
-              <a href="{% url 'staffbook:driver_dailyreport_edit' driver.id report.id %}">编辑</a>
-              <a href="{% url 'staffbook:driver_dailyreport_delete' driver.id report.id %}">删除</a>
+              <a href="{% url 'dailyreport:driver_dailyreport_edit' driver.id report.id %}">编辑</a>
+              <a href="{% url 'dailyreport:driver_dailyreport_delete' driver.id report.id %}">删除</a>
             </td>
             
           </tr>

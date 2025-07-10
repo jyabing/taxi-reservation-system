@@ -3,8 +3,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 
-import datetime
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 from carinfo.models import Car
 from staffbook.models import Driver

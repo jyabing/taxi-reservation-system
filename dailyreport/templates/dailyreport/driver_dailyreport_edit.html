@@ -105,7 +105,7 @@ table.table tr.has-note td {
     </div>
   {% endif %}
 
-  <form method="post" action="{% url 'staffbook:driver_dailyreport_edit' driver_id=driver_id report_id=report.id %}" autocomplete="off">
+  <form method="post" action="{% url 'dailyreport:driver_dailyreport_edit' driver_id=driver_id report_id=report.id %}" autocomplete="off">
     {% csrf_token %}
     {{ form.status.as_hidden }}
     {{ form.date.as_hidden }}
@@ -151,18 +151,21 @@ table.table tr.has-note td {
           </td>
           <td id="work-duration">--:--</td> <!--勤務時間-->
 
-          <!-- ✅ 修改休憩時間 -->
-          <td>
-              <input type="text" name="break_time_input" id="break-time-input"
-                  class="form-control form-control-sm text-center"
-                  maxlength="5" pattern="^\d{1,2}:\d{2}$"
-                  style="max-width:90px;"
-                  placeholder="0:00"
-                  value="{{ break_time_h }}:{{ break_time_m }}">
-                  <div class="form-text mt-1">+20分</div>
+          <!-- ✅ 休憩時間输入 -->
+          <td id="break-time">
+            <input type="text" name="break_time_input" id="break-time-input"
+                class="form-control form-control-sm text-center"
+                maxlength="5" pattern="^\d{1,2}:\d{2}$"
+                style="max-width:90px;" placeholder="0:00"
+                value="{{ break_time_h }}:{{ break_time_m }}">
 
-                  <!-- ✅ 新增隐藏字段 -->
-                  <input type="hidden" name="break_time_plus20" id="break-time-plus20">
+            <!-- ✅ 显示「実休憩 +20分」 -->
+            <div class="form-text mt-1 text-muted">
+              実休憩: <span id="break-time-display">--:--</span>
+            </div>
+
+            <!-- ✅ 隐藏字段（自动填入 20分后时间） -->
+            <input type="hidden" name="break_time_plus20" id="break-time-plus20">
           </td>
 
           <!-- 実働時間 -->
@@ -175,7 +178,7 @@ table.table tr.has-note td {
           </td>
 
           <!-- 残業時間 -->
-          <td class="text-danger text-center">{{ form.instance.残業時間|format_duration }}</td>
+          <td class="text-danger text-center" id="overtime">{{ form.instance.残業時間|format_duration }}</td>
           
           <td style="max-width:90px;">{{ form.gas_volume|add_class:"form-control form-control-sm text-end" }}</td>
           <td >{{ form.mileage|add_class:"form-control form-control-sm text-end" }}</td>
@@ -271,7 +274,7 @@ table.table tr.has-note td {
               <div class="d-flex flex-row gap-1">
                 {% if form.instance.pk %}
                   {{ form.DELETE }}
-                  <button type="button" class="btn btn-sm btn-danger confirm-delete">削除</button>
+                  <button type="button" class="btn btn-sm btn-danger delete-row">削除</button>
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
                 {% endif %}
@@ -285,33 +288,23 @@ table.table tr.has-note td {
       <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
       <tbody id="empty-form-template" class="d-none">
         <tr class="report-item-row">
-          {{ formset.empty_form.id }}
           <td class="row-number">__num__</td>
-          <td>
-            {{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}
+          <td>{{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
+          <td>{{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}</td>
+          <td>{{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}</td>
+          <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}</td>
+          <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
+          <td>{{ formset.empty_form.note|add_class:"form-control" }}</td>
+
+          <!-- 把隐藏字段放到一个 display:none 的 <td> 里 -->
+          <td style="display:none">
+            {{ formset.empty_form.id }}
+            {{ formset.empty_form.DELETE }}
           </td>
-          <td>
-            {{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}
-          </td>
-          
-          <td>
-            {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
-          </td>
-          <td>
-            {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}
-          </td>
-          <td class="text-center">
-            {{ formset.empty_form.is_flagged }}
-          </td>
-          <td>
-            {% if formset.empty_form.note.value %}📝{% endif %}
-            {{ formset.empty_form.note }}
-          </td>
-          <td>
-            <div class="d-flex flex-row gap-1">
-              <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
-              <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下插入行</button>
-            </div>
+
+          <td style="white-space:nowrap;">
+            <button type="button" class="btn btn-danger btn-sm delete-row">削除</button>
+            <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下插入行</button>
           </td>
         </tr>
       </tbody>
@@ -339,7 +332,7 @@ table.table tr.has-note td {
 {% block extra_js %}
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
-  <script src="{% static 'staffbook/js/dailyreport.js' %}"></script>
+  <script src="{% static 'dailyreport/js/dailyreport.js' %}"></script>
   <style>
     table.table tr.has-note td,
     table.table tr.has-note {

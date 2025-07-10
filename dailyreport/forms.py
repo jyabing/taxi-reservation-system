@@ -3,7 +3,7 @@ from django import forms
 from django.forms import inlineformset_factory
 from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage
 from vehicles.models import Reservation  # 如果你用了 Reservation 模型
-# from staffbook.utils import apply_form_control_style  # 如果你有这个工具函数
+from dailyreport.utils import apply_form_control_style  # 如果你有这个工具函数
 #from dailyreport.forms import DriverDailyReportForm, DriverDailyReportItemForm
 
 # ✅ 主表：编辑日报基本信息（出勤时间、备注、车辆等）
