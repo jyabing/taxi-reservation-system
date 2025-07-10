@@ -9,9 +9,9 @@
     <a href="{% url 'profile' %}">👤 我的资料</a>
 
     <!-- ✅ 加上 class="mobile-hidden" -->
-    <a href="{% url 'vehicle_status' %}" class="mobile-hidden">🚗 车辆状态</a>
-    <a href="{% url 'weekly_overview' %}" class="mobile-hidden">📅 一周预约概览</a>
-    <a href="{% url 'my_reservations' %}" class="mobile-hidden">📋 我的预约</a>
+    <a href="{% url 'vehicle_status' %}">🚗 车辆状态</a>
+    <a href="{% url 'weekly_overview' %}">📅 一周预约概览</a>
+    <a href="{% url 'my_reservations' %}">📋 我的预约</a>
 
     <!-- ✅ 配车系统管理员 -->
     {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
