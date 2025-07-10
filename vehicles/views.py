@@ -556,8 +556,14 @@ def my_reservations_view(request):
 
     tips = Tip.objects.filter(is_active=True).order_by('-created_at')
 
-    # ✅ 获取通知内容
+    # 仅用于走马灯通知
+    notice_message = None
     notice = SystemNotice.objects.filter(is_active=True).order_by('-created_at').first()
+    if notice:
+        notice_message = notice.message
+
+    # 用于页面内部的 tips（如果你之后还要用）
+    tips = Tip.objects.filter(is_active=True).order_by('-created_at')
 
     return render(request, 'vehicles/my_reservations.html', {
         'page_obj': page_obj,

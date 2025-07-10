@@ -27,34 +27,39 @@
     font-weight: 600;
   }
   .marquee-container {
-  background-color: #fff3cd;
-  color: #856404;
-  padding: 8px 0;
-  overflow: hidden;
-  position: relative;
-  border-bottom: 1px solid #ffeeba;
-  font-weight: bold;
-  font-size: 15px;
-  white-space: nowrap;
-}
-.marquee-content {
-  display: inline-block;
-  padding-left: 100%;
-  animation: scroll-left 15s linear infinite;
-}
-@keyframes scroll-left {
-  0%   { transform: translateX(0%); }
-  100% { transform: translateX(-100%); }
-}
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    background: #fff8e1;
+    border-bottom: 1px solid #ffe58f;
+    padding: 8px 0;
+    font-size: 15px;
+    color: #d48806;
+    font-weight: 500;
+    position: relative;
+  }
+
+  .marquee-content {
+    display: inline-block;
+    padding-left: 100%;
+    animation: scroll-left 80s linear infinite;
+  }
+
+  @keyframes scroll-left {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-100%);
+    }
+  }
 </style>
 
 <!-- ✅ 滚动通知条 -->
-{% if tips %}
+{% if notice_message %}
   <div class="marquee-container">
-    <div class="marquee-content" id="marqueeContent">
-      {% for tip in tips %}
-        📢 {{ tip.content }}&nbsp;&nbsp;&nbsp;&nbsp;
-      {% endfor %}
+    <div class="marquee-content">
+      📢 {{ notice_message }}
     </div>
   </div>
 {% endif %}
