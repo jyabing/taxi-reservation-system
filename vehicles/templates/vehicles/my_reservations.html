@@ -49,10 +49,12 @@
 </style>
 
 <!-- ✅ 滚动通知条 -->
-{% if notice_message %}
+{% if tips %}
   <div class="marquee-container">
-    <div class="marquee-content">
-      📢 {{ notice_message }}
+    <div class="marquee-content" id="marqueeContent">
+      {% for tip in tips %}
+        📢 {{ tip.content }}&nbsp;&nbsp;&nbsp;&nbsp;
+      {% endfor %}
     </div>
   </div>
 {% endif %}

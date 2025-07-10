@@ -11,7 +11,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponseRedirect, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
 from django.urls import reverse
-from django.utils.timezone import now, make_aware, localdate
+from django.utils.timezone import now, make_aware, localdate, is_naive
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models.functions import Cast
@@ -508,15 +508,23 @@ def my_reservations_view(request):
         info = {}
 
         # 上次入库
+        start_dt = datetime.combine(r.date, r.start_time)
+        if is_naive(start_dt):
+            start_dt = make_aware(start_dt)
+
         last_return = Reservation.objects.filter(
             driver=r.driver,
             actual_return__isnull=False,
-            actual_return__lt=datetime.combine(r.date, r.start_time)
+            actual_return__lt=start_dt
         ).order_by('-actual_return').first()
 
         if last_return:
-            diff = datetime.combine(r.date, r.start_time) - last_return.actual_return
-            info['last_return'] = last_return.actual_return
+            last_return_dt = last_return.actual_return
+            if is_naive(last_return_dt):
+                last_return_dt = make_aware(last_return_dt)
+
+            diff = start_dt - last_return_dt
+            info['last_return'] = last_return_dt
             info['diff_from_last_return'] = round(diff.total_seconds() / 3600, 1)
 
         # 下次预约
@@ -529,6 +537,12 @@ def my_reservations_view(request):
         if next_res:
             current_end_dt = datetime.combine(r.end_date, r.end_time)
             next_start_dt = datetime.combine(next_res.date, next_res.start_time)
+
+            if is_naive(current_end_dt):
+                current_end_dt = make_aware(current_end_dt)
+            if is_naive(next_start_dt):
+                next_start_dt = make_aware(next_start_dt)
+
             diff_next = next_start_dt - current_end_dt
             info['next_reservation'] = next_start_dt
             info['diff_to_next'] = round(diff_next.total_seconds() / 3600, 1)
@@ -540,8 +554,7 @@ def my_reservations_view(request):
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
 
-    all_tips = Tip.objects.filter(is_active=True).order_by('-created_at')
-    tips = [tip for tip in all_tips if tip.is_visible(request.user)]
+    tips = Tip.objects.filter(is_active=True).order_by('-created_at')
 
     # ✅ 获取通知内容
     notice = SystemNotice.objects.filter(is_active=True).order_by('-created_at').first()
