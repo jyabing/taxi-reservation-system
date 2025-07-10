@@ -27,6 +27,19 @@ class VehicleImage(models.Model):
     preview.short_description = "预览图"
     preview.allow_tags = True
 
+# ✅ 系统通知模型
+class SystemNotice(models.Model):
+    message = models.CharField("通知内容", max_length=255)
+    is_active = models.BooleanField("是否启用", default=True)
+    created_at = models.DateTimeField("创建时间", default=timezone.now)
+
+    def __str__(self):
+        return self.message
+
+    class Meta:
+        verbose_name = "系统通知"
+        verbose_name_plural = "系统通知"
+
 
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")
@@ -65,28 +78,6 @@ class Reservation(models.Model):
     class Meta:
         verbose_name = "预约记录"
         verbose_name_plural = "预约记录"
-
-class CarouselImage(models.Model):
-    title = models.CharField(max_length=100, verbose_name="标题", blank=True)
-    description = models.TextField(verbose_name="说明", blank=True)
-    image_url = models.URLField("轮播图链接", blank=True, null=True)
-    order = models.PositiveIntegerField(default=0, verbose_name="排序顺序")
-    is_active = models.BooleanField(default=True, verbose_name="是否启用")
-
-    def __str__(self):
-        return self.title or f"图片 {self.id}"
-
-    def image_preview(self):
-        if self.image_url:
-            return format_html('<img src="{}" style="max-height:100px;" />', self.image_url)
-        return "-"
-    image_preview.short_description = "图片预览"
-    image_preview.allow_tags = True
-
-    class Meta:
-        verbose_name = "轮播图"
-        verbose_name_plural = "轮播图管理"
-        ordering = ['order']
 
 class Tip(models.Model):
     content = models.TextField("提示内容")

@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.utils.html import format_html
 from django import forms
 from django.utils.safestring import mark_safe
-from .models import Reservation, CarouselImage, VehicleImage, Tip
+from .models import Reservation, VehicleImage, Tip, SystemNotice
 from rangefilter.filters import DateRangeFilter
 from . import admin_driver
 
@@ -82,17 +82,22 @@ class ReservationAdmin(admin.ModelAdmin):
         updated = queryset.filter(status='pending').update(status='reserved')
         self.message_user(request, f"{updated} 条预约已成功通过。")
 
-# ✅ 轮播图管理
-@admin.register(CarouselImage)
-class CarouselImageAdmin(admin.ModelAdmin):
-    list_display = ['title', 'order', 'is_active', 'preview']
-    list_editable = ['order', 'is_active']
+# ✅ 注册 SystemNotice 模型
+@admin.register(SystemNotice)
+class SystemNoticeAdmin(admin.ModelAdmin):
+    list_display = ('message', 'is_active', 'created_at')
+    list_editable = ('is_active',)
+    ordering = ('-created_at',)
 
-    def preview(self, obj):
-        if obj.image_url:
-            return format_html('<a href="{0}" target="_blank"><img src="{0}" width="100" /></a>', obj.image_url)
-        return "-"
-    preview.short_description = "预览"
+    def save_model(self, request, obj, form, change):
+        # ✅ 若当前保存的是启用状态，则将其他通知设为禁用
+        if obj.is_active:
+            SystemNotice.objects.exclude(id=obj.id).update(is_active=False)
+        super().save_model(request, obj, form, change)
+
+    # ✅ 新建对象时，默认启用
+    def get_changeform_initial_data(self, request):
+        return {'is_active': True}
 
 # ✅ 使用提示管理
 @admin.register(Tip)

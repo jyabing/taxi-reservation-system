@@ -1,7 +1,7 @@
 import calendar, requests, random, os, json
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
-from .models import Reservation, Car as Vehicle
+from .models import Reservation, Tip, Car as Vehicle, SystemNotice
 
 from django import forms
 from decimal import Decimal, ROUND_HALF_UP
@@ -543,6 +543,9 @@ def my_reservations_view(request):
     all_tips = Tip.objects.filter(is_active=True).order_by('-created_at')
     tips = [tip for tip in all_tips if tip.is_visible(request.user)]
 
+    # ✅ 获取通知内容
+    notice = SystemNotice.objects.filter(is_active=True).order_by('-created_at').first()
+
     return render(request, 'vehicles/my_reservations.html', {
         'page_obj': page_obj,
         'reservations': page_obj,
@@ -550,7 +553,8 @@ def my_reservations_view(request):
         'now': timezone.localtime(),
         'tips': tips,
         'canceled_any': canceled_any,
-        'reservation_infos': reservation_infos,  # ✅ 新增
+        'reservation_infos': reservation_infos,
+        'notice_message': notice.message if notice else None,  # ✅ 传入模板
     })
 
 @staff_member_required
@@ -608,21 +612,6 @@ def check_in(request, reservation_id):
         reservation.save()
         messages.success(request, "入库登记成功")
     return redirect('vehicle_status')
-
-@login_required
-def my_reservations_view(request):
-    all_reservations = Reservation.objects.filter(driver=request.user).order_by('-date', '-start_time')
-    paginator = Paginator(all_reservations, 10)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-    tips = list(Tip.objects.filter(is_active=True).values('content'))
-    return render(request, 'vehicles/my_reservations.html', {
-        'page_obj': page_obj,
-        'reservations': page_obj,
-        'today': timezone.localdate(),
-        'now': timezone.localtime(),
-        'tips': tips,
-    })
 
 @login_required
 def edit_reservation_view(request, reservation_id):

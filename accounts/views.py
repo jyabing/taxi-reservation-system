@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import PasswordChangeView
 from django.urls import reverse_lazy
-from vehicles.models import CarouselImage, Tip
+from vehicles.models import Tip, SystemNotice
 from django.utils.timezone import localdate
 from dailyreport.forms import DriverReportImageForm, DriverDailyReportForm
 from staffbook.models import Driver
