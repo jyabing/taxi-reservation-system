@@ -244,7 +244,13 @@ table.table tr.has-note td {
             </td>
 
             <td style="min-width: 70px;">
-              {{ form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
+              <input
+                type="text"
+                name="{{ form.meter_fee.html_name }}"
+                id="{{ form.meter_fee.id_for_label }}"
+                value="{{ form.meter_fee.value|floatformat:"-0" }}"
+                class="form-control form-control-sm text-end meter-fee-input"
+              >
             </td>
 
             <td style="min-width: 100px;">
@@ -273,7 +279,7 @@ table.table tr.has-note td {
             <td style="white-space: nowrap;">
               <div class="d-flex flex-row gap-1">
                 {% if form.instance.pk %}
-                  {{ form.DELETE }}
+                  {{ form.DELETE.as_hidden }}
                   <button type="button" class="btn btn-sm btn-danger delete-row">削除</button>
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>

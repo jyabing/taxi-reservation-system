@@ -179,10 +179,10 @@ def export_monthly_summary_csv(request):
 
     # 表头
     writer.writerow([
-        '従業員（コード）', '空車', 'ETC', '楽券', '子機料',
+        '従業員（コード）', '空車', 'ETC', 
         'Uber売上', 'クレジット売上', 'DIDI売上', 'PayPay売上',
         'オムロン売上', '京交信市他売上', '水揚合計',
-        'ガソリン', '里程KM', '煙草', '返金不足'
+        'ガソリン', '里程KM',  '返金不足'
     ])
 
     for key, data in summary.items():
@@ -400,7 +400,7 @@ def dailyreport_create_for_driver(request, driver_id):
         ('didi', 'Didi'),
         ('credit', 'クレジ'),
         ('kyokushin', '京交信'),
-        ('omron', 'オムロン'),
+        ('omron', 'オムロン(愛のタクシーチケット)'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
     ]

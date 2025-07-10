@@ -16,8 +16,7 @@ PAYMENT_METHOD_CHOICES = [
     ('uber', 'Uber'),
     ('didi', 'Didi'),
     ('credit', 'クレジットカード'),
-    ('ticket', 'チケット'),
-    ('qr', 'バーコード'),  # PayPay、auPay 等
+    ('qr', 'バーコード(PayPay、auPay、wechat)'),  # PayPay、auPay 等
     ('kyokushin', '京交信'),
     ('omron', 'オムロン（愛のタクシーチケット）'),
     ('kyotoshi', '京都市他'),
