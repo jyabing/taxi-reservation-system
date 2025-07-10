@@ -139,7 +139,7 @@ def reserve_vehicle_view(request, car_id):
 
     if request.method == 'POST':
         form = ReservationForm(request.POST)
-        form.instance.driver = request.user  # 必须设置 driver 否则 clean() 可能报错
+        form.instance.driver = request.user
         selected_dates_raw = request.POST.get('selected_dates', '')
         selected_dates = json.loads(selected_dates_raw) if selected_dates_raw else []
 
@@ -148,6 +148,8 @@ def reserve_vehicle_view(request, car_id):
             start_time = cleaned['start_time']
             end_time = cleaned['end_time']
             purpose = cleaned['purpose']
+
+            created_count = 0
 
             for date_str in selected_dates:
                 try:
@@ -161,21 +163,30 @@ def reserve_vehicle_view(request, car_id):
                         end_date = date
                     end_dt = datetime.combine(end_date, end_time)
 
-                    # 冲突检查（避免预约同一车、时间段重叠）
+                    # ❌ 检查是否同一人同一天已预约同一辆车
+                    duplicate_by_same_user = Reservation.objects.filter(
+                        vehicle=car,
+                        driver=request.user,
+                        date=date,
+                    ).exists()
+                    if duplicate_by_same_user:
+                        messages.warning(request, f"{date} 你已预约该车，已跳过。")
+                        continue
+
+                    # ❌ 冲突检查（是否该车此时间段已有预约）
                     conflict_exists = Reservation.objects.filter(
                         vehicle=car,
                         date__lte=end_date,
                         end_date__gte=date,
                         start_time__lt=end_time,
                         end_time__gt=start_time,
-                        status__in=['reserved', 'out']
+                        status__in=['reserved', 'out'],
                     ).exists()
-
                     if conflict_exists:
-                        messages.warning(request, f"{date} 已存在预约冲突，已跳过。")
+                        messages.warning(request, f"{date} 存在预约冲突，已跳过。")
                         continue
 
-                    # 创建预约
+                    # ✅ 创建预约记录
                     new_res = Reservation.objects.create(
                         driver=request.user,
                         vehicle=car,
@@ -187,8 +198,9 @@ def reserve_vehicle_view(request, car_id):
                         status='pending',
                     )
                     new_res.save()
+                    created_count += 1
 
-                    # 邮件通知管理员
+                    # ✅ 邮件通知管理员
                     subject = "【新预约通知】车辆预约提交"
                     message = (
                         f"预约人：{request.user.get_full_name() or request.user.username}\n"
@@ -210,8 +222,13 @@ def reserve_vehicle_view(request, car_id):
                     print(f"❌ 日期转换错误: {e}")
                     continue
 
-            messages.success(request, "✅ 已成功提交预约记录！")
+            if created_count > 0:
+                messages.success(request, f"✅ 已成功预约 {created_count} 天！")
+            else:
+                messages.warning(request, "⚠️ 没有成功预约任何日期，请检查冲突或重复预约情况。")
+
             return redirect('vehicle_status')
+
         else:
             messages.error(request, "请填写所有字段，并选择预约日期（最多7天）")
 
