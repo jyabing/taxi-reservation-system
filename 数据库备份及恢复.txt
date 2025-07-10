@@ -1,0 +1,37 @@
+在项目的根目录（/mnt/e/Django-project/taxi_project/）下进行。请按以下步骤操作：
+
+✅ 步骤：添加备份脚本权限
+假设你已经保存了脚本为这个文件：
+
+bash
+
+/mnt/e/Django-project/taxi_project/backup_postgres.sh
+在终端中执行以下命令来添加执行权限：
+
+bash
+
+chmod +x /mnt/e/Django-project/taxi_project/backup_postgres.sh
+🔍 确认权限是否添加成功：
+运行这个命令检查：
+
+bash
+
+ls -l /mnt/e/Django-project/taxi_project/backup_postgres.sh
+如果输出像下面这样，说明权限添加成功：
+
+diff
+
+-rwxr-xr-x 1 brianjia ... backup_postgres.sh
+（x 表示具有执行权限）
+
+✅ 测试执行：
+
+cd /mnt/e/Django-project/taxi_project/
+./backup_postgres.sh
+执行完后，你会看到：
+
+bash
+
+✅ Backup complete: ./backups/yourdbname_backup_2025-07-10.sql
+并且目录下会多出 backups/ 文件夹，里面有 .sql 文件。
+

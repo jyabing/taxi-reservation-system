@@ -10,6 +10,7 @@ from dailyreport.forms import DriverReportImageForm, DriverDailyReportForm
 from staffbook.models import Driver
 from datetime import datetime
 from calendar import monthrange
+from dailyreport.models import DriverDailyReport, DriverReportImage
 import re
 
 OCR_API_KEY = 'K85459002688957'

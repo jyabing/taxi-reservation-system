@@ -1,0 +1,12 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block content %}
+  <div class="app-dailyreport module">
+    <h2>🛠 数据库管理工具</h2>
+    <form method="post" action="{% url 'admin:backup_database' %}">
+      {% csrf_token %}
+      <input type="submit" class="button default" value="📦 立即备份 PostgreSQL 数据库">
+    </form>
+  </div>
+{% endblock %}
