@@ -1,0 +1,7 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <h2>数据库备份工具</h2>
+  <p>点击下方按钮立即备份 PostgreSQL 数据库：</p>
+  <a class="button" href="{% url 'admin_tools:backup' %}">🛡️ 立即备份</a>
+{% endblock %}

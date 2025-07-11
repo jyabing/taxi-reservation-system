@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'staffbook',        # ✅ 员工系统：人事台账、保险、资格证等
     'dailyreport',     # ✅ 日报系统：乘务日报、统计、明细、出勤、分析
     'carinfo',          # ✅ 车辆管理系统：台账、维修、照片等
+    'admin_tools',       # ✅ 管理工具：系统备份
     'django.contrib.humanize',
     'widget_tweaks',
 ]
