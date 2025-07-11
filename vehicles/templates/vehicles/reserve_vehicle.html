@@ -52,6 +52,7 @@
 flatpickr("#multi-date", {
   mode: "multiple",
   dateFormat: "Y-m-d",
+  minDate: "today",  // ✅ 禁止选择今天之前的日期
   maxDate: new Date().fp_incr(30),
   onChange: function(selectedDates, dateStrArray, instance) {
     if (selectedDates.length > 7) {

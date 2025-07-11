@@ -51,11 +51,13 @@
           </td>
           <td>
             {% if car.status == 'available' %}
-              <span class="badge bg-success">使用可</span>
+              <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> 使用可</span>
             {% elif car.status == 'repair' %}
-              <span class="badge bg-warning text-dark">修理中</span>
+              <span class="badge bg-warning text-dark"><i class="bi bi-tools"></i> 维修中</span>
             {% elif car.status == 'retired' %}
-              <span class="badge bg-secondary">廃車済</span>
+              <span class="badge bg-secondary"><i class="bi bi-x-circle-fill"></i> 已报废</span>
+            {% else %}
+              <span class="badge bg-dark"><i class="bi bi-question-circle"></i> 未设定</span>
             {% endif %}
           </td>
           <td>{{ car.manager_name }}</td>

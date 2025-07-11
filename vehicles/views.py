@@ -145,8 +145,8 @@ def reserve_vehicle_view(request, car_id):
 
         if form.is_valid() and selected_dates:
             cleaned = form.cleaned_data
-            start_time = cleaned['start_time']
-            end_time = cleaned['end_time']
+            start_time = time(16, 0)
+            end_time = time(3, 0)
             purpose = cleaned['purpose']
 
             created_count = 0
@@ -657,35 +657,58 @@ def edit_reservation_view(request, reservation_id):
     if reservation.driver != request.user and not request.user.is_superuser:
         return HttpResponseForbidden("⛔️ 无权修改他人预约。")
 
-    # ✅ 状态限制
+    # ✅ 状态限制：仅允许修改 pending 或 reserved
     if reservation.status not in ['pending', 'reserved']:
         return HttpResponseForbidden("⛔️ 当前状态不可修改。")
 
     if request.method == 'POST':
-        form = ReservationForm(request.POST, instance=reservation, initial={'date': reservation.date, 'driver': reservation.driver})
-        
+        form = ReservationForm(
+            request.POST,
+            instance=reservation,
+            initial={'date': reservation.date, 'driver': reservation.driver}
+        )
+
         if form.is_valid():
             cleaned = form.cleaned_data
+            start_time = cleaned['start_time']
+            end_time = cleaned['end_time']
+            date = cleaned['date']
+            end_date = cleaned['end_date']
 
-            # ✅ 加入调试打印语句
-            print("🧪 cleaned_data keys:", cleaned.keys())
-            print("🧪 cleaned_data values:", cleaned)
+            # ✅ 构造起止时间点
+            start_dt = datetime.combine(date, start_time)
+            end_dt = datetime.combine(end_date, end_time)
 
-            start_dt = datetime.combine(cleaned['date'], cleaned['start_time'])
-            end_dt = datetime.combine(cleaned['end_date'], cleaned['end_time'])
-
+            # ✅ 结束时间必须晚于开始时间
             if end_dt <= start_dt:
                 messages.error(request, "⚠️ 结束时间必须晚于开始时间")
-            else:
-                updated_res = form.save(commit=False)
-                # ✅ 防止 driver 为空
-                if not updated_res.driver:
-                    updated_res.driver = request.user
-                updated_res.date = cleaned['date']         # 👈 必须明确写入
-                updated_res.end_date = cleaned['end_date'] # 👈 必须明确写入
-                updated_res.save()
-                messages.success(request, "✅ 预约已修改")
-                return redirect('my_reservations')
+                return redirect(request.path)
+
+            # ✅ 时长限制（最多13小时）
+            duration = (end_dt - start_dt).total_seconds() / 3600
+            if duration > 13:
+                messages.error(request, "⚠️ 预约时间不得超过13小时。")
+                return redirect(request.path)
+
+            # ✅ 若为跨日（夜班），检查是否符合夜班要求
+            if end_date > date:
+                if start_time < time(12, 0):
+                    messages.error(request, "⚠️ 夜班预约的开始时间必须为中午12:00以后。")
+                    return redirect(request.path)
+                if end_time > time(12, 0):
+                    messages.error(request, "⚠️ 夜班预约的结束时间必须为次日中午12:00以前。")
+                    return redirect(request.path)
+
+            # ✅ 保存更新
+            updated_res = form.save(commit=False)
+            if not updated_res.driver:
+                updated_res.driver = request.user
+            updated_res.date = date
+            updated_res.end_date = end_date
+            updated_res.save()
+
+            messages.success(request, "✅ 预约已修改")
+            return redirect('my_reservations')
     else:
         form = ReservationForm(
             instance=reservation,

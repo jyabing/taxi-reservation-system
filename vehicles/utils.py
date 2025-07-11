@@ -1,6 +1,7 @@
 from django.core.mail import send_mail
 from django.conf import settings
 from accounts.models import DriverUser
+from django.urls import reverse
 
 def notify_admin_about_new_reservation(reservation):
     admins = DriverUser.objects.filter(
@@ -14,7 +15,10 @@ def notify_admin_about_new_reservation(reservation):
         return
 
     subject = f"【预约审批提醒】{reservation.driver.username} 提交了新的车辆预约申请"
-    message = f"""有新的预约需要审批：
+
+    approval_url = f"{settings.SITE_BASE_URL}{reverse('reservation_approval_list')}"
+
+    plain_message = f"""有新的预约需要审批：
 
 司机：{reservation.driver.username}
 车辆：{reservation.vehicle}
@@ -22,13 +26,26 @@ def notify_admin_about_new_reservation(reservation):
 时间：{reservation.start_time.strftime('%H:%M')} ~ {reservation.end_time.strftime('%H:%M')}
 备注：{getattr(reservation, 'note', '')}
 
-请尽快前往后台【预约审批】菜单审核。
+请前往：{approval_url} 查看详情。
 """
+
+    html_message = f"""
+    <p>有新的预约需要审批：</p>
+    <ul>
+      <li><strong>司机：</strong> {reservation.driver.username}</li>
+      <li><strong>车辆：</strong> {reservation.vehicle}</li>
+      <li><strong>日期：</strong> {reservation.date.strftime('%Y-%m-%d')}</li>
+      <li><strong>时间：</strong> {reservation.start_time.strftime('%H:%M')} ~ {reservation.end_time.strftime('%H:%M')}</li>
+      <li><strong>备注：</strong> {getattr(reservation, 'note', '')}</li>
+    </ul>
+    <p><a href="{approval_url}">点击前往审批页面</a></p>
+    """
 
     send_mail(
         subject,
-        message,
+        plain_message,
         getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com'),
         recipient_list,
+        html_message=html_message,
         fail_silently=False
     )
