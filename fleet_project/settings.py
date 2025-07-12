@@ -154,6 +154,10 @@ EMAIL_HOST_USER = 'jiabing.msn@gmail.com'        # 发件人邮箱
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')       # 邮箱“应用密码”或授权码
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
+# ✅ 新增以下两行 👇
+DEFAULT_NOTIFICATION_EMAIL = EMAIL_HOST_USER
+SITE_BASE_URL = 'https://taxi-reservation.onrender.com/'   # ⛳ 请改为你真实上线网址
+
 LOGIN_REDIRECT_URL = '/accounts/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/success/'
 

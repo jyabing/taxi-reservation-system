@@ -30,6 +30,7 @@ from .models import Reservation, Tip, Car
 from .forms import MonthForm, AdminStatsForm, ReservationForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
+from vehicles.utils import notify_driver_reservation_approved
 
 # 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
 from dailyreport.models import Driver, DriverDailyReport, DriverDailyReportItem
@@ -622,7 +623,10 @@ def approve_reservation(request, pk):
 
     reservation.save()
 
-    messages.success(request, f"✅ 预约 ID {pk} 已成功审批。")
+    # ✅ 新增：通知司机预约已通过
+    notify_driver_reservation_approved(reservation)
+
+    messages.success(request, f"✅ 预约 ID {pk} 已成功审批，并已通知司机。")
     return redirect('reservation_approval_list')
 
 @login_required
