@@ -320,12 +320,19 @@ def weekly_overview_view(request):
         end_dt = datetime.combine(last.end_date, last.end_time)
         cooldown_end = end_dt + timedelta(hours=10)
 
+    # ✅ 按 vehicle + date 分组缓存，防止跨日混入错误列
+    from collections import defaultdict
+    vehicle_date_map = defaultdict(lambda: defaultdict(list))
+    for res in reservations:
+        vehicle_date_map[res.vehicle][res.date].append(res)
+
     # 构建每辆车的每一天数据
     data = []
     for vehicle in vehicles:
         row = {'vehicle': vehicle, 'days': []}
         for d in week_dates:
-            day_reservations = reservations.filter(vehicle=vehicle, date=d).order_by('start_time')
+            day_reservations = sorted(vehicle_date_map[vehicle][d], key=lambda r: r.start_time)
+            # ✅ 日期判断逻辑保持原样
             if request.user.is_staff:
                 is_past = False
             else:
