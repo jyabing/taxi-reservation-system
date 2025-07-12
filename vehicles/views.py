@@ -308,8 +308,9 @@ def weekly_overview_view(request):
     
     # ✅ 改为包含跨日预约（date 或 end_date 落入 week_dates）
     reservations = Reservation.objects.filter(
-        Q(date__in=week_dates) | Q(end_date__in=week_dates)
-    )
+        Q(start_time__date__in=week_dates) |
+        Q(end_time__date__in=week_dates)
+    ).select_related('vehicle', 'driver')
 
     # 自动取消超时未出库预约
     canceled = []
@@ -340,7 +341,16 @@ def weekly_overview_view(request):
     from collections import defaultdict
     vehicle_date_map = defaultdict(lambda: defaultdict(list))
     for res in reservations:
-        vehicle_date_map[res.vehicle][res.date].append(res)
+        start_day = res.start_time.date()
+        end_day = res.end_time.date()
+
+        date_range = [start_day]
+        if end_day != start_day:
+            date_range.append(end_day)
+
+        for d in date_range:
+            if d in week_dates:  # 避免超出本周日期
+                vehicle_date_map[res.vehicle][d].append(res)
 
     # 构建每辆车的每一天数据
     data = []
