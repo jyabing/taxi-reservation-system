@@ -15,7 +15,7 @@ from django.utils.timezone import now, make_aware, localdate, is_naive
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models.functions import Cast
-from django.db.models import TimeField
+from django.db.models import TimeField, F, Q
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.conf import settings
@@ -30,7 +30,7 @@ from .models import Reservation, Tip, Car
 from .forms import MonthForm, AdminStatsForm, ReservationForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
-from vehicles.utils import notify_driver_reservation_approved
+from vehicles.utils import notify_driver_reservation_approved, send_notification
 
 # 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
 from dailyreport.models import Driver, DriverDailyReport, DriverDailyReportItem
@@ -164,7 +164,7 @@ def reserve_vehicle_view(request, car_id):
                         end_date = date
                     end_dt = datetime.combine(end_date, end_time)
 
-                    # ❌ 检查是否同一人同一天已预约同一辆车
+                    # ❌ 重复预约检查
                     duplicate_by_same_user = Reservation.objects.filter(
                         vehicle=car,
                         driver=request.user,
@@ -174,7 +174,7 @@ def reserve_vehicle_view(request, car_id):
                         messages.warning(request, f"{date} 你已预约该车，已跳过。")
                         continue
 
-                    # ❌ 冲突检查（是否该车此时间段已有预约）
+                    # ❌ 冲突检查
                     conflict_exists = Reservation.objects.filter(
                         vehicle=car,
                         date__lte=end_date,
@@ -198,23 +198,34 @@ def reserve_vehicle_view(request, car_id):
                         purpose=purpose,
                         status='pending',
                     )
-                    new_res.save()
+
                     created_count += 1
 
-                    # ✅ 邮件通知管理员
+                    # ✅ 使用统一封装发送邮件通知
                     subject = "【新预约通知】车辆预约提交"
-                    message = (
+                    plain_message = (
                         f"预约人：{request.user.get_full_name() or request.user.username}\n"
                         f"车辆：{car.license_plate}（{getattr(car, 'model', '未登记型号')}）\n"
                         f"日期：{date} ~ {end_date}  {start_time} - {end_time}\n"
                         f"用途：{purpose}"
                     )
-                    send_mail(
-                        subject,
-                        message,
-                        settings.DEFAULT_FROM_EMAIL,
-                        ['jiabing.msn@gmail.com'],
-                        fail_silently=False
+
+                    html_message = f"""
+                    <p>有新的车辆预约提交：</p>
+                    <ul>
+                        <li><strong>预约人：</strong> {request.user.get_full_name() or request.user.username}</li>
+                        <li><strong>车辆：</strong> {car.license_plate}（{getattr(car, 'model', '未登记型号')}）</li>
+                        <li><strong>日期：</strong> {date} ~ {end_date}</li>
+                        <li><strong>时间：</strong> {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}</li>
+                        <li><strong>用途：</strong> {purpose}</li>
+                    </ul>
+                    """
+
+                    send_notification(
+                        subject=subject,
+                        message=plain_message,
+                        to_emails=['jiabing.msn@gmail.com'],  # ✅ 可替换为管理员组
+                        html_message=html_message
                     )
 
                     print(f"✅ 创建成功: {car.license_plate} @ {start_dt} ~ {end_dt}")
@@ -294,7 +305,11 @@ def weekly_overview_view(request):
     week_dates = [start_date + timedelta(days=i) for i in range(7)]
 
     vehicles = Car.objects.all()
-    reservations = Reservation.objects.filter(date__in=week_dates)
+    
+    # ✅ 改为包含跨日预约（date 或 end_date 落入 week_dates）
+    reservations = Reservation.objects.filter(
+        Q(date__in=week_dates) | Q(end_date__in=week_dates)
+    )
 
     # 自动取消超时未出库预约
     canceled = []

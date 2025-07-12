@@ -79,13 +79,23 @@
               {% for res in cell.reservations %}
                 <div>
                   {% if res.status == 'canceled' %}
-                    <span style="color:#999;">❌
-                      {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }}
+                      <span style="color:#999;">❌
+                      {{ res.start_time|time:"H:i" }}–
+                      {% if res.end_date > res.date %}
+                        翌日 {{ res.end_time|time:"H:i" }}
+                      {% else %}
+                        {{ res.end_time|time:"H:i" }}
+                      {% endif %}
                       {{ res.driver.username }}
                     </span>
                   {% else %}
                     <a href="{% url 'reservation_detail' res.id %}">
-                      {{ res.start_time|time:"H:i" }}–{{ res.end_time|time:"H:i" }}
+                      {{ res.start_time|time:"H:i" }}–
+                      {% if res.end_date > res.date %}
+                        翌日 {{ res.end_time|time:"H:i" }}
+                      {% else %}
+                        {{ res.end_time|time:"H:i" }}
+                      {% endif %}
                       {{ res.driver.username }}
                     </a>
                   {% endif %}
