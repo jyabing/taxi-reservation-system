@@ -602,16 +602,20 @@ def reservation_approval_list(request):
 
 @staff_member_required
 def approve_reservation(request, pk):
-    try:
-        reservation = Reservation.objects.get(pk=pk)
-    except Reservation.DoesNotExist:
-        messages.error(request, f"预约记录 ID {pk} 不存在或已处理。")
-        return redirect('reservation_approval_list')
+    reservation = get_object_or_404(Reservation, pk=pk)
 
-    # 审批逻辑...
-    reservation.status = 'approved'
+    # ✅ 设置状态为“已预约”
+    reservation.status = 'reserved'
+
+    # ✅ 可选：记录审批人和时间（前提是模型中有这些字段）
+    if hasattr(reservation, 'approved_by'):
+        reservation.approved_by = request.user
+    if hasattr(reservation, 'approved_at'):
+        reservation.approved_at = timezone.now()
+
     reservation.save()
-    messages.success(request, f"预约 ID {pk} 已成功审批。")
+
+    messages.success(request, f"✅ 预约 ID {pk} 已成功审批。")
     return redirect('reservation_approval_list')
 
 @login_required

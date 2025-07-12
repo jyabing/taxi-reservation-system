@@ -38,13 +38,13 @@ def notify_admin_about_new_reservation(reservation):
       <li><strong>时间：</strong> {reservation.start_time.strftime('%H:%M')} ~ {reservation.end_time.strftime('%H:%M')}</li>
       <li><strong>备注：</strong> {getattr(reservation, 'note', '')}</li>
     </ul>
-    <p><a href="{approval_url}">点击前往审批页面</a></p>
+    <p><a href="{approval_url}" style="color:white;background-color:#007BFF;padding:8px 12px;border-radius:4px;text-decoration:none;">点击前往审批页面</a></p>
     """
 
     send_mail(
         subject,
         plain_message,
-        getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@example.com'),
+        settings.DEFAULT_FROM_EMAIL,  # ✅ 明确使用配置值
         recipient_list,
         html_message=html_message,
         fail_silently=False
