@@ -39,7 +39,7 @@ class CarForm(forms.ModelForm):
             'engine_displacement', 'model_code', 'vehicle_weight',
             'length', 'width', 'height',  # ✅ 新增車両寸法字段
             'status', 'is_active', 'mileage', 'fuel_type', 'color',
-            'inspection_date', 'insurance_expiry',
+            'inspection_date', 'insurance_end_date',
             'etc_device', 'fuel_card_number', 'pos_terminal_id', 'gps_device_id',
             'department', 'manager_name', 'manager_phone',
             'notes', 'image',
