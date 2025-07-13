@@ -36,6 +36,9 @@
         {% include 'partials/_my_reservation_controls.html' with user_reservation=info.user_reservation %}
 
         {% if info.user_reservation %}
+
+          {% include 'partials/_user_reservation_notice.html' with user_reservation=info.user_reservation %}
+    
           {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
             <button type="button" class="btn btn-success btn-sm mt-2"
                     onclick="openTimePopup({{ info.user_reservation.id }}, 'departure')">🚗 出庫</button>

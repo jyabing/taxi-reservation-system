@@ -1,0 +1,7 @@
+{% if user_reservation %}
+  <div class="alert alert-warning mt-2 py-1 px-2">
+    🚗 你已预约该车：
+    {{ user_reservation.start_time|time:"H:i" }}〜{{ user_reservation.end_time|time:"H:i" }}
+    （状态：{{ user_reservation.get_status_display }}），本日将跳过显示。
+  </div>
+{% endif %}

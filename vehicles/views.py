@@ -120,7 +120,11 @@ def vehicle_status_view(request):
                     break
 
         # 构造显示数据
-        user_reservation = res_list.filter(driver=request.user).first()
+        user_reservation = res_list.filter(
+            driver=request.user,
+            date=selected_date,
+            status__in=['reserved', 'out']
+        ).first()
         reserver_labels = [
             f"{r.start_time.strftime('%H:%M')}~{r.end_time.strftime('%H:%M')} {(r.driver.first_name or '') + (r.driver.last_name or '')}"
             for r in res_list
