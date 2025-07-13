@@ -2,6 +2,7 @@ import calendar, requests, random, os, json
 from calendar import monthrange
 from datetime import datetime, timedelta, time, date
 from .models import Reservation, Tip, Car as Vehicle, SystemNotice
+from collections import defaultdict
 
 from django import forms
 from decimal import Decimal, ROUND_HALF_UP
@@ -78,7 +79,16 @@ def vehicle_status_view(request):
 
     date_str = request.GET.get('date')
     selected_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else timezone.localdate()
-    reservations = Reservation.objects.filter(date=selected_date)
+
+    # ✅ 改为跨日支持的预约筛选方式
+    start_of_day = make_aware(datetime.combine(selected_date, time.min))
+    end_of_day = make_aware(datetime.combine(selected_date + timedelta(days=1), time.min))
+
+    reservations = Reservation.objects.filter(
+        start_time__lt=end_of_day,
+        end_time__gt=start_of_day,
+    )
+
     vehicles = Car.objects.all()
     status_map = {}
     now_dt = timezone.localtime()
@@ -144,54 +154,69 @@ def reserve_vehicle_view(request, car_id):
         selected_dates_raw = request.POST.get('selected_dates', '')
         selected_dates = json.loads(selected_dates_raw) if selected_dates_raw else []
 
+        # ✅ 修正 Flatpickr 日期偏移（强制向后 +1 天）
+        selected_dates = [
+            (datetime.strptime(d, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            for d in selected_dates
+        ]
+
         if form.is_valid() and selected_dates:
             cleaned = form.cleaned_data
-            start_time = time(16, 0)
-            end_time = time(3, 0)
+            start_time = cleaned['start_time']
+            end_time = cleaned['end_time']
             purpose = cleaned['purpose']
 
             created_count = 0
 
             for date_str in selected_dates:
                 try:
-                    date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                    start_dt = datetime.combine(date, start_time)
+                    # ✅ 用户在前端选择的日期，即预约开始日
+                    start_date = datetime.strptime(date_str, '%Y-%m-%d').date()
 
-                    # 跨日处理
+                    # ✅ 构造起始时间戳
+                    start_dt = datetime.combine(start_date, start_time)
+
+                    # ✅ 判断是否跨日：结束时间早于等于开始时间则次日
                     if end_time <= start_time:
-                        end_date = date + timedelta(days=1)
+                        end_date = start_date + timedelta(days=1)
                     else:
-                        end_date = date
+                        end_date = start_date
+
                     end_dt = datetime.combine(end_date, end_time)
 
-                    # ❌ 重复预约检查
+                    # ✅ 检查预约时间段是否超过13小时
+                    # ✅ 限制跨两天
+                    if (end_dt.date() - start_dt.date()).days >= 2:
+                        messages.error(request, f"⚠️ 预约 {start_date} ~ {end_date} 跨了两天，系统不允许，请分开预约。")
+                        continue
+
+                    # ✅ 检查是否重复预约（当前用户）
                     duplicate_by_same_user = Reservation.objects.filter(
                         vehicle=car,
                         driver=request.user,
-                        date=date,
+                        start_time__lt=end_dt,
+                        end_time__gt=start_dt,
                     ).exists()
                     if duplicate_by_same_user:
-                        messages.warning(request, f"{date} 你已预约该车，已跳过。")
+                        messages.warning(request, f"{start_date} 你已预约该车，已跳过。")
                         continue
 
-                    # ❌ 冲突检查
+                    # ✅ 检查是否与其他人预约冲突
                     conflict_exists = Reservation.objects.filter(
                         vehicle=car,
-                        date__lte=end_date,
-                        end_date__gte=date,
-                        start_time__lt=end_time,
-                        end_time__gt=start_time,
+                        start_time__lt=end_dt,
+                        end_time__gt=start_dt,
                         status__in=['reserved', 'out'],
                     ).exists()
                     if conflict_exists:
-                        messages.warning(request, f"{date} 存在预约冲突，已跳过。")
+                        messages.warning(request, f"{start_date} 存在预约冲突，已跳过。")
                         continue
 
                     # ✅ 创建预约记录
                     new_res = Reservation.objects.create(
                         driver=request.user,
                         vehicle=car,
-                        date=date,
+                        date=start_date,
                         end_date=end_date,
                         start_time=start_time,
                         end_time=end_time,
@@ -201,32 +226,25 @@ def reserve_vehicle_view(request, car_id):
 
                     created_count += 1
 
-                    # ✅ 使用统一封装发送邮件通知
+                    # ✅ 邮件通知（可选）
                     subject = "【新预约通知】车辆预约提交"
                     plain_message = (
                         f"预约人：{request.user.get_full_name() or request.user.username}\n"
                         f"车辆：{car.license_plate}（{getattr(car, 'model', '未登记型号')}）\n"
-                        f"日期：{date} ~ {end_date}  {start_time} - {end_time}\n"
+                        f"日期：{start_date} ~ {end_date}  {start_time} - {end_time}\n"
                         f"用途：{purpose}"
                     )
-
                     html_message = f"""
                     <p>有新的车辆预约提交：</p>
                     <ul>
                         <li><strong>预约人：</strong> {request.user.get_full_name() or request.user.username}</li>
                         <li><strong>车辆：</strong> {car.license_plate}（{getattr(car, 'model', '未登记型号')}）</li>
-                        <li><strong>日期：</strong> {date} ~ {end_date}</li>
+                        <li><strong>日期：</strong> {start_date} ~ {end_date}</li>
                         <li><strong>时间：</strong> {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}</li>
                         <li><strong>用途：</strong> {purpose}</li>
                     </ul>
                     """
-
-                    send_notification(
-                        subject=subject,
-                        message=plain_message,
-                        to_emails=['jiabing.msn@gmail.com'],  # ✅ 可替换为管理员组
-                        html_message=html_message
-                    )
+                    send_notification(subject, plain_message, ['jiabing.msn@gmail.com'], html_message)
 
                     print(f"✅ 创建成功: {car.license_plate} @ {start_dt} ~ {end_dt}")
 
@@ -300,18 +318,18 @@ def weekly_overview_view(request):
     else:
         base_date = today
 
-    # ✅ 新规则：以 base_date 为“第1天”，向后生成7天
+    # ✅ 当前周的7天
     start_date = base_date + timedelta(days=offset * 7)
     week_dates = [start_date + timedelta(days=i) for i in range(7)]
 
     vehicles = Car.objects.all()
-    
-    # ✅ 改为包含跨日预约（date 或 end_date 落入 week_dates）
+
+    # ✅ 只抓取当前周内的相关预约
     reservations = Reservation.objects.filter(
-        Q(date__in=week_dates) | Q(end_date__in=week_dates)
+        Q(date__in=week_dates)
     ).select_related('vehicle', 'driver')
 
-    # 自动取消超时未出库预约
+    # ✅ 自动取消超时未出库预约
     canceled = []
     for r in reservations.filter(status='reserved', actual_departure__isnull=True):
         start_dt = make_aware(datetime.combine(r.date, r.start_time))
@@ -324,7 +342,7 @@ def weekly_overview_view(request):
     if canceled:
         messages.warning(request, f"你有 {len(canceled)} 条预约因超过1小时未出库已被自动取消，请重新预约。")
 
-    # 冷却期
+    # ✅ 冷却期逻辑
     user_res_today = reservations.filter(
         driver=request.user,
         date=today,
@@ -336,21 +354,19 @@ def weekly_overview_view(request):
         end_dt = datetime.combine(last.end_date, last.end_time)
         cooldown_end = end_dt + timedelta(hours=10)
 
-    # ✅ 按 vehicle + date 分组缓存，防止跨日混入错误列
-    from collections import defaultdict
+    # ✅ 按车 + 日期分类（仅按 start_date 显示，避免跨日重复）
     vehicle_date_map = defaultdict(lambda: defaultdict(list))
     for res in reservations:
-        d = res.date
-        if d in week_dates:
-            vehicle_date_map[res.vehicle][d].append(res)
+        if res.date in week_dates:
+            vehicle_date_map[res.vehicle][res.date].append(res)
 
-    # 构建每辆车的每一天数据
+    # ✅ 构建每辆车每一天的数据行
     data = []
     for vehicle in vehicles:
         row = {'vehicle': vehicle, 'days': []}
         for d in week_dates:
             day_reservations = sorted(vehicle_date_map[vehicle][d], key=lambda r: r.start_time)
-            # ✅ 日期判断逻辑保持原样
+
             if request.user.is_staff:
                 is_past = False
             else:
@@ -360,6 +376,7 @@ def weekly_overview_view(request):
                     is_past = True
                 else:
                     is_past = False
+
             row['days'].append({
                 'date': d,
                 'reservations': day_reservations,
@@ -374,7 +391,7 @@ def weekly_overview_view(request):
         'now_dt': now_dt,
         'now_time': now_time,
         'cooldown_end': cooldown_end,
-        'today': base_date,  # ✅ 注意：这里要传 base_date 给模板用
+        'today': base_date,
         'selected_date': date_str if date_str else today.strftime("%Y-%m-%d"),
     })
     
