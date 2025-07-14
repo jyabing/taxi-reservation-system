@@ -75,10 +75,10 @@ def vehicle_detail(request, pk):
 @login_required
 def vehicle_status_view(request):
     # ✅ 调试打印所有预约记录
-    from vehicles.models import Reservation
-    print("🚨 所有预约记录:")
-    for r in Reservation.objects.all():
-        print(f"🚗 {r.vehicle} | {r.start_datetime} ~ {r.end_datetime} | 状态: {r.status}")
+    # from vehicles.models import Reservation
+    # print("🚨 所有预约记录:")
+    # for r in Reservation.objects.all():
+    #     print(f"🚗 {r.vehicle} | {r.start_datetime} ~ {r.end_datetime} | 状态: {r.status}")
 
     # ✅ 清空旧 messages
     list(messages.get_messages(request))  # 消耗掉所有旧消息
@@ -144,7 +144,7 @@ def vehicle_status_view(request):
         # 所有人预约者显示
         reserver_labels = [
             f"{r.start_datetime.strftime('%H:%M')}~{r.end_datetime.strftime('%H:%M')} "
-            f"{(r.driver.last_name or '') + (r.driver.first_name or '')}"
+            f"{r.driver.first_name or ''} {r.driver.last_name or ''}"
             for r in res_list
             if r.status in ['reserved', 'out'] and r.driver
         ]
