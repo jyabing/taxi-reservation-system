@@ -63,10 +63,12 @@
   <tbody>
     {% for row in vehicle_data %}
       <tr>
-        <td class="text-center">
-          <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;">
+        <td class="text-start">
+          <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold">
             {{ row.vehicle.license_plate }}
           </a>
+
+          {% include 'partials/_inspection_reminder.html' with car=row.vehicle %}
         </td>
         {% for cell in row.days %}
           <td style="{% if cell.is_past %}color:#aaa;{% endif %}">

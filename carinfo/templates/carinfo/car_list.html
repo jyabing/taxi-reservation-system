@@ -74,10 +74,14 @@
           <td>
             {% if car.inspection_date %}
               {{ car.inspection_date }}
-              {% if car.inspection_date|stringformat:"s" <= today_plus_30|stringformat:"s" %}
-                <span class="text-danger">⚠️</span>
+              {% if car.get_inspection_reminder %}
+                <div class="text-danger small mt-1">
+                  {{ car.get_inspection_reminder }}
+                </div>
               {% endif %}
-            {% else %}-{% endif %}
+            {% else %}
+              -
+            {% endif %}
           </td>
 
           <td>

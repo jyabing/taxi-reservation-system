@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from carinfo.models import Car
+from datetime import datetime
 
 class VehicleImage(models.Model):
     vehicle = models.ForeignKey(
@@ -66,6 +67,16 @@ class Reservation(models.Model):
     )
     actual_departure = models.DateTimeField(null=True, blank=True, verbose_name="实际出库时间")
     actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际入库时间")
+
+    # ✅ 新增字段
+    start_datetime = models.DateTimeField(null=True, blank=True, verbose_name="开始时间（完整）")
+    end_datetime = models.DateTimeField(null=True, blank=True, verbose_name="结束时间（完整）")
+
+    def save(self, *args, **kwargs):
+        # 自动拼接完整开始/结束时间
+        self.start_datetime = timezone.make_aware(datetime.combine(self.date, self.start_time))
+        self.end_datetime = timezone.make_aware(datetime.combine(self.end_date, self.end_time))
+        super().save(*args, **kwargs)
 
     # 自动审批相关字段
     approved = models.BooleanField(default=False, verbose_name="是否已审批")

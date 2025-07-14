@@ -49,8 +49,14 @@
         {% endif %}
       </td>
 
-      <td style="white-space: pre-wrap;">{{ info.reserver_name|default:"—"|safe }}</td>
-      <td style="white-space: pre-wrap; word-break: break-word;">{{ vehicle.notes|default:"—" }}</td>
+      <td style="white-space: pre-wrap;">
+        {% if info.reserver_name %}
+          {{ info.reserver_name|safe }}
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
+      <td style="white-space: pre-wrap; word-break: break-word;">{% include 'partials/_inspection_reminder.html' with car=vehicle %}{{ vehicle.notes|default:"—" }}</td>
     </tr>
     {% endfor %}
   </tbody>

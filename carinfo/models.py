@@ -1,4 +1,5 @@
 from django.db import models
+from datetime import date
 from django.core.exceptions import ValidationError
 from django.utils.timezone import localdate
 
@@ -93,3 +94,26 @@ class Car(models.Model):
             raise ValidationError("车辆为可用状态，但保险已过期。")
         if self.status == 'available' and self.is_inspection_expired():
             raise ValidationError("车辆为可用状态，但车检已过期。")
+
+def get_inspection_reminder(self):
+        """
+        根据 inspection_date 返回车检提醒文案（5天内提示、过期天数、当天提醒）
+        """
+        if not self.inspection_date:
+            print(f"[REMINDER] {self.license_plate}: 没有设置 inspection_date")
+            return None
+
+        today = today = localdate()
+        delta = (self.inspection_date - today).days
+
+        # ✅ 调试输出
+        print(f"[REMINDER] {self.license_plate}: inspection_date={self.inspection_date}, today={today}, delta={delta}")
+
+        if 0 < delta <= 5:
+            return f"🚨 还有 {delta} 天请协助事务所对本车进行车检"
+        elif delta == 0:
+            return "✅ 不要忘记本日车检"
+        elif -5 <= delta < 0:
+            return f"⚠️ 车检日已推迟 {abs(delta)} 天"
+        else:
+            return None

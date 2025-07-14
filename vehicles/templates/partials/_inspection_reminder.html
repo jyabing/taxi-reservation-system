@@ -1,0 +1,7 @@
+<div style="font-size: 12px; color: #888;">
+  DEBUG: {{ car.license_plate }} 到期日是 {{ car.inspection_date }}
+</div>
+
+<div class="alert alert-warning py-1 px-2 mt-2">
+  {{ car.get_inspection_reminder }}
+</div>
