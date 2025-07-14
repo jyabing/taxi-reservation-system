@@ -28,6 +28,9 @@
       <div class="col-md-6 mb-3">
         <label for="id_end_time" class="form-label fw-bold">结束时间</label>
         {{ form.end_time }}
+        <small class="form-text text-muted">
+          如需夜班预约（如 21:00 ~ 06:00），请直接填写结束时间早于开始时间，系统将自动判定为<span class="text-danger">跨日</span>预约。
+        </small>
       </div>
     </div>
 

@@ -91,8 +91,8 @@ def vehicle_status_view(request):
     end_of_day = make_aware(datetime.combine(selected_date + timedelta(days=1), time.min))
 
     reservations = Reservation.objects.filter(
-        start_datetime__lt=end_of_day,
-        end_datetime__gt=start_of_day,
+        Q(date__lte=selected_date) & Q(end_date__gte=selected_date),
+        status__in=['reserved', 'out']
     )
 
     vehicles = Car.objects.all()
@@ -137,17 +137,24 @@ def vehicle_status_view(request):
         user_reservation = res_list.filter(
             driver=request.user,
             status__in=['reserved', 'out'],
-            start_datetime__lt=end_of_day,
-            end_datetime__gt=start_of_day,
+            #start_datetime__lt=end_of_day,
+            #end_datetime__gt=start_of_day,
+            date__lte=selected_date,
+            end_date__gte=selected_date
         ).first()
 
         # 所有人预约者显示
         reserver_labels = [
-            f"{r.start_datetime.strftime('%H:%M')}~{r.end_datetime.strftime('%H:%M')} "
-            f"{r.driver.first_name or ''} {r.driver.last_name or ''}"
+            (
+                f"{datetime.combine(r.date, r.start_time).strftime('%H:%M')}~"
+                f"{datetime.combine(r.end_date, r.end_time).strftime('%H:%M')} "
+                f"{getattr(r.driver, 'display_name', f'{r.driver.first_name or ''} {r.driver.last_name or ''}'.strip())}"
+            )
             for r in res_list
             if r.status in ['reserved', 'out'] and r.driver
         ]
+
+        # 如果有多个预约者，显示所有人
         reserver_name = '<br>'.join(reserver_labels) if reserver_labels else ''
 
         status_map[vehicle] = {
@@ -197,10 +204,7 @@ def reserve_vehicle_view(request, car_id):
                     # ✅ 用户在前端选择的日期，即预约开始日
                     start_date = datetime.strptime(date_str, '%Y-%m-%d').date()
 
-                    # ✅ 构造起始时间戳
-                    start_dt = datetime.combine(start_date, start_time)
-
-                    # ✅ 判断是否跨日：结束时间早于等于开始时间则次日
+                    # ✅ 判断是否跨日
                     if end_time <= start_time:
                         end_date = start_date + timedelta(days=1)
                     else:
@@ -208,11 +212,22 @@ def reserve_vehicle_view(request, car_id):
 
                     end_dt = datetime.combine(end_date, end_time)
 
-                    # ✅ 检查预约时间段是否超过13小时
                     # ✅ 限制跨两天
                     if (end_dt.date() - start_dt.date()).days >= 2:
                         messages.error(request, f"⚠️ 预约 {start_date} ~ {end_date} 跨了两天，系统不允许，请分开预约。")
                         continue
+
+                    # ✅ 限制最长 13 小时
+                    duration_hours = (end_dt - start_dt).total_seconds() / 3600
+                    if duration_hours > 13:
+                        messages.error(request, f"⚠️ {start_date} 的预约时间为 {duration_hours:.1f} 小时，超过限制。")
+                        continue
+
+                    # ✅ 夜班限制（可选）：跨日预约起点必须在下午
+                    if end_date > start_date:
+                        if start_time < time(12, 0) or end_time > time(12, 0):
+                            messages.error(request, f"⚠️ {start_date} 的跨日预约时间段非法。夜班必须 12:00 后开始，次日 12:00 前结束。")
+                            continue
 
                     # ✅ 检查是否重复预约（当前用户）
                     duplicate_by_same_user = Reservation.objects.filter(
