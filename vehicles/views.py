@@ -204,6 +204,9 @@ def reserve_vehicle_view(request, car_id):
                     # ✅ 用户在前端选择的日期，即预约开始日
                     start_date = datetime.strptime(date_str, '%Y-%m-%d').date()
 
+                    # ✅ 构造 start_dt 在前
+                    start_dt = datetime.combine(start_date, start_time)
+
                     # ✅ 判断是否跨日
                     if end_time <= start_time:
                         end_date = start_date + timedelta(days=1)
@@ -223,7 +226,7 @@ def reserve_vehicle_view(request, car_id):
                         messages.error(request, f"⚠️ {start_date} 的预约时间为 {duration_hours:.1f} 小时，超过限制。")
                         continue
 
-                    # ✅ 夜班限制（可选）：跨日预约起点必须在下午
+                    # ✅ 夜班限制（可选）
                     if end_date > start_date:
                         if start_time < time(12, 0) or end_time > time(12, 0):
                             messages.error(request, f"⚠️ {start_date} 的跨日预约时间段非法。夜班必须 12:00 后开始，次日 12:00 前结束。")
