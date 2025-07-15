@@ -148,7 +148,7 @@ def vehicle_status_view(request):
             (
                 f"{datetime.combine(r.date, r.start_time).strftime('%H:%M')}~"
                 f"{datetime.combine(r.end_date, r.end_time).strftime('%H:%M')} "
-                f"{getattr(r.driver, 'display_name', f'{r.driver.first_name or ''} {r.driver.last_name or ''}'.strip())}"
+                f"{getattr(r.driver, 'display_name', (r.driver.first_name or '') + ' ' + (r.driver.last_name or '')).strip()}"
             )
             for r in res_list
             if r.status in ['reserved', 'out'] and r.driver
