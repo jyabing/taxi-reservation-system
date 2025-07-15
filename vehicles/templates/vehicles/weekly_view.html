@@ -1,10 +1,22 @@
 {# templates/vehicles/weekly_view.html #}
 {% extends 'base.html' %}
 {% load static %}
+{% load dict_helpers %}
 {% block content %}
 
 <h2 class="mb-4">🚗 車輌 一週間予約概覧（{{ today }}〜）</h2>
 {% include 'partials/_messages.html' %}
+
+{# === 🚨 车辆到期提醒列表 === #}
+{% if reminders %}
+  <div class="mb-3">
+    {% for car, reminder in reminders %}
+      <div class="alert alert-warning py-1 px-2" style="font-size: 14px;">
+        🚗 {{ car.license_plate }}：{{ reminder }}
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
 
 <nav class="mb-3">
   <a href="?date={{ today }}&offset={{ offset|add:"-1" }}">← 前週</a>
@@ -105,6 +117,18 @@
                 <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">
                   📝 申请预约
                 </a>
+
+                {# 每日提醒渲染部分 #}
+                {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
+                  {% if date_reminders %}
+                    <div class="mt-1" style="font-size:12px;">
+                      {% for rmsg in date_reminders %}
+                        <div class="text-warning">⚠️ {{ rmsg }}</div>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
+
               {% else %}
                 <span>—</span>
               {% endif %}

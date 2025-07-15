@@ -371,6 +371,21 @@ def weekly_overview_view(request):
 
     vehicles = Car.objects.all()
 
+    reminders = []
+    for car in vehicles:
+        fields = [
+            ('inspection_date', '车辆检査'),
+            ('insurance_expiry', '保险'),
+            ('mandatory_insurance_expiry', '强制保险'),
+            ('lease_expiry', '租赁合约'),
+        ]
+        for field, label in fields:
+            due_date = getattr(car, field, None)
+            if due_date:
+                reminder_text = get_due_reminder(due_date, label)
+                if reminder_text:
+                    reminders.append((car, reminder_text))
+
     # ✅ 只抓取当前周内的相关预约
     reservations = Reservation.objects.filter(
         Q(date__in=week_dates)
@@ -410,6 +425,35 @@ def weekly_overview_view(request):
     # ✅ 构建每辆车每一天的数据行
     data = []
     for vehicle in vehicles:
+
+        # ✅ 构建该车的每日提醒字典（供模板中按日期查找）
+        vehicle.daily_reminders = {}
+
+        for d in week_dates:
+            messages = []
+            fields = [
+                ('inspection_date', '车辆检査'),
+                ('insurance_expiry', '保险'),
+                ('mandatory_insurance_expiry', '强制保险'),
+                ('lease_expiry', '租赁合约'),
+            ]
+            for field, label in fields:
+                due_date = getattr(vehicle, field, None)
+                print('🔍 当前日期:', d, type(d))  # ✅ 这里才有 d 的定义
+                if isinstance(due_date, date):
+                    delta = (d - due_date).days
+                    if -5 <= delta <= 5:
+                        if delta < 0:
+                            msg = f"{-delta}天后{label}到期，请协助事务完成{label}更新"
+                        elif delta == 0:
+                            msg = f"今天{label}到期，请协助事务完成{label}更新"
+                        else:
+                            msg = f"{label}到期延迟{delta}天，请协助事务完成{label}更新"
+                        messages.append(msg)
+            if messages:
+                vehicle.daily_reminders[d] = messages
+
+        # ✅ 原有每周预约构造逻辑
         row = {'vehicle': vehicle, 'days': []}
         for d in week_dates:
             day_reservations = sorted(vehicle_date_map[vehicle][d], key=lambda r: r.start_time)
@@ -440,6 +484,7 @@ def weekly_overview_view(request):
         'cooldown_end': cooldown_end,
         'today': base_date,
         'selected_date': date_str if date_str else today.strftime("%Y-%m-%d"),
+        'reminders': reminders,  # ✅ 新增
     })
     
 @login_required
@@ -1375,3 +1420,28 @@ def my_daily_report_detail(request, report_id):
         'end_time': end_time,
         'duration': duration,
     })
+
+# 函数：生成到期提醒文案（提前5天～当天～延后5天）
+def get_due_reminder(due_date, label="保险"):
+    """
+    输入:
+        due_date: 到期日期 (datetime.date)
+        label: 字段标签文字 (如 "保险", "检査")
+    返回:
+        None 或 提醒文字 (str)
+    """
+    if not due_date:
+        return None
+
+    today = date.today()
+    delta = (due_date - today).days
+
+    if -5 <= delta <= 5:
+        if delta > 0:
+            return f"{delta}天后{label}到期，请协助事务完成{label}更新"
+        elif delta == 0:
+            return f"今天{label}到期，请协助事务完成{label}更新"
+        else:
+            return f"{label}到期延迟{-delta}天，请协助事务完成{label}更新"
+
+    return None
