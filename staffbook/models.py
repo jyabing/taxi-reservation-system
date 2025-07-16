@@ -62,7 +62,8 @@ class Driver(models.Model):
         ('3', '退職者')  # ✅ 正确的方式是列表
     ])
     appointment_date = models.DateField(blank=True, null=True, verbose_name="選任年月日")
-    hire_date = models.DateField(blank=True, null=True, verbose_name="入社年月日")
+    #hire_date = models.DateField(blank=True, null=True, verbose_name="入社年月日")
+    hire_date = models.DateField(verbose_name="入社年月日")
     resigned_date = models.DateField(blank=True, null=True, verbose_name="退職日")  # ✅ 新增
     create_date = models.DateField(blank=True, null=True, verbose_name="作成年月日")
     birth_date = models.DateField(blank=True, null=True, verbose_name="生年月日")

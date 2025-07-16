@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, date
 
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib import messages
@@ -673,7 +673,7 @@ def dailyreport_overview(request):
 
     # 2. 解析 month_str
     try:
-        month = datetime.datetime.strptime(month_str, "%Y-%m")
+        month = datetime.strptime(month_str, "%Y-%m")
     except ValueError:
         month = today.replace(day=1)
 
@@ -770,26 +770,40 @@ def dailyreport_overview(request):
     }
 
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
-    first_day_of_month = month.replace(day=1)
 
-    # ✅ 筛选未离职或离职日期在本月之后的司机
+    # ✅ 构造本月起止日期（用于判断在职状态）
+    first_day_of_month = month.replace(day=1)
+    last_day_of_month = date(month.year, month.month, monthrange(month.year, month.month)[1])
+
+    # ✅ 本月在职司机筛选逻辑：
+    # 条件①：入职日 <= 本月最后一天（已入职）
+    # 条件②：未离职 或 离职日 >= 本月第一天（尚在职）
     driver_qs = Driver.objects.filter(
+        hire_date__lte=last_day_of_month
+    ).filter(
         Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day_of_month)
     )
 
-    # ✅ 上方已经定义了 driver_qs，直接在这里加关键字过滤
+    # ✅ 可选关键字筛选（姓名模糊搜索）
     if keyword:
         driver_qs = driver_qs.filter(name__icontains=keyword)
 
+    # ✅ 遍历符合条件的司机，计算其当月的合计水揚金额 + 备注状态
     driver_data = []
     for d in driver_qs:
+        # 获取该司机本月的所有日报记录
         dr_reps = reports.filter(driver=d)
+
+        # 计算该司机本月合计メータ金額（即水揚）
         total = sum(r.total_meter_fee for r in dr_reps)
+
+        # 标注备注：未报 或 有异常
         if dr_reps.exists():
             note = "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else ""
         else:
             note = "（未報告）"
 
+        # 整理成字典追加到列表中
         driver_data.append({
             'driver':    d,
             'total_fee': total,
