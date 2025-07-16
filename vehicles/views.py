@@ -102,7 +102,23 @@ def vehicle_status_view(request):
 
     for vehicle in vehicles:
         res_list = reservations.filter(vehicle=vehicle).order_by('start_datetime')
-        print(f"🔍 DEBUG: {vehicle.license_plate} 预约数: {res_list.count()}")
+        #print(f"🔍 DEBUG: {vehicle.license_plate} 预约数: {res_list.count()}")
+
+        # ✅ 去重处理：相同司机、时间段、日期只显示一次
+        seen_keys = set()
+        res_list_deduped = []
+        for r in res_list:
+            key = (
+                r.driver.id if r.driver else None,
+                r.start_time,
+                r.end_time,
+                r.date,
+                r.end_date,
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            res_list_deduped.append(r)
 
         # 默认状态
         if selected_date < timezone.localdate():
@@ -137,20 +153,18 @@ def vehicle_status_view(request):
         user_reservation = res_list.filter(
             driver=request.user,
             status__in=['reserved', 'out'],
-            #start_datetime__lt=end_of_day,
-            #end_datetime__gt=start_of_day,
             date__lte=selected_date,
             end_date__gte=selected_date
         ).first()
 
-        # 所有人预约者显示
+        # ✅ 所有人预约者显示（使用去重后的 res_list_deduped）
         reserver_labels = [
             (
                 f"{datetime.combine(r.date, r.start_time).strftime('%H:%M')}~"
                 f"{datetime.combine(r.end_date, r.end_time).strftime('%H:%M')} "
                 f"{getattr(r.driver, 'display_name', (r.driver.first_name or '') + ' ' + (r.driver.last_name or '')).strip()}"
             )
-            for r in res_list
+            for r in res_list_deduped
             if r.status in ['reserved', 'out'] and r.driver
         ]
 
@@ -245,6 +259,24 @@ def reserve_vehicle_view(request, car_id):
                         messages.warning(request, f"{start_date} 你已预约该车，已跳过。")
                         continue
 
+                    # ✅ 检查是否违反10小时间隔（当前用户）
+                    recent_same_vehicle_reservations = Reservation.objects.filter(
+                        vehicle=car,
+                        driver=request.user,
+                    ).only('date', 'start_time').order_by('-date', '-start_time')# 优化性能
+
+                    too_close = False
+                    for prev in recent_same_vehicle_reservations:
+                        prev_start_dt = datetime.combine(prev.date, prev.start_time)
+                        delta_sec = abs((start_dt - prev_start_dt).total_seconds())
+                        if delta_sec < 36000:  # 10小时 = 36000秒
+                            too_close = True
+                            break
+
+                    if too_close:
+                        messages.warning(request, f"⚠️ {start_date} 的预约时间与之前预约相隔不足10小时，已跳过。")
+                        continue
+
                     # ✅ 检查是否与其他人预约冲突
                     conflict_exists = Reservation.objects.filter(
                         vehicle=car,
@@ -254,6 +286,7 @@ def reserve_vehicle_view(request, car_id):
                     ).filter(
                         Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
                     ).exclude(driver=request.user).exists()
+
 
                     if conflict_exists:
                         messages.warning(request, f"{start_date} 存在预约冲突，已跳过。")
@@ -981,6 +1014,8 @@ def vehicle_status_with_photo(request):
     vehicles = Car.objects.all()
     status_map = {}
 
+    today = localdate()
+
     for vehicle in vehicles:
         r = reservations.filter(vehicle=vehicle).first()
         if r:
@@ -990,9 +1025,19 @@ def vehicle_status_with_photo(request):
             status = 'available'
             user_reservation = None
 
+        # ✅ 新增提醒逻辑
+        show_inspection_warning = (
+            vehicle.inspection_date and vehicle.inspection_date <= today + timedelta(days=30)
+        )
+        show_insurance_warning = (
+            vehicle.insurance_expiry and vehicle.insurance_expiry <= today + timedelta(days=30)
+        )
+
         status_map[vehicle] = {
             'status': status,
-            'user_reservation': user_reservation
+            'user_reservation': user_reservation,
+            'show_inspection_warning': show_inspection_warning,
+            'show_insurance_warning': show_insurance_warning,
         }
 
     return render(request, 'vehicles/status_view_with_photo.html', {

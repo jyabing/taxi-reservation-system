@@ -106,6 +106,19 @@
                 </div>
               {% endfor %}
 
+              {# ✅ 不管有没有空隙，都要渲染提醒 #}
+              {% if not cell.is_past %}
+                {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
+                  {% if date_reminders %}
+                    <div class="mt-1" style="font-size:12px;">
+                      {% for rmsg in date_reminders %}
+                        <div class="text-warning">⚠️ {{ rmsg }}</div>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
+              {% endif %}
+
               {# 如果当天还有空隙可预约 #}
               {% if not cell.is_past %}
                 {% include 'vehicles/weekly_empty_after.html' %}
