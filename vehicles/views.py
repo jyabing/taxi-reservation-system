@@ -463,16 +463,15 @@ def weekly_overview_view(request):
         vehicle.daily_reminders = {}
 
         for d in week_dates:
-            messages = []
+            reminders = []
             fields = [
-                ('inspection_date', '车辆检査'),
-                ('insurance_expiry', '保险'),
-                ('mandatory_insurance_expiry', '强制保险'),
-                ('lease_expiry', '租赁合约'),
+                ('inspection_date', 'inspection', '车辆检査'),
+                ('insurance_expiry', 'insurance', '保险'),
+                ('mandatory_insurance_expiry', 'mandatory_insurance', '强制保险'),
+                ('lease_expiry', 'lease', '租赁合约'),
             ]
-            for field, label in fields:
+            for field, rtype, label in fields:
                 due_date = getattr(vehicle, field, None)
-                print('🔍 当前日期:', d, type(d))  # ✅ 这里才有 d 的定义
                 if isinstance(due_date, date):
                     delta = (d - due_date).days
                     if -5 <= delta <= 5:
@@ -482,9 +481,13 @@ def weekly_overview_view(request):
                             msg = f"今天{label}到期，请协助事务完成{label}更新"
                         else:
                             msg = f"{label}到期延迟{delta}天，请协助事务完成{label}更新"
-                        messages.append(msg)
-            if messages:
-                vehicle.daily_reminders[d] = messages
+                        reminders.append({
+                            'type': rtype,
+                            'message': msg,
+                            'is_today': (delta == 0)
+                        })
+            if reminders:
+                vehicle.daily_reminders[d] = reminders
 
         # ✅ 原有每周预约构造逻辑
         row = {'vehicle': vehicle, 'days': []}
@@ -506,6 +509,28 @@ def weekly_overview_view(request):
                 'reservations': day_reservations,
                 'is_past': is_past,
             })
+
+        # ✅ 添加提醒结构到每个 row
+        reminders = []
+        if vehicle.inspection_date:
+            delta = (vehicle.inspection_date - today).days
+            if -5 <= delta <= 5:
+                reminders.append({
+                    'type': 'inspection',
+                    'message': f"车检日 {vehicle.inspection_date} 距今 {delta} 天",
+                    'is_today': delta == 0
+                })
+
+        if vehicle.insurance_end_date:
+            delta = (vehicle.insurance_end_date - today).days
+            if -5 <= delta <= 5:
+                reminders.append({
+                    'type': 'insurance',
+                    'message': f"保险到期日 {vehicle.insurance_end_date} 距今 {delta} 天",
+                    'is_today': delta == 0
+                })
+
+        row['reminders'] = reminders
         data.append(row)
 
     return render(request, 'vehicles/weekly_view.html', {

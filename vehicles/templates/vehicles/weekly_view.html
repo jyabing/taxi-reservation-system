@@ -74,14 +74,29 @@
   </thead>
   <tbody>
     {% for row in vehicle_data %}
-      <tr>
-        <td class="text-start">
-          <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold">
-            {{ row.vehicle.license_plate }}
-          </a>
+      <td class="text-start">
+        <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold">
+          {{ row.vehicle.license_plate }}
+        </a>
 
-          {% include 'partials/_inspection_reminder.html' with car=row.vehicle %}
-        </td>
+        {% if row.reminders %}
+          <div class="mt-1 small">
+            {% for r in row.reminders %}
+              <div
+                class="px-2 py-1 rounded mb-1"
+                style="font-size:12px;
+                      {% if r.is_today %} background:#fff3cd; color:#856404;
+                      {% elif '推迟' in r.message or '过期' in r.message %} background:#f8d7da; color:#721c24;
+                      {% elif '还有' in r.message %} background:#d1ecf1; color:#0c5460;
+                      {% else %} background:#eee; color:#333;
+                      {% endif %}">
+                {% if r.type == 'inspection' %}🧾{% elif r.type == 'insurance' %}🛡{% elif r.type == 'maintenance' %}🔧{% else %}📌{% endif %}
+                {{ r.message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </td>
         {% for cell in row.days %}
           <td style="{% if cell.is_past %}color:#aaa;{% endif %}">
             {# 维修中 #}
@@ -112,7 +127,14 @@
                   {% if date_reminders %}
                     <div class="mt-1" style="font-size:12px;">
                       {% for rmsg in date_reminders %}
-                        <div class="text-warning">⚠️ {{ rmsg }}</div>
+                        <div style="font-size:12px;
+                                    {% if '还有' in rmsg.message %}color:#0c63e4;           {# 蓝色 #}
+                                    {% elif '本日' in rmsg.message %}color:#d17700;          {# 橙色 #}
+                                    {% elif '推迟' in rmsg.message or '过期' in rmsg.message %}color:#c1121f; {# 红色 #}
+                                    {% else %}color:#666;
+                                    {% endif %}">
+                          ⚠️ {{ rmsg.message }}
+                        </div>
                       {% endfor %}
                     </div>
                   {% endif %}
@@ -136,7 +158,14 @@
                   {% if date_reminders %}
                     <div class="mt-1" style="font-size:12px;">
                       {% for rmsg in date_reminders %}
-                        <div class="text-warning">⚠️ {{ rmsg }}</div>
+                        <div style="font-size:12px;
+                                    {% if '还有' in rmsg.message %}color:#0c63e4;
+                                    {% elif '本日' in rmsg.message %}color:#d17700;
+                                    {% elif '推迟' in rmsg.message or '过期' in rmsg.message %}color:#c1121f;
+                                    {% else %}color:#666;
+                                    {% endif %}">
+                          ⚠️ {{ rmsg.message }}
+                        </div>
                       {% endfor %}
                     </div>
                   {% endif %}

@@ -69,6 +69,33 @@ class Car(models.Model):
     def __str__(self):
         return self.license_plate
 
+    # ✅ 新增结构化提醒方法
+    def get_reminders(self, today=None):
+        from datetime import timedelta
+        from django.utils.timezone import localdate
+
+        if today is None:
+            today = localdate()
+
+        reminders = []
+
+        if self.inspection_date and self.inspection_date <= today + timedelta(days=30):
+            reminders.append({
+                'type': 'inspection',
+                'date': self.inspection_date,
+                'text': f"車検期限 {self.inspection_date.strftime('%-m月%-d日')}"
+            })
+
+        if self.insurance_end_date and self.insurance_end_date <= today + timedelta(days=30):
+            reminders.append({
+                'type': 'insurance',
+                'date': self.insurance_end_date,
+                'text': f"保険期限 {self.insurance_end_date.strftime('%-m月%-d日')}"
+            })
+
+        return reminders
+
+
     def is_insurance_expired(self):
         if self.insurance_end_date:
             return self.insurance_end_date < localdate()
