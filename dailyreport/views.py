@@ -1,4 +1,6 @@
+import csv
 from datetime import datetime, date, timedelta
+
 
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib import messages
@@ -7,6 +9,8 @@ from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
 from django.utils import timezone
 from django.db.models import Sum, Case, When, F, DecimalField, Q
+from django.http import HttpResponse
+from django.utils.encoding import escape_uri_path
 
 from .models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
@@ -62,8 +66,16 @@ def dailyreport_edit(request, pk):
 
         if form.is_valid() and formset.is_valid():
             print("🧪 cleaned_data:", formset.cleaned_data)
-            form.save()
+
+            report = form.save(commit=False)
+
+            # ✅ 强化保存：确保 etc 字段写入
+            report.etc_expected = form.cleaned_data.get('etc_expected') or 0
+            report.etc_collected = form.cleaned_data.get('etc_collected') or 0
+
+            report.save()
             formset.save()
+
             messages.success(request, "保存成功！")
             return redirect('dailyreport:dailyreport_edit', pk=report.pk)
         else:

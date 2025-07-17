@@ -61,6 +61,10 @@ class DriverDailyReport(models.Model):
     deposit_amount = models.PositiveIntegerField("入金額", null=True, blank=True, help_text="手动输入的入金金额")
     deposit_difference = models.IntegerField("過不足額", null=True, blank=True, help_text="入金 − 現金")
 
+    # ✅ 新增：ETC 字段
+    etc_expected = models.PositiveIntegerField("ETC应收合计", null=True, blank=True, help_text="ETC 由公司支付后，司机应向乘客收回的总额")
+    etc_collected = models.PositiveIntegerField("ETC实际收取", null=True, blank=True, help_text="司机当天实际收回的 ETC 金额")
+
     gas_volume = models.DecimalField("ガソリン量 (L)",max_digits=6, decimal_places=2,default=0,validators=[MinValueValidator(0)])
     mileage = models.DecimalField("里程 (KM)",max_digits=7, decimal_places=2,default=0,validators=[MinValueValidator(0)])
 

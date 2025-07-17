@@ -209,6 +209,35 @@ input[type=number] {
         </div>
       <!-- ✅ 新增区域结束 -->
 
+      <!-- ✅ 新版：ETC 字段区域 -->
+      <div class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
+
+      <!-- ETC 应收 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <label for="etc-expected" class="small text-muted">ETC 应收合计（円）</label>
+        <input type="number" name="etc_expected" id="etc-expected"
+              class="form-control form-control-sm text-end"
+              value="{{ report.etc_expected|default_if_none:'0' }}">
+      </div>
+
+      <!-- ETC 实收 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <label for="etc-collected" class="small text-muted">ETC 实收合计（円）</label>
+        <input type="number" name="etc_collected" id="etc-collected"
+              class="form-control form-control-sm text-end"
+              value="{{ report.etc_collected|default_if_none:'0' }}">
+      </div>
+
+    </div>
+
+        <!-- 差额显示区域：一行独立 -->
+        <div class="mb-3">
+          <div id="etc-diff-display" class="alert alert-info py-2 px-3 small mb-0">
+            未收 ETC：0 円（无需扣除）
+          </div>
+        </div>
+      </div>
+
     <table class="table table-bordered table-sm report-table">
       <thead class="table-light">
         <tr>
@@ -333,6 +362,32 @@ input[type=number] {
     table.table tr.has-note {
       background-color: #fff8b3 !important;
     }
+
+  function updateEtcDifference() {
+    const expected = parseInt(document.getElementById('etc-expected')?.value || 0);
+    const collected = parseInt(document.getElementById('etc-collected')?.value || 0);
+    const diff = expected - collected;
+
+    const display = document.getElementById('etc-diff-display');
+    if (!display) return;
+
+    if (diff > 0) {
+      display.classList.remove('alert-info');
+      display.classList.add('alert-warning');
+      display.innerText = `未收 ETC：${diff} 円（将从工资中扣除）`;
+    } else {
+      display.classList.remove('alert-warning');
+      display.classList.add('alert-info');
+      display.innerText = `未收 ETC：0 円（无需扣除）`;
+    }
+  }
+
+  // 监听输入事件
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('etc-expected')?.addEventListener('input', updateEtcDifference);
+    document.getElementById('etc-collected')?.addEventListener('input', updateEtcDifference);
+    updateEtcDifference(); // 初始渲染
+  });
   </style>
 
 {% endblock %}
