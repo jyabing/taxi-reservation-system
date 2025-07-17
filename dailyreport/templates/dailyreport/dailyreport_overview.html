@@ -30,7 +30,12 @@
   </a>
 </div>
 
-<h2 class="mb-4 border-bottom pb-2">📊 乗務日報・月間サマリー（{{ month|date:"Y年n月" }}）</h2>
+<!-- ✅ 月份切换按钮与统一标题 -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <a href="?month={{ prev_month }}&keyword={{ keyword }}" class="btn btn-outline-primary">&larr; 前の月</a>
+  <h2 class="mb-0 text-center flex-grow-1">📊 {{ month_label }} 乗務月報</h2>
+  <a href="?month={{ next_month }}&keyword={{ keyword }}" class="btn btn-outline-primary">次の月 &rarr;</a>
+</div>
 
 {# ✅ 日式风格全員合計（金额（分成額）） #}
 <div class="d-flex flex-wrap gap-3 mb-4" id="payment-summary-panel">

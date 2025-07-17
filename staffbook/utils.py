@@ -1,6 +1,10 @@
+from datetime import date
 from decimal import Decimal
+from django.db.models import Q
 from collections import defaultdict
 from django.contrib.auth.decorators import user_passes_test
+from calendar import monthrange
+from .models import Driver
 
 # ⛳ 共通关键词映射（用于模糊匹配支付方式）
 PAYMENT_KEYWORDS = {
@@ -120,3 +124,28 @@ def is_dailyreport_admin(user):
 
 # 可选：用于视图装饰器
 dailyreport_admin_required = user_passes_test(is_dailyreport_admin)
+
+
+def get_active_drivers(month_obj, keyword=None):
+    """
+    参数:
+        month_obj: datetime.date 或 datetime.datetime 对象，代表查询的月份
+        keyword: 可选关键字（姓名模糊匹配）
+    返回:
+        在该月内在职的 Driver queryset
+    """
+    year = month_obj.year
+    month = month_obj.month
+    first_day = date(year, month, 1)
+    last_day = date(year, month, monthrange(year, month)[1])
+
+    qs = Driver.objects.filter(
+        hire_date__lte=last_day
+    ).filter(
+        Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day)
+    )
+
+    if keyword:
+        qs = qs.filter(name__icontains=keyword)
+
+    return qs

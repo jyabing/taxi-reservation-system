@@ -1,12 +1,37 @@
 from datetime import timedelta
 from django import forms
 from django.forms import inlineformset_factory
+from django.forms.models import BaseInlineFormSet  # ✅ ← 需要这行
 from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage
-from vehicles.models import Reservation  # 如果你用了 Reservation 模型
-from dailyreport.utils import apply_form_control_style  # 如果你有这个工具函数
-#from dailyreport.forms import DriverDailyReportForm, DriverDailyReportItemForm
+from vehicles.models import Reservation
+from dailyreport.utils import apply_form_control_style
 
-# ✅ 主表：编辑日报基本信息（出勤时间、备注、车辆等）
+
+# ✅ 1. 自定义 FormSet（放在 ReportItemFormSet 之前！）
+class RequiredReportItemFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+
+        for form in self.forms:
+            # 忽略已标记为删除的行
+            if form.cleaned_data.get('DELETE'):
+                continue
+
+            # 只要金额或支付方式有填写，就视为有效行
+            has_data = any([
+                form.cleaned_data.get('meter_fee'),
+                form.cleaned_data.get('payment_method'),
+            ])
+
+            if has_data:
+                # 只强制支付方式为必填
+                if not form.cleaned_data.get('payment_method'):
+                    form.add_error('payment_method', '支払方法は必須です。')
+            else:
+                # 如果整行都为空白，自动标记为删除（避免报错）
+                form.cleaned_data['DELETE'] = True
+
+# ✅2. 主表 Form：编辑日报基本信息（出勤时间、备注、车辆等）
 class DriverDailyReportForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReport
@@ -75,7 +100,7 @@ class DriverDailyReportForm(forms.ModelForm):
         return cleaned_data
 
         
-# ✅ 明细表：包含多条乘车记录的 InlineFormSet
+# ✅ 3. 明细 Form：包含多条乘车记录的 InlineFormSet
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReportItem
@@ -106,11 +131,12 @@ class DriverDailyReportItemForm(forms.ModelForm):
         self.fields['num_male'].required = False
         self.fields['num_female'].required = False
 
-# ✅ 明细表单集合
+# 4. 明细 FormSet（必须最后）
 ReportItemFormSet = inlineformset_factory(
     DriverDailyReport,
     DriverDailyReportItem,
     form=DriverDailyReportItemForm,
+    formset=RequiredReportItemFormSet,
     extra=1,
     can_delete=True,
     max_num=40

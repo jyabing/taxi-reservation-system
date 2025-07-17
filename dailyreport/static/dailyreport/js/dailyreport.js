@@ -74,16 +74,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const numCell = row.querySelector(".row-number");
       if (numCell) numCell.textContent = index + 1;
 
-      row.querySelectorAll("input, select, textarea, label").forEach(el => {
-        ["name", "id", "for"].forEach(attr => {
-          if (el.hasAttribute(attr)) {
-            el.setAttribute(attr, el.getAttribute(attr).replace(/-\d+-/, `-${index}-`));
-          }
-        });
+    // ✅ 将所有属性中的索引统一替换
+    row.querySelectorAll("input, select, textarea, label").forEach(el => {
+      ["name", "id", "for"].forEach(attr => {
+        if (el.hasAttribute(attr)) {
+          el.setAttribute(attr, el.getAttribute(attr).replace(/-\d+-/, `-${index}-`));
+        }
       });
-
-      index++;
     });
+
+    index++;
+  });
 
     const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
     if (totalEl) totalEl.value = index;
@@ -139,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateRowNumbersAndIndexes();
   });
 
-  // —— 6. 「向下插入一行」按钮 —— 
+  // —— 6. 「向下插入一行」按钮（修正版） ——
   document.querySelector("table.report-table").addEventListener("click", (e) => {
     if (!e.target.classList.contains("insert-below")) return;
 
@@ -148,20 +149,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!template || !totalEl) return;
 
     const count = parseInt(totalEl.value, 10);
-    const newHtml = template.innerHTML
+
+    // 克隆模板行并替换 __prefix__ 和 __num__
+    const tempDiv = document.createElement("tbody");
+    tempDiv.innerHTML = template.innerHTML
       .replace(/__prefix__/g, count)
       .replace(/__num__/g, count + 1);
 
-    const newRow = document.createElement("tr");
-    newRow.classList.add("report-item-row");
-    newRow.innerHTML = newHtml;
+    const newRow = tempDiv.querySelector("tr");
 
+    // 插入到当前行之后
     const currentRow = e.target.closest("tr");
     currentRow.parentNode.insertBefore(newRow, currentRow.nextSibling);
 
+    // 绑定事件
     bindRowEvents(newRow);
+
+    // 更新表单总数
     totalEl.value = count + 1;
 
+    // 重新编号、更新 name/id
     updateRowNumbersAndIndexes();
   });
 

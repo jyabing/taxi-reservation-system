@@ -16,47 +16,45 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
 
 <style>
-/* 强化优先级：tr + td 都加 */
 table.table tr.has-note,
 table.table tr.has-note td {
   background-color: #fff3cd !important;
 }
-
-  .auto-width-input {
-    width: 2ch;
-    min-width: 60px;
-    max-width: 100px;
-    box-sizing: content-box;
-    transition: width 0.2s;
-  }
-  .mirror-span {
-    position: absolute;
-    visibility: hidden;
-    white-space: pre;
-    font: inherit;
-  }
-  .mark-checkbox {
-    transform: scale(1.3);
-    margin-top: 3px;
-  }
-  .scrollable-input {
-    overflow-x: auto;
-    white-space: nowrap;
-    min-width: 50px;
-    width: 100%;
-    max-width: 100px;
-  }
-  #payment-summary-panel {
-    font-size: 0.95rem;
-  }
-  input[type=number]::-webkit-outer-spin-button,
-  input[type=number]::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-  input[type=number] {
-    -moz-appearance: textfield;
-  }
+.auto-width-input {
+  width: 2ch;
+  min-width: 60px;
+  max-width: 100px;
+  box-sizing: content-box;
+  transition: width 0.2s;
+}
+.mirror-span {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+  font: inherit;
+}
+.mark-checkbox {
+  transform: scale(1.3);
+  margin-top: 3px;
+}
+.scrollable-input {
+  overflow-x: auto;
+  white-space: nowrap;
+  min-width: 50px;
+  width: 100%;
+  max-width: 100px;
+}
+#payment-summary-panel {
+  font-size: 0.95rem;
+}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
 </style>
 
 {% block content %}
@@ -71,25 +69,25 @@ table.table tr.has-note td {
     {% endfor %}
   {% endif %}
 
-  <h4><strong>{{ report.driver.name }}</strong>（{{ report.driver.driver_code }}）- 編集乗務日報</h4>
+  <h4><strong>{{ report.driver.name }}</strong>（{{ report.driver.driver_code }}）- 乗務日報の編集</h4>
   {{ form.meter_fee|add_class:"form-control" }}
   <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
 
   {% if report.pk %}
     {% if report.edited_by %}
       <div class="alert alert-light small mb-3">
-        <strong>最后编辑：</strong>
+        <strong>最終編集：</strong>
         {{ report.edited_by.get_full_name|default:report.edited_by.username }}
-        于 {{ report.edited_at|date:"Y年n月j日 H:i" }} 保存
+        {{ report.edited_at|date:"Y年n月j日 H:i" }} に保存
       </div>
     {% else %}
-      <div class="alert alert-secondary small mb-3">尚未被编辑过</div>
+      <div class="alert alert-secondary small mb-3">編集履歴なし</div>
     {% endif %}
   {% endif %}
 
   {% if form.errors %}
     <div class="alert alert-danger">
-      <strong>表单错误：</strong>
+      <strong>フォームエラー：</strong>
       <ul>
       {% for field, errs in form.errors.items %}
         <li>{{ field }}: {{ errs|join:", " }}</li>
@@ -100,10 +98,11 @@ table.table tr.has-note td {
 
   {% if formset.non_form_errors %}
     <div class="alert alert-danger">
-      <strong>明细表单错误：</strong>
+      <strong>明細フォームのエラー：</strong>
       {{ formset.non_form_errors }}
     </div>
   {% endif %}
+
 
   <form method="post" action="{% url 'dailyreport:driver_dailyreport_edit' driver_id=driver_id report_id=report.id %}" autocomplete="off">
     {% csrf_token %}
@@ -111,14 +110,14 @@ table.table tr.has-note td {
     {{ form.date.as_hidden }}
 
     <div class="mb-3">
-      <label class="form-label">备注:</label>
+      <label class="form-label">備考：</label>
       {{ form.note|add_class:"form-control form-control-sm"|attr:"rows:2"|attr:"style:width:100%; max-width:400px;" }}
     </div>
 
     <table class="table table-bordered table-sm">
       <thead class="table-light">
         <tr>
-          <th style="white-space: nowrap;"><strong>使用车辆</strong></th>
+          <th style="white-space: nowrap;"><strong>使用車両</strong></th>
           <th style="white-space: nowrap;">出勤</th>
           <th style="white-space: nowrap;">退勤</th>
           <th style="white-space: nowrap;">勤務時間</th>
@@ -218,7 +217,7 @@ table.table tr.has-note td {
           <th style="white-space: nowrap;">乗車地</th>
           <th style="white-space: nowrap;">料金</th>
           <th style="white-space: nowrap;">支付</th>
-          <th style="white-space: nowrap;">加亮</th>
+          <th style="white-space: nowrap;">強調</th>
           <th>注釈</th>
           <th style="white-space: nowrap;">操作</th>
         </tr>
@@ -284,7 +283,7 @@ table.table tr.has-note td {
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
                 {% endif %}
-                  <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下插入行</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕下に挿入</button>
             </div>
           </td>
         </tr>
@@ -294,6 +293,9 @@ table.table tr.has-note td {
       <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
       <tbody id="empty-form-template" class="d-none">
         <tr class="report-item-row">
+          {{ formset.empty_form.id }}
+          {{ formset.empty_form.DELETE }}
+
           <td class="row-number">__num__</td>
           <td>{{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
           <td>{{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}</td>
@@ -301,16 +303,9 @@ table.table tr.has-note td {
           <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}</td>
           <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
           <td>{{ formset.empty_form.note|add_class:"form-control" }}</td>
-
-          <!-- 把隐藏字段放到一个 display:none 的 <td> 里 -->
-          <td style="display:none">
-            {{ formset.empty_form.id }}
-            {{ formset.empty_form.DELETE }}
-          </td>
-
           <td style="white-space:nowrap;">
             <button type="button" class="btn btn-danger btn-sm delete-row">削除</button>
-            <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下插入行</button>
+            <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
           </td>
         </tr>
       </tbody>
@@ -318,20 +313,14 @@ table.table tr.has-note td {
 
     </table>
 
-    <button type="submit" class="btn btn-primary">💾 保存</button>
+    <button type="submit" class="btn btn-primary">💾 保存する</button>
   </form>
 
   <div class="text-center mt-3">
-    <button type="button" class="btn btn-outline-primary" id="add-row-btn">➕ 増加一行</button>
+    <button type="button" class="btn btn-outline-primary" id="add-row-btn">➕ 行を追加</button>
   </div>
   
 </div>
-{% if form.errors %}
-  <div class="alert alert-danger">主表单验证失败：{{ form.errors }}</div>
-{% endif %}
-{% if formset.non_form_errors %}
-  <div class="alert alert-danger">明细验证失败：{{ formset.non_form_errors }}</div>
-{% endif %}
 
 {% endblock %}
 

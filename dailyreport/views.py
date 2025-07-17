@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib import messages
@@ -12,10 +12,11 @@ from .models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
 
 from staffbook.services import get_driver_info
-from staffbook.utils import is_dailyreport_admin
+from staffbook.utils import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
 
 from vehicles.models import Reservation
+
 
 from .utils import (
     calculate_totals_from_formset,
@@ -49,8 +50,10 @@ def dailyreport_edit(request, pk):
         DriverDailyReport,
         DriverDailyReportItem,
         form=DriverDailyReportItemForm,
-        extra=0,
-        can_delete=True
+        formset=RequiredReportItemFormSet,
+        extra=1,
+        can_delete=True,
+        max_num=40
     )
 
     if request.method == 'POST':
@@ -221,7 +224,7 @@ def driver_dailyreport_month(request, driver_id):
 
     if selected_date:
         try:
-            selected_date_obj = datetime.datetime.strptime(selected_date, '%Y-%m-%d').date()
+            selected_date_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
             reports = DriverDailyReport.objects.filter(driver=driver, date=selected_date_obj)
         except ValueError:
             reports = DriverDailyReport.objects.none()
@@ -431,7 +434,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
     
     report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
-    duration = datetime.timedelta()
+    duration = timedelta()
 
     # ✅ 添加这两行防止变量未赋值
     user_h = 0
@@ -460,7 +463,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             except Exception:
                 break_minutes = 0
 
-            inst.休憩時間 = datetime.timedelta(minutes=break_minutes)
+            inst.休憩時間 = timedelta(minutes=break_minutes)
             inst.calculate_work_times()
             inst.edited_by = request.user
 
@@ -488,12 +491,12 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                 res = Reservation.objects.filter(driver=driver_user, date=inst.date).order_by('start_time').first()
                 if res:
                     tz = timezone.get_current_timezone()
-                    res.actual_departure = timezone.make_aware(datetime.datetime.combine(inst.date, inst.clock_in), tz)
+                    res.actual_departure = timezone.make_aware(datetime.combine(inst.date, inst.clock_in), tz)
                     if inst.clock_out:
                         ret_date = inst.date
                         if inst.clock_out < inst.clock_in:
-                            ret_date += datetime.timedelta(days=1)
-                        res.actual_return = timezone.make_aware(datetime.datetime.combine(ret_date, inst.clock_out), tz)
+                            ret_date += timedelta(days=1)
+                        res.actual_return = timezone.make_aware(datetime.combine(ret_date, inst.clock_out), tz)
                     res.save()
 
             inst.has_issue = inst.items.filter(has_issue=True).exists()
@@ -531,10 +534,10 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                     report.vehicle = res.vehicle
                     report.save()
                 if clock_in and clock_out:
-                    dt_in = datetime.datetime.combine(report.date, clock_in)
-                    dt_out = datetime.datetime.combine(report.date, clock_out)
+                    dt_in = datetime.combine(report.date, clock_in)
+                    dt_out = datetime.combine(report.date, clock_out)
                     if dt_out <= dt_in:
-                        dt_out += datetime.timedelta(days=1)
+                        dt_out += timedelta(days=1)
                     duration = dt_out - dt_in
 
         if report.休憩時間:
@@ -669,6 +672,7 @@ def dailyreport_overview(request):
     # 1. 基本参数：关键字 + 月份
     today     = now().date()
     keyword   = request.GET.get('keyword', '').strip()
+    #year = int(request.GET.get('year', today.year))
     month_str = request.GET.get('month', today.strftime('%Y-%m'))
 
     # 2. 解析 month_str
@@ -676,6 +680,12 @@ def dailyreport_overview(request):
         month = datetime.strptime(month_str, "%Y-%m")
     except ValueError:
         month = today.replace(day=1)
+        month_str = month.strftime('%Y-%m')
+
+    #year = month.year
+
+    # ✅ 使用封装好的在职筛选函数
+    drivers = get_active_drivers(month, keyword)
 
     # 3. 构建 reports，只按 month 过滤
     reports = DriverDailyReport.objects.filter(
@@ -771,22 +781,8 @@ def dailyreport_overview(request):
 
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
 
-    # ✅ 构造本月起止日期（用于判断在职状态）
-    first_day_of_month = month.replace(day=1)
-    last_day_of_month = date(month.year, month.month, monthrange(month.year, month.month)[1])
-
-    # ✅ 本月在职司机筛选逻辑：
-    # 条件①：入职日 <= 本月最后一天（已入职）
-    # 条件②：未离职 或 离职日 >= 本月第一天（尚在职）
-    driver_qs = Driver.objects.filter(
-        hire_date__lte=last_day_of_month
-    ).filter(
-        Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day_of_month)
-    )
-
-    # ✅ 可选关键字筛选（姓名模糊搜索）
-    if keyword:
-        driver_qs = driver_qs.filter(name__icontains=keyword)
+    # ✅ 使用统一封装的在职司机筛选函数
+    driver_qs = drivers
 
     # ✅ 遍历符合条件的司机，计算其当月的合计水揚金额 + 备注状态
     driver_data = []
@@ -827,11 +823,20 @@ def dailyreport_overview(request):
         ('qr', '扫码'),
     ]
 
-    # 10. 渲染模板
+
+    # ✅ 10. 生成分页月份链接（用于“上一月”“下一月”按钮）
+    from dateutil.relativedelta import relativedelta
+    prev_month_str = (month - relativedelta(months=1)).strftime('%Y-%m')
+    next_month_str = (month + relativedelta(months=1)).strftime('%Y-%m')
+
+    # 11. 渲染模板
     return render(request, 'dailyreport/dailyreport_overview.html', {
         'page_obj':  page_obj,
         'month':     month,
-        'month_str': month_str,
+        'month_str': month.strftime('%Y-%m'),
+        'month_label': month.strftime('%Y年%m月'),
+        'prev_month': prev_month_str,
+        'next_month': next_month_str,
         'keyword':   keyword,
         'totals_all':    totals_all,
         'summary_keys':  summary_keys,
