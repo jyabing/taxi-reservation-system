@@ -20,13 +20,15 @@
 </form>
 
 <!-- ✅ 导出按钮 -->
-<div class="mb-3">
-  <a href="{% url 'dailyreport:export_dailyreports_csv' %}?month={{ month|date:'Y-m' }}"
-     class="btn btn-success">
-    ⬇️ この月の乗務日報をCSVでダウンロード
+<div class="my-3">
+  <a href="{% url 'dailyreport:export_dailyreports_csv' year=current_year month=current_month %}"
+     class="btn btn-sm btn-outline-primary me-2">
+    📤 导出 {{ current_year }}年{{ current_month }}月每日明细 CSV
   </a>
-  <a href="{% url 'dailyreport:export_monthly_summary_csv' %}?month={{ target_month }}" class="btn btn-outline-primary">
-  📤 月报CSVダウンロード（汇总版）
+
+  <a href="{% url 'dailyreport:export_monthly_summary_csv' year=current_year month=current_month %}"
+     class="btn btn-sm btn-outline-success">
+    📤 导出 {{ current_year }}年{{ current_month }}月月度汇总 CSV
   </a>
 </div>
 

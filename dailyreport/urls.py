@@ -15,10 +15,8 @@ urlpatterns = [
     # 日报总览 / 列表 / 导出
     path('dailyreports/', views.dailyreport_list, name='dailyreport_list'),  # （管理员或司机）所有日报功能入口
     path('dailyreports/overview/', views.dailyreport_overview, name='dailyreport_overview'),
-    path('dailyreports/export/', views.export_dailyreports_csv, name='export_dailyreports_csv'),
-
-    # ✅ ✅ ✅ 这行必须存在
-    path('monthly_summary/export/', views.export_monthly_summary_csv, name='export_monthly_summary_csv'),#月报导出
+    path('export/daily/<int:year>/<int:month>/', views.export_dailyreports_csv, name='export_dailyreports_csv'),#全员每日csv导出
+    path('export/monthly/<int:year>/<int:month>/', views.export_monthly_summary_csv, name='export_monthly_summary_csv'),#全员每月csv导出
 
     path('my_dailyreports/', views.my_dailyreports, name='my_dailyreports'),  # 当前用户查看自己日报
 

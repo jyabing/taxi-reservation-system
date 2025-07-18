@@ -20,7 +20,7 @@ from staffbook.utils import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
 
 from vehicles.models import Reservation
-
+from urllib.parse import quote
 
 from .utils import (
     calculate_totals_from_formset,
@@ -118,108 +118,159 @@ def dailyreport_list(request):
     return render(request, 'dailyreport/dailyreport_list.html', {'reports': reports})
 
 @user_passes_test(is_dailyreport_admin)
-def export_dailyreports_csv(request):
-    month_str = request.GET.get('month')  # 例: '2025-06'
+def export_dailyreports_csv(request, year, month):
+    from collections import defaultdict
+    from django.db.models import Sum
 
+    reports = DriverDailyReport.objects.filter(date__year=year, date__month=month).order_by('date', 'driver__name')
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="dailyreports.csv"'
+
+    # ✅ ✅ 修改：美化文件名为「2025年7月全员每日明细.csv」格式
+    filename = f"{year}年{month}月全员每日明细.csv"
+    response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
 
     writer = csv.writer(response)
-    writer.writerow([
-        '司机', '日期', '出勤时间', '退勤时间',
-        '勤務時間', '休憩時間', '実働時間', '残業時間'
-    ])
 
-    reports = DriverDailyReport.objects.all().order_by('-date')
-    
-    if month_str:
-        try:
-            year, month = map(int, month_str.split('-'))
-            start_date = datetime.date(year, month, 1)
-            if month == 12:
-                end_date = datetime.date(year + 1, 1, 1)
-            else:
-                end_date = datetime.date(year, month + 1, 1)
-            reports = reports.filter(date__gte=start_date, date__lt=end_date)
-        except Exception:
-            pass
+    headers = [
+        '日期', '司机代码', '司机',
+        '现金', 'Uber', 'Didi', 'クレジットカード',
+        '扫码支付', '京交信', 'オムロン', '京都市他',
+        'ETC应收', 'ETC实收', '未收ETC'
+    ]
+    writer.writerow(headers)
 
-    def fmt(td):
-        if td is None:
-            return ''
-        total_minutes = int(td.total_seconds() // 60)
-        return f"{total_minutes // 60:02}:{total_minutes % 60:02}"
+    payment_keys = ['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi']
 
     for report in reports:
+        summary = defaultdict(int)
+        for item in report.items.all():
+            if item.payment_method in payment_keys:
+                summary[item.payment_method] += item.meter_fee or 0
+
+        etc_expected = report.etc_expected or 0
+        etc_collected = report.etc_collected or 0
+        etc_diff = etc_expected - etc_collected
+
         writer.writerow([
+            report.date.strftime('%Y-%m-%d'),
+            report.driver.driver_code if report.driver else '',
             report.driver.name,
-            report.date.strftime("%Y-%m-%d"),
-            report.clock_in.strftime("%H:%M") if report.clock_in else '',
-            report.clock_out.strftime("%H:%M") if report.clock_out else '',
-            fmt(report.勤務時間),
-            fmt(report.休憩時間),
-            fmt(report.実働時間),
-            fmt(report.残業時間),
+            summary['cash'],
+            summary['uber'],
+            summary['didi'],
+            summary['credit'],
+            summary['qr'],
+            summary['kyokushin'],
+            summary['omron'],
+            summary['kyotoshi'],
+            etc_expected,
+            etc_collected,
+            etc_diff
         ])
+
+    # ✅ 合计行统计
+    total_summary = defaultdict(int)
+    for report in reports:
+        for item in report.items.all():
+            if item.payment_method in payment_keys:
+                total_summary[item.payment_method] += item.meter_fee or 0
+        total_summary['etc_expected'] += report.etc_expected or 0
+        total_summary['etc_collected'] += report.etc_collected or 0
+
+    etc_diff = total_summary['etc_expected'] - total_summary['etc_collected']
+
+    writer.writerow([
+        '合计', '', '',  # 日期、司机代码、司机名
+        total_summary['cash'],
+        total_summary['uber'],
+        total_summary['didi'],
+        total_summary['credit'],
+        total_summary['qr'],
+        total_summary['kyokushin'],
+        total_summary['omron'],
+        total_summary['kyotoshi'],
+        total_summary['etc_expected'],
+        total_summary['etc_collected'],
+        etc_diff
+    ])
 
     return response
 
-def export_monthly_summary_csv(request):
-    target_month = request.GET.get('month')  # 例：2025-07
-    reports = DriverDailyReport.objects.filter(date__startswith=target_month).select_related('driver')
+#导出全员每月汇总（每人一行）
+@user_passes_test(is_dailyreport_admin)
+def export_monthly_summary_csv(request, year, month):
+    from collections import defaultdict
+    from django.db.models import Sum
+    from dailyreport.models import DriverDailyReport
 
-    # 按员工聚合
-    summary = defaultdict(lambda: defaultdict(int))
-
-    for report in reports:
-        driver = report.driver
-        code = driver.driver_code or ''
-        key = f"{driver.name}（{code}）"
-
-        summary[key]['uber'] += getattr(report, 'uber_fee', 0) or 0
-        summary[key]['credit'] += getattr(report, 'credit_fee', 0) or 0
-        summary[key]['didi'] += getattr(report, 'didi_fee', 0) or 0
-        summary[key]['qr'] += getattr(report, 'qr_fee', 0) or 0
-        summary[key]['omron'] += getattr(report, 'omron_fee', 0) or 0
-        summary[key]['kyotoshi'] += getattr(report, 'kyotoshi_fee', 0) or 0
-        summary[key]['gasoline'] += getattr(report, 'gasoline_fee', 0) or 0
-        summary[key]['distance_km'] += getattr(report, 'distance_km', 0) or 0
-        summary[key]['smoke'] += getattr(report, 'smoke_fee', 0) or 0
-        summary[key]['refund_lack'] += getattr(report, 'refund_lack', 0) or 0
-
+    reports = DriverDailyReport.objects.filter(date__year=year, date__month=month).select_related('driver')
     response = HttpResponse(content_type='text/csv')
-    filename = f"月报汇总_{target_month}.csv"
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    filename = f"{year}年{month}月全员每月汇总.csv"
+    response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+    
+
     writer = csv.writer(response)
 
-    # 表头
-    writer.writerow([
-        '従業員（コード）', '空車', 'ETC', 
-        'Uber売上', 'クレジット売上', 'DIDI売上', 'PayPay売上',
-        'オムロン売上', '京交信市他売上', '水揚合計',
-        'ガソリン', '里程KM',  '返金不足'
-    ])
+    # ✅ 1. 表头
+    headers = [
+        '司机代码','司机',
+        '现金', 'Uber', 'Didi', 'クレジットカード', '扫码支付',
+        '京交信', 'オムロン', '京都市他',
+        'ETC应收', 'ETC实收', '未收ETC',
+        '出勤天数'
+    ]
+    writer.writerow(headers)
 
-    for key, data in summary.items():
-        total = sum([
-            data['uber'], data['credit'], data['didi'], data['qr'],
-            data['omron'], data['kyotoshi']
-        ])
-        writer.writerow([
-            key,
-            0, 0, 0, 0,  # 空車 ETC 楽券 子機料 默认填0
-            data['uber'],
-            data['credit'],
-            data['didi'],
-            data['qr'],
-            data['omron'],
-            data['kyotoshi'],
-            total,
-            data['gasoline'],
-            data['distance_km'],
-            data['smoke'],
-            data['refund_lack'],
-        ])
+    # ✅ 2. 准备统计结构
+    driver_data = defaultdict(lambda: defaultdict(int))
+
+    for report in reports:
+        driver = report.driver.name
+        driver_data[driver]['days'] += 1
+
+        for item in report.items.all():
+            method = item.payment_method
+            amount = item.meter_fee or 0
+            if method:
+                driver_data[driver][method] += amount
+
+        etc_expected = report.etc_expected or 0
+        etc_collected = report.etc_collected or 0
+
+        driver_data[driver]['etc_expected'] += etc_expected
+        driver_data[driver]['etc_collected'] += etc_collected
+
+    # ✅ 3. 写入每人一行
+    payment_keys = ['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi']
+
+    for driver_name, data in sorted(driver_data.items()):
+        # 获取 driver 对象（通过名字找回）
+        driver = Driver.objects.filter(name=driver_name).first()
+        code = driver.driver_code if driver else ''
+        row = [code, driver_name]
+        for key in payment_keys:
+            row.append(data.get(key, 0))
+
+        etc_expected = data['etc_expected']
+        etc_collected = data['etc_collected']
+        etc_diff = etc_expected - etc_collected
+
+        row += [etc_expected, etc_collected, etc_diff, data['days']]
+        writer.writerow(row)
+
+    # ✅ 合计行追加
+    total_row = ['合计']
+    for key in payment_keys:
+        total = sum(d.get(key, 0) for d in driver_data.values())
+        total_row.append(total)
+
+    total_etc_expected = sum(d.get('etc_expected', 0) for d in driver_data.values())
+    total_etc_collected = sum(d.get('etc_collected', 0) for d in driver_data.values())
+    total_etc_diff = total_etc_expected - total_etc_collected
+    total_days = sum(d.get('days', 0) for d in driver_data.values())
+
+    total_row += [total_etc_expected, total_etc_collected, total_etc_diff, total_days]
+    writer.writerow(total_row)
 
     return response
 
@@ -842,15 +893,48 @@ def dailyreport_overview(request):
     next_month_str = (month + relativedelta(months=1)).strftime('%Y-%m')
 
     # 11. 渲染模板
+    current_year = month.year
+    current_month = month.month
+
     return render(request, 'dailyreport/dailyreport_overview.html', {
-        'page_obj':  page_obj,
-        'month':     month,
+        'page_obj': page_obj,
+        'month': month,
         'month_str': month.strftime('%Y-%m'),
         'month_label': month.strftime('%Y年%m月'),
         'prev_month': prev_month_str,
         'next_month': next_month_str,
-        'keyword':   keyword,
-        'totals_all':    totals_all,
-        'summary_keys':  summary_keys,
+        'keyword': keyword,
+        'totals_all': totals_all,
+        'summary_keys': summary_keys,
+        'current_year': current_year,
+        'current_month': current_month,  # ✅ 这两行是新增
     })
+    
+#导出运管要出勤明细
+@user_passes_test(is_dailyreport_admin)
+def export_etc_daily_csv(request, year, month):
+    reports = DriverDailyReport.objects.filter(date__year=year, date__month=month)
+
+    response = HttpResponse(content_type='text/csv')
+    filename = f"ETC_日報明細_{year}-{month:02d}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{escape_uri_path(filename)}"'
+
+    writer = csv.writer(response)
+    writer.writerow(['日期', '司机', 'ETC应收（円）', 'ETC实收（円）', '未收差额（円）'])
+
+    for report in reports.order_by('date', 'driver__name'):
+        expected = report.etc_expected or 0
+        collected = report.etc_collected or 0
+        diff = expected - collected
+
+        writer.writerow([
+            report.date.strftime('%Y-%m-%d'),
+            report.driver.name,
+            expected,
+            collected,
+            diff
+        ])
+
+    return response
+
     
