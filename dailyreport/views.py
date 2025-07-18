@@ -21,6 +21,8 @@ from staffbook.models import Driver
 
 from vehicles.models import Reservation
 from urllib.parse import quote
+from carinfo.models import Car  # 🚗 请根据你项目中车辆模型名称修改
+from collections import defaultdict
 
 from .utils import (
     calculate_totals_from_formset,
@@ -30,6 +32,7 @@ from .utils import (
 
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange, month_name
+from urllib.parse import quote
 
 
 
@@ -117,6 +120,7 @@ def dailyreport_list(request):
         reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
     return render(request, 'dailyreport/dailyreport_list.html', {'reports': reports})
 
+#全员每日明细
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_csv(request, year, month):
     from collections import defaultdict
@@ -910,7 +914,7 @@ def dailyreport_overview(request):
         'current_month': current_month,  # ✅ 这两行是新增
     })
     
-#导出运管要出勤明细
+#导出每日明细
 @user_passes_test(is_dailyreport_admin)
 def export_etc_daily_csv(request, year, month):
     reports = DriverDailyReport.objects.filter(date__year=year, date__month=month)
@@ -937,4 +941,93 @@ def export_etc_daily_csv(request, year, month):
 
     return response
 
-    
+@user_passes_test(is_dailyreport_admin)
+def export_vehicle_csv(request, year, month):
+    reports = DriverDailyReport.objects.filter(
+        date__year=year,
+        date__month=month,
+        vehicle__isnull=False
+    ).select_related('vehicle')
+
+    # 以车辆为单位进行统计
+    data = defaultdict(lambda: {
+        '出勤日数': 0,
+        '走行距離': 0,
+        '実車距離': 0,
+        '乗車回数': 0,
+        '人数': 0,
+        '水揚金額': 0,
+        '車名': '',
+        '車牌': '',
+        '部門': '',
+        '使用者名': '',
+        '所有者名': '',
+    })
+
+    for r in reports:
+        car = r.vehicle
+        if not car:
+            continue
+
+        key = car.id
+        mileage = float(r.mileage or 0)
+        total_fee = float(r.total_meter_fee or 0)
+        boarding_count = r.items.count()
+
+        data[key]['出勤日数'] += 1
+        data[key]['走行距離'] += mileage
+        data[key]['実車距離'] += mileage * 0.75
+        data[key]['乗車回数'] += boarding_count
+        data[key]['人数'] += boarding_count * 2
+        data[key]['水揚金額'] += total_fee
+        data[key]['車名'] = car.name
+        data[key]['車牌'] = car.license_plate
+        data[key]['部門'] = car.department
+        data[key]['使用者名'] = car.user_company_name
+        data[key]['所有者名'] = car.owner_company_name
+
+    # CSV 响应设置
+    response = HttpResponse(content_type='text/csv')
+    filename = f"{year}年{month}月_車両運輸実績表.csv"
+    response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+
+    # 添加 UTF-8 BOM 防止 Excel 乱码
+    response.write(u'\ufeff'.encode('utf8'))
+    writer = csv.writer(response)
+
+    # 表头
+    headers = [
+        '車名', '車牌', '部門', '使用者名', '所有者名',
+        '出勤日数', '走行距離', '実車距離', '乗車回数', '人数', '水揚金額'
+    ]
+    writer.writerow(headers)
+
+    # 数据行
+    total_row = [0] * 6  # 出勤〜水揚合计
+    for info in data.values():
+        row = [
+            info['車名'], info['車牌'], info['部門'],
+            info['使用者名'], info['所有者名'],
+            info['出勤日数'], info['走行距離'],
+            round(info['実車距離'], 2),
+            info['乗車回数'], info['人数'],
+            round(info['水揚金額'], 2),
+        ]
+        writer.writerow(row)
+
+        # 合计累加
+        for i in range(5, 11):
+            total_row[i - 5] += row[i]
+
+    # ✅ 合计行
+    writer.writerow([
+        '合計', '', '', '', '',
+        total_row[0],  # 出勤日数
+        total_row[1],  # 走行距離
+        round(total_row[2], 2),  # 実車距離
+        total_row[3],  # 乗車回数
+        total_row[4],  # 人数
+        round(total_row[5], 2),  # 水揚金額
+    ])
+
+    return response
