@@ -23,12 +23,12 @@
 <div class="my-3">
   <a href="{% url 'dailyreport:export_dailyreports_csv' year=current_year month=current_month %}"
       class="btn btn-sm btn-outline-primary me-2">
-    📤 导出 {{ current_year }}年{{ current_month }}月每日明细 CSV
+    📤 导出 {{ current_year }}年{{ current_month }}月全员每日统计 Excel
   </a>
 
-  <a href="{% url 'dailyreport:export_monthly_summary_csv' year=current_year month=current_month %}"
-      class="btn btn-sm btn-outline-success">
-    📤 导出 {{ current_year }}年{{ current_month }}月月度汇总 CSV
+  <a href="{% url 'dailyreport:export_monthly_summary_excel' year=current_year month=current_month %}"
+    class="btn btn-sm btn-outline-success">
+    📤 导出 {{ current_year }}年{{ current_month }}月月度汇总 Excel
   </a>
 
   <a href="{% url 'dailyreport:export_vehicle_csv' year=current_year month=current_month %}"

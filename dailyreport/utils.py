@@ -82,6 +82,14 @@ def calculate_totals_from_formset(form_data_list):
             continue
         fee = item.get('meter_fee')
         method = item.get('payment_method')
+        note = item.get('note', '')
+
+        # ✅ 排除负数和“キャンセル”备注
+        if fee is None or fee <= 0:
+            continue
+        if 'キャンセル' in str(note):
+            continue
+
         pairs.append((fee, method))
     return calculate_totals_from_items(pairs)
 
