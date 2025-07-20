@@ -19,19 +19,19 @@
 
           <!-- ✅ 主导航显示常用项 -->
           {% if click_vehicle_status >= common_threshold %}
-            <a href="{% url 'vehicle_status' %}">🚗 车辆状态</a>
+            <a href="{% url 'vehicle_status' %}">🚗 車両状態</a>
           {% endif %}
           {% if click_weekly >= common_threshold %}
             <a href="{% url 'weekly_overview' %}">📅 一周预约概览</a>
           {% endif %}
           {% if click_my_res >= common_threshold %}
-            <a href="{% url 'my_reservations' %}">📋 我的预约</a>
+            <a href="{% url 'my_reservations' %}">📋 私の予約</a>
           {% endif %}
 
           <!-- ✅ 管理菜单 -->
           {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
             <a href="{% url 'reservation_dashboard' %}">🚖 配车系统</a>
-            <a href="{% url 'reservation_approval_list' %}">🛠️ 审批面板</a>
+            <a href="{% url 'reservation_approval_list' %}">🛠️ </a>
             <a href="{% url 'admin_stats' %}" style="color:purple;">📊 管理员统计</a>
           {% endif %}
 
@@ -42,19 +42,22 @@
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
               {% if click_vehicle_status < common_threshold %}
-                <li><a class="dropdown-item" href="{% url 'vehicle_status' %}">🚗 车辆状态</a></li>
+                <li><a class="dropdown-item" href="{% url 'vehicle_status' %}">🚗 車両状態</a></li>
               {% endif %}
               {% if click_weekly < common_threshold %}
                 <li><a class="dropdown-item" href="{% url 'weekly_overview' %}">📅 一周预约概览</a></li>
               {% endif %}
               {% if click_my_res < common_threshold %}
-                <li><a class="dropdown-item" href="{% url 'my_reservations' %}">📋 我的预约</a></li>
+                <li><a class="dropdown-item" href="{% url 'my_reservations' %}">📋 私の予約</a></li>
               {% endif %}
               {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
-                <li><a class="dropdown-item" href="{% url 'staffbook:dashboard' %}">📒 员工台账</a></li>
+                <li><a class="dropdown-item" href="{% url 'staffbook:dashboard' %}">📒 社員台帳</a></li>
+              {% endif %}
+              {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
+                <li><a class="dropdown-item" href="{% url 'dailyreport:dailyreport_overview' %}">💸 日報一覧</a></li>
               {% endif %}
               {% if user.is_superuser or user.userprofile.is_carinfo_admin %}
-                <li><a class="dropdown-item" href="{% url 'carinfo:car_list' %}">🚗 车辆管理</a></li>
+                <li><a class="dropdown-item" href="{% url 'carinfo:car_list' %}">🚗 車両管理</a></li>
               {% endif %}
               {% if user.is_superuser %}
                 <li><a class="dropdown-item" href="/admin/">⚙️ 后台</a></li>
@@ -117,5 +120,5 @@
       }
       return cookieValue;
     }
-  });
+  });审批面板
 </script>

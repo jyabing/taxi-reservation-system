@@ -50,11 +50,11 @@
 
   <!-- 顶部导航栏 -->
   <nav>
-    <span class="brand">📒 员工台账管理系统</span>
-    <a href="{% url 'staffbook:driver_list' %}">员工列表</a>
-    <a href="{% url 'dailyreport:dailyreport_overview' %}">日报总览</a>
-    <a href="{% url 'staffbook:driver_create' %}">➕ 新增员工</a>
-    <a href="/">回首页</a>
+    <span class="brand">📒 従業員台帳管理システム</span>
+    <a href="{% url 'staffbook:driver_list' %}">従業員一覧</a>
+    <a href="{% url 'dailyreport:dailyreport_overview' %}">日報一覧</a>
+    <a href="{% url 'staffbook:driver_create' %}">➕ 従業員を追加</a>
+    <a href="/">ホームに戻る</a>
     <span style="flex: 1;"></span>
     {% if user.is_authenticated %}
       <span style="margin-right: 1em;">{{ user.username }}</span>
