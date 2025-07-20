@@ -20,6 +20,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'common.middleware.LinkClickTrackerMiddleware', # ✅ 添加链接点击跟踪中间件
+    'common.middleware.NavigationUsageMiddleware', # ✅ 添加导航使用情况中间件
 ]
 
 
@@ -54,6 +56,7 @@ INSTALLED_APPS = [
     'dailyreport',     # ✅ 日报系统：乘务日报、统计、明细、出勤、分析
     'carinfo',          # ✅ 车辆管理系统：台账、维修、照片等
     'admin_tools',       # ✅ 管理工具：系统备份
+    'common',            # ✅ 公共模块：工具函数、常量等
     'django.contrib.humanize',
     'widget_tweaks',
 ]
@@ -69,11 +72,12 @@ TEMPLATES = [
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
-                'django.template.context_processors.debug',
+                'django.template.context_processors.debug', # ✅ 添加调试处理器
                 'django.template.context_processors.request',
                 'django.template.context_processors.csrf',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+                'django.contrib.auth.context_processors.auth', 
+                'django.contrib.messages.context_processors.messages', # ✅ 添加消息处理器
+                'common.context_processors.common_links',  # ✅ 添加公共链接处理器
                 
             ],
         },

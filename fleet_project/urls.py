@@ -14,6 +14,7 @@ urlpatterns = [
     path('staffbook/', include('staffbook.urls')),    # ✅ 员工系统：人事台账、保险、资格证等
     path('dailyreport/', include('dailyreport.urls')),  # ✅ 日报系统：乘务日报、统计、明细、出勤、分析
     path('carinfo/', include('carinfo.urls')),         # ✅ 车辆管理系统：台账、维修、照片等
+    path('', include('common.urls')), # ✅ 公共模块：错误处理、静态资源等
     
 ]
 

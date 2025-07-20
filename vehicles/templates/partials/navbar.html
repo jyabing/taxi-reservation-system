@@ -2,38 +2,69 @@
   {% if user.is_authenticated %}
     👋 {{ user.username }} |
 
-    <!-- 🚪 统一系统首页入口（可选） -->
+    <!-- 🚪 系统首页 -->
     <a href="{% url 'home' %}">🏠 系统首页</a>
 
     <!-- ✅ 所有人可见 -->
     <a href="{% url 'profile' %}">👤 我的资料</a>
 
-    <!-- ✅ 加上 class="mobile-hidden" -->
-    <a href="{% url 'vehicle_status' %}">🚗 车辆状态</a>
-    <a href="{% url 'weekly_overview' %}">📅 一周预约概览</a>
-    <a href="{% url 'my_reservations' %}">📋 我的预约</a>
+    {% with request.session.nav_clicks as clicks %}
+      {% if clicks %}
+        {% with clicks.vehicle_status|default_if_none:0 as click_vehicle_status %}
+        {% with clicks.weekly_overview|default_if_none:0 as click_weekly %}
+        {% with clicks.my_reservations|default_if_none:0 as click_my_res %}
+        {% with clicks.staffbook_dashboard|default_if_none:0 as click_staffbook %}
+        {% with clicks.carinfo_car_list|default_if_none:0 as click_carinfo %}
+        {% with 10 as common_threshold %}
 
-    <!-- ✅ 配车系统管理员 -->
-    {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
-      <a href="{% url 'reservation_dashboard' %}">🚖 配车系统</a>
-      <a href="{% url 'reservation_approval_list' %}">🛠️ 审批面板</a>
-      <a href="{% url 'admin_stats' %}" style="color:purple;">📊 管理员统计</a>
-    {% endif %}
+          <!-- ✅ 主导航显示常用项 -->
+          {% if click_vehicle_status >= common_threshold %}
+            <a href="{% url 'vehicle_status' %}">🚗 车辆状态</a>
+          {% endif %}
+          {% if click_weekly >= common_threshold %}
+            <a href="{% url 'weekly_overview' %}">📅 一周预约概览</a>
+          {% endif %}
+          {% if click_my_res >= common_threshold %}
+            <a href="{% url 'my_reservations' %}">📋 我的预约</a>
+          {% endif %}
 
-    <!-- ✅ 员工台账管理员 -->
-    {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
-      <a href="{% url 'staffbook:dashboard' %}">📒 员工台账</a>
-    {% endif %}
+          <!-- ✅ 管理菜单 -->
+          {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
+            <a href="{% url 'reservation_dashboard' %}">🚖 配车系统</a>
+            <a href="{% url 'reservation_approval_list' %}">🛠️ 审批面板</a>
+            <a href="{% url 'admin_stats' %}" style="color:purple;">📊 管理员统计</a>
+          {% endif %}
 
-    <!-- ✅ 车辆管理管理员 -->
-    {% if user.is_superuser or user.userprofile.is_carinfo_admin %}
-      <a href="{% url 'carinfo:car_list' %}">🚗 车辆管理</a>
-    {% endif %}
+          <!-- ✅ 更多菜单 -->
+          <div class="dropdown d-inline-block">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              ⋯ 更多
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              {% if click_vehicle_status < common_threshold %}
+                <li><a class="dropdown-item" href="{% url 'vehicle_status' %}">🚗 车辆状态</a></li>
+              {% endif %}
+              {% if click_weekly < common_threshold %}
+                <li><a class="dropdown-item" href="{% url 'weekly_overview' %}">📅 一周预约概览</a></li>
+              {% endif %}
+              {% if click_my_res < common_threshold %}
+                <li><a class="dropdown-item" href="{% url 'my_reservations' %}">📋 我的预约</a></li>
+              {% endif %}
+              {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
+                <li><a class="dropdown-item" href="{% url 'staffbook:dashboard' %}">📒 员工台账</a></li>
+              {% endif %}
+              {% if user.is_superuser or user.userprofile.is_carinfo_admin %}
+                <li><a class="dropdown-item" href="{% url 'carinfo:car_list' %}">🚗 车辆管理</a></li>
+              {% endif %}
+              {% if user.is_superuser %}
+                <li><a class="dropdown-item" href="/admin/">⚙️ 后台</a></li>
+              {% endif %}
+            </ul>
+          </div>
 
-    <!-- ✅ 后台链接（仅超级管理员） -->
-    {% if user.is_superuser %}
-      <a href="/admin/">⚙️ 后台</a>
-    {% endif %}
+        {% endwith %}{% endwith %}{% endwith %}{% endwith %}{% endwith %}{% endwith %}
+      {% endif %}
+    {% endwith %}
 
     <!-- ✅ 退出登录 -->
     <form method="post" action="{% url 'logout' %}" style="display:inline;">
@@ -45,3 +76,46 @@
     <a href="{% url 'login' %}">登录</a>
   {% endif %}
 </nav>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const nav = document.querySelector("nav");
+    if (!nav) return;
+
+    nav.querySelectorAll("a[href]").forEach(link => {
+      link.addEventListener("click", function (event) {
+        const name = link.innerText.trim();
+        const url = link.getAttribute("href");
+
+        fetch("/common/log-link-click/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-CSRFToken": getCookie("csrftoken")
+          },
+          body: new URLSearchParams({
+            name: name,
+            url: url,
+          })
+        }).catch(err => {
+          console.warn("链接点击记录失败", err);
+        });
+      });
+    });
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.startsWith(name + "=")) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+  });
+</script>
