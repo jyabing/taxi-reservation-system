@@ -61,9 +61,38 @@ class DriverDailyReport(models.Model):
     deposit_amount = models.PositiveIntegerField("入金額", null=True, blank=True, help_text="手动输入的入金金额")
     deposit_difference = models.IntegerField("過不足額", null=True, blank=True, help_text="入金 − 現金")
 
-    # ✅ 新增：ETC 字段
-    etc_expected = models.PositiveIntegerField("ETC应收合计", null=True, blank=True, help_text="ETC 由公司支付后，司机应向乘客收回的总额")
-    etc_collected = models.PositiveIntegerField("ETC实际收取", null=True, blank=True, help_text="司机当天实际收回的 ETC 金额")
+    # ✅ etc_expected	IntegerField	应收ETC金额（从计程表）
+    # ✅ etc_collected_cash	IntegerField	司机从乘客现金收取的ETC金额
+    # ✅ etc_collected_app	IntegerField	司机通过app收取的ETC金额
+    # ✅ etc_collected_total	@property	实收ETC合计 = cash + app
+    # ✅ etc_uncollected	@property	应收 - 实收 = 未收部分
+    # ✅ etc_collected	IntegerField	旧字段，暂时保留（可用于数据迁移）
+
+    # ✅ 新字段（合并）
+    etc_collected = models.PositiveIntegerField("ETC收取金额（円）", null=True, blank=True, help_text="日计账单中“空乘合计”")
+    etc_payment_method = models.CharField(
+        "ETC收取方式", max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,  # ✅ 正确引用全局变量，避免循环引用
+        null=True, blank=True
+    )
+    etc_uncollected = models.PositiveIntegerField("ETC未收金额（円）", null=True, blank=True, help_text="日计账单中“空车合计”")
+
+    @property
+    def etc_expected(self):
+        """ETC应收合计 = 收取 + 未收"""
+        return (self.etc_collected or 0) + (self.etc_uncollected or 0)
+
+    @property
+    def is_etc_included_in_deposit(self):
+        """
+        判断是否已包含ETC（仅供参考，逻辑为：入金大于或等于实际现金总额+ETC收取金额）
+        """
+        if self.deposit_amount is None:
+            return False
+        meter_fee_total = self.total_meter_fee or 0
+        etc_collected = self.etc_collected or 0
+        # 如果入金额 >= 计程表金额 + ETC金额 → 认为已含ETC
+        return self.deposit_amount >= (meter_fee_total + etc_collected)
 
     gas_volume = models.DecimalField("ガソリン量 (L)",max_digits=6, decimal_places=2,default=0,validators=[MinValueValidator(0)])
     mileage = models.DecimalField("里程 (KM)",max_digits=7, decimal_places=2,default=0,validators=[MinValueValidator(0)])

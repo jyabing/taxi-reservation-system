@@ -39,8 +39,8 @@ class DriverDailyReportForm(forms.ModelForm):
             'vehicle', 'date', 'note', 'has_issue', 'status',
             'clock_in', 'clock_out', 'gas_volume', 'mileage',
             'deposit_amount', 'deposit_difference',
-            # ✅ 新增字段
-            'etc_expected', 'etc_collected'
+            # ✅ 新 ETC 字段
+            'etc_collected', 'etc_payment_method', 'etc_uncollected',
         ]
         widgets = {
             'vehicle':      forms.HiddenInput(),
@@ -52,9 +52,10 @@ class DriverDailyReportForm(forms.ModelForm):
             'clock_out':    forms.TimeInput(attrs={'type': 'time', 'class': 'form-control auto-width-input'}),
             'gas_volume':   forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control auto-width-input', 'placeholder': '0.00 L'}),
             'mileage':      forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control auto-width-input', 'placeholder': '0.00 KM'}),
-            # ✅ 新增 ETC 字段样式
-            'etc_expected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input', 'placeholder': '例：4050'}),
-            'etc_collected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input', 'placeholder': '例：2270'}),
+            # ✅ 新 ETC 字段
+            'etc_collected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input', 'placeholder': '例：2110'}),
+            'etc_payment_method': forms.Select(attrs={'class': 'form-select'}),
+            'etc_uncollected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input', 'placeholder': '例：470'}),
         }
 
     def __init__(self, *args, **kwargs):

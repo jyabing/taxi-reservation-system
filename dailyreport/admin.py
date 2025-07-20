@@ -19,12 +19,21 @@ class DriverDailyReportItemInline(admin.TabularInline):
 
 @admin.register(DriverDailyReport)
 class DriverDailyReportAdmin(admin.ModelAdmin):
-    list_display = ['driver', 'date', 'vehicle', 'status', 'has_issue', 'edited_by', 'edited_at']
+    list_display = [
+        'driver', 'date', 'vehicle',
+        'status', 'has_issue',
+        'etc_expected', 'etc_collected', 'etc_payment_method', 'get_etc_uncollected',
+        'edited_by', 'edited_at'
+    ]
     list_filter = ['status', 'has_issue', 'driver']
     search_fields = ('driver__name', 'vehicle__plate_number', 'note')
     inlines = [DriverDailyReportItemInline]
     list_per_page = 20
     ordering = ['-date']
+
+    @admin.display(description='ETC未收')
+    def get_etc_uncollected(self, obj):
+        return obj.etc_uncollected
 
 @admin.register(DriverDailyReportItem)
 class DriverDailyReportItemAdmin(admin.ModelAdmin):

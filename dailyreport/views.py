@@ -2,8 +2,6 @@ import csv
 from datetime import datetime, date, timedelta
 from tempfile import NamedTemporaryFile
 
-
-
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib import messages
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
@@ -11,11 +9,12 @@ from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
 from django.utils import timezone
 from django.db.models import Sum, Case, When, F, DecimalField, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
 
 from .models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
+from .services.calculations import calculate_deposit_difference  # ✅ 导入新函数
 
 from staffbook.services import get_driver_info
 from staffbook.utils import is_dailyreport_admin, get_active_drivers
@@ -24,9 +23,7 @@ from staffbook.models import Driver
 from vehicles.models import Reservation
 from urllib.parse import quote
 from carinfo.models import Car  # 🚗 请根据你项目中车辆模型名称修改
-from tempfile import NamedTemporaryFile  # ✅ 加这一行
 from collections import defaultdict
-from tempfile import NamedTemporaryFile  # ✅ 加这一行
 
 from .utils import (
     calculate_totals_from_formset,
@@ -36,10 +33,9 @@ from .utils import (
 
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange, month_name
-from urllib.parse import quote
 from openpyxl import Workbook
-from django.http import FileResponse
-
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 
 
 # ✅ 新增日报
@@ -130,67 +126,97 @@ def dailyreport_list(request):
 # ✅ 新版本：全员每日明细导出为 Excel（每个日期一个 Sheet）
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_csv(request, year, month):
-    from openpyxl import Workbook
-    from tempfile import NamedTemporaryFile
-    from django.http import FileResponse
-    from collections import defaultdict
-    from urllib.parse import quote
 
-    reports = DriverDailyReport.objects.filter(
-        date__year=year, date__month=month
-    ).select_related('driver').prefetch_related('items').order_by('date', 'driver__name')
+    reports = (
+        DriverDailyReport.objects
+        .filter(date__year=year, date__month=month)
+        .select_related('driver')
+        .prefetch_related('items')
+        .order_by('date', 'driver__name')
+    )
 
-    # ✅ 汇总结构：{ '2025-07-01': [ {司机数据}, ... ] }
     reports_by_date = defaultdict(list)
-    payment_keys = ['cash', 'uber']
+
+    # ✅ 所有统计用支付方式
+    payment_keys = ['cash', 'uber', 'didi', 'ticket', 'credit', 'qr']
 
     for report in reports:
         summary = defaultdict(int)
+
         for item in report.items.all():
             if (
-                item.payment_method in payment_keys and
-                item.meter_fee and item.meter_fee > 0 and
-                (not item.note or 'キャンセル' not in item.note)
+                item.payment_method in payment_keys
+                and item.meter_fee and item.meter_fee > 0
+                and (not item.note or 'キャンセル' not in item.note)
             ):
                 summary[item.payment_method] += item.meter_fee
 
+        deposit = report.deposit_amount or 0
+        etc_app = report.etc_collected_app or 0
+        etc_cash = report.etc_collected_cash or 0
+        etc_total = etc_app + etc_cash
         etc_expected = report.etc_expected or 0
-        etc_collected = report.etc_collected or 0
-        etc_diff = etc_expected - etc_collected
+        etc_diff = etc_expected - etc_total
+        deposit_diff = calculate_deposit_difference(report, summary['cash'])
 
         reports_by_date[report.date.strftime('%Y-%m-%d')].append({
             'driver_code': report.driver.driver_code if report.driver else '',
             'driver': report.driver.name if report.driver else '',
+            'status': report.get_status_display(),
             'cash': summary['cash'],
             'uber': summary['uber'],
+            'didi': summary['didi'],
+            'ticket': summary['ticket'],
+            'credit': summary['credit'],
+            'qr': summary['qr'],
             'etc_expected': etc_expected,
-            'etc_collected': etc_collected,
-            'etc_diff': etc_diff
+            'etc_collected': etc_total,
+            'etc_diff': etc_diff,
+            'deposit': deposit,
+            'deposit_diff': deposit_diff,
+            'mileage': report.mileage or '',
+            'gas_volume': report.gas_volume or '',
+            'note': report.note or '',
         })
 
     # ✅ 创建 Excel 工作簿
     wb = Workbook()
-    wb.remove(wb.active)  # 删除默认 sheet
+    wb.remove(wb.active)
 
     for date_str, rows in sorted(reports_by_date.items()):
         ws = wb.create_sheet(title=date_str)
-        headers = ['司机代码', '司机', '现金', 'Uber', 'ETC应收', 'ETC实收', '未收ETC']
+
+        headers = [
+            '司机代码', '司机', '出勤状态',
+            '现金', 'Uber', 'Didi', 'チケット', 'クレジット', '扫码',
+            'ETC应收', 'ETC实收', '未收ETC',
+            '入金', '差額',
+            '公里数', '油量', '备注'
+        ]
         ws.append(headers)
 
         for row in rows:
             ws.append([
                 row['driver_code'],
                 row['driver'],
+                row['status'],
                 row['cash'],
                 row['uber'],
+                row['didi'],
+                row['ticket'],
+                row['credit'],
+                row['qr'],
                 row['etc_expected'],
                 row['etc_collected'],
-                row['etc_diff']
+                row['etc_diff'],
+                row['deposit'],
+                row['deposit_diff'],
+                row['mileage'],
+                row['gas_volume'],
+                row['note'],
             ])
 
-    # ✅ 使用临时文件方式保存 Excel 并返回 FileResponse
     filename = f"{year}年{month}月全员每日明细.xlsx"
-
     tmp = NamedTemporaryFile()
     wb.save(tmp.name)
     tmp.seek(0)
@@ -199,44 +225,6 @@ def export_dailyreports_csv(request, year, month):
     response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return response
 
-#导出全员每月汇总（每个司机一个 Sheet（表单））
-import csv
-from datetime import datetime, date, timedelta
-
-
-from django.contrib.auth.decorators import user_passes_test, login_required
-from django.contrib import messages
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
-from django.utils.timezone import now
-from django.utils import timezone
-from django.db.models import Sum, Case, When, F, DecimalField, Q
-from django.http import HttpResponse
-from django.utils.encoding import escape_uri_path
-
-from .models import DriverDailyReport, DriverDailyReportItem
-from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
-
-from staffbook.services import get_driver_info
-from staffbook.utils import is_dailyreport_admin, get_active_drivers
-from staffbook.models import Driver
-
-from vehicles.models import Reservation
-from urllib.parse import quote
-from carinfo.models import Car  # 🚗 请根据你项目中车辆模型名称修改
-from collections import defaultdict
-
-from .utils import (
-    calculate_totals_from_formset,
-    calculate_totals_from_queryset,
-    PAYMENT_KEYWORDS,
-)
-
-from decimal import Decimal, ROUND_HALF_UP
-from calendar import monthrange, month_name
-from urllib.parse import quote
-
-
 
 # ✅ 新增日报
 @user_passes_test(is_dailyreport_admin)
@@ -326,19 +314,15 @@ def dailyreport_list(request):
 # ✅ 新版本：全员每日明细导出为 Excel（每个日期一个 Sheet）
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_csv(request, year, month):
-    from openpyxl import Workbook
-    from tempfile import NamedTemporaryFile
-    from django.http import FileResponse
-    from collections import defaultdict
-    from urllib.parse import quote
 
     reports = DriverDailyReport.objects.filter(
         date__year=year, date__month=month
     ).select_related('driver').prefetch_related('items').order_by('date', 'driver__name')
 
-    # ✅ 汇总结构：{ '2025-07-01': [ {司机数据}, ... ] }
     reports_by_date = defaultdict(list)
-    payment_keys = ['cash', 'uber']
+
+    # ✅ 所有需统计的支付方式
+    payment_keys = ['cash', 'uber', 'didi', 'credit', 'omron']
 
     for report in reports:
         summary = defaultdict(int)
@@ -351,26 +335,36 @@ def export_dailyreports_csv(request, year, month):
                 summary[item.payment_method] += item.meter_fee
 
         etc_expected = report.etc_expected or 0
-        etc_collected = report.etc_collected or 0
-        etc_diff = etc_expected - etc_collected
+        etc_cash = report.etc_collected_cash or 0
+        etc_app = report.etc_collected_app or 0
+        etc_diff = max(0, etc_expected - (etc_cash + etc_app))
 
         reports_by_date[report.date.strftime('%Y-%m-%d')].append({
             'driver_code': report.driver.driver_code if report.driver else '',
             'driver': report.driver.name if report.driver else '',
             'cash': summary['cash'],
             'uber': summary['uber'],
+            'didi': summary['didi'],
+            'credit': summary['credit'],
+            'omron': summary['omron'],
             'etc_expected': etc_expected,
-            'etc_collected': etc_collected,
-            'etc_diff': etc_diff
+            'etc_collected_cash': etc_cash,
+            'etc_collected_app': etc_app,
+            'etc_diff': etc_diff,
         })
 
-    # ✅ 创建 Excel 工作簿
     wb = Workbook()
-    wb.remove(wb.active)  # 删除默认 sheet
+    wb.remove(wb.active)
 
     for date_str, rows in sorted(reports_by_date.items()):
         ws = wb.create_sheet(title=date_str)
-        headers = ['司机代码', '司机', '现金', 'Uber', 'ETC应收', 'ETC实收', '未收ETC']
+
+        # ✅ 新表头
+        headers = [
+            '司机代码', '司机',
+            '现金', 'Uber', 'Didi', 'クレジットカード', 'チケット',
+            'ETC应收', 'ETC现金收', 'ETC App收', 'ETC未收'
+        ]
         ws.append(headers)
 
         for row in rows:
@@ -379,14 +373,16 @@ def export_dailyreports_csv(request, year, month):
                 row['driver'],
                 row['cash'],
                 row['uber'],
+                row['didi'],
+                row['credit'],
+                row['omron'],
                 row['etc_expected'],
-                row['etc_collected'],
-                row['etc_diff']
+                row['etc_collected_cash'],
+                row['etc_collected_app'],
+                row['etc_diff'],
             ])
 
-    # ✅ 使用临时文件方式保存 Excel 并返回 FileResponse
     filename = f"{year}年{month}月全员每日明细.xlsx"
-
     tmp = NamedTemporaryFile()
     wb.save(tmp.name)
     tmp.seek(0)
