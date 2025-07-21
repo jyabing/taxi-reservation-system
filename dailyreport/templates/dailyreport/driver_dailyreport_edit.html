@@ -196,6 +196,16 @@ input[type=number] {
         </div>
       {% endfor %}
 
+      <!-- ✅ 貸切振込 合計（charter_bank） -->
+      {% if totals.charter_bank.total %}
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <div class="small text-muted">貸切振込 合計</div>
+        <div>
+          <span id="total_charter_bank">{{ totals.charter_bank.total|floatformat:"0" }}</span>
+        </div>
+      </div>
+      {% endif %}
+
 
       <!-- ✅ 新增区域开始 -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 80px;">

@@ -394,79 +394,130 @@ def export_dailyreports_csv(request, year, month):
 #导出全员每月汇总（每个司机一个 Sheet（表单））
 @user_passes_test(is_dailyreport_admin)
 def export_monthly_summary_excel(request, year, month):
+    from collections import defaultdict
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from calendar import monthrange
+    from django.http import FileResponse
+    from urllib.parse import quote
+    from decimal import Decimal
+
     reports = DriverDailyReport.objects.filter(
         date__year=year, date__month=month
     ).select_related('driver').prefetch_related('items')
 
-    # ✅ 按司机分组（key 为 Driver 实例）
-    driver_reports = defaultdict(list)
+    driver_summary = defaultdict(lambda: defaultdict(Decimal))
+    driver_info = {}
+
     for report in reports:
-        if report.driver:
-            driver_reports[report.driver].append(report)
+        driver = report.driver
+        if not driver:
+            continue
 
-    # ✅ 创建 Excel 文件
-    wb = Workbook()
-    wb.remove(wb.active)  # 删除默认 Sheet
-
-    payment_keys = ['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi']
-
-    # ✅ 按 driver_code 升序排序
-    sorted_drivers = sorted(driver_reports.items(), key=lambda x: x[0].driver_code or '')
-
-    for driver, report_list in sorted_drivers:
-        driver_name = driver.name or ''
         driver_code = driver.driver_code or ''
-        sheet_title = f"{driver_name}（{driver_code}）"[:31]  # Sheet 名最多 31 字符
-        ws = wb.create_sheet(title=sheet_title)
+        driver_name = driver.name or ''
+        driver_info[driver_code] = driver_name
 
-        # 表头
-        headers = [
-            '日期', '现金', 'Uber', 'Didi', 'クレジット', '扫码支付',
-            '京交信', 'オムロン', '京都市他',
-            'ETC应收', 'ETC实收', '未收ETC',
-            '過不足', '給油量', '走行距離'
+        for item in report.items.all():
+            if (
+                item.payment_method and
+                item.meter_fee and item.meter_fee > 0 and
+                (not item.note or 'キャンセル' not in item.note)
+            ):
+                driver_summary[driver_code][item.payment_method] += item.meter_fee
+
+        driver_summary[driver_code]['etc_expected'] += report.etc_expected or 0
+        driver_summary[driver_code]['etc_collected'] += report.etc_collected or 0
+        driver_summary[driver_code]['deposit_diff'] += report.deposit_difference or 0
+        driver_summary[driver_code]['mileage'] += Decimal(report.mileage or 0)
+        driver_summary[driver_code]['gas'] += Decimal(report.gas_volume or 0)
+
+    wb = Workbook()
+    ws = wb.active
+
+    last_day = monthrange(year, month)[1]
+    ws.title = f"{year}年{month}月（{month}月1日~{month}月{last_day}日）"
+
+    headers = [
+        '司机代码', '司机',
+        '现金', 'Uber', 'Didi', 'クレジットカード', '扫码支付',
+        '京交信', 'オムロン', '京都市他',
+        'ETC应收', 'ETC实收', 'ETC差额',
+        '過不足額', '走行距離(KM)', '給油量(L)'
+    ]
+    ws.append(headers)
+
+    total_row = defaultdict(Decimal)
+
+    for driver_code in sorted(driver_summary.keys()):
+        data = driver_summary[driver_code]
+        row = [
+            driver_code,
+            driver_info.get(driver_code, ''),
+            data.get('cash', Decimal('0')),
+            data.get('uber', Decimal('0')),
+            data.get('didi', Decimal('0')),
+            data.get('credit', Decimal('0')),
+            data.get('qr', Decimal('0')),
+            data.get('kyokushin', Decimal('0')),
+            data.get('omron', Decimal('0')),
+            data.get('kyotoshi', Decimal('0')),
+            data.get('etc_expected', Decimal('0')),
+            data.get('etc_collected', Decimal('0')),
+            data.get('etc_expected', Decimal('0')) - data.get('etc_collected', Decimal('0')),
+            data.get('deposit_diff', Decimal('0')),
+            data.get('mileage', Decimal('0')),
+            data.get('gas', Decimal('0')),
         ]
-        ws.append(headers)
+        ws.append(row)
 
-        for report in sorted(report_list, key=lambda r: r.date):
-            summary = defaultdict(Decimal)
+        # 加入合计
+        for i, key in enumerate(['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi',
+                                 'etc_expected', 'etc_collected', 'etc_diff', 'deposit_diff', 'mileage', 'gas'], start=2):
+            # 第 0,1 列是代码与姓名，略过
+            value = row[i]
+            total_row[key] += value if isinstance(value, Decimal) else Decimal(str(value))
 
-            for item in report.items.all():
-                if (
-                    item.payment_method in payment_keys and
-                    item.meter_fee and item.meter_fee > 0 and
-                    (not item.note or 'キャンセル' not in item.note)
-                ):
-                    summary[item.payment_method] += item.meter_fee
+    # 添加合计行
+    ws.append([
+        '合计', '',
+        total_row['cash'], total_row['uber'], total_row['didi'], total_row['credit'], total_row['qr'],
+        total_row['kyokushin'], total_row['omron'], total_row['kyotoshi'],
+        total_row['etc_expected'], total_row['etc_collected'],
+        total_row['etc_expected'] - total_row['etc_collected'],
+        total_row['deposit_diff'], total_row['mileage'], total_row['gas']
+    ])
 
-            etc_expected = report.etc_expected or 0
-            etc_collected = report.etc_collected or 0
-            etc_diff = etc_expected - etc_collected
+    # 样式美化：自动列宽
+    for col in ws.columns:
+        max_len = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+        ws.column_dimensions[get_column_letter(col[0].column)].width = max_len + 2
 
-            ws.append([
-                report.date.strftime('%Y-%m-%d'),
-                summary['cash'],
-                summary['uber'],
-                summary['didi'],
-                summary['credit'],
-                summary['qr'],
-                summary['kyokushin'],
-                summary['omron'],
-                summary['kyotoshi'],
-                etc_expected,
-                etc_collected,
-                etc_diff,
-                report.deposit_difference or 0,
-                report.gas_volume or 0,
-                report.mileage or 0
-            ])
+    # 样式：文字居左，其余居中，合计加粗背景
+    align_center = Alignment(horizontal="center", vertical="center")
+    align_left = Alignment(horizontal="left", vertical="center")
+    bold_font = Font(bold=True)
+    fill = PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")
+    last_row = ws.max_row
 
-    # ✅ 保存并下载
-    filename = f"{year}年{month}月全员月报（每人一个表）.xlsx"
+    for row in ws.iter_rows(min_row=2, max_row=last_row):
+        for idx, cell in enumerate(row):
+            if idx == 0 or idx == 1:  # 司机代码/姓名
+                cell.alignment = align_left
+            else:
+                cell.alignment = align_center
+            if cell.row == last_row:
+                cell.font = bold_font
+                cell.fill = fill
+
+    # 导出文件
+    from tempfile import NamedTemporaryFile
     tmp = NamedTemporaryFile()
     wb.save(tmp.name)
     tmp.seek(0)
 
+    filename = f"{year}年{month}月_全员月报汇总.xlsx"
     response = FileResponse(tmp, as_attachment=True, filename=quote(filename))
     response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return response
@@ -906,8 +957,21 @@ def driver_dailyreport_add_unassigned(request):
 # ✅ 司机查看自己日报
 @login_required
 def my_dailyreports(request):
-    reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
-    return render(request, 'dailyreport/my_dailyreports.html', {'reports': reports})
+    try:
+        # ✅ 获取当前登录用户对应的 Driver 实例
+        driver = Driver.objects.get(user=request.user)
+    except Driver.DoesNotExist:
+        return render(request, 'dailyreport/not_found.html', {
+            'message': '该用户未绑定司机档案。'
+        }, status=404)
+
+    # ✅ 现在使用 Driver 实例来查询日报
+    reports = DriverDailyReport.objects.filter(driver=driver).order_by('-date')
+
+    return render(request, 'dailyreport/my_dailyreports.html', {
+        'reports': reports,
+        'driver': driver,
+    })
 
 # ✅ 批量生成账号绑定员工
 @user_passes_test(is_dailyreport_admin)
@@ -1662,24 +1726,6 @@ def driver_dailyreport_add_unassigned(request):
 def my_dailyreports(request):
     reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
     return render(request, 'dailyreport/my_dailyreports.html', {'reports': reports})
-
-# ✅ 批量生成账号绑定员工
-@user_passes_test(is_dailyreport_admin)
-def bind_missing_users(request):
-    drivers_without_user = Driver.objects.filter(user__isnull=True)
-
-    if request.method == 'POST':
-        for driver in drivers_without_user:
-            username = f"driver{driver.driver_code}"
-            if not User.objects.filter(username=username).exists():
-                user = User.objects.create_user(username=username, password='12345678')
-                driver.user = user
-                driver.save()
-        return redirect('sdailyreport:bind_missing_users')
-
-    return render(request, 'dailyreport/bind_missing_users.html', {
-        'drivers': drivers_without_user,
-    })
 
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_overview(request):

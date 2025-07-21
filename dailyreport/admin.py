@@ -22,7 +22,13 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
     list_display = [
         'driver', 'date', 'vehicle',
         'status', 'has_issue',
-        'etc_expected', 'etc_collected', 'etc_payment_method', 'get_etc_uncollected',
+        'etc_expected',                 # 应收
+        'etc_collected_cash',          # ✅ 新增：现金收取
+        'etc_collected_app',           # ✅ 新增：App收取
+        'get_etc_collected_total',     # ✅ 新增：实收合计（@property）
+        'get_etc_diff',                # ✅ 新增：差额
+        'etc_payment_method',
+        'get_etc_uncollected',         # 原有未收字段
         'edited_by', 'edited_at'
     ]
     list_filter = ['status', 'has_issue', 'driver']
@@ -33,7 +39,28 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
 
     @admin.display(description='ETC未收')
     def get_etc_uncollected(self, obj):
-        return obj.etc_uncollected
+        amt = obj.etc_uncollected or 0
+        if amt == 0:
+            return format_html('<span style="color: green;">0</span>')
+        return format_html('<span style="color: red;">{}</span>', amt)
+
+    @admin.display(description='ETC实收合计')
+    def get_etc_collected_total(self, obj):
+        return obj.etc_collected_total
+
+    @admin.display(description='ETC差额')
+    def get_etc_diff(self, obj):
+        diff = obj.etc_diff
+        if diff == 0:
+            color = 'green'
+            label = '0（已收齐）'
+        elif diff > 0:
+            color = 'red'
+            label = f'{diff}（未收）'
+        else:
+            color = 'orange'
+            label = f'{diff}（多收？）'
+        return format_html('<span style="color: {};">{}</span>', color, label)
 
 @admin.register(DriverDailyReportItem)
 class DriverDailyReportItemAdmin(admin.ModelAdmin):

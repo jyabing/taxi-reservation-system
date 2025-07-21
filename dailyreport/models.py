@@ -20,6 +20,10 @@ PAYMENT_METHOD_CHOICES = [
     ('kyokushin', '京交信'),
     ('omron', 'オムロン（愛のタクシーチケット）'),
     ('kyotoshi', '京都市他'),
+
+    # ✅ 新增：包车相关支付方式
+    ('charter_cash', '貸切（現金）'),
+    ('charter_bank', '貸切（振込）'),
 ]
 
 
@@ -75,8 +79,18 @@ class DriverDailyReport(models.Model):
         choices=PAYMENT_METHOD_CHOICES,  # ✅ 正确引用全局变量，避免循环引用
         null=True, blank=True
     )
+    
+    # ✅ 请在这里插入新字段
+    etc_collected_cash = models.PositiveIntegerField("ETC現金收取（円）", null=True, blank=True)
+    etc_collected_app = models.PositiveIntegerField("ETCアプリ収取（円）", null=True, blank=True)
+    
     etc_uncollected = models.PositiveIntegerField("ETC未收金额（円）", null=True, blank=True, help_text="日计账单中“空车合计”")
 
+    @property
+    def etc_collected_total(self):
+        """实收ETC合计 = cash + app"""
+        return (self.etc_collected_cash or 0) + (self.etc_collected_app or 0)
+    
     @property
     def etc_expected(self):
         """ETC应收合计 = 收取 + 未收"""
@@ -188,14 +202,20 @@ class DriverDailyReportItem(models.Model):
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)  # 新增字段
     is_flagged = models.BooleanField(default=False, verbose_name="标记为重点")
-    has_issue = models.BooleanField("是否异常", default=False)  # 新增字段
+    has_issue = models.BooleanField("是否异常", default=False)
+    # ✅ 新增字段
+    is_charter = models.BooleanField("是否为貸切", default=False)
 
     def save(self, *args, **kwargs):
-    # 如果 comment 不为空就设为有异常
+        # ✅ 自动判定：是否为“包车”支付方式
+        self.is_charter = self.payment_method in ['charter_cash', 'charter_bank']
+
+        # ✅ 已有逻辑：如果 comment 不为空就设为有异常
         self.has_issue = bool(self.comment.strip())
+        
         super().save(*args, **kwargs)
 
-    # 更新日报本体状态（是否包含异常记录）
+        # ✅ 保存后更新日报状态
         if self.report:
             self.report.has_issue = self.report.items.filter(has_issue=True).exists()
             self.report.save(update_fields=['has_issue'])
