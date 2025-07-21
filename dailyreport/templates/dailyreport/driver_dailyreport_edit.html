@@ -324,6 +324,7 @@ input[type=number] {
               <div class="d-flex flex-row gap-1">
                 {% if form.instance.pk %}
                   {{ form.DELETE.as_hidden }}
+                  {{ form.DELETE }}
                   <button type="button" class="btn btn-sm btn-danger delete-row">削除</button>
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
@@ -443,6 +444,18 @@ input[type=number] {
       // ✅ 初始运行
       updateEtcDifference();
       updateEtcInclusionWarning();
+
+      // ✅ 删除按钮功能绑定
+      document.querySelectorAll('.delete-row').forEach(button => {
+        button.addEventListener('click', function () {
+          const row = button.closest('tr');
+          const deleteInput = row.querySelector('input[name$="-DELETE"]');
+          if (deleteInput) {
+            deleteInput.checked = true;
+          }
+          row.style.display = 'none';
+        });
+      });
     });
   </script>
 
