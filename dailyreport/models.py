@@ -85,6 +85,11 @@ class DriverDailyReport(models.Model):
     etc_collected_app = models.PositiveIntegerField("ETCアプリ収取（円）", null=True, blank=True)
     
     etc_uncollected = models.PositiveIntegerField("ETC未收金额（円）", null=True, blank=True, help_text="日计账单中“空车合计”")
+    
+    # ✅ 新增字段：ETC不足部分（多跑未补收）
+    etc_shortage = models.PositiveIntegerField(default=0, verbose_name="ETC不足额", help_text="ETC使用金额超过应收金额的部分，将从工资中扣除")
+
+    etc_note = models.CharField(max_length=255, blank=True, verbose_name="ETC备注")
 
     @property
     def etc_collected_total(self):
@@ -186,7 +191,7 @@ class DriverDailyReport(models.Model):
         self.実働時間 = actual_duration
         self.残業時間 = overtime
 
-# ★ 新增！乘务日报明细，一天可有多条，归属于DriverDailyReport
+# 乘务日报明细，一天可有多条，归属于DriverDailyReport
 class DriverDailyReportItem(models.Model):
     report = models.ForeignKey(
         DriverDailyReport, on_delete=models.CASCADE, related_name='items', verbose_name="所属日报"
@@ -205,6 +210,7 @@ class DriverDailyReportItem(models.Model):
     has_issue = models.BooleanField("是否异常", default=False)
     # ✅ 新增字段
     is_charter = models.BooleanField("是否为貸切", default=False)
+    combined_group = models.CharField("合算グループ", max_length=100, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         # ✅ 自动判定：是否为“包车”支付方式

@@ -45,7 +45,10 @@
         {% for report in reports %}
           <tr>
             <td>{{ report.date|date:"Y年n月j日" }}</td>
-            <td>¥{{ report.total_meter_fee|floatformat:0|intcomma }}</td>
+            <td>
+              合計: ￥{{ report.total_all|floatformat:"0"|intcomma }}
+              <br><small class="text-muted">（メータのみ: ￥{{ report.total_meter|floatformat:"0"|intcomma }}）</small>
+            </td>
             <td>{{ report.note|default:"" }}</td>
             <td>
               <a href="{% url 'dailyreport:driver_dailyreport_edit' driver.id report.id %}">編集</a> | 

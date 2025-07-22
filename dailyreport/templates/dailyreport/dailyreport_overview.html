@@ -56,6 +56,16 @@
       </div>
     </div>
   {% endfor %}
+
+  {# ✅ 新增：ETC 不足額 卡片 #}
+  <div class="card shadow-sm text-center border-danger" style="min-width: 160px;">
+    <div class="card-body p-2">
+      <div class="small text-danger">ETC 不足額</div>
+      <div class="fw-bold fs-5 text-danger">
+        {{ etc_shortage_total|default:0|floatformat:'0' }} 円
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ✅ 卡片包裹的表格 -->

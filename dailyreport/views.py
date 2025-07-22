@@ -34,8 +34,9 @@ from .utils import (
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange, month_name
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from dailyreport.services.grouping import group_report_items, calculate_totals_from_grouped_items
 
 
 # ✅ 新增日报
@@ -77,6 +78,7 @@ def dailyreport_edit(request, pk):
             # ✅ 强化保存：确保 etc 字段写入
             report.etc_expected = form.cleaned_data.get('etc_expected') or 0
             report.etc_collected = form.cleaned_data.get('etc_collected') or 0
+            report.etc_shortage = form.cleaned_data.get('etc_shortage') or 0  # ← 新增这行 ✅
 
             report.save()
             formset.save()
@@ -225,64 +227,6 @@ def export_dailyreports_csv(request, year, month):
     response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return response
 
-
-# ✅ 新增日报
-@user_passes_test(is_dailyreport_admin)
-def dailyreport_create(request):
-    if request.method == 'POST':
-        form = DriverDailyReportForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect('dailyreport:dailyreport_list')
-    else:
-        form = DriverDailyReportForm()
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', {'form': form})
-
-# ✅ 编辑日报
-@user_passes_test(is_dailyreport_admin)
-def dailyreport_edit(request, pk):
-    report = get_object_or_404(DriverDailyReport, pk=pk)
-
-    ReportItemFormSet = inlineformset_factory(
-        DriverDailyReport,
-        DriverDailyReportItem,
-        form=DriverDailyReportItemForm,
-        formset=RequiredReportItemFormSet,
-        extra=1,
-        can_delete=True,
-        max_num=40
-    )
-
-    if request.method == 'POST':
-        form = DriverDailyReportForm(request.POST, instance=report)
-        formset = ReportItemFormSet(request.POST, instance=report)
-
-        if form.is_valid() and formset.is_valid():
-            print("🧪 cleaned_data:", formset.cleaned_data)
-
-            report = form.save(commit=False)
-
-            # ✅ 强化保存：确保 etc 字段写入
-            report.etc_expected = form.cleaned_data.get('etc_expected') or 0
-            report.etc_collected = form.cleaned_data.get('etc_collected') or 0
-
-            report.save()
-            formset.save()
-
-            messages.success(request, "保存成功！")
-            return redirect('dailyreport:dailyreport_edit', pk=report.pk)
-        else:
-            messages.error(request, "保存失败，请检查输入内容")
-    else:
-        form = DriverDailyReportForm(instance=report)
-        formset = ReportItemFormSet(instance=report)
-
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', {
-        'form': form,
-        'formset': formset,
-        'report': report
-    })
-
 @login_required
 def sales_thanks(request):
     return render(request, 'dailyreport/sales_thanks.html')
@@ -394,15 +338,6 @@ def export_dailyreports_csv(request, year, month):
 #导出全员每月汇总（每个司机一个 Sheet（表单））
 @user_passes_test(is_dailyreport_admin)
 def export_monthly_summary_excel(request, year, month):
-    from collections import defaultdict
-    from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from calendar import monthrange
-    from django.http import FileResponse
-    from urllib.parse import quote
-    from decimal import Decimal
-
     reports = DriverDailyReport.objects.filter(
         date__year=year, date__month=month
     ).select_related('driver').prefetch_related('items')
@@ -440,10 +375,10 @@ def export_monthly_summary_excel(request, year, month):
     ws.title = f"{year}年{month}月（{month}月1日~{month}月{last_day}日）"
 
     headers = [
-        '司机代码', '司机',
-        '现金', 'Uber', 'Didi', 'クレジットカード', '扫码支付',
+        '社員番号', '司机',
+        '現金', 'Uber', 'Didi', 'クレジットカード', '扫码支付',
         '京交信', 'オムロン', '京都市他',
-        'ETC应收', 'ETC实收', 'ETC差额',
+        'ETC应收', 'ETC实收', 'ETC差额', 'ETC不足額',
         '過不足額', '走行距離(KM)', '給油量(L)'
     ]
     ws.append(headers)
@@ -522,39 +457,43 @@ def export_monthly_summary_excel(request, year, month):
     response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return response
 
-# ✅ 司机日报
+# ✅ 功能：查看某位司机的月度日报合计
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_month(request, driver_id):
-    driver = get_driver_info(driver_id)
-    if not driver:
-        return render(request, 'dailyreport/not_found.html', status=404)
-    today = now().date()
-
-    selected_month = request.GET.get('month') or today.strftime('%Y-%m')  # ✅ 容错处理
-    selected_date = request.GET.get('date', '').strip()
-
-    if selected_date:
-        try:
-            selected_date_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
-            reports = DriverDailyReport.objects.filter(driver=driver, date=selected_date_obj)
-        except ValueError:
-            reports = DriverDailyReport.objects.none()
+    from datetime import datetime
+    driver = get_object_or_404(Driver, id=driver_id)
+    month_str = request.GET.get("month")
+    if not month_str:
+        month = datetime.today().date().replace(day=1)
     else:
-        try:
-            year, month = map(int, selected_month.split('-'))
-            reports = DriverDailyReport.objects.filter(
-                driver=driver, date__year=year, date__month=month
-            )
-        except ValueError:
-            reports = DriverDailyReport.objects.none()
+        month = datetime.strptime(month_str, "%Y-%m").date()
 
-    reports = reports.order_by('-date')
+    reports = DriverDailyReport.objects.filter(
+        driver=driver,
+        date__year=month.year,
+        date__month=month.month
+    ).order_by('date')
+
+    # ✅ 定义统计的支付方式（不包含 meter）
+    valid_keys = ['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi', 'etc']
+
+    for report in reports:
+        items = report.items.all()
+        grouped = group_report_items(items)
+        totals = calculate_totals_from_grouped_items(grouped, report=report)
+
+        report.total_all = sum(
+            [totals.get(k, Decimal("0")) for k in valid_keys]
+        )
+        report.total_meter = totals.get('meter_raw', Decimal("0"))
+
+        print(f"[{report.date}] meter={report.total_meter}, total_all={report.total_all}")
+
 
     return render(request, 'dailyreport/driver_dailyreport_month.html', {
         'driver': driver,
+        'month': month,
         'reports': reports,
-        'selected_month': selected_month,
-        'selected_date': selected_date,
     })
 
 @user_passes_test(is_dailyreport_admin)
@@ -991,186 +930,7 @@ def bind_missing_users(request):
         'drivers': drivers_without_user,
     })
 
-@user_passes_test(is_dailyreport_admin)
-def dailyreport_overview(request):
-    # 1. 基本参数：关键字 + 月份
-    today     = now().date()
-    keyword   = request.GET.get('keyword', '').strip()
-    #year = int(request.GET.get('year', today.year))
-    month_str = request.GET.get('month', today.strftime('%Y-%m'))
 
-    # 2. 解析 month_str
-    try:
-        month = datetime.strptime(month_str, "%Y-%m")
-    except ValueError:
-        month = today.replace(day=1)
-        month_str = month.strftime('%Y-%m')
-
-    #year = month.year
-
-    # ✅ 使用封装好的在职筛选函数
-    drivers = get_active_drivers(month, keyword)
-
-    # 3. 构建 reports，只按 month 过滤
-    reports = DriverDailyReport.objects.filter(
-        date__year=month.year,
-        date__month=month.month
-    )
-
-    # 4. 全员明细聚合
-    items = DriverDailyReportItem.objects.filter(report__in=reports)
-    totals = items.aggregate(
-        total_meter  = Sum('meter_fee'),
-        total_cash   = Sum(Case(When(payment_method='cash',    then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_uber   = Sum(Case(When(payment_method='uber',    then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_didi   = Sum(Case(When(payment_method='didi',    then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_credit = Sum(Case(When(payment_method='credit',  then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_kyokushin = Sum(Case(When(payment_method='kyokushin', then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_omron     = Sum(Case(When(payment_method='omron',     then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_kyotoshi  = Sum(Case(When(payment_method='kyotoshi',  then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_qr     = Sum(Case(When(payment_method='qr', then=F('meter_fee')), default=0, output_field=DecimalField())),
-    )
-
-    # 5. 税前计算
-    gross = totals.get('total_meter') or Decimal('0')
-    totals['meter_pre_tax'] = (gross / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-
-    # 6. 分成额计算
-    rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':     Decimal('0.05'),
-    }
-    def split(key):
-        amt = totals.get(f"total_{key}") or Decimal('0')
-        return (amt * rates[key]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-
-    totals.update({
-        'meter_split':  split('meter'),
-        'cash_split':   split('cash'),
-        'uber_split':   split('uber'),
-        'didi_split':   split('didi'),
-        'credit_split': split('credit'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr_split':     split('qr'),
-    })
-
-    # ✅ 6.5 重新构建 totals_all 给模板使用（使用 xxx_raw + xxx_split 命名）
-    totals_all = {
-        "meter": {
-            "total": totals.get("total_meter") or Decimal('0'),
-            "bonus": totals.get("meter_split") or Decimal('0'),
-        },
-        "cash": {
-            "total": totals.get("total_cash") or Decimal('0'),
-            "bonus": totals.get("cash_split") or Decimal('0'),
-        },
-        "uber": {
-            "total": totals.get("total_uber") or Decimal('0'),
-            "bonus": totals.get("uber_split") or Decimal('0'),
-        },
-        "didi": {
-            "total": totals.get("total_didi") or Decimal('0'),
-            "bonus": totals.get("didi_split") or Decimal('0'),
-        },
-        "credit": {
-            "total": totals.get("total_credit") or Decimal('0'),
-            "bonus": totals.get("credit_split") or Decimal('0'),
-        },
-        "kyokushin": {
-            "total": totals.get("total_kyokushin") or Decimal('0'),
-            "bonus": split("kyokushin"),
-        },
-        "omron": {
-            "total": totals.get("total_omron") or Decimal('0'),
-            "bonus": split("omron"),
-        },
-        "kyotoshi": {
-            "total": totals.get("total_kyotoshi") or Decimal('0'),
-            "bonus": split("kyotoshi"),
-        },
-        "qr": {
-            "total": totals.get("total_qr") or Decimal('0'),
-            "bonus": totals.get("qr_split") or Decimal('0'),
-        },
-    }
-
-    # 7. 遍历全体司机，构造每人合计（无日报也显示）
-
-    # ✅ 使用统一封装的在职司机筛选函数
-    driver_qs = drivers
-
-    # ✅ 遍历符合条件的司机，计算其当月的合计水揚金额 + 备注状态
-    driver_data = []
-    for d in driver_qs:
-        # 获取该司机本月的所有日报记录
-        dr_reps = reports.filter(driver=d)
-
-        # 计算该司机本月合计メータ金額（即水揚）
-        total = sum(r.total_meter_fee for r in dr_reps)
-
-        # 标注备注：未报 或 有异常
-        if dr_reps.exists():
-            note = "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else ""
-        else:
-            note = "（未報告）"
-
-        # 整理成字典追加到列表中
-        driver_data.append({
-            'driver':    d,
-            'total_fee': total,
-            'note':      note,
-            'month_str': month_str,
-        })
-
-    # 8. 分页
-    page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
-
-    # ✅ 9. 添加合计栏用的 key-label 对（显示：メーター / 現金 / QR 等）
-    summary_keys = [
-        ('meter', 'メーター(水揚)'),
-        ('cash', '現金'),
-        ('uber', 'Uber'),
-        ('didi', 'Didi'),
-        ('credit', 'クレジットカード'),
-        ('kyokushin', '京交信'),
-        ('omron', 'オムロン'),
-        ('kyotoshi', '京都市他'),
-        ('qr', '扫码'),
-    ]
-
-
-    # ✅ 10. 生成分页月份链接（用于“上一月”“下一月”按钮）
-    from dateutil.relativedelta import relativedelta
-    prev_month_str = (month - relativedelta(months=1)).strftime('%Y-%m')
-    next_month_str = (month + relativedelta(months=1)).strftime('%Y-%m')
-
-    # 11. 渲染模板
-    current_year = month.year
-    current_month = month.month
-
-    return render(request, 'dailyreport/dailyreport_overview.html', {
-        'page_obj': page_obj,
-        'month': month,
-        'month_str': month.strftime('%Y-%m'),
-        'month_label': month.strftime('%Y年%m月'),
-        'prev_month': prev_month_str,
-        'next_month': next_month_str,
-        'keyword': keyword,
-        'totals_all': totals_all,
-        'summary_keys': summary_keys,
-        'current_year': current_year,
-        'current_month': current_month,  # ✅ 这两行是新增
-    })
-    
 #导出每日明细
 @user_passes_test(is_dailyreport_admin)
 def export_etc_daily_csv(request, year, month):
@@ -1288,41 +1048,6 @@ def export_vehicle_csv(request, year, month):
     ])
 
     return response
-
-# ✅ 司机日报
-@user_passes_test(is_dailyreport_admin)
-def driver_dailyreport_month(request, driver_id):
-    driver = get_driver_info(driver_id)
-    if not driver:
-        return render(request, 'dailyreport/not_found.html', status=404)
-    today = now().date()
-
-    selected_month = request.GET.get('month') or today.strftime('%Y-%m')  # ✅ 容错处理
-    selected_date = request.GET.get('date', '').strip()
-
-    if selected_date:
-        try:
-            selected_date_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
-            reports = DriverDailyReport.objects.filter(driver=driver, date=selected_date_obj)
-        except ValueError:
-            reports = DriverDailyReport.objects.none()
-    else:
-        try:
-            year, month = map(int, selected_month.split('-'))
-            reports = DriverDailyReport.objects.filter(
-                driver=driver, date__year=year, date__month=month
-            )
-        except ValueError:
-            reports = DriverDailyReport.objects.none()
-
-    reports = reports.order_by('-date')
-
-    return render(request, 'dailyreport/driver_dailyreport_month.html', {
-        'driver': driver,
-        'reports': reports,
-        'selected_month': selected_month,
-        'selected_date': selected_date,
-    })
 
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_add_selector(request, driver_id):
@@ -1503,197 +1228,6 @@ def dailyreport_create_for_driver(request, driver_id):
         'totals': totals,
     })
 
-# ✅ 编辑日报（管理员）
-@user_passes_test(is_dailyreport_admin)
-def dailyreport_edit_for_driver(request, driver_id, report_id):
-    driver = get_driver_info(driver_id)
-    if not driver:
-        return render(request, "dailyreport/not_found.html", status=404)
-
-    
-    report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
-    duration = timedelta()
-
-    # ✅ 添加这两行防止变量未赋值
-    user_h = 0
-    user_m = 0
-
-    if request.method == 'POST':
-        form = DriverDailyReportForm(request.POST, instance=report)
-        formset = ReportItemFormSet(request.POST, instance=report)
-
-        for form_item in formset.forms:
-            if not form_item.has_changed():
-                form_item.fields['DELETE'].initial = True
-
-        if form.is_valid() and formset.is_valid():
-            inst = form.save(commit=False)
-
-            # ✅ 这里处理休憩時間
-            break_input = request.POST.get("break_time_input", "").strip()
-            break_minutes = 0
-            try:
-                if ":" in break_input:
-                    h, m = map(int, break_input.split(":"))
-                else:
-                    h, m = 0, int(break_input)
-                break_minutes = h * 60 + m
-            except Exception:
-                break_minutes = 0
-
-            inst.休憩時間 = timedelta(minutes=break_minutes)
-            inst.calculate_work_times()
-            inst.edited_by = request.user
-
-            # ✅ 插入这里：自动计算過不足額
-            cash_total = sum(
-                item.cleaned_data.get('meter_fee') or 0
-                for item in formset.forms
-                if item.cleaned_data.get('payment_method') == 'cash' and not item.cleaned_data.get('DELETE', False)
-            )
-            deposit = inst.deposit_amount or 0
-            inst.deposit_difference = deposit - cash_total
-
-            if inst.status in [DriverDailyReport.STATUS_PENDING, DriverDailyReport.STATUS_CANCELLED] and inst.clock_in and inst.clock_out:
-                inst.status = DriverDailyReport.STATUS_COMPLETED
-            if inst.clock_in and inst.clock_out:
-                inst.has_issue = False
-
-            inst.save()
-            formset.instance = inst
-            formset.save()
-
-            # 更新 Reservation 出入库
-            driver_user = inst.driver.user
-            if driver_user and inst.clock_in:
-                res = Reservation.objects.filter(driver=driver_user, date=inst.date).order_by('start_time').first()
-                if res:
-                    tz = timezone.get_current_timezone()
-                    res.actual_departure = timezone.make_aware(datetime.combine(inst.date, inst.clock_in), tz)
-                    if inst.clock_out:
-                        ret_date = inst.date
-                        if inst.clock_out < inst.clock_in:
-                            ret_date += timedelta(days=1)
-                        res.actual_return = timezone.make_aware(datetime.combine(ret_date, inst.clock_out), tz)
-                    res.save()
-
-            inst.has_issue = inst.items.filter(has_issue=True).exists()
-            inst.save(update_fields=["has_issue"])
-
-            messages.success(request, "✅ 保存成功")
-            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver_id)
-        else:
-            messages.error(request, "❌ 保存失败，请检查输入内容")
-
-            # ✅ 打印错误详情（推荐）
-            print("📛 主表（form）错误：", form.errors)
-            print("📛 明细表（formset）错误：")
-            for i, f in enumerate(formset.forms):
-                if f.errors:
-                    print(f"  - 第{i+1}行: {f.errors}")
-    else:
-        initial = {'status': report.status}
-        clock_in = None
-        clock_out = None
-        driver_user = report.driver.user
-
-        if driver_user:
-            res = Reservation.objects.filter(driver=driver_user, date=report.date).order_by('start_time').first()
-            if res:
-                if res.actual_departure:
-                    clock_in = timezone.localtime(res.actual_departure).time()
-                    initial['clock_in'] = clock_in
-                if res.actual_return:
-                    clock_out = timezone.localtime(res.actual_return).time()
-                    initial['clock_out'] = clock_out
-                if res.vehicle:
-                    initial['vehicle'] = res.vehicle
-                if not report.vehicle:
-                    report.vehicle = res.vehicle
-                    report.save()
-                if clock_in and clock_out:
-                    dt_in = datetime.combine(report.date, clock_in)
-                    dt_out = datetime.combine(report.date, clock_out)
-                    if dt_out <= dt_in:
-                        dt_out += timedelta(days=1)
-                    duration = dt_out - dt_in
-
-        if report.休憩時間:
-            user_break_min = int(report.休憩時間.total_seconds() / 60) - 20
-            user_h = user_break_min // 60
-            user_m = user_break_min % 60
-            initial['break_time_input'] = f"{user_h}:{str(user_m).zfill(2)}"
-        else:
-            initial['break_time_input'] = "0:00"
-
-        form = DriverDailyReportForm(instance=report, initial=initial)
-        formset = ReportItemFormSet(instance=report)
-
-    # ✅ 汇总逻辑
-    rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':     Decimal('0.05'),
-    }
-    raw = {k: Decimal('0') for k in rates}
-    split = {k: Decimal('0') for k in rates}
-
-    if request.method == 'POST' and formset.is_valid():
-        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
-    else:
-        data_iter = [
-            {
-                'meter_fee': f.initial.get('meter_fee'),
-                'payment_method': f.initial.get('payment_method'),
-                'DELETE': f.initial.get('DELETE', False)
-            }
-            for f in formset.forms if f.initial.get('meter_fee') and not f.initial.get('DELETE', False)
-        ]
-    totals = calculate_totals_from_formset(data_iter)
-    print("🧪 data_iter =", data_iter)
-    print("🧪 totals =", totals)
-
-    summary_keys = [
-        ('meter', 'メーター(水揚)'),
-        ('cash', '現金(ながし)'),
-        ('uber', 'Uber'),
-        ('didi', 'Didi'),
-        ('credit', 'クレジ'),
-        ('kyokushin', '京交信'),
-        ('omron', 'オムロン'),
-        ('kyotoshi', '京都市他'),
-        ('qr', '扫码'),
-    ]
-
-    summary_panel_data = [
-        {
-            'key': key,
-            'label': label,
-            'raw': totals.get(f'{key}_raw', 0),
-            'split': totals.get(f'{key}_split', 0),
-        }
-        for key, label in summary_keys
-    ]
-
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', {
-        'form': form,
-        'formset': formset,
-        'totals': totals,
-        'driver_id': driver_id,
-        'report': report,
-        'duration': duration,
-        'summary_keys': summary_keys,
-        'summary_panel_data': summary_panel_data,
-        'break_time_h': user_h,
-        'break_time_m': f"{user_m:02}",
-    })
-
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_add_unassigned(request):
     driver = get_driver_info(driver_id)
@@ -1732,7 +1266,6 @@ def dailyreport_overview(request):
     # 1. 基本参数：关键字 + 月份
     today     = now().date()
     keyword   = request.GET.get('keyword', '').strip()
-    #year = int(request.GET.get('year', today.year))
     month_str = request.GET.get('month', today.strftime('%Y-%m'))
 
     # 2. 解析 month_str
@@ -1741,8 +1274,6 @@ def dailyreport_overview(request):
     except ValueError:
         month = today.replace(day=1)
         month_str = month.strftime('%Y-%m')
-
-    #year = month.year
 
     # ✅ 使用封装好的在职筛选函数
     drivers = get_active_drivers(month, keyword)
@@ -1753,7 +1284,7 @@ def dailyreport_overview(request):
         date__month=month.month
     )
 
-    # 4. 全员明细聚合
+    '''# 4. 全员明细聚合
     items = DriverDailyReportItem.objects.filter(report__in=reports)
     totals = items.aggregate(
         total_meter  = Sum('meter_fee'),
@@ -1766,6 +1297,20 @@ def dailyreport_overview(request):
         total_kyotoshi  = Sum(Case(When(payment_method='kyotoshi',  then=F('meter_fee')), default=0, output_field=DecimalField())),
         total_qr     = Sum(Case(When(payment_method='qr', then=F('meter_fee')), default=0, output_field=DecimalField())),
     )
+    '''
+    # ✅ 4. 全员明细遍历并分类统计（支持合算组 + ETC 按支付方式归类）
+    totals = defaultdict(Decimal)
+    items = DriverDailyReportItem.objects.filter(report__in=reports)
+
+    for item in items:
+        if not item.meter_fee or item.meter_fee <= 0:
+            continue
+        if item.note and 'キャンセル' in item.note:
+            continue
+        payment = item.payment_method or 'unknown'
+        totals[f"total_{payment}"] += item.meter_fee
+        totals["total_meter"] += item.meter_fee
+
 
     # 5. 税前计算
     gross = totals.get('total_meter') or Decimal('0')
@@ -1802,64 +1347,67 @@ def dailyreport_overview(request):
     # ✅ 6.5 重新构建 totals_all 给模板使用（使用 xxx_raw + xxx_split 命名）
     totals_all = {
         "meter": {
-            "total": totals.get("total_meter") or Decimal('0'),
-            "bonus": totals.get("meter_split") or Decimal('0'),
+            "total": totals.get("total_meter", Decimal("0")),
+            "bonus": totals.get("meter_split", Decimal("0")),
         },
         "cash": {
-            "total": totals.get("total_cash") or Decimal('0'),
-            "bonus": totals.get("cash_split") or Decimal('0'),
+            "total": totals.get("total_cash", Decimal("0")),
+            "bonus": totals.get("cash_split", Decimal("0")),
         },
         "uber": {
-            "total": totals.get("total_uber") or Decimal('0'),
-            "bonus": totals.get("uber_split") or Decimal('0'),
+            "total": totals.get("total_uber", Decimal("0")),
+            "bonus": totals.get("uber_split", Decimal("0")),
         },
         "didi": {
-            "total": totals.get("total_didi") or Decimal('0'),
-            "bonus": totals.get("didi_split") or Decimal('0'),
+            "total": totals.get("total_didi", Decimal("0")),
+            "bonus": totals.get("didi_split", Decimal("0")),
         },
         "credit": {
-            "total": totals.get("total_credit") or Decimal('0'),
-            "bonus": totals.get("credit_split") or Decimal('0'),
+            "total": totals.get("total_credit", Decimal("0")),
+            "bonus": totals.get("credit_split", Decimal("0")),
         },
         "kyokushin": {
-            "total": totals.get("total_kyokushin") or Decimal('0'),
-            "bonus": split("kyokushin"),
+            "total": totals.get("total_kyokushin", Decimal("0")),
+            "bonus": totals.get("kyokushin_split", Decimal("0")),
         },
         "omron": {
-            "total": totals.get("total_omron") or Decimal('0'),
-            "bonus": split("omron"),
+            "total": totals.get("total_omron", Decimal("0")),
+            "bonus": totals.get("omron_split", Decimal("0")),
         },
         "kyotoshi": {
-            "total": totals.get("total_kyotoshi") or Decimal('0'),
-            "bonus": split("kyotoshi"),
+            "total": totals.get("total_kyotoshi", Decimal("0")),
+            "bonus": totals.get("kyotoshi_split", Decimal("0")),
         },
         "qr": {
-            "total": totals.get("total_qr") or Decimal('0'),
-            "bonus": totals.get("qr_split") or Decimal('0'),
+            "total": totals.get("total_qr", Decimal("0")),
+            "bonus": totals.get("qr_split", Decimal("0")),
+        },
+        # ✅ ✅ 新增 ETC 合计项目
+        "etc_expected": {
+            "total": totals.get("total_etc_expected", Decimal("0")),
+            "bonus": Decimal("0"),  # ETC无分成
+        },
+        "etc_collected": {
+            "total": totals.get("total_etc_collected", Decimal("0")),
+            "bonus": Decimal("0"),  # ETC无分成
         },
     }
 
+    # ✅ 6.6 统计 ETC 不足额合计
+    etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
+
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
-
-    # ✅ 使用统一封装的在职司机筛选函数
     driver_qs = drivers
-
-    # ✅ 遍历符合条件的司机，计算其当月的合计水揚金额 + 备注状态
     driver_data = []
     for d in driver_qs:
-        # 获取该司机本月的所有日报记录
         dr_reps = reports.filter(driver=d)
-
-        # 计算该司机本月合计メータ金額（即水揚）
         total = sum(r.total_meter_fee for r in dr_reps)
 
-        # 标注备注：未报 或 有异常
         if dr_reps.exists():
             note = "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else ""
         else:
             note = "（未報告）"
 
-        # 整理成字典追加到列表中
         driver_data.append({
             'driver':    d,
             'total_fee': total,
@@ -1870,7 +1418,7 @@ def dailyreport_overview(request):
     # 8. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
 
-    # ✅ 9. 添加合计栏用的 key-label 对（显示：メーター / 現金 / QR 等）
+    # ✅ 9. 合计栏字段
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金'),
@@ -1883,13 +1431,12 @@ def dailyreport_overview(request):
         ('qr', '扫码'),
     ]
 
-
-    # ✅ 10. 生成分页月份链接（用于“上一月”“下一月”按钮）
+    # ✅ 10. 上下月链接
     from dateutil.relativedelta import relativedelta
     prev_month_str = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month_str = (month + relativedelta(months=1)).strftime('%Y-%m')
 
-    # 11. 渲染模板
+    # ✅ 11. 渲染模板，加入 etc_shortage_total
     current_year = month.year
     current_month = month.month
 
@@ -1903,8 +1450,9 @@ def dailyreport_overview(request):
         'keyword': keyword,
         'totals_all': totals_all,
         'summary_keys': summary_keys,
+        'etc_shortage_total': etc_shortage_total,  # ✅ 新增字段
         'current_year': current_year,
-        'current_month': current_month,  # ✅ 这两行是新增
+        'current_month': current_month,
     })
     
 #导出每日明细

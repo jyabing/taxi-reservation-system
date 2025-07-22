@@ -198,12 +198,12 @@ input[type=number] {
 
       <!-- ✅ 貸切振込 合計（charter_bank） -->
       {% if totals.charter_bank.total %}
-      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-        <div class="small text-muted">貸切振込 合計</div>
-        <div>
-          <span id="total_charter_bank">{{ totals.charter_bank.total|floatformat:"0" }}</span>
+        <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+          <div class="small text-muted">貸切振込 合計</div>
+          <div>
+            <span id="total_charter_bank">{{ totals.charter_bank.total|floatformat:"0" }}</span>
+          </div>
         </div>
-      </div>
       {% endif %}
 
 
@@ -256,6 +256,12 @@ input[type=number] {
         <label class="small text-muted">ETC 应收合计（円）</label>
         <input type="text" class="form-control form-control-sm text-end bg-light" readonly
               value="{{ report.etc_expected|default_if_none:'0' }}">
+      </div>
+
+      <!-- ✅ ETC 不足额 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <label for="{{ form.etc_shortage.id_for_label }}" class="small text-danger">ETC不足（円）</label>
+        {{ form.etc_shortage|add_class:"form-control form-control-sm text-end text-danger"|attr:"readonly" }}
       </div>
 
       <!-- ETC 未收提醒区 -->
@@ -381,94 +387,14 @@ input[type=number] {
 {% endblock %}
 
 {% block extra_js %}
+  <!-- ✅ 引入 flatpickr -->
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+
+  <!-- ✅ 引入自定义脚本 -->
   <script src="{% static 'dailyreport/js/dailyreport.js' %}"></script>
 
-  <script>
-    function updateEtcDifference() {
-      const cash = parseInt(document.getElementById('id_etc_collected_cash')?.value || 0);
-      const uncollected = parseInt(document.getElementById('id_etc_uncollected')?.value || 0);
-      const expected = cash + uncollected;
-
-      const display = document.getElementById('etc-diff-display');
-      if (!display) return;
-
-      const diff = expected - cash;
-
-      if (diff > 0) {
-        display.classList.remove('alert-info');
-        display.classList.add('alert-warning');
-        display.innerText = `未收 ETC：${diff} 円（将从工资中扣除）`;
-      } else {
-        display.classList.remove('alert-warning');
-        display.classList.add('alert-info');
-        display.innerText = `未收 ETC：0 円（无需扣除）`;
-      }
-    }
-
-    function updateEtcInclusionWarning() {
-      const deposit = parseInt(document.getElementById('id_deposit_amount')?.value || 0);
-      const etcCollected = parseInt(document.getElementById('id_etc_collected')?.value || 0);
-
-      // ✅ 容错处理：cash 合计不存在时跳过判断
-      const cashElem = document.getElementById('total-cash-amount');
-      if (!cashElem) {
-        console.warn('⚠️ 元素 #total-cash-amount 未找到，跳过ETC判断');
-        return;
-      }
-      const cash = parseInt(cashElem.innerText || 0);
-
-      const diff = deposit - cash;
-
-      const box = document.getElementById('etc-included-warning');
-      if (!box) return;
-
-      if (Math.abs(diff - etcCollected) <= 100) {
-        box.classList.remove('alert-warning');
-        box.classList.add('alert-success');
-        box.innerText = `✅ 入金額 ETC 取込む（${etcCollected}円）を含め`;
-      } else if (Math.abs(diff) <= 100) {
-        box.classList.remove('alert-success');
-        box.classList.add('alert-warning');
-        box.innerText = `⚠️ 入金額を含めないかも ETC，注意收款确认`;
-      } else {
-        box.classList.remove('alert-success');
-        box.classList.add('alert-warning');
-        box.innerText = `⚠️ 入金と現金の差額異常，確認ください`;
-      }
-    }
-
-    document.addEventListener('DOMContentLoaded', function () {
-      // ✅ 监听输入字段
-      document.getElementById('id_etc_collected_cash')?.addEventListener('input', updateEtcDifference);
-      document.getElementById('id_etc_uncollected')?.addEventListener('input', updateEtcDifference);
-
-      document.getElementById('id_deposit_amount')?.addEventListener('input', function () {
-        updateEtcDifference();
-        updateEtcInclusionWarning();
-      });
-
-      document.getElementById('id_etc_collected')?.addEventListener('input', updateEtcInclusionWarning);
-
-      // ✅ 初始运行
-      updateEtcDifference();
-      updateEtcInclusionWarning();
-
-      // ✅ 删除按钮功能绑定
-      document.querySelectorAll('.delete-row').forEach(button => {
-        button.addEventListener('click', function () {
-          const row = button.closest('tr');
-          const deleteInput = row.querySelector('input[name$="-DELETE"]');
-          if (deleteInput) {
-            deleteInput.checked = true;
-          }
-          row.style.display = 'none';
-        });
-      });
-    });
-  </script>
-
+  <!-- ✅ 保留高亮样式（无需多份 JS） -->
   <style>
     table.table tr.has-note td,
     table.table tr.has-note {

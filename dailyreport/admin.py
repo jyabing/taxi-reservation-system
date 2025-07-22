@@ -26,16 +26,22 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
         'etc_collected_cash',          # ✅ 新增：现金收取
         'etc_collected_app',           # ✅ 新增：App收取
         'get_etc_collected_total',     # ✅ 新增：实收合计（@property）
-        'get_etc_diff',                # ✅ 新增：差额
+        'get_etc_diff',               
+        'etc_shortage',                 # ✅ 新增：差额
         'etc_payment_method',
         'get_etc_uncollected',         # 原有未收字段
-        'edited_by', 'edited_at'
+        'edited_by', 'edited_at',
+        #'combined_group'
+        'get_combined_groups',         # ✅ 新增：合算组
     ]
+
+    readonly_fields = ['etc_shortage']
     list_filter = ['status', 'has_issue', 'driver']
     search_fields = ('driver__name', 'vehicle__plate_number', 'note')
     inlines = [DriverDailyReportItemInline]
     list_per_page = 20
     ordering = ['-date']
+    
 
     @admin.display(description='ETC未收')
     def get_etc_uncollected(self, obj):
@@ -61,6 +67,13 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
             color = 'orange'
             label = f'{diff}（多收？）'
         return format_html('<span style="color: {};">{}</span>', color, label)
+
+    @admin.display(description='合算组')
+    def get_combined_groups(self, obj):
+        groups = sorted(set(i.combined_group for i in obj.items.all() if i.combined_group))
+        if groups:
+            return ", ".join(groups)
+        return format_html('<span style="color:gray;font-style:italic;">无</span>')
 
 @admin.register(DriverDailyReportItem)
 class DriverDailyReportItemAdmin(admin.ModelAdmin):
