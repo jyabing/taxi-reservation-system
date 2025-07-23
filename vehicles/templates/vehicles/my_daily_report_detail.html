@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load time_filters %}
+{% load humanize %}
 {% block content %}
 <h4 class="mb-4">📝 {{ report.date }} 日报详情</h4>
 
@@ -56,32 +57,37 @@
   </div>
 </div>
 
-<!-- 💴 現金收款合計 
+<!-- 💴 本日売上 -->
 <div class="card border-start border-4 border-secondary shadow-sm" style="min-width: 160px;">
   <div class="card-body py-2 px-3">
-    <div class="small text-muted">現金收款合計</div>
-    <div class="fw-bold">{{ total_cash|default:"--" }} 円</div>
-  </div>
-</div>-->
-
-<!-- 🧮 入金差額 -->
-<div class="card border-start border-4 shadow-sm" style="min-width: 160px;
-    {% if deposit_diff > 0 %}
-      border-color: #28a745;
-    {% elif deposit_diff < 0 %}
-      border-color: #dc3545;
-    {% else %}
-      border-color: #6c757d;
-    {% endif %}">
-  <div class="card-body py-2 px-3">
-    <div class="small text-muted">入金差額</div>
+    <div class="small text-muted">本日売上</div>
     <div class="fw-bold">
-      {% if deposit_diff > 0 %}
-        <span class="text-success">+{{ deposit_diff }} 円</span>
-      {% elif deposit_diff < 0 %}
-        <span class="text-danger">{{ deposit_diff }} 円</span>
+      {% if total_cash %}
+        {{ total_cash|floatformat:0|intcomma }} 円
       {% else %}
-        <span class="text-muted">0 円</span>
+        -- 円
+      {% endif %}
+    </div>
+    <div class="small text-muted mt-1">※ 現金支払の売上合計</div>
+  </div>
+</div>
+<p>DEBUG total_cash = {{ total_cash }}</p>
+
+<!-- 💰 入金金額 + 過不足 -->
+<div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
+  <div class="card-body py-2 px-3">
+    <div class="small text-muted">入金金額</div>
+    <div class="fw-bold">
+      {{ deposit|floatformat:0 }} 円
+    </div>
+    <div class="small text-muted mt-1">
+      （入金 − 現金） = 
+      {% if is_deposit_exact %}
+        0 円
+      {% elif deposit_diff > 0 %}
+        +{{ deposit_diff|floatformat:0 }} 円
+      {% else %}
+        {{ deposit_diff|floatformat:0 }} 円
       {% endif %}
     </div>
   </div>

@@ -1467,49 +1467,65 @@ def my_dailyreports(request):
 def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
 
-    # ✅ 替换原本的 annotate + Cast（有空字符串时报错）
-    def parse_time(item):
-        try:
-            return datetime.strptime(item.ride_time, "%H:%M").time()
-        except (ValueError, TypeError):
-            return None
-
-    # ✅ 新增：按时间排序的明细记录
-    items = report.items.exclude(ride_time="").annotate(
-        time_cast=Cast('ride_time', TimeField())
-    ).order_by('time_cast')
-
-    # ✅ 现金总额
-    total_cash = sum(
-        Decimal(item.meter_fee or 0)
-        for item in report.items.all()
-        if item.payment_method == "現金"
-    )
-
-    # ✅ 入金差額（入金額 − 現金）
-    deposit = report.deposit_amount or Decimal("0")
-    deposit_diff = deposit - total_cash
-
-
+    # ✅ 找到当天实际出库记录（可能为前一天下午）
     reservation = Reservation.objects.filter(
         driver=request.user,
-        actual_departure__date=report.date
-    ).order_by('actual_departure').first()
+        actual_departure__lte=make_aware(datetime.combine(report.date, time(12, 0)))
+    ).order_by('-actual_departure').first()
 
     start_time = reservation.actual_departure if reservation else None
     end_time = reservation.actual_return if reservation else None
+
     duration = None
     if start_time and end_time:
         duration = end_time - start_time
 
+    # ✅ 跨日排序逻辑：根据 ride_time 和出库时间判断是否跨日
+    items_raw = report.items.all()
+
+    def parse_ride_datetime(item):
+        try:
+            ride_time = datetime.strptime(item.ride_time, "%H:%M").time()
+            base_date = report.date
+            if start_time and ride_time < start_time.time():
+                base_date += timedelta(days=1)
+            return datetime.combine(base_date, ride_time)
+        except Exception:
+            return datetime.max  # 排在最后
+
+    items = sorted(items_raw, key=parse_ride_datetime)
+
+    # ✅ 打印付款方式
+    print("=== 所有乘车记录付款方式 ===")
+    for item in items:
+        print(f"- {item.ride_time} | 金額: {item.meter_fee} | 支付: {item.payment_method}")
+    print("=== END ===")
+
+    # ✅ 现金总额（基于排序后的 items，保持一致）
+    total_cash = sum(
+        Decimal(item.meter_fee or 0)
+        for item in items
+        if item.payment_method and "cash" in item.payment_method.lower()
+    )
+
+    deposit = report.deposit_amount or Decimal("0")
+    deposit_diff = deposit - total_cash
+    is_deposit_exact = (deposit_diff == 0)
+
+    print("所有明细付款方式：")
+    for item in items:
+        print("-", item.payment_method, ":", item.meter_fee)
+
     return render(request, 'vehicles/my_daily_report_detail.html', {
         'report': report,
-        'items': items,  # ✅ 添加进上下文
+        'items': items,
         'start_time': start_time,
         'end_time': end_time,
         'duration': duration,
-        'total_cash': total_cash,         # ✅ 现金总额
-        'deposit_diff': deposit_diff,     # ✅ 入金差額
+        'total_cash': total_cash,
+        'deposit': deposit,
+        'deposit_diff': deposit_diff,
+        'is_deposit_exact': is_deposit_exact,
     })
 
 # 函数：生成到期提醒文案（提前5天～当天～延后5天）
