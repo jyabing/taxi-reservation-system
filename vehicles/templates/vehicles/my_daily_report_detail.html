@@ -56,6 +56,37 @@
   </div>
 </div>
 
+<!-- 💴 現金收款合計 
+<div class="card border-start border-4 border-secondary shadow-sm" style="min-width: 160px;">
+  <div class="card-body py-2 px-3">
+    <div class="small text-muted">現金收款合計</div>
+    <div class="fw-bold">{{ total_cash|default:"--" }} 円</div>
+  </div>
+</div>-->
+
+<!-- 🧮 入金差額 -->
+<div class="card border-start border-4 shadow-sm" style="min-width: 160px;
+    {% if deposit_diff > 0 %}
+      border-color: #28a745;
+    {% elif deposit_diff < 0 %}
+      border-color: #dc3545;
+    {% else %}
+      border-color: #6c757d;
+    {% endif %}">
+  <div class="card-body py-2 px-3">
+    <div class="small text-muted">入金差額</div>
+    <div class="fw-bold">
+      {% if deposit_diff > 0 %}
+        <span class="text-success">+{{ deposit_diff }} 円</span>
+      {% elif deposit_diff < 0 %}
+        <span class="text-danger">{{ deposit_diff }} 円</span>
+      {% else %}
+        <span class="text-muted">0 円</span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 <!-- 明细表 -->
 {% if items %}
   <div class="card shadow-sm mt-4">

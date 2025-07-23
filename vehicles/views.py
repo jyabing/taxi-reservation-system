@@ -1467,10 +1467,29 @@ def my_dailyreports(request):
 def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
 
+    # ✅ 替换原本的 annotate + Cast（有空字符串时报错）
+    def parse_time(item):
+        try:
+            return datetime.strptime(item.ride_time, "%H:%M").time()
+        except (ValueError, TypeError):
+            return None
+
     # ✅ 新增：按时间排序的明细记录
-    items = report.items.annotate(
+    items = report.items.exclude(ride_time="").annotate(
         time_cast=Cast('ride_time', TimeField())
     ).order_by('time_cast')
+
+    # ✅ 现金总额
+    total_cash = sum(
+        Decimal(item.meter_fee or 0)
+        for item in report.items.all()
+        if item.payment_method == "現金"
+    )
+
+    # ✅ 入金差額（入金額 − 現金）
+    deposit = report.deposit_amount or Decimal("0")
+    deposit_diff = deposit - total_cash
+
 
     reservation = Reservation.objects.filter(
         driver=request.user,
@@ -1489,6 +1508,8 @@ def my_daily_report_detail(request, report_id):
         'start_time': start_time,
         'end_time': end_time,
         'duration': duration,
+        'total_cash': total_cash,         # ✅ 现金总额
+        'deposit_diff': deposit_diff,     # ✅ 入金差額
     })
 
 # 函数：生成到期提醒文案（提前5天～当天～延后5天）
