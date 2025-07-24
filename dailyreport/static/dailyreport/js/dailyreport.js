@@ -216,6 +216,75 @@ document.addEventListener('DOMContentLoaded', () => {
     if (meterEl) meterEl.textContent = Object.values(totalMap).reduce((a, b) => a + b, 0).toLocaleString();
   }
 
+  // ✅ 智能提示面板更新函数
+  function updateSmartHintPanel() {
+    const depositInput = document.querySelector("#deposit-input");
+    const cashTotal = parseInt(document.querySelector("#total_cash")?.textContent || "0", 10);
+    const etcCollected = parseInt(document.querySelector("#id_etc_collected")?.value || "0", 10);
+    const etcUncollected = parseInt(document.querySelector("#id_etc_uncollected")?.value || "0", 10);
+    const totalSales = parseInt(document.querySelector("#total_meter")?.textContent || "0", 10);
+
+    const deposit = parseInt(depositInput?.value || "0", 10);
+    const totalCollected = cashTotal + etcCollected;
+
+    const panel = document.querySelector("#smart-hint-panel");
+    if (!panel) return;
+
+    let html = "";
+
+    // 入金额 < 现金 + ETC 时警告
+    if (deposit < totalCollected) {
+      html += `
+        <div class="alert alert-danger py-1 px-2 small mb-2">
+          ⚠️ 入金額が不足しています。請求額 (現金 + ETC) は <strong>${totalCollected.toLocaleString()}円</strong> ですが、入力された入金額は <strong>${deposit.toLocaleString()}円</strong> です。
+        </div>`;
+    } else {
+      html += `
+        <div class="alert alert-success py-1 px-2 small mb-2">
+          ✔️ 入金額は現金 + ETC をカバーしています。
+        </div>`;
+    }
+
+    // ETC 未收提示
+    if (etcUncollected > 0) {
+      html += `
+        <div class="alert alert-info py-1 px-2 small mb-2">
+          🚧 ETC 未收：<strong>${etcUncollected.toLocaleString()}円</strong>。请确认司机是否已补收。
+        </div>`;
+    }
+
+    // 入金 < 売上合計 提示
+    if (deposit < totalSales) {
+      html += `
+        <div class="alert alert-warning py-1 px-2 small mb-2">
+          ℹ️ 売上合計 <strong>${totalSales.toLocaleString()}円</strong> 大于入金 <strong>${deposit.toLocaleString()}円</strong>，可能包含貸切、未收 ETC 或其他延迟结算项。
+        </div>`;
+    }
+
+    panel.innerHTML = html;
+  }
+
+  // ✅ 页面加载后绑定事件
+  document.addEventListener("DOMContentLoaded", function () {
+    const depositInput = document.querySelector("#deposit-input");
+    const etcInputs = [
+      document.querySelector("#id_etc_collected"),
+      document.querySelector("#id_etc_uncollected"),
+    ];
+
+    // 监听字段变化，实时刷新智能提示
+    [depositInput, ...etcInputs].forEach((input) => {
+      if (input) {
+        input.addEventListener("input", updateSmartHintPanel);
+      }
+    });
+
+    // 初始执行一次
+    updateSmartHintPanel();
+  });
+
+
+
   // —— 9. 绑定监听 ——
   [
     ['id_etc_collected_cash', [updateEtcDifference, updateEtcShortage]],

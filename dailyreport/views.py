@@ -679,11 +679,10 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     if not driver:
         return render(request, "dailyreport/not_found.html", status=404)
 
-    
     report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
     duration = timedelta()
 
-    # ✅ 添加这两行防止变量未赋值
+    # ✅ 初始化休憩时间显示字段
     user_h = 0
     user_m = 0
 
@@ -698,7 +697,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
-            # ✅ 这里处理休憩時間
+            # ✅ 休憩時間处理
             break_input = request.POST.get("break_time_input", "").strip()
             break_minutes = 0
             try:
@@ -714,7 +713,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             inst.calculate_work_times()
             inst.edited_by = request.user
 
-            # ✅ 插入这里：自动计算過不足額
+            # ✅ 计算現金合计用于過不足額
             cash_total = sum(
                 item.cleaned_data.get('meter_fee') or 0
                 for item in formset.forms
@@ -723,6 +722,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             deposit = inst.deposit_amount or 0
             inst.deposit_difference = deposit - cash_total
 
+            # ✅ 状态更新
             if inst.status in [DriverDailyReport.STATUS_PENDING, DriverDailyReport.STATUS_CANCELLED] and inst.clock_in and inst.clock_out:
                 inst.status = DriverDailyReport.STATUS_COMPLETED
             if inst.clock_in and inst.clock_out:
@@ -732,7 +732,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             formset.instance = inst
             formset.save()
 
-            # 更新 Reservation 出入库
+            # ✅ 出入库联动 Reservation
             driver_user = inst.driver.user
             if driver_user and inst.clock_in:
                 res = Reservation.objects.filter(driver=driver_user, date=inst.date).order_by('start_time').first()
@@ -753,8 +753,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             return redirect('dailyreport:driver_dailyreport_month', driver_id=driver_id)
         else:
             messages.error(request, "❌ 保存失败，请检查输入内容")
-
-            # ✅ 打印错误详情（推荐）
             print("📛 主表（form）错误：", form.errors)
             print("📛 明细表（formset）错误：")
             for i, f in enumerate(formset.forms):
@@ -798,21 +796,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-    # ✅ 汇总逻辑
-    rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':     Decimal('0.05'),
-    }
-    raw = {k: Decimal('0') for k in rates}
-    split = {k: Decimal('0') for k in rates}
-
+    # ✅ 合计统计
     if request.method == 'POST' and formset.is_valid():
         data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
     else:
@@ -824,9 +808,8 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             }
             for f in formset.forms if f.initial.get('meter_fee') and not f.initial.get('DELETE', False)
         ]
+
     totals = calculate_totals_from_formset(data_iter)
-    print("🧪 data_iter =", data_iter)
-    print("🧪 totals =", totals)
 
     summary_keys = [
         ('meter', 'メーター(水揚)'),
@@ -850,7 +833,14 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         for key, label in summary_keys
     ]
 
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', {
+    # ✅ 智能提示字段
+    cash = totals.get("cash_raw", 0)
+    etc = report.etc_collected or 0
+    deposit_amt = form.cleaned_data.get("deposit_amount") if form.is_bound else (report.deposit_amount or 0)
+    total_collected = cash + etc
+    total_sales = totals.get("meter_raw", 0)
+
+    context = {
         'form': form,
         'formset': formset,
         'totals': totals,
@@ -861,7 +851,15 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'summary_panel_data': summary_panel_data,
         'break_time_h': user_h,
         'break_time_m': f"{user_m:02}",
-    })
+        'cash_total': cash,
+        'etc_collected': etc,
+        'deposit_amt': deposit_amt,
+        'total_collected': total_collected,
+        'total_sales': total_sales,
+    }
+
+    return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
+
 
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_add_unassigned(request):

@@ -1,6 +1,7 @@
 {% extends "staffbook/base_staffbook.html" %}
 {% load widget_tweaks %}
 {% load time_filters %}
+{% load humanize %}
 {% load custom_totals %}
 
 {% load static %}
@@ -196,10 +197,21 @@ input[type=number] {
     <div id="payment-summary-panel" class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
       {% for key, label in summary_keys %}
         <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-          <div class="small text-muted">{{ label }} 合計</div>
+          <div class="small text-muted">
+            {% if key == "meter" %}
+              売上合計
+            {% else %}
+              {{ label }} 合計
+            {% endif %}
+          </div>
+
           <div>
             <span id="total_{{ key }}">{{ totals|get_total:key|floatformat:"0" }}</span>
-            （<span id="bonus_{{ key }}">{{ totals|get_bonus:key|floatformat:"0" }}</span>）
+            {% if key == "meter" %}
+              <div class="small text-muted">(メータのみ: {{ totals.meter_only_total|default:0|floatformat:"0" }})</div>
+            {% else %}
+              （<span id="bonus_{{ key }}">{{ totals|get_bonus:key|floatformat:"0" }}</span>）
+            {% endif %}
           </div>
         </div>
       {% endfor %}
@@ -244,6 +256,33 @@ input[type=number] {
       </div>
       <!-- ✅ 新增区域结束 -->
 
+      <!-- ✅ 智能提示区（推荐放在 payment-summary-panel 结尾） -->
+      <div id="smart-hint-panel" class="mt-2 w-100">
+        {% if deposit_amt %}
+          {% if deposit_amt < total_collected %}
+            <div class="alert alert-danger py-1 px-2 small mb-2">
+              ⚠️ 入金額が不足しています。請求額 (現金 + ETC) は <strong>{{ total_collected|floatformat:"0"|intcomma }}円</strong> ですが、入力された入金額は <strong>{{ deposit_amt|intcomma }}円</strong> です。
+            </div>
+          {% else %}
+            <div class="alert alert-success py-1 px-2 small mb-2">
+              ✔️ 入金額は現金 + ETC をカバーしています。
+            </div>
+          {% endif %}
+
+          {% if report.etc_uncollected %}
+            <div class="alert alert-info py-1 px-2 small mb-2">
+              🚧 ETC 未收：<strong>{{ report.etc_uncollected|intcomma }}円</strong>。请确认司机是否已补收。
+            </div>
+          {% endif %}
+
+          {% if deposit_amt < total_sales %}
+            <div class="alert alert-warning py-1 px-2 small mb-2">
+              ℹ️ 売上合計 <strong>{{ total_sales|intcomma }}円</strong> 大于入金 <strong>{{ deposit_amt|intcomma }}円</strong>，可能包含貸切、未收 ETC 或其他延迟结算项。
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+
       <!-- ✅ ETC 现金收区域 -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
         <label class="small text-muted">ETC 收取=乗車合計（円）</label>
@@ -276,7 +315,7 @@ input[type=number] {
       <div id="etc-diff-display" class="alert alert-info small py-1 px-2 mt-1">
         未收 ETC：0 円（无需扣除）
       </div>
-      </div>
+    </div>
 
     <table class="table table-bordered table-sm report-table">
       <thead class="table-light">
@@ -409,4 +448,7 @@ input[type=number] {
       background-color: #fff8b3 !important;
     }
   </style>
+
+
+
 {% endblock %}

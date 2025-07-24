@@ -12,18 +12,28 @@ User = get_user_model()
 
 # 支付方式选择项
 PAYMENT_METHOD_CHOICES = [
-    ('cash', '现金'),
+    ('cash', '現金'),
+
+    # ✅ 平台支付方式
+    ('uber_cash', 'Uber（現金）'),
     ('uber', 'Uber'),
+
+    ('didi_cash', 'Didi（現金）'),
     ('didi', 'Didi'),
-    ('credit', 'クレジットカード'),
-    ('qr', 'バーコード(PayPay、auPay、wechat)'),  # PayPay、auPay 等
+
+    ('go_cash', 'GO（現金）'),
+    ('go', 'GO'),
+
+    # ✅ 其他
+    ('credit_card', 'クレジットカード'),
+    ('qr', 'バーコード(PayPay、auPay、wechat)'),
     ('kyokushin', '京交信'),
     ('omron', 'オムロン（愛のタクシーチケット）'),
     ('kyotoshi', '京都市他'),
 
-    # ✅ 新增：包车相关支付方式
+    # ✅ 貸切（包车）
     ('charter_cash', '貸切（現金）'),
-    ('charter_bank', '貸切（振込）'),
+    ('charter_transfer', '貸切（振込）'),
 ]
 
 

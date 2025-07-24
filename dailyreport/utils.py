@@ -54,11 +54,38 @@ def calculate_totals_from_items(item_iterable):
     raw_totals   = defaultdict(lambda: Decimal('0'))
     split_totals = defaultdict(lambda: Decimal('0'))
 
+    # 附加统计
+    cash_total = Decimal('0')
+    charter_total = Decimal('0')
+    charter_cash_total = Decimal('0')
+    charter_transfer_total = Decimal('0')
+    meter_only_total = Decimal('0')
+    meter_total = Decimal('0')
+
     for fee, method in item_iterable:
         fee = fee or Decimal('0')
         key = resolve_payment_method(method)
 
-        # 总是加入 meter 的统计
+        # ✅ 所有都计入总売上
+        meter_total += fee
+
+        # ✅ 排除 charter_xxx 即为メータのみ
+        if not (method or "").startswith("charter"):
+            meter_only_total += fee
+
+        # 现金合计
+        if method in ['cash', 'uber_cash', 'didi_cash', 'go_cash']:
+            cash_total += fee
+
+        # 貸切合计
+        if method in ['charter_cash', 'charter_transfer']:
+            charter_total += fee
+            if method == 'charter_cash':
+                charter_cash_total += fee
+            else:
+                charter_transfer_total += fee
+
+        # 原有分润统计逻辑
         raw_totals['meter']   += fee
         split_totals['meter'] += fee * PAYMENT_RATES['meter']
 
@@ -66,11 +93,21 @@ def calculate_totals_from_items(item_iterable):
             raw_totals[key]   += fee
             split_totals[key] += fee * PAYMENT_RATES[key]
 
-    # 返回标准化键名：xxx_raw / xxx_split
     totals = {}
     for k in PAYMENT_RATES:
         totals[f"{k}_raw"]   = raw_totals[k]
         totals[f"{k}_split"] = split_totals[k]
+
+    # ⬇️ 加入新的聚合项
+    totals.update({
+        'cash_total': cash_total,
+        'charter_total': charter_total,
+        'charter_cash_total': charter_cash_total,
+        'charter_transfer_total': charter_transfer_total,
+        'meter_only_total': meter_only_total,
+        'meter_total': meter_total,
+    })
+
     return totals
 
 
