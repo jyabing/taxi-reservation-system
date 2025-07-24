@@ -11,6 +11,8 @@ from django.utils import timezone
 from django.db.models import Sum, Case, When, F, DecimalField, Q
 from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
+from django.urls import reverse
+from django.utils.http import urlencode
 
 from .models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
@@ -580,30 +582,6 @@ def dailyreport_add_selector(request, driver_id):
         "calendar_dates": calendar_dates,
     })
 
-@user_passes_test(is_dailyreport_admin)
-def dailyreport_add_by_month(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-
-    month_str = request.GET.get("month")  # 格式："2025-03"
-    if not month_str:
-        return redirect("dailyreport:driver_dailyreport_add_selector", driver_id=driver_id)
-
-    try:
-        year, month = map(int, month_str.split("-"))
-        # 校验是否是合法月份
-        assert 1 <= month <= 12
-    except (ValueError, AssertionError):
-        return redirect("dailyreport:driver_dailyreport_add_selector", driver_id=driver_id)
-
-    current_month = f"{year}年{month}月"
-
-    return render(request, "dailyreport/dailyreport_add_month.html", {
-        "driver": driver,
-        "year": year,
-        "month": month,
-        "current_month": current_month,
-    })
-
 
 # ✅ 管理员新增日报给某员工
 @user_passes_test(is_dailyreport_admin)
@@ -612,6 +590,24 @@ def dailyreport_create_for_driver(request, driver_id):
     if not driver:
         return render(request, 'dailyreport/not_found.html', status=404)
 
+    # ✅ 特殊 GET 请求：根据 ?date=YYYY-MM-DD 自动创建日报并跳转
+    if request.method == 'GET' and request.GET.get('date'):
+        try:
+            date = datetime.strptime(request.GET.get('date'), "%Y-%m-%d").date()
+        except ValueError:
+            messages.error(request, "无效的日期格式")
+            return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+
+        # 如果日报已存在，则直接跳转
+        existing = DriverDailyReport.objects.filter(driver=driver, date=date).first()
+        if existing:
+            return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=existing.id)
+
+        # 否则创建空日报并跳转编辑页
+        new_report = DriverDailyReport.objects.create(driver=driver, date=date)
+        return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=new_report.id)
+
+    # ✅ 表单提交处理逻辑
     if request.method == 'POST':
         report_form = DriverDailyReportForm(request.POST)
         formset = ReportItemFormSet(request.POST)
@@ -620,10 +616,10 @@ def dailyreport_create_for_driver(request, driver_id):
             dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
 
-            # ✅ 自动计算时间字段
+            # 自动计算时间字段
             dailyreport.calculate_work_times()
 
-            # ✅ 新增：计算現金合计
+            # 计算现现金合计差额
             cash_total = sum(
                 item.cleaned_data.get('meter_fee') or 0
                 for item in formset.forms
@@ -645,7 +641,15 @@ def dailyreport_create_for_driver(request, driver_id):
         report_form = DriverDailyReportForm()
         formset = ReportItemFormSet()
 
-    # ✅ 合计面板用的 key-label 对
+    # ✅ 合计统计（POST 用 cleaned_data，GET 用 instance）
+    if request.method == 'POST' and formset.is_valid():
+        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
+        totals = calculate_totals_from_formset(data_iter)
+    else:
+        data_iter = [f.instance for f in formset.forms]
+        totals = calculate_totals_from_instances(data_iter)
+
+    # ✅ 用于模板合计栏
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金(ながし)'),
@@ -658,18 +662,11 @@ def dailyreport_create_for_driver(request, driver_id):
         ('qr', '扫码'),
     ]
 
-    # ✅ 修复：统计合计时使用 cleaned_data 而不是 instance
-    if request.method == 'POST' and formset.is_valid():
-        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
-    else:
-        data_iter = [f.instance for f in formset.forms]
-    totals = calculate_totals_from_formset(data_iter)
-    print("🔥 DEBUG: totals = ", totals)  # 👈 添加这行
-
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
         'form': report_form,
         'formset': formset,
         'driver': driver,
+        'report': None,
         'is_edit': False,
         'summary_keys': summary_keys,
         'totals': totals,
@@ -1050,90 +1047,6 @@ def export_vehicle_csv(request, year, month):
     return response
 
 @user_passes_test(is_dailyreport_admin)
-def dailyreport_add_selector(request, driver_id):
-    from datetime import datetime, date
-    driver = get_object_or_404(Driver, pk=driver_id)
-
-    # ✅ 解析 ?month=2025-03 参数
-    month_str = request.GET.get("month")
-    try:
-        if month_str:
-            target_year, target_month = map(int, month_str.split("-"))
-            display_date = date(target_year, target_month, 1)
-        else:
-            display_date = date.today()
-    except ValueError:
-        display_date = date.today()
-
-    current_month = display_date.strftime("%Y-%m")
-
-    # ✅ 构造当月所有日期与是否有预约
-    num_days = monthrange(display_date.year, display_date.month)[1]
-    all_dates = [date(display_date.year, display_date.month, d) for d in range(1, num_days + 1)]
-
-    reserved_dates = set()
-    if driver.user:
-        reserved_dates = set(
-            Reservation.objects
-            .filter(driver=driver.user, date__year=display_date.year, date__month=display_date.month)
-            .values_list("date", flat=True)
-        )
-
-    calendar_dates = [
-        {
-            "date": d,
-            "enabled": d in reserved_dates,
-        }
-        for d in all_dates
-    ]
-
-    # ✅ 提交处理
-    if request.method == "POST":
-        selected_date_str = request.POST.get("selected_date")
-        try:
-            selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
-        except ValueError:
-            messages.error(request, "无效的日期")
-            return redirect(request.path)
-
-        if not driver.user or not Reservation.objects.filter(driver=driver.user, date=selected_date).exists():
-            messages.warning(request, f"{selected_date.strftime('%Y年%m月%d日')} は出勤予約がありません。日報を作成できません。")
-            return redirect(request.path + f"?month={current_month}")
-
-        report, created = DriverDailyReport.objects.get_or_create(
-            driver=driver,
-            date=selected_date,
-            defaults={"status": "pending"}
-        )
-
-        if created:
-            res = (
-                Reservation.objects
-                .filter(driver=driver.user, date=selected_date)
-                .order_by('start_time')
-                .first()
-            )
-            if res:
-                if res.vehicle:
-                    report.vehicle = res.vehicle
-                if res.actual_departure:
-                    report.clock_in = timezone.localtime(res.actual_departure).time()
-                if res.actual_return:
-                    report.clock_out = timezone.localtime(res.actual_return).time()
-                report.save()
-
-        return redirect("dailyreport:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
-
-    # ✅ 渲染模板
-    return render(request, "dailyreport/driver_dailyreport_add.html", {
-        "driver": driver,
-        "current_month": display_date.strftime("%Y年%m月"),
-        "year": display_date.year,
-        "month": display_date.month,
-        "calendar_dates": calendar_dates,
-    })
-
-@user_passes_test(is_dailyreport_admin)
 def dailyreport_add_by_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
 
@@ -1143,14 +1056,36 @@ def dailyreport_add_by_month(request, driver_id):
 
     try:
         year, month = map(int, month_str.split("-"))
-        # 校验是否是合法月份
         assert 1 <= month <= 12
     except (ValueError, AssertionError):
         return redirect("dailyreport:driver_dailyreport_add_selector", driver_id=driver_id)
 
     current_month = f"{year}年{month}月"
 
-    return render(request, "dailyreport/dailyreport_add_month.html", {
+    # ✅ 处理表单提交
+    if request.method == "POST":
+        selected_date_str = request.POST.get("selected_date")
+        try:
+            selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            # 日期不合法 → 返回本页
+            return render(request, "dailyreport/driver_dailyreport_add.html", {
+                "driver": driver,
+                "year": year,
+                "month": month,
+                "current_month": current_month,
+                "error": "日付が正しくありません"
+            })
+
+        # ✅ 重定向到“该司机该日新增日报”页面
+        # ✅ 构造重定向 URL，带上 date 参数
+        base_url = reverse("dailyreport:driver_dailyreport_direct_add", args=[driver.id])
+        query_string = urlencode({"date": selected_date})
+        url = f"{base_url}?{query_string}"
+        return redirect(url)
+
+    # 默认 GET 显示页面
+    return render(request, "dailyreport/driver_dailyreport_add.html", {
         "driver": driver,
         "year": year,
         "month": month,
@@ -1165,6 +1100,23 @@ def dailyreport_create_for_driver(request, driver_id):
     if not driver:
         return render(request, 'dailyreport/not_found.html', status=404)
 
+    # ✅ 如果带有 GET 参数 ?date=2025-03-29 就自动创建日报并跳转
+    if request.method == 'GET' and request.GET.get('date'):
+        try:
+            date = datetime.strptime(request.GET.get('date'), "%Y-%m-%d").date()
+        except ValueError:
+            messages.error(request, "无效的日期格式")
+            return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+
+        existing = DriverDailyReport.objects.filter(driver=driver, date=date).first()
+        if existing:
+            return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=existing.id)
+
+        # ✅ 创建空日报并跳转到编辑页
+        new_report = DriverDailyReport.objects.create(driver=driver, date=date)
+        return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=new_report.id)
+
+    # ✅ POST：提交表单
     if request.method == 'POST':
         report_form = DriverDailyReportForm(request.POST)
         formset = ReportItemFormSet(request.POST)
@@ -1172,11 +1124,8 @@ def dailyreport_create_for_driver(request, driver_id):
         if report_form.is_valid() and formset.is_valid():
             dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
-
-            # ✅ 自动计算时间字段
             dailyreport.calculate_work_times()
 
-            # ✅ 新增：计算現金合计
             cash_total = sum(
                 item.cleaned_data.get('meter_fee') or 0
                 for item in formset.forms
@@ -1197,8 +1146,17 @@ def dailyreport_create_for_driver(request, driver_id):
     else:
         report_form = DriverDailyReportForm()
         formset = ReportItemFormSet()
+        # ✅ 这一步关键：用于模板显示司机名等
+        report = DriverDailyReport(driver=driver)
 
-    # ✅ 合计面板用的 key-label 对
+    # ✅ 合计逻辑
+    if request.method == 'POST' and formset.is_valid():
+        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
+        totals = calculate_totals_from_formset(data_iter)
+    else:
+        data_iter = [f.instance for f in formset.forms]
+        totals = calculate_totals_from_instances(data_iter)
+
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金(ながし)'),
@@ -1211,18 +1169,11 @@ def dailyreport_create_for_driver(request, driver_id):
         ('qr', '扫码'),
     ]
 
-    # ✅ 修复：统计合计时使用 cleaned_data 而不是 instance
-    if request.method == 'POST' and formset.is_valid():
-        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
-    else:
-        data_iter = [f.instance for f in formset.forms]
-    totals = calculate_totals_from_formset(data_iter)
-    print("🔥 DEBUG: totals = ", totals)  # 👈 添加这行
-
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
         'form': report_form,
         'formset': formset,
         'driver': driver,
+        'report': report,  # ✅ 模板能取到 driver.name 等
         'is_edit': False,
         'summary_keys': summary_keys,
         'totals': totals,

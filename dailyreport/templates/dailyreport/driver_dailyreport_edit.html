@@ -69,7 +69,7 @@ input[type=number] {
     {% endfor %}
   {% endif %}
 
-  <h4><strong>{{ report.driver.name }}</strong>（{{ report.driver.driver_code }}）- 乗務日報の編集</h4>
+  <h4>{% if report %}{{ report.driver.name }}{% else %}{{ driver.name }}{% endif %}- 乗務日報の編集</h4>
   {{ form.meter_fee|add_class:"form-control" }}
   <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
 
@@ -103,8 +103,16 @@ input[type=number] {
     </div>
   {% endif %}
 
-
-  <form method="post" action="{% url 'dailyreport:driver_dailyreport_edit' driver_id=driver_id report_id=report.id %}" autocomplete="off">
+    <!--缩进无影响，也可以写成单行形式-->
+    <form method="post"
+      {% if is_edit %}
+        action="{% url 'dailyreport:driver_dailyreport_edit' driver_id=driver.id report_id=report.id %}"
+      {% elif driver and driver.id %}
+        action="{% url 'dailyreport:driver_dailyreport_direct_add' driver.id %}"
+      {% else %}
+        action="#"
+      {% endif %}
+      autocomplete="off">
     {% csrf_token %}
     {{ form.status.as_hidden }}
     {{ form.date.as_hidden }}

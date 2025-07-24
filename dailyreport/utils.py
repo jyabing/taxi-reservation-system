@@ -49,7 +49,7 @@ def resolve_payment_method(raw_payment: str) -> str:
     return ""  # 未识别支付方式
 
 
-# ✅ 共通合计逻辑（传入 (fee, method) 数据对）
+# ✅ 核心逻辑，共通合计逻辑（传入 (fee, method) 数据对）
 def calculate_totals_from_items(item_iterable):
     raw_totals   = defaultdict(lambda: Decimal('0'))
     split_totals = defaultdict(lambda: Decimal('0'))
@@ -74,15 +74,48 @@ def calculate_totals_from_items(item_iterable):
     return totals
 
 
-# ✅ 表单页用：从 FormSet cleaned_data 计算
+# ✅ 前端页面编辑时，从 form.cleaned_data 或实例计算合计
 def calculate_totals_from_formset(form_data_list):
     pairs = []
     for item in form_data_list:
-        if item.get('DELETE'):
+        try:
+            # 兼容 cleaned_data (dict) 和 instance (model)
+            if isinstance(item, dict):
+                if item.get('DELETE'):
+                    continue
+                fee = item.get('meter_fee')
+                method = item.get('payment_method')
+                note = item.get('note', '')
+            else:
+                if getattr(item, 'DELETE', False):
+                    continue
+                fee = getattr(item, 'meter_fee', None)
+                method = getattr(item, 'payment_method', None)
+                note = getattr(item, 'note', '')
+
+            # 排除负数和“キャンセル”备注
+            if fee is None or fee <= 0:
+                continue
+            if 'キャンセル' in str(note):
+                continue
+
+            pairs.append((fee, method))
+        except Exception as e:
+            print(f"⚠️ 合计计算中错误项: {e}")
             continue
-        fee = item.get('meter_fee')
-        method = item.get('payment_method')
-        note = item.get('note', '')
+
+    return calculate_totals_from_items(pairs)
+
+# ✅ 直接从模型实例列表计算合计
+# 后端构造新对象或 instance 时调用
+def calculate_totals_from_instances(item_instances):
+    pairs = []
+    for item in item_instances:
+        if getattr(item, 'DELETE', False):  # 一般模型中不会有 DELETE，但保留逻辑
+            continue
+        fee = getattr(item, 'meter_fee', None)
+        method = getattr(item, 'payment_method', None)
+        note = getattr(item, 'note', '')
 
         # ✅ 排除负数和“キャンセル”备注
         if fee is None or fee <= 0:
