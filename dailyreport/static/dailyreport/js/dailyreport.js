@@ -186,23 +186,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // —— 8. 支付方式合计，包括ETC ——
+  function resolveJsPaymentMethod(raw) {
+    if (!raw) return "";
+    const cleaned = raw.trim().toLowerCase();
+    if (cleaned === "credit_card") return "credit";
+    return cleaned;
+  }
+
   function updateTotals() {
     const totalMap = {
-      cash: 0, uber: 0, didi: 0, credit: 0,
-      kyokushin: 0, omron: 0, kyotoshi: 0, qr: 0,
-    };
+    cash: 0, uber: 0, didi: 0, credit: 0,
+    kyokushin: 0, omron: 0, kyotoshi: 0, qr: 0,
+  };
 
     document.querySelectorAll("tr.report-item-row").forEach(row => {
-      const fee = parseInt(row.querySelector("input[name$='-meter_fee']")?.value || 0);
-      const method = row.querySelector("select[name$='-payment_method']")?.value || "";
-      if (fee > 0 && totalMap.hasOwnProperty(method)) {
+       const fee = parseInt(row.querySelector("input[name$='-meter_fee']")?.value || 0);
+       const methodRaw = row.querySelector("select[name$='-payment_method']")?.value || "";
+      const method = resolveJsPaymentMethod(methodRaw);
+       if (fee > 0 && totalMap.hasOwnProperty(method)) {
         totalMap[method] += fee;
       }
     });
 
     const etcAmount = parseInt(document.getElementById("id_etc_collected")?.value || 0);
-    const etcMethod = document.getElementById("id_etc_payment_method")?.value;
+    const etcMethodRaw = document.getElementById("id_etc_payment_method")?.value;
+    const etcMethod = resolveJsPaymentMethod(etcMethodRaw);
     if (etcAmount > 0 && totalMap.hasOwnProperty(etcMethod)) {
       totalMap[etcMethod] += etcAmount;
     }

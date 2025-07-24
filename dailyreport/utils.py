@@ -1,52 +1,7 @@
 from decimal import Decimal
 from collections import defaultdict
 from django import forms
-
-# ⛳ 支付方式关键字与费率配置
-PAYMENT_KEYWORDS = {
-    'qr':        ['qr', 'コード', '扫码', 'barcode', 'wechat', 'paypay', '支付宝', 'aupay', 'line', 'スマホ'],
-    'kyokushin': ['京交信タクチケ'],
-    'omron':     ['オムロン(愛のタクシーチケット)'],
-    'kyotoshi':  ['京都市'],
-}
-
-PAYMENT_RATES = {
-    'meter':     Decimal('0.9091'),
-    'cash':      Decimal('0'),
-    'uber':      Decimal('0.05'),
-    'didi':      Decimal('0.05'),
-    'credit':    Decimal('0.05'),
-    'kyokushin': Decimal('0.05'),
-    'omron':     Decimal('0.05'),
-    'kyotoshi':  Decimal('0.05'),
-    'qr':        Decimal('0.05'),
-}
-
-
-# ✅ 清理并识别支付方式
-def resolve_payment_method(raw_payment: str) -> str:
-    if not raw_payment:
-        return ""
-
-    cleaned = (
-        raw_payment.replace("　", "")
-                   .replace("（", "")
-                   .replace("）", "")
-                   .replace("(", "")
-                   .replace(")", "")
-                   .replace("\n", "")
-                   .strip()
-                   .lower()
-    )
-
-    for key, keywords in PAYMENT_KEYWORDS.items():
-        if any(keyword.lower() in cleaned for keyword in keywords):
-            return key
-
-    if cleaned in PAYMENT_RATES:
-        return cleaned
-
-    return ""  # 未识别支付方式
+from dailyreport.services.summary import resolve_payment_method
 
 
 # ✅ 核心逻辑，共通合计逻辑（传入 (fee, method) 数据对）
@@ -65,6 +20,7 @@ def calculate_totals_from_items(item_iterable):
     for fee, method in item_iterable:
         fee = fee or Decimal('0')
         key = resolve_payment_method(method)
+        print(f"💰 処理中: {fee}円, 原始={method}, 解釈後={key}")
 
         # ✅ 所有都计入总売上
         meter_total += fee
@@ -122,24 +78,30 @@ def calculate_totals_from_formset(form_data_list):
                     continue
                 fee = item.get('meter_fee')
                 method = item.get('payment_method')
-                note = item.get('note', '')
+                note = str(item.get('note', '') or '')
             else:
                 if getattr(item, 'DELETE', False):
                     continue
                 fee = getattr(item, 'meter_fee', None)
                 method = getattr(item, 'payment_method', None)
-                note = getattr(item, 'note', '')
+                note = str(getattr(item, 'note', '') or '')
 
-            # 排除负数和“キャンセル”备注
-            if fee is None or fee <= 0:
+            # ✅ 排除负数或空金额
+            if not fee or fee <= 0:
                 continue
-            if 'キャンセル' in str(note):
+
+            # ✅ 排除キャンセル项目（支持中英文大小写）
+            if 'キャンセル' in note or 'cancel' in note.lower():
                 continue
+
+            print("🧾 传入项目：", fee, method)  # ✅ 添加这行调试打印
+            pairs.append((fee, method))
 
             pairs.append((fee, method))
         except Exception as e:
             print(f"⚠️ 合计计算中错误项: {e}")
             continue
+
 
     return calculate_totals_from_items(pairs)
 
@@ -160,16 +122,6 @@ def calculate_totals_from_instances(item_instances):
         if 'キャンセル' in str(note):
             continue
 
-        pairs.append((fee, method))
-    return calculate_totals_from_items(pairs)
-
-
-# ✅ 数据库页用：从 QuerySet 计算
-def calculate_totals_from_queryset(queryset):
-    pairs = []
-    for item in queryset:
-        fee = getattr(item, 'meter_fee', Decimal('0'))
-        method = getattr(item, 'payment_method', '')
         pairs.append((fee, method))
     return calculate_totals_from_items(pairs)
 

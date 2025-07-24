@@ -27,11 +27,7 @@ from urllib.parse import quote
 from carinfo.models import Car  # 🚗 请根据你项目中车辆模型名称修改
 from collections import defaultdict
 
-from .utils import (
-    calculate_totals_from_formset,
-    calculate_totals_from_queryset,
-    PAYMENT_KEYWORDS,
-)
+from dailyreport.services.summary import calculate_totals_from_formset, calculate_totals_from_queryset
 
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange, month_name
@@ -796,18 +792,26 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-    # ✅ 合计统计
-    if request.method == 'POST' and formset.is_valid():
-        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
-    else:
-        data_iter = [
-            {
-                'meter_fee': f.initial.get('meter_fee'),
-                'payment_method': f.initial.get('payment_method'),
-                'DELETE': f.initial.get('DELETE', False)
-            }
-            for f in formset.forms if f.initial.get('meter_fee') and not f.initial.get('DELETE', False)
-        ]
+    # ✅ 合计统计（避免重复计入 cleaned_data + instance）
+    data_iter = []
+
+    for f in formset.forms:
+        if f.is_bound and f.is_valid():
+            cleaned = f.cleaned_data
+            if cleaned.get("meter_fee") and not cleaned.get("DELETE", False):
+                data_iter.append({
+                    'meter_fee': cleaned['meter_fee'],
+                    'payment_method': cleaned.get('payment_method'),
+                    'note': cleaned.get('note', ''),
+                    'DELETE': False,
+                })
+        elif f.instance and f.instance.meter_fee and not getattr(f.instance, 'DELETE', False):
+            data_iter.append({
+                'meter_fee': f.instance.meter_fee,
+                'payment_method': f.instance.payment_method,
+                'note': f.instance.note,
+                'DELETE': False,
+            })
 
     totals = calculate_totals_from_formset(data_iter)
 

@@ -1,0 +1,24 @@
+# dailyreport/constants.py
+
+from decimal import Decimal
+
+# ⛳ 支付方式关键字与费率配置
+PAYMENT_KEYWORDS = {
+    'qr':        ['qr', 'コード', '扫码', 'barcode', 'wechat', 'paypay', '支付宝', 'aupay', 'line', 'スマホ'],
+    'kyokushin': ['京交信タクチケ'],
+    'omron':     ['オムロン(愛のタクシーチケット)'],
+    'kyotoshi':  ['京都市'],
+    'credit':    ['クレジット', 'クレジットカード', 'クレカ', 'credit', 'visa', 'mastercard'],  # ✅ 新增
+}
+
+PAYMENT_RATES = {
+    'meter':     Decimal('0.9091'),
+    'cash':      Decimal('0'),
+    'uber':      Decimal('0.05'),
+    'didi':      Decimal('0.05'),
+    'credit':    Decimal('0.05'),
+    'kyokushin': Decimal('0.05'),
+    'omron':     Decimal('0.05'),
+    'kyotoshi':  Decimal('0.05'),
+    'qr':        Decimal('0.05'),
+}

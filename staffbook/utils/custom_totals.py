@@ -1,3 +1,7 @@
+from django import template
+
+register = template.Library()
+
 def calculate_totals(report):
     items = report.items.all()
     result = {
