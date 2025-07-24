@@ -1467,7 +1467,7 @@ def my_dailyreports(request):
 def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
 
-    # ✅ 找到当天实际出库记录（可能为前一天下午）
+    # ✅ 找出实际出库记录
     reservation = Reservation.objects.filter(
         driver=request.user,
         actual_departure__lte=make_aware(datetime.combine(report.date, time(12, 0)))
@@ -1480,9 +1480,7 @@ def my_daily_report_detail(request, report_id):
     if start_time and end_time:
         duration = end_time - start_time
 
-    # ✅ 跨日排序逻辑：根据 ride_time 和出库时间判断是否跨日
-    items_raw = report.items.all()
-
+    # ✅ 排序函数
     def parse_ride_datetime(item):
         try:
             ride_time = datetime.strptime(item.ride_time, "%H:%M").time()
@@ -1491,30 +1489,51 @@ def my_daily_report_detail(request, report_id):
                 base_date += timedelta(days=1)
             return datetime.combine(base_date, ride_time)
         except Exception:
-            return datetime.max  # 排在最后
+            return datetime.max
 
+    # 原始所有项
+    items_all = report.items.all().order_by('combined_group', 'id')
+
+    # ✅ 合算组去重逻辑：只保留每个 group 的第一项（或无 group 的单项）
+    items_raw = []
+    seen_groups = set()
+    for item in items_all:
+        group = item.combined_group
+        if group:
+            if group not in seen_groups:
+                items_raw.append(item)
+                seen_groups.add(group)
+        else:
+            items_raw.append(item)
+
+    # ✅ 排序
     items = sorted(items_raw, key=parse_ride_datetime)
 
-    # ✅ 打印付款方式
-    print("=== 所有乘车记录付款方式 ===")
+    # ✅ 打印参与统计的记录
+    print("===== ⬇ 加入 total_sales 的记录列表 ⬇ =====")
     for item in items:
-        print(f"- {item.ride_time} | 金額: {item.meter_fee} | 支付: {item.payment_method}")
-    print("=== END ===")
+        if item.meter_fee and item.payment_method:
+            print(f"{item.ride_time} | {item.meter_fee} 円 | 支払方法: {item.payment_method}")
+    print("===== ⬆ END total_sales records ⬆ =====")
 
-    # ✅ 现金总额（基于排序后的 items，保持一致）
+    # ✅ 计算“本日売上”金额（不含空值/无支付方式）
+    total_sales = sum(
+        Decimal(item.meter_fee)
+        for item in items
+        if item.meter_fee and item.payment_method
+    )
+
+    # ✅ 仅现金收入（total_cash）
     total_cash = sum(
         Decimal(item.meter_fee or 0)
         for item in items
         if item.payment_method and "cash" in item.payment_method.lower()
     )
 
+    # ✅ 入金比较
     deposit = report.deposit_amount or Decimal("0")
     deposit_diff = deposit - total_cash
     is_deposit_exact = (deposit_diff == 0)
-
-    print("所有明细付款方式：")
-    for item in items:
-        print("-", item.payment_method, ":", item.meter_fee)
 
     return render(request, 'vehicles/my_daily_report_detail.html', {
         'report': report,
@@ -1523,6 +1542,7 @@ def my_daily_report_detail(request, report_id):
         'end_time': end_time,
         'duration': duration,
         'total_cash': total_cash,
+        'total_sales': total_sales,
         'deposit': deposit,
         'deposit_diff': deposit_diff,
         'is_deposit_exact': is_deposit_exact,

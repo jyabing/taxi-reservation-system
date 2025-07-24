@@ -61,17 +61,10 @@
 <div class="card border-start border-4 border-secondary shadow-sm" style="min-width: 160px;">
   <div class="card-body py-2 px-3">
     <div class="small text-muted">本日売上</div>
-    <div class="fw-bold">
-      {% if total_cash %}
-        {{ total_cash|floatformat:0|intcomma }} 円
-      {% else %}
-        -- 円
-      {% endif %}
-    </div>
-    <div class="small text-muted mt-1">※ 現金支払の売上合計</div>
+    <div class="fw-bold">{{ total_sales|floatformat:0 }} 円</div>
+    <div class="small text-muted">※ 現金・アプリ・チケット等を含む売上合計</div>
   </div>
 </div>
-<p>DEBUG total_cash = {{ total_cash }}</p>
 
 <!-- 💰 入金金額 + 過不足 -->
 <div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
