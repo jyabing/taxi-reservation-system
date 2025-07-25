@@ -118,7 +118,9 @@ def calculate_totals_from_items(pairs):
 
         raw_totals[key] += fee
         split_totals[key] += fee * PAYMENT_RATES[key]
-        meter_only_total += fee
+        # ✅ 如果不是貸切，则视为「メータのみ」
+        if not raw_payment or "貸切" not in raw_payment:
+            meter_only_total += fee
 
     result = {}
     for key in PAYMENT_RATES:

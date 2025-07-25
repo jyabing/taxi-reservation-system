@@ -21,6 +21,8 @@ from .services.calculations import calculate_deposit_difference  # ✅ 导入新
 from staffbook.services import get_driver_info
 from staffbook.utils import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
+from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method
+
 
 from vehicles.models import Reservation
 from urllib.parse import quote
@@ -476,16 +478,18 @@ def driver_dailyreport_month(request, driver_id):
     valid_keys = ['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi', 'etc']
 
     for report in reports:
-        items = report.items.all()
-        grouped = group_report_items(items)
-        totals = calculate_totals_from_grouped_items(grouped, report=report)
+        pairs = [(item.meter_fee, item.payment_method) for item in report.items.all()]
+        totals = calculate_totals_from_items(pairs)
 
         report.total_all = sum(
-            [totals.get(k, Decimal("0")) for k in valid_keys]
+            [totals.get(f"{k}_raw", Decimal("0")) for k in valid_keys]
         )
-        report.total_meter = totals.get('meter_raw', Decimal("0"))
+        report.total_meter = totals.get('meter_only_total', Decimal("0"))  # ✅ 修正点
 
+        # 🧾 调试打印
         print(f"[{report.date}] meter={report.total_meter}, total_all={report.total_all}")
+        print(f"[{report.date}] totals.keys(): {list(totals.keys())}")
+        print(f"[{report.date}] credit_raw: {totals.get('credit_raw')}")
 
 
     return render(request, 'dailyreport/driver_dailyreport_month.html', {

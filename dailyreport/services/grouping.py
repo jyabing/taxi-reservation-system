@@ -67,6 +67,7 @@ def calculate_totals_from_grouped_items(grouped_items, report=None):
             totals[f"{key}_raw"] += fee
             totals[f"{key}_split"] += bonus
             print(f"🚗 ETC收款 金額:{fee} 支付方式:{key} 分成:{bonus}")
+            print("🚩 grouped totals:", result)
 
     result = {}
     result.update(totals)
