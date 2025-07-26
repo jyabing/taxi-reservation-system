@@ -1395,25 +1395,6 @@ def dailyreport_overview(request):
 
     # ✅ 6.6 统计 ETC 不足额合计
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
-    
-    # ✅✅✅ 打印调试 totals_all 内容
-    print("📊 totals_all =")
-    for k, v in totals_all.items():
-        print(f"  {k}: {v}")
-
-    print("📋 driver_data =")
-    for item in driver_data:
-        try:
-            name = item['driver'].name
-        except Exception as e:
-            name = f"[Error reading name: {e}]"
-
-        try:
-            # 安全转换并打印，防止编码失败
-            safe_log = f"{name} - {item['total_fee']} - {item['note']}"
-            print(safe_log.encode('utf-8', errors='replace').decode('utf-8', errors='ignore'))
-        except Exception as e:
-            print(f"[Log output error: {e}]")
 
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
     driver_qs = drivers
@@ -1433,6 +1414,25 @@ def dailyreport_overview(request):
             'note':      note,
             'month_str': month_str,
         })
+    
+    # ✅✅✅ 打印调试 totals_all 内容
+    print("📊 totals_all =")
+    for k, v in totals_all.items():
+        print(f"  {k}: {v}")
+
+    print("📋 driver_data =")
+    for item in driver_data:
+        try:
+            name = item['driver'].name
+        except Exception as e:
+            name = f"[Error reading name: {e}]"
+
+        try:
+            # 安全转换并打印，防止编码失败
+            safe_log = f"{name} - {item['total_fee']} - {item['note']}"
+            print(safe_log.encode('utf-8', errors='replace').decode('utf-8', errors='ignore'))
+        except Exception as e:
+            print(f"[Log output error: {e}]")
 
     # 8. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
