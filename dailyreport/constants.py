@@ -8,7 +8,14 @@ PAYMENT_KEYWORDS = {
     'kyokushin': ['京交信タクチケ'],
     'omron':     ['オムロン(愛のタクシーチケット)'],
     'kyotoshi':  ['京都市'],
-    'credit':    ['クレジット', 'クレジットカード', 'クレカ', 'credit', 'visa', 'mastercard'],  # ✅ 新增
+    'credit':    ['クレジット', 'クレジットカード', 'クレカ', 'credit', 'visa', 'mastercard'],
+    
+    'uber':      ['uber', 'uber現金', 'uber（現金）', 'ウーバー', 'ウーバー現金'],
+    'didi':      ['didi', 'didi現金', 'didi（現金）', 'didi cash', 'ディディ', 'ディディ現金'],
+    
+    "charter_cash": ["貸切（現金）", "charter cash", "チャーター現金"],
+    "charter_card": ["貸切（クレジ）", "charter card", "チャータークレジ"],
+    "charter_bank": ["貸切（振込）", "charter bank", "チャーター振込"],  # ✅ 新增
 }
 
 PAYMENT_RATES = {
@@ -21,4 +28,7 @@ PAYMENT_RATES = {
     'omron':     Decimal('0.05'),
     'kyotoshi':  Decimal('0.05'),
     'qr':        Decimal('0.05'),
+    "charter_cash":  Decimal('0'),
+    "charter_card":  Decimal('0.05'),
+    "charter_bank": Decimal('0'),  # ✅ 按照振込设定为 0
 }

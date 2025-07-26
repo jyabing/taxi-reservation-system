@@ -31,13 +31,13 @@ def resolve_payment_method(raw_payment: str) -> str:
         return "credit"
 
     for key, keywords in PAYMENT_KEYWORDS.items():
-        if any(keyword.lower() in cleaned for keyword in keywords):
-            return key
+        for keyword in keywords:
+            if keyword.lower() in cleaned:
+                return key
 
-    if cleaned in PAYMENT_RATES:
-        return cleaned
-
-    return ""
+    # ⚠️ 如果不识别，必须返回 None 或特殊值，不能默默返回 ""
+    print(f"⚠️ 未识别支付方式: {raw_payment} -> cleaned: {cleaned}")
+    return None
 
 
 # ✅ 主逻辑：表单数据统计（用于编辑页）
@@ -45,6 +45,7 @@ def calculate_totals_from_formset(data_iter):
     raw_totals = {key: Decimal("0") for key in PAYMENT_RATES}
     split_totals = {key: Decimal("0") for key in PAYMENT_RATES}
     meter_only_total = Decimal("0")
+    meter_only_per_key = {key: Decimal("0") for key in PAYMENT_RATES}
 
     for item in data_iter:
         try:
@@ -56,15 +57,31 @@ def calculate_totals_from_formset(data_iter):
         raw_payment = item.get("payment_method", "")
         key = resolve_payment_method(raw_payment)
 
+        print(f"📌 raw_payment: {raw_payment}, resolved: {resolve_payment_method(raw_payment)}, fee: {fee}")
+
         if not key or fee <= 0 or "キャンセル" in note:
-            continue
+            pass  # 不跳过 charter_fee 处理
+        else:
+            raw_totals[key] += fee
+            split_totals[key] += fee * PAYMENT_RATES[key]
 
-        raw_totals[key] += fee
-        split_totals[key] += fee * PAYMENT_RATES[key]
+            if not is_charter(raw_payment):
+                meter_only_total += fee
+                meter_only_per_key[key] += fee
 
-        # ✅ 精准判断是否属于メータのみ（排除貸切）
-        if key != "charter":
-            meter_only_total += fee
+        # ✅ 新增：处理 charter_fee + charter_payment_method
+        try:
+            charter_fee = Decimal(str(item.get("charter_fee") or "0"))
+        except:
+            charter_fee = Decimal("0")
+
+        charter_method = item.get("charter_payment_method", "")
+        charter_key = resolve_payment_method(charter_method)
+
+        if charter_key and charter_fee > 0:
+            raw_totals[charter_key] += charter_fee
+            split_totals[charter_key] += charter_fee * PAYMENT_RATES[charter_key]
+            print(f"🚌 貸切: {charter_method} → {charter_key}, 金額: {charter_fee}")
 
     result = {}
 
@@ -73,7 +90,7 @@ def calculate_totals_from_formset(data_iter):
         result[f"{key}_split"] = round(split_totals[key])
 
     result["meter_only_total"] = round(meter_only_total)
-    print("🧮 meter_only_total:", meter_only_total)
+
     return result
 
 # ✅ 通用 ORM 明细对象统计函数
@@ -100,6 +117,7 @@ def calculate_totals_from_items(pairs):
     raw_totals = {key: Decimal("0") for key in PAYMENT_RATES}
     split_totals = {key: Decimal("0") for key in PAYMENT_RATES}
     meter_only_total = Decimal("0")
+    meter_only_per_key = {key: Decimal("0") for key in PAYMENT_RATES}  # ✅ 添加这句
 
     for fee, raw_payment in pairs:
         key = resolve_payment_method(raw_payment)
@@ -113,18 +131,18 @@ def calculate_totals_from_items(pairs):
         raw_totals[key] += fee
         split_totals[key] += fee * PAYMENT_RATES[key]
 
-        # ✅ 替换前: if not raw_payment or "貸切" not in raw_payment:
-        # ✅ 替换后:
         if not is_charter(raw_payment):
             meter_only_total += fee
+            meter_only_per_key[key] += fee  # ✅ 按支付方式累加メータのみ
 
     result = {}
     for key in PAYMENT_RATES:
         result[f"{key}_raw"] = round(raw_totals[key])
         result[f"{key}_split"] = round(split_totals[key])
-    result["meter_only_total"] = round(meter_only_total)
-    return result
+        result[f"{key}_meter_only_total"] = round(meter_only_per_key[key])  # ✅ 加入返回值
 
+    result["meter_only_total"] = round(meter_only_total)  # ✅ 加总合计
+    return result
 
 # ✅ 报表等场合使用的 bonus/合计结构
 def build_totals_from_items(items):

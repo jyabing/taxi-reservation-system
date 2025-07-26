@@ -51,7 +51,7 @@
       <div class="card-body p-2">
         <div class="small text-muted">{{ label }}合計</div>
         <div class="fw-bold fs-5">
-          {{ totals_all|get_total:key|floatformat:'0' }}（{{ totals_all|get_bonus:key|floatformat:'0' }}）
+          {{ totals_all|get_total:key|floatformat:'0'|intcomma }}（{{ totals_all|get_bonus:key|floatformat:'0'|intcomma }}）
         </div>
       </div>
     </div>
@@ -62,7 +62,7 @@
     <div class="card-body p-2">
       <div class="small text-danger">ETC 不足額</div>
       <div class="fw-bold fs-5 text-danger">
-        {{ etc_shortage_total|default:0|floatformat:'0' }} 円
+        {{ etc_shortage_total|default:0|floatformat:'0'|intcomma }} 円
       </div>
     </div>
   </div>

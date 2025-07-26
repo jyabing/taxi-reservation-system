@@ -678,6 +678,10 @@ def dailyreport_create_for_driver(request, driver_id):
         ('omron', 'オムロン(愛のタクシーチケット)'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
+        
+        ("charter_cash", "貸切（現金）"),
+        ("charter_card", "貸切（クレジ）"),
+        ("charter_bank", "貸切（振込）")
     ]
 
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
@@ -828,6 +832,9 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
     totals = calculate_totals_from_formset(data_iter)
 
+    # ✅ 插入这句：提取 meter_only_total 值
+    meter_only_total = totals.get("meter_only_total", 0)
+
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金(ながし)'),
@@ -838,6 +845,9 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         ('omron', 'オムロン'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
+        ("charter_cash", "貸切（現金）"),
+        ("charter_card", "貸切（クレジ）"),
+        ("charter_bank", "貸切（振込）")
     ]
 
     summary_panel_data = [
@@ -846,6 +856,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             'label': label,
             'raw': totals.get(f'{key}_raw', 0),
             'split': totals.get(f'{key}_split', 0),
+            'meter_only': totals.get(f'{key}_meter_only', 0),  # ✅ 新增
         }
         for key, label in summary_keys
     ]
@@ -1186,6 +1197,9 @@ def dailyreport_create_for_driver(request, driver_id):
         ('omron', 'オムロン(愛のタクシーチケット)'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
+        ("charter_cash", "貸切（現金）"),
+        ("charter_card", "貸切（クレジ）"),
+        ("charter_bank", "貸切（振込）")
     ]
 
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
@@ -1276,7 +1290,9 @@ def dailyreport_overview(request):
         'omron':     Decimal('0.05'),
         'kyotoshi':  Decimal('0.05'),
         'qr':        Decimal('0.05'),
-        'charter':   Decimal('0'),
+        "charter_cash":  Decimal('0'),
+        "charter_card":  Decimal('0.05'),
+        "charter_bank": Decimal('0'),  # ✅ 按照振込设定为 0
     }
 
     totals_all = {}
@@ -1402,6 +1418,9 @@ def dailyreport_overview(request):
         ('omron', 'オムロン'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
+        ('charter_cash', '貸切(现金)'),
+        ('charter_card', '貸切(クレジ)'),
+        ('charter_bank', '貸切(振込)'),  # ✅ 按照振込设定为 0
     ]
 
     # 10. 月份导航
