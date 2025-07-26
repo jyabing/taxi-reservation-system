@@ -13,6 +13,7 @@ from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
 from django.urls import reverse
 from django.utils.http import urlencode
+from dateutil.relativedelta import relativedelta
 
 from .models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
@@ -1254,7 +1255,7 @@ def dailyreport_overview(request):
     totals = defaultdict(Decimal)
     items = DriverDailyReportItem.objects.filter(report__in=reports)
     for item in items:
-        if not item.meter_fee or item.meter_fee <= 0:
+        if item.meter_fee is None or item.meter_fee <= 0:
             continue
         if item.note and 'キャンセル' in item.note:
             continue

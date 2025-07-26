@@ -54,9 +54,11 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
     def get_etc_collected_total(self, obj):
         return obj.etc_collected_total
 
-    @admin.display(description='ETC差额')
+    @admin.display(description='ETC差額')
     def get_etc_diff(self, obj):
-        diff = obj.etc_diff
+        expected = obj.etc_expected or 0
+        collected = (obj.etc_collected_cash or 0) + (obj.etc_collected_app or 0)
+        diff = expected - collected
         if diff == 0:
             color = 'green'
             label = '0（已收齐）'

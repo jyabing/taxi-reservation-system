@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from collections import defaultdict
 from dailyreport.constants import PAYMENT_RATES, PAYMENT_KEYWORDS
+from dateutil.relativedelta import relativedelta
 
 # ✅ 支付方式识别与标准化
 def resolve_payment_method(raw_payment: str) -> str:
@@ -91,7 +92,11 @@ def calculate_totals_from_items(pairs):
 
     for fee, raw_payment in pairs:
         key = resolve_payment_method(raw_payment)
-        if not key or fee <= 0:
+        if not key:
+            print(f"⚠️ 未识别的支付方式: {raw_payment}")
+            continue
+        if fee is None or fee <= 0:
+            print(f"⚠️ 金额为 None: {raw_payment}")
             continue
 
         raw_totals[key] += fee
