@@ -212,7 +212,7 @@ input[type=number] {
                 (メータのみ: {{ totals.meter_only_total|default:0|floatformat:"0" }})
               </div>
               <div class="small text-muted">
-                ※ 支払方法に関わらず、計器金額の合計。貸切金額は含まれません。
+                ※ 売上合計には、メーター金額および貸切金額のすべてが含まれます。
               </div>
             {% else %}
               （<span id="bonus_{{ key }}">{{ totals|get_bonus:key|floatformat:"0" }}</span>）
@@ -222,15 +222,17 @@ input[type=number] {
       {% endfor %}
     </div>
 
-      <!-- ✅ 貸切振込 合計（charter_bank） -->
-      {% if totals.charter_bank.total %}
-        <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-          <div class="small text-muted">貸切振込 合計</div>
-          <div>
-            <span id="total_charter_bank">{{ totals.charter_bank.total|floatformat:"0" }}</span>
-          </div>
+      <!-- ✅ 貸切 合計 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <span>貸切(现金) 合計</span>
+        <strong id="total_charter">0</strong>
+        <div class="small text-muted">貸切振込 合計</div>
+        <div>
+          <span id="total_charter_bank">
+            {{ totals.charter_bank.total|floatformat:"0" }}
+          </span>
         </div>
-      {% endif %}
+      </div>
 
       
       <!-- ✅ 入金 + ETC 综合区域 -->

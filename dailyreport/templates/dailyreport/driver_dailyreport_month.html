@@ -49,7 +49,7 @@
             <td>
               合計: ￥{{ report.total_all|floatformat:"0"|intcomma }}
               <br><small class="text-muted">（メータのみ: ￥{{ report.total_meter|floatformat:"0"|intcomma }}）</small>
-              <br><small class="text-muted">※ 支払方法に関わらず、計器金額の合計。貸切金額は含まれません。</small>
+              <br><small class="text-muted">※ 売上合計には、メーター金額および貸切金額のすべてが含まれます。</small>
             </td>
             <td>{{ report.note|default:"" }}</td>
             <td>

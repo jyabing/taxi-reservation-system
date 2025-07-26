@@ -32,6 +32,16 @@
       <td>{{ vehicle.model }}</td>
       
       <td class="text-start">
+        <!-- ✅ 车辆状态徽章 -->
+        {% if vehicle.status == 'repair' %}
+          <span class="badge bg-warning text-dark mb-1">🛠 维修中</span><br>
+        {% elif vehicle.status == 'available' and vehicle.is_reserved_only_by_admin %}
+          <span class="badge bg-info text-dark mb-1">⚙️ 調配用車</span><br>
+        {% elif vehicle.status == 'available' %}
+          <span class="badge bg-success mb-1">✅ 使用可</span><br>
+        {% endif %}
+
+
         {% include 'partials/_reservation_status.html' with vehicle=vehicle info=info selected_date=selected_date today=today %}
         {% include 'partials/_my_reservation_controls.html' with user_reservation=info.user_reservation %}
 

@@ -21,7 +21,7 @@ from .services.calculations import calculate_deposit_difference  # ✅ 导入新
 from staffbook.services import get_driver_info
 from staffbook.utils import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
-from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method
+from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method, calculate_received_and_etc_deficit
 
 
 from vehicles.models import Reservation
@@ -362,8 +362,13 @@ def export_monthly_summary_excel(request, year, month):
             ):
                 driver_summary[driver_code][item.payment_method] += item.meter_fee
 
-        driver_summary[driver_code]['etc_expected'] += report.etc_expected or 0
-        driver_summary[driver_code]['etc_collected'] += report.etc_collected or 0
+        etc_expected = Decimal(report.etc_expected or 0)
+        etc_collected = Decimal(report.etc_collected or 0)
+        etc_deficit = max(Decimal("0"), etc_collected - etc_expected)
+
+        driver_summary[driver_code]['etc_expected'] += etc_expected
+        driver_summary[driver_code]['etc_collected'] += etc_collected
+        driver_summary[driver_code]['etc_deficit'] += etc_deficit
         driver_summary[driver_code]['deposit_diff'] += report.deposit_difference or 0
         driver_summary[driver_code]['mileage'] += Decimal(report.mileage or 0)
         driver_summary[driver_code]['gas'] += Decimal(report.gas_volume or 0)
@@ -378,7 +383,7 @@ def export_monthly_summary_excel(request, year, month):
         '社員番号', '司机',
         '現金', 'Uber', 'Didi', 'クレジットカード', '扫码支付',
         '京交信', 'オムロン', '京都市他',
-        'ETC应收', 'ETC实收', 'ETC差额', 'ETC不足額',
+        'ETC应收', 'ETC实收', 'ETC差額', 'ETC不足額',
         '過不足額', '走行距離(KM)', '給油量(L)'
     ]
     ws.append(headers)
@@ -387,6 +392,10 @@ def export_monthly_summary_excel(request, year, month):
 
     for driver_code in sorted(driver_summary.keys()):
         data = driver_summary[driver_code]
+        etc_expected = data.get('etc_expected', Decimal('0'))
+        etc_collected = data.get('etc_collected', Decimal('0'))
+        etc_diff = etc_expected - etc_collected
+
         row = [
             driver_code,
             driver_info.get(driver_code, ''),
@@ -398,9 +407,10 @@ def export_monthly_summary_excel(request, year, month):
             data.get('kyokushin', Decimal('0')),
             data.get('omron', Decimal('0')),
             data.get('kyotoshi', Decimal('0')),
-            data.get('etc_expected', Decimal('0')),
-            data.get('etc_collected', Decimal('0')),
-            data.get('etc_expected', Decimal('0')) - data.get('etc_collected', Decimal('0')),
+            etc_expected,
+            etc_collected,
+            etc_diff,
+            data.get('etc_deficit', Decimal('0')),
             data.get('deposit_diff', Decimal('0')),
             data.get('mileage', Decimal('0')),
             data.get('gas', Decimal('0')),
@@ -408,19 +418,23 @@ def export_monthly_summary_excel(request, year, month):
         ws.append(row)
 
         # 加入合计
-        for i, key in enumerate(['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi',
-                                 'etc_expected', 'etc_collected', 'etc_diff', 'deposit_diff', 'mileage', 'gas'], start=2):
-            # 第 0,1 列是代码与姓名，略过
+        for i, key in enumerate([
+            'cash', 'uber', 'didi', 'credit', 'qr',
+            'kyokushin', 'omron', 'kyotoshi',
+            'etc_expected', 'etc_collected', 'etc_diff', 'etc_deficit',
+            'deposit_diff', 'mileage', 'gas'
+        ], start=2):
             value = row[i]
             total_row[key] += value if isinstance(value, Decimal) else Decimal(str(value))
 
     # 添加合计行
     ws.append([
-        '合计', '',
+        '合計', '',
         total_row['cash'], total_row['uber'], total_row['didi'], total_row['credit'], total_row['qr'],
         total_row['kyokushin'], total_row['omron'], total_row['kyotoshi'],
         total_row['etc_expected'], total_row['etc_collected'],
         total_row['etc_expected'] - total_row['etc_collected'],
+        total_row['etc_deficit'],
         total_row['deposit_diff'], total_row['mileage'], total_row['gas']
     ])
 
@@ -456,6 +470,7 @@ def export_monthly_summary_excel(request, year, month):
     response = FileResponse(tmp, as_attachment=True, filename=quote(filename))
     response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return response
+
 
 # ✅ 功能：查看某位司机的月度日报合计
 @user_passes_test(is_dailyreport_admin)
@@ -681,8 +696,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
     report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
     duration = timedelta()
-
-    # ✅ 初始化休憩时间显示字段
     user_h = 0
     user_m = 0
 
@@ -696,8 +709,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
-
-            # ✅ 休憩時間处理
             break_input = request.POST.get("break_time_input", "").strip()
             break_minutes = 0
             try:
@@ -713,7 +724,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             inst.calculate_work_times()
             inst.edited_by = request.user
 
-            # ✅ 计算現金合计用于過不足額
             cash_total = sum(
                 item.cleaned_data.get('meter_fee') or 0
                 for item in formset.forms
@@ -722,7 +732,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             deposit = inst.deposit_amount or 0
             inst.deposit_difference = deposit - cash_total
 
-            # ✅ 状态更新
             if inst.status in [DriverDailyReport.STATUS_PENDING, DriverDailyReport.STATUS_CANCELLED] and inst.clock_in and inst.clock_out:
                 inst.status = DriverDailyReport.STATUS_COMPLETED
             if inst.clock_in and inst.clock_out:
@@ -732,7 +741,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             formset.instance = inst
             formset.save()
 
-            # ✅ 出入库联动 Reservation
             driver_user = inst.driver.user
             if driver_user and inst.clock_in:
                 res = Reservation.objects.filter(driver=driver_user, date=inst.date).order_by('start_time').first()
@@ -753,11 +761,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             return redirect('dailyreport:driver_dailyreport_month', driver_id=driver_id)
         else:
             messages.error(request, "❌ 保存失败，请检查输入内容")
-            print("📛 主表（form）错误：", form.errors)
-            print("📛 明细表（formset）错误：")
-            for i, f in enumerate(formset.forms):
-                if f.errors:
-                    print(f"  - 第{i+1}行: {f.errors}")
     else:
         initial = {'status': report.status}
         clock_in = None
@@ -796,9 +799,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
 
-    # ✅ 合计统计（避免重复计入 cleaned_data + instance）
     data_iter = []
-
     for f in formset.forms:
         if f.is_bound and f.is_valid():
             cleaned = f.cleaned_data
@@ -816,6 +817,11 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                 'note': f.instance.note,
                 'DELETE': False,
             })
+
+    # ✅ 添加这个打印，调试用：
+    print("📦 data_iter 内容如下：")
+    for item in data_iter:
+        print(item)
 
     totals = calculate_totals_from_formset(data_iter)
 
@@ -841,13 +847,16 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         for key, label in summary_keys
     ]
 
-    # ✅ 智能提示字段
     cash = totals.get("cash_raw", 0)
     etc = report.etc_collected or 0
     deposit_amt = form.cleaned_data.get("deposit_amount") if form.is_bound else (report.deposit_amount or 0)
     total_collected = cash + etc
     total_sales = totals.get("meter_raw", 0)
+    # ✅ 添加这一行（确保模板中能显示メータのみ）
+    meter_only_total = totals.get("meter_only_total", 0)
+    deposit_diff = total_collected - deposit_amt
 
+    # ✅ 传入所有合计值
     context = {
         'form': form,
         'formset': formset,
@@ -864,10 +873,11 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'deposit_amt': deposit_amt,
         'total_collected': total_collected,
         'total_sales': total_sales,
+        'meter_only_total': meter_only_total,
+        'deposit_diff': deposit_diff,
     }
 
     return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
-
 
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_add_unassigned(request):
@@ -1268,6 +1278,39 @@ def dailyreport_overview(request):
         totals[f"total_{payment}"] += item.meter_fee
         totals["total_meter"] += item.meter_fee
 
+    # ✅ 4.5 构建 totals_all，含 meter_only_total 和 charter 项
+    rates = {
+        'meter':  Decimal('0.9091'),
+        'cash':   Decimal('0'),
+        'uber':   Decimal('0.05'),
+        'didi':   Decimal('0.05'),
+        'credit': Decimal('0.05'),
+        'kyokushin': Decimal('0.05'),
+        'omron':     Decimal('0.05'),
+        'kyotoshi':  Decimal('0.05'),
+        'qr':        Decimal('0.05'),
+        'charter':   Decimal('0'),
+    }
+
+    totals_all = {}
+    meter_total = Decimal('0')
+    meter_only_total = Decimal('0')
+
+    for key in [
+        'cash', 'uber', 'didi', 'credit', 'kyokushin', 'omron', 'kyotoshi', 'qr', 'charter'
+    ]:
+        amt = totals.get(f"total_{key}", Decimal('0'))
+        bonus = (amt * rates.get(key, Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        totals_all[key] = {"total": amt, "bonus": bonus}
+        meter_total += amt
+        if key != 'charter':
+            meter_only_total += amt
+
+    totals_all["meter"] = {
+        "total": meter_total,
+        "bonus": (meter_total * rates['meter']).quantize(Decimal('1'), rounding=ROUND_HALF_UP),
+    }
+    totals_all["meter_only_total"] = meter_only_total
 
     # 5. 税前计算
     gross = totals.get('total_meter') or Decimal('0')
@@ -1352,6 +1395,25 @@ def dailyreport_overview(request):
 
     # ✅ 6.6 统计 ETC 不足额合计
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
+    
+    # ✅✅✅ 打印调试 totals_all 内容
+    print("📊 totals_all =")
+    for k, v in totals_all.items():
+        print(f"  {k}: {v}")
+
+    print("📋 driver_data =")
+    for item in driver_data:
+        try:
+            name = item['driver'].name
+        except Exception as e:
+            name = f"[Error reading name: {e}]"
+
+        try:
+            # 安全转换并打印，防止编码失败
+            safe_log = f"{name} - {item['total_fee']} - {item['note']}"
+            print(safe_log.encode('utf-8', errors='replace').decode('utf-8', errors='ignore'))
+        except Exception as e:
+            print(f"[Log output error: {e}]")
 
     # 7. 遍历全体司机，构造每人合计（无日报也显示）
     driver_qs = drivers

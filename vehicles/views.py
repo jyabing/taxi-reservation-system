@@ -95,7 +95,8 @@ def vehicle_status_view(request):
         status__in=['reserved', 'out']
     )
 
-    vehicles = Car.objects.all()
+    # ✅ 排除报废车辆（不显示）
+    vehicles = Car.objects.exclude(status='retired')
     status_map = {}
     now = timezone.localtime()
     now_dt = now
@@ -181,6 +182,8 @@ def vehicle_status_view(request):
     if not any(info['status'] == 'available' for info in status_map.values()):
         messages.warning(request, "当前车辆状态不可预约，请选择其他车辆")
 
+        print("🚗 展示车辆列表：", [v.license_plate for v in vehicles])
+
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
@@ -192,6 +195,21 @@ def vehicle_status_view(request):
 def reserve_vehicle_view(request, car_id):
     car = get_object_or_404(Car, id=car_id)
     min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
+
+    
+    # ✅ ⛔ 禁止不可预约车辆
+    if car.status == 'retired':
+        messages.error(request, "该车辆已报废，无法预约。")
+        return redirect('vehicle_status')
+
+    if car.status == 'repair':
+        messages.error(request, "该车辆正在维修中，无法预约。")
+        return redirect('vehicle_status')
+
+    if car.is_reserved_only_by_admin and not request.user.is_staff:
+        messages.error(request, "该车辆为调配用车，仅限管理员预约。")
+        return redirect('vehicle_status')
+
 
     if request.method == 'POST':
         form = ReservationForm(request.POST)

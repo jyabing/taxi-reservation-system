@@ -188,26 +188,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function resolveJsPaymentMethod(raw) {
     if (!raw) return "";
-    const cleaned = raw.trim().toLowerCase();
-    if (cleaned === "credit_card") return "credit";
-    return cleaned;
+
+    const mapping = {
+      // ✅ 現金系
+      cash: "cash",
+      uber_cash: "cash",
+      didi_cash: "cash",
+      go_cash: "cash",
+
+      // ✅ クレジット・バーコード
+      credit_card: "credit",
+      barcode: "barcode",
+
+      // ✅ チケット系
+      kyokushin: "kyokushin",
+      omron: "omron",
+      kyotoshi: "kyotoshi",
+      qr: "qr",
+
+      // ✅ 貸切系 → 全部归为 charter
+      charter_cash: "charter",
+      charter_transfer: "charter",
+
+      // fallback 可加更多
+        };
+
+    return mapping[raw] || raw;
   }
+        
 
   function updateTotals() {
     const totalMap = {
-    cash: 0, uber: 0, didi: 0, credit: 0,
-    kyokushin: 0, omron: 0, kyotoshi: 0, qr: 0,
-  };
+      cash: 0,
+      uber: 0,
+      didi: 0,
+      credit: 0,
+      kyokushin: 0,
+      omron: 0,
+      kyotoshi: 0,
+      qr: 0,
+      charter: 0, // 🆕 貸切合計
+    };
 
+    // 📊 合计每一行明细
     document.querySelectorAll("tr.report-item-row").forEach(row => {
-       const fee = parseInt(row.querySelector("input[name$='-meter_fee']")?.value || 0);
-       const methodRaw = row.querySelector("select[name$='-payment_method']")?.value || "";
+      const fee = parseInt(row.querySelector("input[name$='-meter_fee']")?.value || 0);
+      const methodRaw = row.querySelector("select[name$='-payment_method']")?.value || "";
       const method = resolveJsPaymentMethod(methodRaw);
-       if (fee > 0 && totalMap.hasOwnProperty(method)) {
+      if (fee > 0 && totalMap.hasOwnProperty(method)) {
         totalMap[method] += fee;
       }
     });
 
+    // ➕ ETC 收款金额也加入合计
     const etcAmount = parseInt(document.getElementById("id_etc_collected")?.value || 0);
     const etcMethodRaw = document.getElementById("id_etc_payment_method")?.value;
     const etcMethod = resolveJsPaymentMethod(etcMethodRaw);
@@ -215,45 +248,59 @@ document.addEventListener('DOMContentLoaded', () => {
       totalMap[etcMethod] += etcAmount;
     }
 
+    // 🖋️ 写入各支付方式合计
     Object.entries(totalMap).forEach(([method, amount]) => {
       const el = document.getElementById(`total_${method}`);
       if (el) el.textContent = amount.toLocaleString();
     });
 
+    // ✅ 売上合計（含貸切）
     const meterEl = document.getElementById("total_meter");
-    if (meterEl) meterEl.textContent = Object.values(totalMap).reduce((a, b) => a + b, 0).toLocaleString();
+    if (meterEl) {
+      const totalWithCharter = Object.values(totalMap).reduce((a, b) => a + b, 0);
+      meterEl.textContent = totalWithCharter.toLocaleString();
+    }
+
+    // ✅ メータのみ合計（不含貸切）
+    const meterOnlyEl = document.getElementById("total_meter_only");
+    if (meterOnlyEl) {
+      const totalWithoutCharter = Object.entries(totalMap)
+        .filter(([key]) => key !== "charter")
+        .reduce((a, [_, b]) => a + b, 0);
+      meterOnlyEl.textContent = totalWithoutCharter.toLocaleString();
+    }
   }
 
   // ✅ 智能提示面板更新函数
   function updateSmartHintPanel() {
     const depositInput = document.querySelector("#deposit-input");
+
     const cashTotal = parseInt(document.querySelector("#total_cash")?.textContent || "0", 10);
+    const charterTotal = parseInt(document.querySelector("#total_charter")?.textContent || "0", 10);
     const etcCollected = parseInt(document.querySelector("#id_etc_collected")?.value || "0", 10);
     const etcUncollected = parseInt(document.querySelector("#id_etc_uncollected")?.value || "0", 10);
     const totalSales = parseInt(document.querySelector("#total_meter")?.textContent || "0", 10);
 
     const deposit = parseInt(depositInput?.value || "0", 10);
-    const totalCollected = cashTotal + etcCollected;
+    const totalCollected = cashTotal + charterTotal + etcCollected;
 
     const panel = document.querySelector("#smart-hint-panel");
     if (!panel) return;
 
     let html = "";
 
-    // 入金额 < 现金 + ETC 时警告
     if (deposit < totalCollected) {
       html += `
         <div class="alert alert-danger py-1 px-2 small mb-2">
-          ⚠️ 入金額が不足しています。請求額 (現金 + ETC) は <strong>${totalCollected.toLocaleString()}円</strong> ですが、入力された入金額は <strong>${deposit.toLocaleString()}円</strong> です。
+          ⚠️ 入金額が不足しています。請求額（現金 + 貸切 + ETC）は <strong>${totalCollected.toLocaleString()}円</strong> ですが、入力された入金額は <strong>${deposit.toLocaleString()}円</strong> です。
         </div>`;
     } else {
       html += `
         <div class="alert alert-success py-1 px-2 small mb-2">
-          ✔️ 入金額は現金 + ETC をカバーしています。
+          ✔️ 入金額は現金 + 貸切 + ETC をカバーしています。
         </div>`;
     }
 
-    // ETC 未收提示
     if (etcUncollected > 0) {
       html += `
         <div class="alert alert-info py-1 px-2 small mb-2">
@@ -261,11 +308,10 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
     }
 
-    // 入金 < 売上合計 提示
     if (deposit < totalSales) {
       html += `
         <div class="alert alert-warning py-1 px-2 small mb-2">
-          ℹ️ 売上合計 <strong>${totalSales.toLocaleString()}円</strong> 大于入金 <strong>${deposit.toLocaleString()}円</strong>，可能包含貸切、未收 ETC 或其他延迟结算项。
+          ℹ️ 売上合計 <strong>${totalSales.toLocaleString()}円</strong> 大于入金 <strong>${deposit.toLocaleString()}円</strong>，可能包含未收 ETC、貸切、或其他延迟结算项。
         </div>`;
     }
 
