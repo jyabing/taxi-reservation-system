@@ -1230,7 +1230,7 @@ def my_dailyreports(request):
 
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_overview(request):
-    # 1. 基本参数：关键字 + 月份
+    # 1. 基本参数
     today     = now().date()
     keyword   = request.GET.get('keyword', '').strip()
     month_str = request.GET.get('month', today.strftime('%Y-%m'))
@@ -1242,33 +1242,17 @@ def dailyreport_overview(request):
         month = today.replace(day=1)
         month_str = month.strftime('%Y-%m')
 
-    # ✅ 使用封装好的在职筛选函数
     drivers = get_active_drivers(month, keyword)
 
-    # 3. 构建 reports，只按 month 过滤
+    # 3. 构建 reports
     reports = DriverDailyReport.objects.filter(
         date__year=month.year,
         date__month=month.month
     )
 
-    '''# 4. 全员明细聚合
-    items = DriverDailyReportItem.objects.filter(report__in=reports)
-    totals = items.aggregate(
-        total_meter  = Sum('meter_fee'),
-        total_cash   = Sum(Case(When(payment_method='cash',    then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_uber   = Sum(Case(When(payment_method='uber',    then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_didi   = Sum(Case(When(payment_method='didi',    then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_credit = Sum(Case(When(payment_method='credit',  then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_kyokushin = Sum(Case(When(payment_method='kyokushin', then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_omron     = Sum(Case(When(payment_method='omron',     then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_kyotoshi  = Sum(Case(When(payment_method='kyotoshi',  then=F('meter_fee')), default=0, output_field=DecimalField())),
-        total_qr     = Sum(Case(When(payment_method='qr', then=F('meter_fee')), default=0, output_field=DecimalField())),
-    )
-    '''
-    # ✅ 4. 全员明细遍历并分类统计（支持合算组 + ETC 按支付方式归类）
+    # 4. 构建 totals
     totals = defaultdict(Decimal)
     items = DriverDailyReportItem.objects.filter(report__in=reports)
-
     for item in items:
         if not item.meter_fee or item.meter_fee <= 0:
             continue
@@ -1278,7 +1262,7 @@ def dailyreport_overview(request):
         totals[f"total_{payment}"] += item.meter_fee
         totals["total_meter"] += item.meter_fee
 
-    # ✅ 4.5 构建 totals_all，含 meter_only_total 和 charter 项
+    # 4.5 构建 totals_all
     rates = {
         'meter':  Decimal('0.9091'),
         'cash':   Decimal('0'),
@@ -1295,39 +1279,24 @@ def dailyreport_overview(request):
     totals_all = {}
     meter_total = Decimal('0')
     meter_only_total = Decimal('0')
-
-    for key in [
-        'cash', 'uber', 'didi', 'credit', 'kyokushin', 'omron', 'kyotoshi', 'qr', 'charter'
-    ]:
+    for key in ['cash', 'uber', 'didi', 'credit', 'kyokushin', 'omron', 'kyotoshi', 'qr', 'charter']:
         amt = totals.get(f"total_{key}", Decimal('0'))
         bonus = (amt * rates.get(key, Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         totals_all[key] = {"total": amt, "bonus": bonus}
         meter_total += amt
         if key != 'charter':
             meter_only_total += amt
-
     totals_all["meter"] = {
         "total": meter_total,
         "bonus": (meter_total * rates['meter']).quantize(Decimal('1'), rounding=ROUND_HALF_UP),
     }
     totals_all["meter_only_total"] = meter_only_total
 
-    # 5. 税前计算
+    # 5. 税前
     gross = totals.get('total_meter') or Decimal('0')
     totals['meter_pre_tax'] = (gross / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
-    # 6. 分成额计算
-    rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':     Decimal('0.05'),
-    }
+    # 6. 分成
     def split(key):
         amt = totals.get(f"total_{key}") or Decimal('0')
         return (amt * rates[key]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
@@ -1338,13 +1307,13 @@ def dailyreport_overview(request):
         'uber_split':   split('uber'),
         'didi_split':   split('didi'),
         'credit_split': split('credit'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
+        'kyokushin_split': split('kyokushin'),
+        'omron_split':     split('omron'),
+        'kyotoshi_split':  split('kyotoshi'),
         'qr_split':     split('qr'),
     })
 
-    # ✅ 6.5 重新构建 totals_all 给模板使用（使用 xxx_raw + xxx_split 命名）
+    # 6.5 合计字典
     totals_all = {
         "meter": {
             "total": totals.get("total_meter", Decimal("0")),
@@ -1382,53 +1351,50 @@ def dailyreport_overview(request):
             "total": totals.get("total_qr", Decimal("0")),
             "bonus": totals.get("qr_split", Decimal("0")),
         },
-        # ✅ ✅ 新增 ETC 合计项目
         "etc_expected": {
             "total": totals.get("total_etc_expected", Decimal("0")),
-            "bonus": Decimal("0"),  # ETC无分成
+            "bonus": Decimal("0"),
         },
         "etc_collected": {
             "total": totals.get("total_etc_collected", Decimal("0")),
-            "bonus": Decimal("0"),  # ETC无分成
+            "bonus": Decimal("0"),
         },
     }
 
-    # ✅ 6.6 统计 ETC 不足额合计
+    # 6.6 不足额
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
-    # 7. 遍历全体司机，构造每人合计（无日报也显示）
-    driver_qs = drivers
+    # 7. 构造每人合计
     driver_data = []
-    for d in driver_qs:
+    for d in drivers:
         dr_reps = reports.filter(driver=d)
         total = sum(r.total_meter_fee for r in dr_reps)
-
-        if dr_reps.exists():
-            note = "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else ""
-        else:
-            note = "（未報告）"
-
+        note = "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else "（未報告）" if not dr_reps.exists() else ""
         driver_data.append({
-            'driver':    d,
+            'driver': d,
             'total_fee': total,
-            'note':      note,
+            'note': note,
             'month_str': month_str,
         })
-    
-    # ✅✅✅ 打印调试 totals_all 内容
+
+    # ✅ 打印 totals_all（已加容错）
     print("📊 totals_all =")
     for k, v in totals_all.items():
-        print(f"  {k}: {v}")
+        try:
+            safe_k = str(k).encode('utf-8', errors='replace').decode('utf-8', errors='ignore')
+            safe_v = str(v).encode('utf-8', errors='replace').decode('utf-8', errors='ignore')
+            print(f"  {safe_k}: {safe_v}")
+        except Exception as e:
+            print(f"[totals_all print error: {e}]")
 
+    # ✅ 打印 driver_data（你已写好）
     print("📋 driver_data =")
     for item in driver_data:
         try:
             name = item['driver'].name
         except Exception as e:
             name = f"[Error reading name: {e}]"
-
         try:
-            # 安全转换并打印，防止编码失败
             safe_log = f"{name} - {item['total_fee']} - {item['note']}"
             print(safe_log.encode('utf-8', errors='replace').decode('utf-8', errors='ignore'))
         except Exception as e:
@@ -1437,7 +1403,7 @@ def dailyreport_overview(request):
     # 8. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
 
-    # ✅ 9. 合计栏字段
+    # 9. 合计键
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金'),
@@ -1450,14 +1416,9 @@ def dailyreport_overview(request):
         ('qr', '扫码'),
     ]
 
-    # ✅ 10. 上下月链接
-    from dateutil.relativedelta import relativedelta
+    # 10. 月份导航
     prev_month_str = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month_str = (month + relativedelta(months=1)).strftime('%Y-%m')
-
-    # ✅ 11. 渲染模板，加入 etc_shortage_total
-    current_year = month.year
-    current_month = month.month
 
     return render(request, 'dailyreport/dailyreport_overview.html', {
         'page_obj': page_obj,
@@ -1469,10 +1430,11 @@ def dailyreport_overview(request):
         'keyword': keyword,
         'totals_all': totals_all,
         'summary_keys': summary_keys,
-        'etc_shortage_total': etc_shortage_total,  # ✅ 新增字段
-        'current_year': current_year,
-        'current_month': current_month,
+        'etc_shortage_total': etc_shortage_total,
+        'current_year': month.year,
+        'current_month': month.month,
     })
+
     
 #导出每日明细
 @user_passes_test(is_dailyreport_admin)
