@@ -3,6 +3,18 @@ from collections import defaultdict
 from dailyreport.constants import PAYMENT_RATES, PAYMENT_KEYWORDS
 from dateutil.relativedelta import relativedelta
 
+def is_charter(method: str) -> bool:
+    if not method:
+        return False
+    return resolve_payment_method(method).startswith("charter")
+
+
+def is_cash_nagashi(payment_method: str, is_charter_flag: bool = False) -> bool:
+    if is_charter_flag:
+        return False
+    keywords = ['現金', 'Didi（現金）', 'Uber（現金）', 'Go（現金）']
+    return any(k in payment_method for k in keywords)
+
 # ✅ 支付方式识别与标准化
 def resolve_payment_method(raw_payment: str) -> str:
     if not raw_payment:
@@ -50,8 +62,8 @@ def calculate_totals_from_formset(data_iter):
         raw_totals[key] += fee
         split_totals[key] += fee * PAYMENT_RATES[key]
 
-        # ✅ 正确判断：只有非貸切项目才记入 meter_only
-        if "貸切" not in raw_payment and "charter" not in raw_payment:
+        # ✅ 精准判断是否属于メータのみ（排除貸切）
+        if key != "charter":
             meter_only_total += fee
 
     result = {}
@@ -63,7 +75,6 @@ def calculate_totals_from_formset(data_iter):
     result["meter_only_total"] = round(meter_only_total)
     print("🧮 meter_only_total:", meter_only_total)
     return result
-
 
 # ✅ 通用 ORM 明细对象统计函数
 def calculate_totals_from_queryset(queryset):
@@ -102,7 +113,9 @@ def calculate_totals_from_items(pairs):
         raw_totals[key] += fee
         split_totals[key] += fee * PAYMENT_RATES[key]
 
-        if not raw_payment or "貸切" not in raw_payment:
+        # ✅ 替换前: if not raw_payment or "貸切" not in raw_payment:
+        # ✅ 替换后:
+        if not is_charter(raw_payment):
             meter_only_total += fee
 
     result = {}
@@ -132,7 +145,9 @@ def build_totals_from_items(items):
         totals[f"total_{key}"] += amount
         totals["total_meter"] += amount
 
-        if "貸切" not in key:
+        # ✅ 替换前: if "貸切" not in key:
+        # ✅ 替换后:
+        if not is_charter(key):
             meter_only_total += amount
 
     totals_all = {}
@@ -152,13 +167,15 @@ def build_totals_from_items(items):
 
 
 # ✅ ETC 实收、入金额、差额 等统计
-def calculate_received_and_etc_deficit(
+def calculate_received_summary(
     data_iter,
     etc_expected=None,
     etc_collected=None,
     etc_payment_method=""
 ):
-    received_amount = Decimal("0")
+    received_meter_cash = Decimal("0")
+    received_charter = Decimal("0")
+    received_etc_cash = Decimal("0")
     meter_only_total = Decimal("0")
 
     for item in data_iter:
@@ -174,12 +191,15 @@ def calculate_received_and_etc_deficit(
         if not key or fee <= 0 or "キャンセル" in note:
             continue
 
-        if "貸切" not in raw_payment and "charter" not in raw_payment:
+        if not is_charter(raw_payment):
             meter_only_total += fee
+            if is_cash_nagashi(raw_payment, False):
+                received_meter_cash += fee
 
-        if key == "cash":
-            received_amount += fee
+        if is_charter(raw_payment):
+            received_charter += fee
 
+    # ETC 收入（如果是现金方式）
     try:
         etc_collected = Decimal(str(etc_collected or "0"))
         etc_expected = Decimal(str(etc_expected or "0"))
@@ -188,13 +208,16 @@ def calculate_received_and_etc_deficit(
         etc_expected = Decimal("0")
 
     if resolve_payment_method(etc_payment_method) == "cash":
-        received_amount += etc_collected
+        received_etc_cash = etc_collected
 
-    etc_deficit = Decimal("0")
-    if etc_collected > etc_expected:
-        etc_deficit = etc_collected - etc_expected
+    deposit_total = received_meter_cash + received_charter + received_etc_cash
+    etc_deficit = max(Decimal("0"), etc_expected - etc_collected)
 
     return {
-        "received_amount": round(received_amount),
+        "received_meter_cash": round(received_meter_cash),
+        "received_charter": round(received_charter),
+        "received_etc_cash": round(received_etc_cash),
+        "deposit_total": round(deposit_total),
         "etc_deficit": round(etc_deficit),
+        "meter_only_total": round(meter_only_total),
     }

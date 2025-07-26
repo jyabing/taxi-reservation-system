@@ -22,7 +22,7 @@ from .services.calculations import calculate_deposit_difference  # ✅ 导入新
 from staffbook.services import get_driver_info
 from staffbook.utils import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
-from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method, calculate_received_and_etc_deficit
+from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method, calculate_received_summary
 
 
 from vehicles.models import Reservation
@@ -1368,11 +1368,12 @@ def dailyreport_overview(request):
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
     # 7. 构造每人合计（高效聚合方式，避免 N+1 查询）
-    from django.db.models import Sum
-
+    
     # 一次性查询每位司机的总计金额（减少 DB IO）
-    report_sums = reports.values('driver').annotate(total=Sum('total_meter_fee'))
-    fee_map = {r['driver']: r['total'] or Decimal("0") for r in report_sums}
+    items = DriverDailyReportItem.objects.filter(report__in=reports)
+    report_sums = items.values('report__driver').annotate(total=Sum('meter_fee'))
+
+    fee_map = {r['report__driver']: r['total'] or Decimal("0") for r in report_sums}
 
     driver_data = []
     for d in drivers:
@@ -1406,6 +1407,8 @@ def dailyreport_overview(request):
     # 10. 月份导航
     prev_month_str = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month_str = (month + relativedelta(months=1)).strftime('%Y-%m')
+
+    print("🧮 最终 totals_all =", totals_all)  # ← 添加这行调试输出
 
     return render(request, 'dailyreport/dailyreport_overview.html', {
         'page_obj': page_obj,
