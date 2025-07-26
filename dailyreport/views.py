@@ -39,6 +39,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from dailyreport.services.grouping import group_report_items, calculate_totals_from_grouped_items
 
+import builtins
+builtins.print = lambda *args, **kwargs: None   #删除或注释掉
 
 # ✅ 新增日报
 @user_passes_test(is_dailyreport_admin)
@@ -1365,41 +1367,25 @@ def dailyreport_overview(request):
     # 6.6 不足额
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
-    # 7. 构造每人合计
+    # 7. 构造每人合计（高效聚合方式，避免 N+1 查询）
+    from django.db.models import Sum
+
+    # 一次性查询每位司机的总计金额（减少 DB IO）
+    report_sums = reports.values('driver').annotate(total=Sum('total_meter_fee'))
+    fee_map = {r['driver']: r['total'] or Decimal("0") for r in report_sums}
+
     driver_data = []
     for d in drivers:
-        dr_reps = reports.filter(driver=d)
-        total = sum(r.total_meter_fee for r in dr_reps)
-        note = "⚠️ 異常あり" if dr_reps.filter(has_issue=True).exists() else "（未報告）" if not dr_reps.exists() else ""
+        total = fee_map.get(d.id, Decimal("0"))
+        has_any = d.id in fee_map
+        has_issue = reports.filter(driver=d, has_issue=True).exists()
+        note = "⚠️ 異常あり" if has_issue else ("（未報告）" if not has_any else "")
         driver_data.append({
             'driver': d,
             'total_fee': total,
             'note': note,
             'month_str': month_str,
         })
-
-    # ✅ 打印 totals_all（已加容错）
-    print("📊 totals_all =")
-    for k, v in totals_all.items():
-        try:
-            safe_k = str(k).encode('utf-8', errors='replace').decode('utf-8', errors='ignore')
-            safe_v = str(v).encode('utf-8', errors='replace').decode('utf-8', errors='ignore')
-            print(f"  {safe_k}: {safe_v}")
-        except Exception as e:
-            print(f"[totals_all print error: {e}]")
-
-    # ✅ 打印 driver_data（你已写好）
-    print("📋 driver_data =")
-    for item in driver_data:
-        try:
-            name = item['driver'].name
-        except Exception as e:
-            name = f"[Error reading name: {e}]"
-        try:
-            safe_log = f"{name} - {item['total_fee']} - {item['note']}"
-            print(safe_log.encode('utf-8', errors='replace').decode('utf-8', errors='ignore'))
-        except Exception as e:
-            print(f"[Log output error: {e}]")
 
     # 8. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))

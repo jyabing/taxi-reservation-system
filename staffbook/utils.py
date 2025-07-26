@@ -5,6 +5,8 @@ from collections import defaultdict
 from django.contrib.auth.decorators import user_passes_test
 from calendar import monthrange
 from .models import Driver
+import builtins
+builtins.print = lambda *args, **kwargs: None
 
 # ⛳ 共通关键词映射（用于模糊匹配支付方式）
 PAYMENT_KEYWORDS = {
