@@ -155,7 +155,7 @@
 <!-- 出库弹窗 -->
 <div class="modal fade" id="departureModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
-    <form id="departureForm" method="post" action="{% url 'confirm_check_io' %}">
+    <form id="departureForm" method="post" action="{% url 'vehicles:confirm_check_io' %}">
       {% csrf_token %}
       <input type="hidden" name="reservation_id" id="reservationIdInput">
       <input type="hidden" name="action_type" value="departure">
@@ -178,7 +178,7 @@
 <!-- 入库弹窗 -->
 <div class="modal fade" id="returnModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
-    <form id="returnForm" method="post" action="{% url 'confirm_check_io' %}">
+    <form id="returnForm" method="post" action="{% url 'vehicles:confirm_check_io' %}">
       {% csrf_token %}
       <input type="hidden" name="reservation_id" id="returnReservationIdInput">
       <input type="hidden" name="action_type" value="return">

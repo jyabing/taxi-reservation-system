@@ -1,15 +1,15 @@
 {# 出库 / 入库 / 删除 / 修正按钮统一模板 #}
 
 {% if r.status == 'pending' %}
-  <a href="{% url 'edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
-  <form method="post" action="{% url 'delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
+  <a href="{% url 'vehicles:edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
+  <form method="post" action="{% url 'vehicles:delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
     {% csrf_token %}
     <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
   </form>
 
 {% elif r.status == 'reserved' and not r.actual_departure %}
-  <a href="{% url 'edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
-  <form method="post" action="{% url 'delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
+  <a href="{% url 'vehicles:edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
+  <form method="post" action="{% url 'vehicles:delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
     {% csrf_token %}
     <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
   </form>
