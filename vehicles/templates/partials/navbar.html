@@ -4,6 +4,7 @@
 
     <a href="{% url 'home' %}">🏠 系统首页</a>
     <a href="{% url 'profile' %}">👤 我的资料</a>
+    <a href="{% url 'vehicles:vehicle_status' %}">🚗 車両状態</a>
 
     {% with request.session.nav_clicks as clicks %}
       {% if clicks %}
