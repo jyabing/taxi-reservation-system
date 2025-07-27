@@ -17,7 +17,7 @@
     <td>{{ r.date }}</td>
     <td>{{ r.start_time }} - {{ r.end_time }}</td>
     <td>
-        <a href="{% url 'approve_reservation' r.id %}">✅ 通过</a>
+        <a href="{% url 'vehicles:approve_reservation' r.id %}">✅ 通过</a>
     </td>
 </tr>
 {% empty %}

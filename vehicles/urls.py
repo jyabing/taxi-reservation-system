@@ -1,6 +1,11 @@
 from django.urls import path
 from . import views
 
+app_name = 'vehicles'  # 👈 这句决定是否需要用 'vehicles:' 前缀
+#如果上面有 app_name {% url 'vehicles:vehicle_status' %}-->
+#如果上面没有 app_name {% url 'vehicle_status' %}-->
+
+
 urlpatterns = [
     path('list/', views.vehicle_list, name='vehicle_list'),
     path('status/', views.vehicle_status_view, name='vehicle_status'),

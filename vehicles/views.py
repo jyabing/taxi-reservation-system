@@ -60,7 +60,7 @@ require_vehicles_admin = user_passes_test(is_vehicles_admin)
 
 @login_required
 def vehicle_list(request):
-    vehicles = Car.objects.all()
+    vehicles = get_all_active_cars()
     return render(request, 'vehicles/vehicle_list.html', {'vehicles': vehicles})
 
 @login_required
@@ -204,11 +204,11 @@ def reserve_vehicle_view(request, car_id):
     # ✅ ⛔ 禁止不可预约车辆（使用统一判断）
     if not is_car_reservable(car):
         messages.error(request, "该车辆当前状态不可预约。")
-        return redirect('vehicle_status')
+        return redirect('vehicles:vehicle_status')
 
     if car.is_reserved_only_by_admin and not request.user.is_staff:
         messages.error(request, "该车辆为调配用车，仅限管理员预约。")
-        return redirect('vehicle_status')
+        return redirect('vehicles:vehicle_status')
 
 
     if request.method == 'POST':
@@ -355,7 +355,7 @@ def reserve_vehicle_view(request, car_id):
             else:
                 messages.warning(request, "⚠️ 没有成功预约任何日期，请检查冲突或重复预约情况。")
 
-            return redirect('vehicle_status')
+            return redirect('vehicles:vehicle_status')
 
         else:
             messages.error(request, "请填写所有字段，并选择预约日期（最多7天）")
@@ -420,7 +420,7 @@ def weekly_overview_view(request):
     start_date = base_date + timedelta(days=offset * 7)
     week_dates = [start_date + timedelta(days=i) for i in range(7)]
 
-    vehicles = Car.objects.all()
+    vehicles = get_all_active_cars()
 
     reminders = []
     for car in vehicles:
@@ -565,7 +565,7 @@ def weekly_overview_view(request):
     
 @login_required
 def timeline_selector_view(request):
-    vehicles = Car.objects.all()
+    vehicles = get_all_active_cars()
 
     if request.method == 'POST':
         vehicle_id = request.POST.get('vehicle_id')
@@ -578,10 +578,15 @@ def timeline_selector_view(request):
 
 @login_required
 def weekly_selector_view(request):
+    vehicles = get_all_active_cars()  # ✅ 排除报废、维修中等不可预约车辆
+
     if request.method == 'POST':
         date = request.POST.get('date')
         return redirect(f"/vehicles/weekly/?start={date}")
-    return render(request, 'vehicles/weekly_selector.html')
+
+    return render(request, 'vehicles/weekly_selector.html', {
+        'vehicles': vehicles
+    })
 
 @login_required
 def vehicle_monthly_gantt_view(request, vehicle_id):
@@ -683,7 +688,7 @@ def daily_overview_view(request):
         selected_date = timezone.localdate()
 
     now_dt = timezone.localtime()  # ✅ 改名避免与函数 now 冲突
-    vehicles = Car.objects.all()
+    vehicles = get_all_active_cars()
     reservations = Reservation.objects.filter(date=selected_date)
 
     data = []
@@ -829,7 +834,7 @@ def approve_reservation(request, pk):
     notify_driver_reservation_approved(reservation)
 
     messages.success(request, f"✅ 预约 ID {pk} 已成功审批，并已通知司机。")
-    return redirect('reservation_approval_list')
+    return redirect('vehicles:reservation_approval_list')
 
 @login_required
 def reservation_detail_view(request, reservation_id):
@@ -849,7 +854,7 @@ def check_out(request, reservation_id):
         reservation.actual_departure = timezone.now()
         reservation.save()
         messages.success(request, "出库登记成功")
-    return redirect('vehicle_status')
+    return redirect('vehicles:vehicle_status')
 
 @login_required
 def check_in(request, reservation_id):
@@ -864,7 +869,7 @@ def check_in(request, reservation_id):
         reservation.actual_return = timezone.now()
         reservation.save()
         messages.success(request, "入库登记成功")
-    return redirect('vehicle_status')
+    return redirect('vehicles:vehicle_status')
 
 @login_required
 def edit_reservation_view(request, reservation_id):
@@ -925,7 +930,7 @@ def edit_reservation_view(request, reservation_id):
             updated_res.save()
 
             messages.success(request, "✅ 预约已修改")
-            return redirect('my_reservations')
+            return redirect('vehicles:my_reservations')
     else:
         form = ReservationForm(
             instance=reservation,
@@ -946,7 +951,7 @@ def delete_reservation_view(request, reservation_id):
 
     if request.method == 'POST':
         reservation.delete()
-        return redirect('my_reservations')
+        return redirect('vehicles:my_reservations')
 
     return render(request, 'vehicles/reservation_confirm_delete.html', {
         'reservation': reservation
@@ -988,7 +993,7 @@ def confirm_check_io(request):
             if diff < timedelta(hours=10):
                 next_allowed = last_return.actual_return + timedelta(hours=10)
                 messages.error(request, f"距上次入库还未满10小时，请于 {next_allowed.strftime('%H:%M')} 后再试出库。")
-                return redirect("my_reservations")
+                return redirect("vehicles:my_reservations")
 
         # ✅ 更新状态
         reservation.actual_departure = actual_time
@@ -1022,11 +1027,11 @@ def confirm_check_io(request):
         reservation.status = "completed"
         reservation.save()
         messages.success(request, "✅ 入库记录已保存。")
-        return redirect("my_reservations")
+        return redirect("vehicles:my_reservations")
 
     else:
         messages.error(request, "❌ 无效的操作类型。")
-        return redirect("my_reservations")
+        return redirect("vehicles:my_reservations")
 
 @login_required
 def confirm_check_io_view(request, reservation_id):
@@ -1054,7 +1059,7 @@ def vehicle_status_with_photo(request):
         selected_date = timezone.localdate()
 
     reservations = Reservation.objects.filter(date=selected_date)
-    vehicles = Car.objects.all()
+    vehicles = get_all_active_cars()
     status_map = {}
 
     today = localdate()
@@ -1333,7 +1338,7 @@ def admin_reset_departure(request, reservation_id):
         messages.success(request, f"已撤销出库登记：{reservation}")
     else:
         messages.warning(request, "该预约没有出库记录。")
-    return redirect('vehicle_status')
+    return redirect('vehicles:vehicle_status')
 
 
 @staff_member_required
@@ -1348,7 +1353,7 @@ def admin_reset_return(request, reservation_id):
         messages.success(request, f"已撤销入库登记：{reservation}")
     else:
         messages.warning(request, "该预约没有入库记录。")
-    return redirect('vehicle_status')
+    return redirect('vehicles:vehicle_status')
 
 def reservation_home(request):
     return render(request, 'vehicles/reservation_home.html')
@@ -1402,7 +1407,7 @@ def create_reservation(request, vehicle_id):
                 )
 
             messages.success(request, f"成功创建 {len(date_list)} 条预约记录！")
-            return redirect('vehicle_status')
+            return redirect('vehicles:vehicle_status')
 
         except Exception as e:
             messages.error(request, f"发生错误：{str(e)}")
