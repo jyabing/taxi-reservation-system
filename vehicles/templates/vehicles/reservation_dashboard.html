@@ -7,11 +7,11 @@
 {% include 'partials/_messages.html' %}
 
 <ul style="line-height: 2;">
-  <li><a href="{% url 'timeline_selector' %}">🔎 时间线视图（选择车辆+日期）</a></li>
-  <li><a href="{% url 'weekly_selector' %}">📅 周视图（选择日期查看全车预约）</a></li>
-  <li><a href="{% url 'daily_selector' %}">📆 每日预约概览（选择日期）</a></li>
+  <li><a href="{% url 'vehicles:timeline_selector' %}">🔎 时间线视图（选择车辆+日期）</a></li>
+  <li><a href="{% url 'vehicles:weekly_selector' %}">📅 周视图（选择日期查看全车预约）</a></li>
+  <li><a href="{% url 'vehicles:daily_selector' %}">📆 每日预约概览（选择日期）</a></li>
 </ul>
 
-<p><a href="{% url 'vehicle_status' %}">← 返回车辆状态页</a></p>
+<p><a href="{% url 'vehicles:vehicle_status' %}">← 返回车辆状态页</a></p>
 
 {% endblock %}

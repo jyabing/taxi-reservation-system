@@ -113,7 +113,7 @@
                       {{ res.driver.username }}
                     </span>
                   {% else %}
-                    <a href="{% url 'reservation_detail' res.id %}">
+                    <a href="{% url 'vehicles:reservation_detail' res.id %}">
                       {% include 'partials/_time_range_snippet.html' with obj=res %}
                       {{ res.driver.username }}
                     </a>
@@ -149,7 +149,7 @@
             {# 整天空缺 #}
             {% else %}
               {% if not cell.is_past %}
-                <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">
+                <a href="{% url 'vehicles:make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">
                   📝 申请预约
                 </a>
 
@@ -183,7 +183,7 @@
 </table>
 
 <p class="mt-4">
-  <a href="{% url 'vehicle_status' %}">← 返回车辆状态</a>
+  <a href="{% url 'vehicles:vehicle_status' %}">← 返回车辆状态</a>
 </p>
 
 {% endblock %}

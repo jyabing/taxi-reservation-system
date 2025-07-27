@@ -1,6 +1,6 @@
 {# templates/vehicles/weekly_empty_after.html #}
 <div style="margin-top:4px;">
-  <a href="{% url 'make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}" style="font-size:0.9em;">
+  <a href="{% url 'vehicles:make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}" style="font-size:0.9em;">
     📝 {{ row.vehicle.id }} 申请预约
   </a>
 </div>

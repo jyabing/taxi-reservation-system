@@ -39,12 +39,13 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from dailyreport.services.grouping import group_report_items, calculate_totals_from_grouped_items
 
-import builtins
-builtins.print = lambda *args, **kwargs: None   #删除或注释掉
+#import builtins
+#builtins.print = lambda *args, **kwargs: None   #删除或注释掉
 
 # ✅ 新增日报
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_create(request):
+    print("🧪 formset is valid?", formset.is_valid())
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST)
         if form.is_valid():

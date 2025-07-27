@@ -3,6 +3,8 @@ from django.utils.html import format_html
 from django.utils.timezone import localdate
 from django.contrib.admin import SimpleListFilter
 from .models import Car
+from carinfo.services.car_access import is_car_reservable
+from carinfo.services.car_flags import is_under_repair, is_retired
 
 # ✅ 筛选器：保险状态
 class InsuranceStatusFilter(SimpleListFilter):
@@ -48,6 +50,25 @@ class InspectionStatusFilter(SimpleListFilter):
             return queryset.filter(inspection_date__isnull=True)
         return queryset
 
+# ✅ 筛选器：是否可预约
+class ReservableStatusFilter(SimpleListFilter):
+    title = '可预约'
+    parameter_name = 'reservable_status'
+
+    def lookups(self, request, model_admin):
+        return [
+            ('yes', '✅ 是'),
+            ('no', '❌ 否'),
+        ]
+
+    def queryset(self, request, queryset):
+        from carinfo.services.car_access import is_car_reservable
+        if self.value() == 'yes':
+            return [obj for obj in queryset if is_car_reservable(obj)]
+        elif self.value() == 'no':
+            return [obj for obj in queryset if not is_car_reservable(obj)]
+        return querysets
+
 # ✅ 主注册类
 @admin.register(Car)
 class CarAdmin(admin.ModelAdmin):
@@ -69,6 +90,7 @@ class CarAdmin(admin.ModelAdmin):
         'status', 'is_active', 'brand', 'department', 'fuel_type',
         InsuranceStatusFilter,         # ✅ 保险状态筛选
         InspectionStatusFilter,        # ✅ 车检状态筛选
+        ReservableStatusFilter,
     )
 
     search_fields = (
@@ -106,15 +128,15 @@ class CarAdmin(admin.ModelAdmin):
     update_selected_insurance_status.short_description = "✅ 更新所选车辆的保险状态"
 
     def colored_status(self, obj):
-        if obj.status == 'available':
+        if is_car_reservable(obj):
             return format_html('<span style="color:green;">✅ 使用可</span>')
-        elif obj.status == 'repair':
+        elif is_under_repair(obj):
             return format_html('<span style="color:orange;">🛠️ 维修中</span>')
-        elif obj.status == 'retired':
+        elif is_retired(obj):
             return format_html('<span style="color:gray;">🗑️ 已报废</span>')
         else:
             return format_html('<span style="color:black;">❓ 未设定</span>')
-    colored_status.short_description = '状态'
+        colored_status.short_description = '状态'
 
     def insurance_status_colored(self, obj):
         if obj.is_insurance_expired():

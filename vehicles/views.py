@@ -22,8 +22,8 @@ from django.contrib import messages
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.core.mail import send_mail
-from carinfo.models import Car
 
+from carinfo.services.car_access import get_all_active_cars, is_car_reservable, get_car_by_id
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 
@@ -67,9 +67,13 @@ def vehicle_list(request):
 def vehicle_detail(request, pk):
     vehicle = get_object_or_404(Car.objects.prefetch_related('images'), pk=pk)
     reservations = Reservation.objects.filter(vehicle=vehicle).order_by('-date')[:5]
+
     return render(request, 'vehicles/vehicle_detail.html', {
         'vehicle': vehicle,
         'reservations': reservations,
+        'is_retired': is_retired(vehicle),              # ✅ 新增
+        'is_under_repair': is_under_repair(vehicle),    # ✅ 新增
+        'is_admin_only': is_admin_only(vehicle),        # ✅ 新增
     })
 
 @login_required
@@ -96,7 +100,7 @@ def vehicle_status_view(request):
     )
 
     # ✅ 排除报废车辆（不显示）
-    vehicles = Car.objects.exclude(status='retired')
+    vehicles = get_all_active_cars()
     status_map = {}
     now = timezone.localtime()
     now_dt = now
@@ -176,6 +180,7 @@ def vehicle_status_view(request):
             'status': status,
             'user_reservation': user_reservation,
             'reserver_name': reserver_name,
+            'reservable': is_car_reservable(vehicle),  # ✅ 新增字段
         }
 
     # 所有车辆都不可预约时提示
@@ -193,17 +198,12 @@ def vehicle_status_view(request):
 
 @login_required
 def reserve_vehicle_view(request, car_id):
-    car = get_object_or_404(Car, id=car_id)
+    car = get_car_by_id(car_id)
     min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
-    
-    # ✅ ⛔ 禁止不可预约车辆
-    if car.status == 'retired':
-        messages.error(request, "该车辆已报废，无法预约。")
-        return redirect('vehicle_status')
-
-    if car.status == 'repair':
-        messages.error(request, "该车辆正在维修中，无法预约。")
+    # ✅ ⛔ 禁止不可预约车辆（使用统一判断）
+    if not is_car_reservable(car):
+        messages.error(request, "该车辆当前状态不可预约。")
         return redirect('vehicle_status')
 
     if car.is_reserved_only_by_admin and not request.user.is_staff:
@@ -1079,8 +1079,12 @@ def vehicle_status_with_photo(request):
         status_map[vehicle] = {
             'status': status,
             'user_reservation': user_reservation,
-            'show_inspection_warning': show_inspection_warning,
-            'show_insurance_warning': show_insurance_warning,
+            'reserver_name': reserver_name,
+            'reservable': is_car_reservable(vehicle),
+            'is_repair': is_under_repair(vehicle),              # ✅ 新增
+            'is_admin_only': is_admin_only(vehicle),            # ✅ 新增
+            'is_retired': is_retired(vehicle),                  # ✅ 预留
+            'is_reserved_by_admin': is_reserved_by_admin(vehicle),  # ✅ 可选
         }
 
     return render(request, 'vehicles/status_view_with_photo.html', {

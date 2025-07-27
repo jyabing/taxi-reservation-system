@@ -112,9 +112,9 @@
 
     <!-- 左侧：按钮组 -->
     <div class="btn-group" style="flex: 1;">
-      <a href="{% url 'weekly_overview' %}" class="btn-dashboard">🚗 週の予約を確認</a>
-      <a href="{% url 'vehicle_status' %}" class="btn-dashboard">📋 車両状態を確認</a>
-      <a href="{% url 'my_reservations' %}" class="btn-dashboard">📌 私の予約</a>
+      <a href="{% url 'vehicles:weekly_overview' %}" class="btn-dashboard">🚗 週の予約を確認</a>
+      <a href="{% url 'vehicles:vehicle_status' %}" class="btn-dashboard">📋 車両状態を確認</a>
+      <a href="{% url 'vehicles:my_reservations' %}" class="btn-dashboard">📌 私の予約</a>
 
       <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}

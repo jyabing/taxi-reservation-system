@@ -26,18 +26,18 @@
     {% for vehicle, info in status_map.items %}
     <tr>
       <td>
-        <a href="{% url 'vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a>
+        <a href="{% url 'vehicles:vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a>
         <button class="btn btn-sm btn-outline-info ms-2" onclick="openCarModal({{ vehicle.id }})">最近预约</button>
       </td>
       <td>{{ vehicle.model }}</td>
       
       <td class="text-start">
         <!-- ✅ 车辆状态徽章 -->
-        {% if vehicle.status == 'repair' %}
+        {% if info.is_repair %}
           <span class="badge bg-warning text-dark mb-1">🛠 维修中</span><br>
-        {% elif vehicle.status == 'available' and vehicle.is_reserved_only_by_admin %}
+        {% elif info.is_admin_only %}
           <span class="badge bg-info text-dark mb-1">⚙️ 調配用車</span><br>
-        {% elif vehicle.status == 'available' %}
+        {% elif info.reservable %}
           <span class="badge bg-success mb-1">✅ 使用可</span><br>
         {% endif %}
 
@@ -45,17 +45,18 @@
         {% include 'partials/_reservation_status.html' with vehicle=vehicle info=info selected_date=selected_date today=today %}
         {% include 'partials/_my_reservation_controls.html' with user_reservation=info.user_reservation %}
 
-        {% if info.user_reservation %}
 
-          {% include 'partials/_user_reservation_notice.html' with user_reservation=info.user_reservation %}
-    
-          {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
-            <button type="button" class="btn btn-success btn-sm mt-2"
-                    onclick="openTimePopup({{ info.user_reservation.id }}, 'departure')">🚗 出庫</button>
-          {% elif info.user_reservation.status == 'reserved' and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
-            <button type="button" class="btn btn-warning btn-sm mt-2"
-                    onclick="openTimePopup({{ info.user_reservation.id }}, 'return')">🅿️ 入庫</button>
-          {% endif %}
+
+        {% if info.user_reservation %}
+            {% include 'partials/_user_reservation_notice.html' with user_reservation=info.user_reservation %}
+
+            {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
+              <button type="button" class="btn btn-success btn-sm mt-2"
+                      onclick="openTimePopup({{ info.user_reservation.id }}, 'departure')">🚗 出庫</button>
+            {% elif info.user_reservation.status == 'reserved' and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
+              <button type="button" class="btn btn-warning btn-sm mt-2"
+                      onclick="openTimePopup({{ info.user_reservation.id }}, 'return')">🅿️ 入庫</button>
+            {% endif %}
         {% endif %}
       </td>
 

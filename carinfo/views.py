@@ -10,6 +10,10 @@ from vehicles.models import Reservation
 from .models import Car
 from .forms import CarForm
 
+import datetime
+from carinfo.services.car_access import get_car_by_id 
+
+
 @login_required
 @check_module_permission('carinfo')
 def car_list(request):
@@ -52,7 +56,7 @@ def car_list(request):
 @login_required
 @check_module_permission('carinfo')
 def car_detail(request, pk):
-    car = get_object_or_404(Car, pk=pk)
+    car = get_car_by_id(pk)
 
     # ✅ 车龄
     current_year = datetime.date.today().year

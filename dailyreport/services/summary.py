@@ -48,6 +48,7 @@ def calculate_totals_from_formset(data_iter):
     meter_only_per_key = {key: Decimal("0") for key in PAYMENT_RATES}
 
     for item in data_iter:
+        print("🧾 cleaned_data keys:", list(item.keys()))  # ✅ 插入此行
         try:
             fee = Decimal(str(item.get("meter_fee") or "0"))
         except:
@@ -77,6 +78,8 @@ def calculate_totals_from_formset(data_iter):
 
         charter_method = item.get("charter_payment_method", "")
         charter_key = resolve_payment_method(charter_method)
+
+        print(f"🚌 charter_method: {charter_method}, resolved: {charter_key}, fee: {charter_fee}")  # ✅ 插入
 
         if charter_key and charter_fee > 0:
             raw_totals[charter_key] += charter_fee

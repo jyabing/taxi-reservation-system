@@ -5,13 +5,13 @@
 <h2>选择日期查看周视图</h2>
 
 
-<form method="get" action="{% url 'weekly_overview' %}">
+<form method="get" action="{% url 'vehicles:weekly_overview' %}">
   <label for="date">选择任意日期（将自动跳转到该周）:</label>
   <input type="date" name="date" required value="{{ selected_date|default:'' }}">
   <br><br>
   <button type="submit">查看本周预约情况</button>
 </form>
 
-<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
+<p><a href="{% url 'vehicles:vehicle_status' %}">← 返回状态页</a></p>
 
 {% endblock %}

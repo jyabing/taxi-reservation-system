@@ -20,17 +20,17 @@
   <div class="card">
     <h3>📅 查看预约状态</h3>
     <p>随时掌握所有车辆每日的配车预约情况。</p>
-    <a href="{% url 'reservation_status' %}">进入</a>
+    <a href="{% url 'vehicles:vehicle_status' %}">进入</a>
   </div>
   <div class="card">
     <h3>📝 发起预约申请</h3>
     <p>根据空缺时间自主提交配车预约请求。</p>
-    <a href="{% url 'create_reservation' %}">进入</a>
+    <a href="{% url 'vehicles:vehicle_status' %}">进入</a>{# 🚨如需特定车辆则需指定 id #}
   </div>
   <div class="card">
     <h3>📊 审批与统计</h3>
     <p>管理员可查看使用情况并处理配车预约审批。</p>
-    <a href="{% url 'reservation_approval' %}">进入</a>
+    <a href="{% url 'vehicles:reservation_approval_list' %}">进入</a>
   </div>
 </div>
 

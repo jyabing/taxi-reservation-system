@@ -10,7 +10,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('admin/admin_tools/', include('admin_tools.urls', namespace='admin_tools')),  # ✅ 管理工具：数据库备份、日志查看等
     path('accounts/', include('accounts.urls')),
-    path('vehicles/', include('vehicles.urls')),      # ✅ 自主配车系统（原 reservation）：预约、审批、出入库等
+    path('vehicles/', include(('vehicles.urls', 'vehicles'), namespace='vehicles')),      # ✅ 自主配车系统（原 reservation）：预约、审批、出入库等
     path('staffbook/', include('staffbook.urls')),    # ✅ 员工系统：人事台账、保险、资格证等
     path('dailyreport/', include('dailyreport.urls')),  # ✅ 日报系统：乘务日报、统计、明细、出勤、分析
     path('carinfo/', include('carinfo.urls')),         # ✅ 车辆管理系统：台账、维修、照片等

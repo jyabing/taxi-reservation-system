@@ -48,5 +48,5 @@
     <a href="?page={{ page_obj.next_page_number }}&month={{ month }}&driver={{ driver_id }}">下一页</a>
   {% endif %}
 </div>
-<p><a href="{% url 'vehicle_status' %}">← 返回状态页</a></p>
+<p><a href="{% url 'vehicles:vehicle_status' %}">← 返回状态页</a></p>
 {% endblock %}

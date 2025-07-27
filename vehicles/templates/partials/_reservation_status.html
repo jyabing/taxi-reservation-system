@@ -1,16 +1,11 @@
-{# ✅ 统一预约状态展示模块 #}
-{% comment %}需要传入：vehicle, info.status, selected_date, today{% endcomment %}
-
 {% if selected_date and selected_date < today %}
   <span style="color:gray;">⏳ 已过期（不可预约）</span>
-
-{# 🚫 报废车不会出现在此模板，已在视图中过滤 #}
 
 {% elif vehicle.status == 'repair' %}
   <span style="color:purple; font-weight:bold;">🛠️ 维修中，无法预约</span>
 
 {% elif vehicle.is_reserved_only_by_admin and not request.user.is_staff %}
-  <span style="color:teal; font-weight:bold;">⚙️ 调配用车，仅限管理员预约</span>
+  <span style="color:teal; font-weight:bold;">⚙️ 調配用車（僅限管理者）</span>
 
 {% elif info.status == 'out' %}
   <span style="color:orange; font-weight:bold;">🟧 出库中</span>
@@ -22,10 +17,13 @@
   <span style="color:gray; font-weight:bold;">❌ 已自动取消</span>
 
 {% elif info.status == 'available' %}
-  <a href="{% url 'reserve_vehicle' vehicle.id %}?date={{ selected_date }}"
-     class="text-danger fw-bold text-decoration-none">
-    🟥 可预约（点击预约）
-  </a>
+  {# ✅ 普通车辆可预约（仅当不是调配车） #}
+  {% if vehicle.status == 'available' and not vehicle.is_reserved_only_by_admin %}
+    <a href="{% url 'vehicles:make_reservation' vehicle.id %}?date={{ selected_date }}"
+       class="text-danger fw-bold text-decoration-none">
+      🟥 可预约（点击预约）
+    </a>
+  {% endif %}
 
 {% else %}
   <span style="color:gray;">—</span>

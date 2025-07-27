@@ -4,13 +4,34 @@
 {% block content %}
 <h2>🚘 车辆详情：{{ vehicle.license_plate }}</h2>
 
+{% if is_retired %}
+  <span class="badge bg-danger ms-2">🚫 已报废</span>
+{% elif is_under_repair %}
+  <span class="badge bg-warning text-dark ms-2">🛠 维修中</span>
+{% elif is_admin_only %}
+  <span class="badge bg-info text-dark ms-2">⚙️ 調配用車</span>
+{% else %}
+  <span class="badge bg-success ms-2">✅ 可使用</span>
+{% endif %}
+
 {% include 'partials/_messages.html' %}
 
 <!-- ✅ 车辆照片缩略图 -->
 {% include 'vehicles/photo_gallery.html' %}
 
 <p>车型：{{ vehicle.model }}</p>
-<p>状态：{{ vehicle.get_status_display }}</p>
+<p>
+  状态：
+  {% if is_retired %}
+    已报废
+  {% elif is_under_repair %}
+    维修中
+  {% elif is_admin_only %}
+    調配用車
+  {% else %}
+    使用可
+  {% endif %}
+</p>
 <p>车检日期：{{ vehicle.inspection_date }}</p>
 <p>备注：{{ vehicle.notes }}</p>
 
@@ -27,7 +48,7 @@
   {% endfor %}
 </ul>
 
-<a href="{% url 'vehicle_status' %}">← 返回状态页</a>
+<a href="{% url 'vehicles:vehicle_status' %}">← 返回状态页</a>
 
 <!-- ✅ 放大图模态框 -->
 <div id="imageModal" class="modal" onclick="hideModal()">

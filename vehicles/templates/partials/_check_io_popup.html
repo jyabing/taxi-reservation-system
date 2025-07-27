@@ -9,7 +9,7 @@
                       z-index:1050;
                       box-shadow: 0 0 12px rgba(0,0,0,0.15);">
 
-  <form method="post" action="{% url 'confirm_check_io' %}">
+  <form method="post" action="{% url 'vehicles:confirm_check_io' %}">
     {% csrf_token %}
     <input type="hidden" name="reservation_id" id="popup_reservation_id">
     <input type="hidden" name="action_type"    id="popup_action_type">
