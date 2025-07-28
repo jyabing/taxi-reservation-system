@@ -26,6 +26,7 @@ from django.core.mail import send_mail
 from carinfo.services.car_access import get_all_active_cars, is_car_reservable, get_car_by_id
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
+from carinfo.models import Car
 
 from .models import Reservation, Tip, Car
 from .forms import MonthForm, AdminStatsForm, ReservationForm
@@ -1000,7 +1001,7 @@ def confirm_check_io(request):
         reservation.status = "out"
         reservation.save()
         messages.success(request, "✅ 出库记录已保存。")
-        return redirect("my_reservations")
+        return redirect("vehicles:my_reservations")
 
     elif action_type == "return":
         reservation.actual_return = actual_time

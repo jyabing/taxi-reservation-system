@@ -37,9 +37,6 @@
                         ⋯ 更多
                       </button>
                       <ul class="dropdown-menu dropdown-menu-end">
-                        {% if click_vehicle_status < common_threshold %}
-                          <li><a class="dropdown-item" href="{% url 'vehicles:vehicle_status' %}">🚗 車両状態</a></li>
-                        {% endif %}
                         {% if click_weekly < common_threshold %}
                           <li><a class="dropdown-item" href="{% url 'vehicles:weekly_overview' %}">📅 一周预约概览</a></li>
                         {% endif %}
