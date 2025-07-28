@@ -22,7 +22,7 @@ from .services.calculations import calculate_deposit_difference  # ✅ 导入新
 from staffbook.services import get_driver_info
 from staffbook.utils import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
-from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method, calculate_received_summary
+from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method, calculate_received_summary, calculate_totals_from_instances, calculate_totals_from_formset, calculate_totals_from_queryset
 
 
 from vehicles.models import Reservation
@@ -30,14 +30,11 @@ from urllib.parse import quote
 from carinfo.models import Car  # 🚗 请根据你项目中车辆模型名称修改
 from collections import defaultdict
 
-from dailyreport.services.summary import calculate_totals_from_formset, calculate_totals_from_queryset
-
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange, month_name
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from dailyreport.services.grouping import group_report_items, calculate_totals_from_grouped_items
 
 #import builtins
 #builtins.print = lambda *args, **kwargs: None   #删除或注释掉
@@ -493,22 +490,23 @@ def driver_dailyreport_month(request, driver_id):
         date__month=month.month
     ).order_by('date')
 
-    # ✅ 定义统计的支付方式（不包含 meter）
-    valid_keys = ['cash', 'uber', 'didi', 'credit', 'qr', 'kyokushin', 'omron', 'kyotoshi', 'etc']
-
     for report in reports:
-        pairs = [(item.meter_fee, item.payment_method) for item in report.items.all()]
-        totals = calculate_totals_from_items(pairs)
+        items = report.items.all()
 
-        report.total_all = sum(
-            [totals.get(f"{k}_raw", Decimal("0")) for k in valid_keys]
-        )
-        report.total_meter = totals.get('meter_only_total', Decimal("0"))  # ✅ 修正点
+        # 🔍 每条记录详细打印
+        print(f"🧩 items count: {items.count()}")
+        for item in items:
+            print(f"🧾 item.id={item.id} meter={getattr(item, 'meter_fee', '-')} charter={getattr(item, 'charter_fee', '-')} etc_cash={getattr(item, 'etc_collected_cash', '-')}")
+            print(f"     支払方法={getattr(item, 'payment_method', '-')} / 貸切方法={getattr(item, 'charter_payment_method', '-')} / ETC方法={getattr(item, 'etc_payment_method', '-')}")
+            print(f"     備考={item.note}")
 
-        # 🧾 调试打印
-        print(f"[{report.date}] meter={report.total_meter}, total_all={report.total_all}")
-        print(f"[{report.date}] totals.keys(): {list(totals.keys())}")
-        print(f"[{report.date}] credit_raw: {totals.get('credit_raw')}")
+        totals = calculate_totals_from_instances(items)
+        report.total_all = totals.get('total', Decimal("0"))
+        report.total_meter = totals.get('meter_total', Decimal("0"))
+
+        # 🧾 汇总打印
+        print(f"✔️ 合計: {report.total_all}（メータのみ: {report.total_meter}）")
+        print(f"✅ 集計キー: {list(totals.keys())}")
 
 
     return render(request, 'dailyreport/driver_dailyreport_month.html', {
@@ -864,9 +862,14 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
     cash = totals.get("cash_raw", 0)
     etc = report.etc_collected or 0
-    deposit_amt = form.cleaned_data.get("deposit_amount") if form.is_bound else (report.deposit_amount or 0)
+
+    # 💡 安全获取 deposit_amt，防止 None 崩溃
+    raw_deposit_amt = form.cleaned_data.get("deposit_amount") if form.is_bound else report.deposit_amount
+    deposit_amt = int(raw_deposit_amt) if raw_deposit_amt not in [None, ''] else 0  # 强制转为 0
+    
     total_collected = cash + etc
     total_sales = totals.get("meter_raw", 0)
+
     # ✅ 添加这一行（确保模板中能显示メータのみ）
     meter_only_total = totals.get("meter_only_total", 0)
     deposit_diff = total_collected - deposit_amt

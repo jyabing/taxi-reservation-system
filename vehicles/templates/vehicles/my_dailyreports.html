@@ -42,7 +42,7 @@
       <tr>
         <td>{{ rpt.date|date:"Y年n月j日" }}</td>
         <td>{{ rpt.meter_raw|floatformat:0 }}（{{ rpt.meter_split|floatformat:0 }}）</td>
-        <td><a href="{% url 'my_daily_report_detail' rpt.id %}">查看明细</a></td>
+        <td><a href="{% url 'vehicles:my_daily_report_detail' rpt.id %}">查看明细</a></td>
         <td>{{ rpt.note|default:"无" }}</td>
       </tr>
     {% empty %}

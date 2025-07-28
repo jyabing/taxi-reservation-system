@@ -40,8 +40,6 @@ class DriverDailyReportForm(forms.ModelForm):
             'clock_in', 'clock_out', 'gas_volume', 'mileage',
             'deposit_amount', 'deposit_difference',
             'etc_collected', 'etc_payment_method', 'etc_uncollected',
-
-            # ✅ 新增字段
             'etc_shortage',
         ]
         widgets = {
@@ -65,12 +63,27 @@ class DriverDailyReportForm(forms.ModelForm):
         instance = kwargs.get('instance', None)
         super().__init__(*args, **kwargs)
 
-        # 样式初始化
+        # ✅ 样式初始化（通用）
         apply_form_control_style(self.fields)
         self.fields['has_issue'].widget.attrs.update({'class': 'form-check-input'})
         self.fields['vehicle'].disabled = True
 
-        # ✅ 自动注入 clock_in / clock_out / vehicle，仅限 GET 且 instance 存在时
+        # ✅ 设置数值字段为非必填 + 默认值，防止 None 导致报错
+        numeric_defaults = {
+            'deposit_amount': 0,
+            'etc_collected': 0,
+            'etc_uncollected': 0,
+            'etc_shortage': 0,
+            'gas_volume': 0.0,
+            'mileage': 0.0,
+        }
+
+        for field_name, default_value in numeric_defaults.items():
+            if field_name in self.fields:
+                self.fields[field_name].required = False
+                self.fields[field_name].initial = default_value
+
+        # ✅ 自动注入 clock_in / clock_out / vehicle（仅在 GET 且有 instance 时生效）
         if instance and not self.data:
             driver_user = instance.driver.user
             if driver_user:
