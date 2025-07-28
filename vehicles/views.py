@@ -946,12 +946,17 @@ def edit_reservation_view(request, reservation_id):
 
 @login_required
 def delete_reservation_view(request, reservation_id):
-    reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
+    reservation = Reservation.objects.filter(id=reservation_id, driver=request.user).first()
+    if not reservation:
+        messages.error(request, "この予約は存在しないか、既に削除されました。")
+        return redirect('vehicles:my_reservations')
+
     if reservation.status not in ['pending', 'reserved']:
         return HttpResponseForbidden("已确认预约不能删除。")
 
     if request.method == 'POST':
         reservation.delete()
+        messages.success(request, "予約を削除しました。")
         return redirect('vehicles:my_reservations')
 
     return render(request, 'vehicles/reservation_confirm_delete.html', {
