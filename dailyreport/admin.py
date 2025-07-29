@@ -37,7 +37,7 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
 
     readonly_fields = ['etc_shortage']
     list_filter = ['status', 'has_issue', 'driver']
-    search_fields = ('driver__name', 'vehicle__plate_number', 'note')
+    search_fields = ('driver__name', 'vehicle__license_plate', 'note')
     inlines = [DriverDailyReportItemInline]
     list_per_page = 20
     ordering = ['-date']
