@@ -4,7 +4,7 @@ from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet  # ✅ ← 需要这行
 from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage
 from vehicles.models import Reservation
-from dailyreport.utils import apply_form_control_style
+from dailyreport.utils.debug import apply_form_control_style
 
 
 # ✅ 1. 自定义 FormSet（放在 ReportItemFormSet 之前！）

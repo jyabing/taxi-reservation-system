@@ -4,6 +4,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import Reservation
 from accounts.models import DriverUser
+from carinfo.models import Car
 
 class ReservationForm(forms.ModelForm):
     class Meta:
@@ -90,3 +91,15 @@ class AdminStatsForm(forms.Form):
             (u.id, u.username) for u in DriverUser.objects.filter(is_staff=False)
         ]
         self.fields['driver'].choices = choices
+
+
+class VehicleNoteForm(forms.ModelForm):
+    class Meta:
+        model = Car
+        fields = ['notes']
+        widgets = {
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
+        }
+        labels = {
+            'notes': '备注信息（如：ETC有无、油卡状态、刷卡机型号等）',
+        }

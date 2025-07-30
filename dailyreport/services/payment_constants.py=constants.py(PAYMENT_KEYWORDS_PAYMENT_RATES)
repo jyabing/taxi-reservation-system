@@ -1,0 +1,37 @@
+# dailyreport/services/payment_constants.py
+from decimal import Decimal
+
+# 支付方式关键词映射（用于 resolve_payment_method）
+PAYMENT_KEYWORDS = {
+    'cash': ['現金', 'cash', 'ながし'],
+    'uber': ['uber'],
+    'didi': ['didi'],
+    'credit': ['クレジット', 'credit'],
+    'qr': ['バーコード', '二维码', '扫码'],
+    'kyokushin': ['京交信'],
+    'omron': ['オムロン'],
+    'kyotoshi': ['京都市'],
+    'ticket': ['チケット', '楽券'],
+    'etc': ['etc'],
+    # ✅ 使用半角括号，确保识别成功
+    'charter_cash': ['貸切 現金', '貸切(現金)'],
+    'charter_card': ['貸切 クレジ', '貸切(クレジ)'],
+    'charter_bank': ['貸切 振込', '貸切(振込)'],
+}
+
+# 支付方式对应分成比例（用于分成统计）
+PAYMENT_RATES = {
+    'cash': Decimal('0'),
+    'uber': Decimal('0.1'),
+    'didi': Decimal('0.1'),
+    'credit': Decimal('0.1'),
+    'qr': Decimal('0.1'),
+    'kyokushin': Decimal('0.1'),
+    'omron': Decimal('0.1'),
+    'kyotoshi': Decimal('0.1'),
+    'ticket': Decimal('0.1'),
+    'etc': Decimal('0'),
+    'charter_cash': Decimal('0'),
+    'charter_card': Decimal('0'),
+    'charter_bank': Decimal('0'),
+}

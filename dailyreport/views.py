@@ -1,4 +1,4 @@
-import csv
+import csv, os, sys
 from datetime import datetime, date, timedelta
 from tempfile import NamedTemporaryFile
 
@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.utils.http import urlencode
 from dateutil.relativedelta import relativedelta
 
-from .models import DriverDailyReport, DriverDailyReportItem
+from dailyreport.models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
 from .services.calculations import calculate_deposit_difference  # ✅ 导入新函数
 
@@ -35,9 +35,15 @@ from calendar import monthrange, month_name
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from dailyreport.utils.debug import debug_print
 
+DEBUG_PRINT_ENABLED = True
 #import builtins
 #builtins.print = lambda *args, **kwargs: None   #删除或注释掉
+
+debug_print("✅ DEBUG_PRINT 导入成功，模块已执行")
+# 直接测试原生 print 看能否打印
+print("🔥🔥🔥 原生 print 测试：views.py 模块加载成功")
 
 # ✅ 新增日报
 @user_passes_test(is_dailyreport_admin)
@@ -477,6 +483,7 @@ def export_monthly_summary_excel(request, year, month):
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_month(request, driver_id):
     from datetime import datetime
+
     driver = get_object_or_404(Driver, id=driver_id)
     month_str = request.GET.get("month")
     if not month_str:
@@ -484,35 +491,37 @@ def driver_dailyreport_month(request, driver_id):
     else:
         month = datetime.strptime(month_str, "%Y-%m").date()
 
-    reports = DriverDailyReport.objects.filter(
+    reports_qs = DriverDailyReport.objects.filter(
         driver=driver,
         date__year=month.year,
         date__month=month.month
     ).order_by('date')
 
-    for report in reports:
+    print("✅ 已进入视图，报告数:", reports_qs.count())
+
+    report_list = []
+
+    for report in reports_qs:
         items = report.items.all()
 
-        # 🔍 每条记录详细打印
-        print(f"🧩 items count: {items.count()}")
+        print(f"[DEBUG] items count: {items.count()}")
         for item in items:
-            print(f"🧾 item.id={item.id} meter={getattr(item, 'meter_fee', '-')} charter={getattr(item, 'charter_fee', '-')} etc_cash={getattr(item, 'etc_collected_cash', '-')}")
-            print(f"     支払方法={getattr(item, 'payment_method', '-')} / 貸切方法={getattr(item, 'charter_payment_method', '-')} / ETC方法={getattr(item, 'etc_payment_method', '-')}")
-            print(f"     備考={item.note}")
+            print(f"[ITEM] id={item.id}, payment_method=《{item.payment_method}》, note=《{item.note}》")
 
         totals = calculate_totals_from_instances(items)
-        report.total_all = totals.get('total', Decimal("0"))
+
         report.total_meter = totals.get('meter_total', Decimal("0"))
+        report.charter_total = totals.get('charter_total', Decimal("0"))
+        report.total_all = report.total_meter + report.charter_total
 
-        # 🧾 汇总打印
-        print(f"✔️ 合計: {report.total_all}（メータのみ: {report.total_meter}）")
-        print(f"✅ 集計キー: {list(totals.keys())}")
+        print(f"[TOTAL] total={report.total_all}, meter={report.total_meter}, charter={report.charter_total}")
 
+        report_list.append(report)
 
     return render(request, 'dailyreport/driver_dailyreport_month.html', {
         'driver': driver,
         'month': month,
-        'reports': reports,
+        'reports': report_list,  # ✅ 使用构建好的新列表
     })
 
 @user_passes_test(is_dailyreport_admin)
@@ -1566,3 +1575,8 @@ def export_vehicle_csv(request, year, month):
     ])
 
     return response
+
+
+def test_view(request):
+    print("✅ 打印测试成功！")
+    return HttpResponse("ok")

@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h3 class="mb-3">📝 编辑车辆备注：{{ car.license_plate }}</h3>
+
+<form method="post" class="card p-4 shadow-sm" style="max-width: 600px;">
+  {% csrf_token %}
+  {{ form.as_p }}
+
+  <div class="mt-3 d-flex justify-content-between">
+    <a href="{% url 'vehicles:vehicle_status' %}?date={{ selected_date }}" class="btn btn-secondary">取消返回</a>
+    <button type="submit" class="btn btn-primary">💾 保存备注</button>
+  </div>
+</form>
+
+{% endblock %}

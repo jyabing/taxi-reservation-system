@@ -1,0 +1,117 @@
+<table class="table table-bordered table-sm table-hover shadow-sm align-middle text-center small">
+  <thead class="table-light">
+    <tr>
+      <th style="width: 80px;">🔢<br>车牌号</th>
+      <th style="width: 90px;">🚘<br>车型</th>
+      <th style="width: 160px;">📌<br>状态</th>
+      <th style="width: 160px;">👤<br>预约者</th>
+      <th style="width: 280px;">📝<br>备注</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for vehicle, info in status_map.items %}
+    <tr>
+      <td>
+        <a href="{% url 'vehicles:vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a>
+        {% if info.user_reservation and info.user_reservation.driver == request.user %}
+          <br>
+          <a class="btn btn-sm btn-outline-info mt-1" href="{% url 'vehicles:latest_reservation' vehicle.id %}">最近预约</a>
+        {% endif %}
+      </td>
+
+      <td>{{ vehicle.model }}</td>
+
+      <td>
+        {% if info.is_repair %}
+          <span class="badge bg-warning text-dark">🛠 维修中</span>
+        {% elif info.is_admin_only %}
+          <span class="badge bg-info text-dark">⚙️ 調配用車</span>
+        {% elif info.reservable %}
+          <span class="badge bg-success">✅ 使用可</span>
+        {% else %}
+          <span class="badge bg-secondary">⛔ 不可预约</span>
+        {% endif %}
+
+        {% if info.is_out %}
+          <div class="text-warning mt-1">🔶 出库中 —</div>
+        {% endif %}
+      </td>
+
+      <td class="text-start">
+        {% if info.reserver_name %}
+          {{ info.reserver_name|safe }}
+        {% else %}
+          <span class="text-muted">——</span>
+        {% endif %}
+      </td>
+
+      <td class="text-start" style="white-space: pre-wrap;">
+        <div class="vehicle-note-view" id="note-view-{{ vehicle.id }}">
+          {% if vehicle.notes %}
+            {% for line in vehicle.notes.splitlines %}
+              {% if "ETC" in line %}
+                <div>✅ {{ line }}</div>
+              {% elif "油卡" in line %}
+                <div>⛽ {{ line }}</div>
+              {% elif "刷卡机" in line %}
+                <div>📟 {{ line }}</div>
+              {% elif "Didi" in line %}
+                <div>🚖 {{ line }}</div>
+              {% elif "Uber" in line %}
+                <div>🚕 {{ line }}</div>
+              {% elif "八条口" in line %}
+                <div>📍 {{ line }}</div>
+              {% else %}
+                <div>{{ line }}</div>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            <span class="text-muted">——</span>
+          {% endif %}
+          <button class="btn btn-sm btn-outline-secondary mt-1" onclick="startEdit({{ vehicle.id }})">✏️ 编辑备注</button>
+        </div>
+
+        <div class="vehicle-note-edit d-none" id="note-edit-{{ vehicle.id }}">
+          <textarea id="note-textarea-{{ vehicle.id }}" class="form-control form-control-sm" rows="4">{{ vehicle.notes }}</textarea>
+          <div class="mt-1">
+            <button class="btn btn-sm btn-success" onclick="saveNote({{ vehicle.id }})">💾 保存</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="cancelEdit({{ vehicle.id }})">取消</button>
+          </div>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+  function startEdit(vehicleId) {
+    document.getElementById('note-view-' + vehicleId).classList.add('d-none');
+    document.getElementById('note-edit-' + vehicleId).classList.remove('d-none');
+  }
+
+  function cancelEdit(vehicleId) {
+    document.getElementById('note-edit-' + vehicleId).classList.add('d-none');
+    document.getElementById('note-view-' + vehicleId).classList.remove('d-none');
+  }
+
+  function saveNote(vehicleId) {
+    const textarea = document.getElementById('note-textarea-' + vehicleId);
+    const newNote = textarea.value;
+    fetch(`/vehicles/${vehicleId}/update_note/`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': '{{ csrf_token }}',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ note: newNote })
+    })
+    .then(response => {
+      if (response.ok) {
+        location.reload();  // 简洁起见直接刷新
+      } else {
+        alert('保存失败');
+      }
+    });
+  }
+</script>

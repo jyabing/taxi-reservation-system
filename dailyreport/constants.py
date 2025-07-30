@@ -32,3 +32,10 @@ PAYMENT_RATES = {
     "charter_card":  Decimal('0.05'),
     "charter_bank": Decimal('0'),  # ✅ 按照振込设定为 0
 }
+
+CHARTER_PAYMENT_CHOICES = [
+    ("charter_cash", "現金"),
+    ("charter_card", "クレジットカード"),
+    ("charter_bank", "振込"),
+    ("charter_barcode", "バーコード"),
+]

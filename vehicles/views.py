@@ -37,6 +37,7 @@ from vehicles.utils import notify_driver_reservation_approved, send_notification
 # 导入 Driver/DriverDailyReport（已确保在 staffbook 里定义！）
 from dailyreport.models import Driver, DriverDailyReport, DriverDailyReportItem
 from vehicles.models import Reservation, Tip
+from vehicles.forms import VehicleNoteForm
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
@@ -59,6 +60,25 @@ require_vehicles_admin = user_passes_test(is_vehicles_admin)
 
 # 后续你只需要在已有函数前加上这个装饰器组合，并统一模板路径写为 'vehicles/xxx.html' 即可。
 
+def get_status_text(vehicle, status_info):
+    if status_info['is_repair']:
+        return '🛠 维修中'
+
+    status = status_info['status']
+
+    if status == 'available':
+        return '🟥 可预约（点击预约）'
+    elif status == 'reserved':
+        return '🟦 有预约（未出库）'
+    elif status == 'out':
+        return '🟩 使用中'
+    elif status == 'overdue':
+        return '⏰ 超时未归还'
+    elif status == 'expired':
+        return '📅 已过期'
+
+    return '<span class="text-muted">—</span>'
+
 @login_required
 def vehicle_list(request):
     vehicles = get_all_active_cars()
@@ -79,28 +99,14 @@ def vehicle_detail(request, pk):
 
 @login_required
 def vehicle_status_view(request):
-    # ✅ 调试打印所有预约记录
-    # from vehicles.models import Reservation
-    # print("🚨 所有预约记录:")
-    # for r in Reservation.objects.all():
-    #     print(f"🚗 {r.vehicle} | {r.start_datetime} ~ {r.end_datetime} | 状态: {r.status}")
-
-    # ✅ 清空旧 messages
-    list(messages.get_messages(request))  # 消耗掉所有旧消息
-
-    date_str = request.GET.get('date')
-    selected_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else timezone.localdate()
-
-    # ✅ 跨日支持
-    start_of_day = make_aware(datetime.combine(selected_date, time.min))
-    end_of_day = make_aware(datetime.combine(selected_date + timedelta(days=1), time.min))
+    selected_date_str = request.GET.get('date')
+    selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date() if selected_date_str else localdate()
 
     reservations = Reservation.objects.filter(
-        Q(date__lte=selected_date) & Q(end_date__gte=selected_date),
-        status__in=['reserved', 'out']
-    )
+        date__lte=selected_date,
+        end_date__gte=selected_date
+    ).select_related('driver', 'vehicle')
 
-    # ✅ 排除报废车辆（不显示）
     vehicles = get_all_active_cars()
     status_map = {}
     now = timezone.localtime()
@@ -108,22 +114,19 @@ def vehicle_status_view(request):
 
     for vehicle in vehicles:
         res_list = reservations.filter(vehicle=vehicle).order_by('start_datetime')
-        #print(f"🔍 DEBUG: {vehicle.license_plate} 预约数: {res_list.count()}")
 
-        # ✅ 去重处理：相同司机、时间段、日期只显示一次
-        seen_keys = set()
+        # ✅ 去重处理：确保每条 reservation 只出现一次，且当前日期在预约范围内
+        seen_reservation_ids = set()
         res_list_deduped = []
         for r in res_list:
-            key = (
-                r.driver.id if r.driver else None,
-                r.start_time,
-                r.end_time,
-                r.date,
-                r.end_date,
-            )
-            if key in seen_keys:
+            if not r.driver:
                 continue
-            seen_keys.add(key)
+            if r.id in seen_reservation_ids:
+                continue
+            if selected_date < r.date or selected_date > r.end_date:
+                continue  # 当前选择日期不在预约日期区间内
+
+            seen_reservation_ids.add(r.id)
             res_list_deduped.append(r)
 
         # 默认状态
@@ -136,11 +139,11 @@ def vehicle_status_view(request):
         if res_list.filter(status='out', actual_departure__isnull=False, actual_return__isnull=True).exists():
             status = 'out'
 
-        # ✅ 已过结束时间但尚未入库
+        # 已过结束时间但尚未入库
         elif res_list.filter(status='out', end_datetime__lt=now_dt, actual_return__isnull=True).exists():
             status = 'overdue'
 
-        # ✅ 当前预约未出库
+        # 当前预约未出库
         else:
             future_reserved = res_list.filter(status='reserved', actual_departure__isnull=True)
             for r in future_reserved:
@@ -163,38 +166,56 @@ def vehicle_status_view(request):
             end_date__gte=selected_date
         ).first()
 
-        # ✅ 所有人预约者显示（使用去重后的 res_list_deduped）
-        reserver_labels = [
-            (
+        # ✅ 所有人预约者显示（仅展示 selected_date 起始日的预约，防止跨日重复）
+        reserver_labels = []
+        seen_res_ids = set()
+
+        for r in res_list_deduped:
+            if r.status not in ['reserved', 'out']:
+                continue
+            if not r.driver:
+                continue
+            if r.id in seen_res_ids:
+                continue
+            # ✅ 只在预约起始日（r.date）显示，防止跨日重复出现在后续日期中
+            if r.date != selected_date:
+                continue
+            seen_res_ids.add(r.id)
+            label = (
                 f"{datetime.combine(r.date, r.start_time).strftime('%H:%M')}~"
                 f"{datetime.combine(r.end_date, r.end_time).strftime('%H:%M')} "
                 f"{getattr(r.driver, 'display_name', (r.driver.first_name or '') + ' ' + (r.driver.last_name or '')).strip()}"
             )
-            for r in res_list_deduped
-            if r.status in ['reserved', 'out'] and r.driver
-        ]
+            reserver_labels.append(label)
 
-        # 如果有多个预约者，显示所有人
+
         reserver_name = '<br>'.join(reserver_labels) if reserver_labels else ''
 
-        status_map[vehicle] = {
+        is_repair = "维修" in (vehicle.notes or "")
+        reservable = is_car_reservable(vehicle) and not is_repair
+
+        status_info = {
             'status': status,
             'user_reservation': user_reservation,
             'reserver_name': reserver_name,
-            'reservable': is_car_reservable(vehicle),  # ✅ 新增字段
+            'reservable': reservable,
+            'has_reservation': bool(reserver_labels),
+            'click_reservation': False,
+            'is_repair': is_repair,
         }
 
-    # 所有车辆都不可预约时提示
+        # 状态说明
+        status_info['status_text'] = get_status_text(vehicle, status_info)
+        status_map[vehicle] = status_info
+
     if not any(info['status'] == 'available' for info in status_map.values()):
         messages.warning(request, "当前车辆状态不可预约，请选择其他车辆")
-
-        print("🚗 展示车辆列表：", [v.license_plate for v in vehicles])
 
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
         'today': localdate(),
-        'now': now,  # ✅ 加这一行
+        'now': now,
     })
 
 @login_required
@@ -423,7 +444,7 @@ def weekly_overview_view(request):
 
     vehicles = get_all_active_cars()
 
-    reminders = []
+    global_reminders = []
     for car in vehicles:
         fields = [
             ('inspection_date', '车辆检査'),
@@ -436,7 +457,7 @@ def weekly_overview_view(request):
             if due_date:
                 reminder_text = get_due_reminder(due_date, label)
                 if reminder_text:
-                    reminders.append((car, reminder_text))
+                    global_reminders.append((car, reminder_text))
 
     # ✅ 只抓取当前周内的相关预约
     reservations = Reservation.objects.filter(
@@ -482,7 +503,7 @@ def weekly_overview_view(request):
         vehicle.daily_reminders = {}
 
         for d in week_dates:
-            reminders = []
+            daily_reminders = []
             fields = [
                 ('inspection_date', 'inspection', '车辆检査'),
                 ('insurance_expiry', 'insurance', '保险'),
@@ -500,15 +521,15 @@ def weekly_overview_view(request):
                             msg = f"今天{label}到期，请协助事务完成{label}更新"
                         else:
                             msg = f"{label}到期延迟{delta}天，请协助事务完成{label}更新"
-                        reminders.append({
+                        daily_reminders.append({
                             'type': rtype,
                             'message': msg,
                             'is_today': (delta == 0)
                         })
-            if reminders:
-                vehicle.daily_reminders[d] = reminders
+            if daily_reminders:
+                vehicle.daily_reminders[d] = daily_reminders
 
-        # ✅ 原有每周预约构造逻辑
+        # ✅ 构造该车每一天的预约信息
         row = {'vehicle': vehicle, 'days': []}
         for d in week_dates:
             day_reservations = sorted(vehicle_date_map[vehicle][d], key=lambda r: r.start_time)
@@ -529,12 +550,12 @@ def weekly_overview_view(request):
                 'is_past': is_past,
             })
 
-        # ✅ 添加提醒结构到每个 row
-        reminders = []
+        # ✅ 添加提醒结构到 row（避免再次使用 reminders = []）
+        vehicle_reminders = []
         if vehicle.inspection_date:
             delta = (vehicle.inspection_date - today).days
             if -5 <= delta <= 5:
-                reminders.append({
+                vehicle_reminders.append({
                     'type': 'inspection',
                     'message': f"车检日 {vehicle.inspection_date} 距今 {delta} 天",
                     'is_today': delta == 0
@@ -543,13 +564,13 @@ def weekly_overview_view(request):
         if vehicle.insurance_end_date:
             delta = (vehicle.insurance_end_date - today).days
             if -5 <= delta <= 5:
-                reminders.append({
+                vehicle_reminders.append({
                     'type': 'insurance',
                     'message': f"保险到期日 {vehicle.insurance_end_date} 距今 {delta} 天",
                     'is_today': delta == 0
                 })
 
-        row['reminders'] = reminders
+        row['reminders'] = vehicle_reminders
         data.append(row)
 
     return render(request, 'vehicles/weekly_view.html', {
@@ -561,7 +582,7 @@ def weekly_overview_view(request):
         'cooldown_end': cooldown_end,
         'today': base_date,
         'selected_date': date_str if date_str else today.strftime("%Y-%m-%d"),
-        'reminders': reminders,  # ✅ 新增
+        'reminders': global_reminders,  # ✅ 新增
     })
     
 @login_required
@@ -1605,3 +1626,97 @@ def get_due_reminder(due_date, label="保险"):
             return f"{label}到期延迟{-delta}天，请协助事务完成{label}更新"
 
     return None
+
+
+@login_required
+def edit_vehicle_notes(request, car_id):
+    car = get_object_or_404(Car, id=car_id)
+
+    selected_date_str = request.GET.get('date')
+    selected_date = date.today()
+
+    if selected_date_str:
+        try:
+            selected_date = date.fromisoformat(selected_date_str)
+        except ValueError:
+            try:
+                import re
+                match = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日", selected_date_str)
+                if match:
+                    y, m, d = map(int, match.groups())
+                    selected_date = date(y, m, d)
+            except Exception:
+                pass
+
+    # ✅ 统一 selected_date_str 为标准格式
+    selected_date_str = selected_date.isoformat()
+
+    # ✅ 检查当前用户是否为预约者
+    user_reservation = Reservation.objects.filter(
+        vehicle=car,
+        driver=request.user,
+        date__lte=selected_date,
+        end_date__gte=selected_date,
+        status__in=["reserved", "out"]
+    ).first()
+
+    if not user_reservation:
+        return HttpResponseForbidden("你没有权限编辑该车辆备注。")
+
+    # ✅ 表单处理逻辑
+    if request.method == 'POST':
+        form = VehicleNoteForm(request.POST, instance=car)
+        if form.is_valid():
+            form.save()
+            return redirect(f"{reverse('vehicles:vehicle_status')}?date={selected_date_str}")
+    else:
+        form = VehicleNoteForm(instance=car)
+
+    return render(request, 'vehicles/edit_vehicle_notes.html', {
+        'form': form,
+        'car': car,
+        'selected_date': selected_date_str,
+    })
+
+@csrf_exempt
+@login_required
+def save_vehicle_note(request, car_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid method'}, status=405)
+
+    try:
+        car = get_object_or_404(Car, id=car_id)
+        data = json.loads(request.body)
+        note = data.get('note', '').strip()
+
+        # 权限判断：是否为当天预约者
+        today = timezone.localdate()
+        user_reservation = Reservation.objects.filter(
+            vehicle=car,
+            driver=request.user,
+            date__lte=today,
+            end_date__gte=today,
+            status__in=["reserved", "out"]
+        ).first()
+        if not user_reservation:
+            return JsonResponse({'error': '无权限'}, status=403)
+
+        car.notes = note
+        car.save()
+        return JsonResponse({'success': True, 'note': note})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def recent_reservations_view(request, car_id):
+    car = get_object_or_404(Car, id=car_id)
+
+    recent_reservations = (
+        Reservation.objects.filter(vehicle=car)
+        .order_by("-start_time")[:5]
+    )
+
+    return render(request, "vehicles/recent_reservations.html", {
+        "car": car,
+        "recent_reservations": recent_reservations,
+    })

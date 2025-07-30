@@ -15,7 +15,6 @@ urlpatterns = [
     path('dailyreport/', include('dailyreport.urls')),  # ✅ 日报系统：乘务日报、统计、明细、出勤、分析
     path('carinfo/', include('carinfo.urls')),         # ✅ 车辆管理系统：台账、维修、照片等
     path('', include('common.urls')), # ✅ 公共模块：错误处理、静态资源等
-    
 ]
 
 # ✅ 始终启用静态资源路由，不依赖 DEBUG 设置

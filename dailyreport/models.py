@@ -3,6 +3,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 
+from dailyreport.constants import CHARTER_PAYMENT_CHOICES
+
 from datetime import timedelta, datetime
 
 from carinfo.models import Car
@@ -213,12 +215,13 @@ class DriverDailyReportItem(models.Model):
     num_male = models.IntegerField("男性", blank=True, null=True)
     num_female = models.IntegerField("女性", blank=True, null=True)
     meter_fee = models.DecimalField("メータ料金", max_digits=7, decimal_places=2, blank=True, null=True)
+    
+    charter_fee = models.DecimalField("貸切金额", max_digits=7, decimal_places=2, blank=True, null=True)  # ✅ 新增字段
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
     note = models.CharField("备注", max_length=255, blank=True)
-    comment = models.TextField("录入员注释", blank=True)  # 新增字段
+    comment = models.TextField("录入员注释", blank=True)
     is_flagged = models.BooleanField(default=False, verbose_name="标记为重点")
     has_issue = models.BooleanField("是否异常", default=False)
-    # ✅ 新增字段
     is_charter = models.BooleanField("是否为貸切", default=False)
     combined_group = models.CharField("合算グループ", max_length=100, blank=True, null=True)
 

@@ -47,10 +47,17 @@
           <tr>
             <td>{{ report.date|date:"Y年n月j日" }}</td>
             <td>
-              <div style="color:red;">🧪 DEBUG: total_all={{ report.total_all }}, meter={{ report.total_meter }}</div>
-              合計: ￥{{ report.total_all|floatformat:"0"|intcomma }}
-              <br><small class="text-muted">（メータのみ: ￥{{ report.total_meter|floatformat:"0"|intcomma }}）</small>
-              <br><small class="text-muted">※ 売上合計には、メーター金額および貸切金額のすべてが含まれます。</small>
+                <p class="text-dark fw-bold">合計: ￥{{ report.total_all|default:0|intcomma }}</p>
+                <p class="text-muted">（メータのみ: ￥{{ report.total_meter|default:0|intcomma }}）</p>
+
+                {% comment %} Optional debug info {% endcomment %}
+                <p class="text-danger small">
+                    🐞 DEBUG: total_all={{ report.total_all }},
+                    meter={{ report.total_meter }},
+                    charter={{ report.charter_total }}
+                </p>
+                
+                <p class="text-muted small">※ 売上合計には、メーター金額および貸切金額のすべてが含まれます。</p>
             </td>
             <td>{{ report.note|default:"" }}</td>
             <td>
