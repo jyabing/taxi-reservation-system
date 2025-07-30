@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load dict_helpers %}
 {% block content %}
 <style>
   .table td, .table th {
@@ -114,11 +115,52 @@
         </div>
 
         <div id="note-edit-{{ vehicle.id }}" class="d-none">
-          <textarea id="note-textarea-{{ vehicle.id }}" class="form-control form-control-sm mb-1" rows="3">{{ vehicle.notes }}</textarea>
-          <div class="d-flex gap-1">
-            <button class="btn btn-sm btn-primary" onclick="saveNote({{ vehicle.id }})">💾 保存</button>
-            <button class="btn btn-sm btn-secondary" onclick="cancelEdit({{ vehicle.id }})">取消</button>
-          </div>
+          <form method="post" action="{% url 'vehicles:save_vehicle_note' vehicle.id %}">
+            {% csrf_token %}
+            
+
+            <!--carinfo/models.py 中找到 has_didi 和 has_uber 字段-->
+            {% with vehicle_form=vehicle_forms|get_item:vehicle.id note_form=note_forms|get_item:vehicle.id %}
+            <div class="row g-1 align-items-end">
+              <div class="col-md-4">
+                <label class="form-label form-label-sm">ETC</label>
+                {{ vehicle_form.has_etc }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label form-label-sm">油卡</label>
+                {{ vehicle_form.has_oil_card }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label form-label-sm">刷卡机</label>
+                {{ vehicle_form.has_terminal }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label form-label-sm">Didi</label>
+                {{ vehicle_form.has_didi }}
+              </div>
+              <div class="col-md-4">
+                <label class="form-label form-label-sm">Uber</label>
+                {{ vehicle_form.has_uber }}
+              </div>
+              <div class="col-md-4">
+                <div class="form-check mt-3">
+                  {{ vehicle_form.can_enter_hachioji }}
+                  <label class="form-check-label small">可进入八条口</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <label class="form-label form-label-sm">备注说明</label>
+              {{ note_form.notes }}
+            </div>
+            {% endwith %}
+
+            <div class="d-flex gap-1 mt-2">
+              <button type="submit" class="btn btn-sm btn-primary">💾 保存</button>
+              <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEdit({{ vehicle.id }})">取消</button>
+            </div>
+          </form>
         </div>
 
         {% if info.user_reservation and info.user_reservation.driver == request.user %}
@@ -157,26 +199,6 @@
   function cancelEdit(id) {
     document.getElementById('note-edit-' + id).classList.add('d-none');
     document.getElementById('note-display-' + id).classList.remove('d-none');
-  }
-
-  function saveNote(id) {
-    const note = document.getElementById('note-textarea-' + id).value;
-    fetch(`/vehicles/save_note/${id}/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token }}'
-      },
-      body: JSON.stringify({ note: note })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        location.reload();
-      } else {
-        alert("保存失败: " + (data.error || ''));
-      }
-    });
   }
 </script>
 {% endblock %}

@@ -54,6 +54,25 @@ class Car(models.Model):
         ('valid', '加入中'), ('expired', '已过期'), ('none', '未加入')
     ], default='valid', blank=True)
 
+    # ✅ 选项型状态字段（插入于设备区块之前）
+    YES_NO_CHOICES = [
+        ('yes', '有'),
+        ('no', '無'),
+    ]
+
+    YES_NO_SELF_CHOICES = [
+        ('yes', '有'),
+        ('no', '無'),
+        ('self', '自備'),
+    ]
+
+    has_etc = models.CharField("ETC状态", max_length=10, choices=YES_NO_SELF_CHOICES, default='no')
+    has_oil_card = models.CharField("油卡状态", max_length=10, choices=YES_NO_SELF_CHOICES, default='no')
+    has_terminal = models.CharField("刷卡机状态", max_length=10, choices=YES_NO_CHOICES, default='no')
+    has_didi = models.CharField("Didi状态", max_length=10, choices=YES_NO_SELF_CHOICES, default='no')
+    has_uber = models.CharField("Uber状态", max_length=10, choices=YES_NO_SELF_CHOICES, default='no')
+    can_enter_hachioji = models.BooleanField("可进入八条口", default=False)
+
     # --- 设备与责任人 ---
     etc_device = models.CharField("ETC设备编号", max_length=50, blank=True)
     fuel_card_number = models.CharField("油卡号", max_length=50, blank=True)

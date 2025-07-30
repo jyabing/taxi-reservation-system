@@ -29,7 +29,7 @@ from django.views.decorators.csrf import csrf_exempt
 from carinfo.models import Car
 
 from .models import Reservation, Tip, Car
-from .forms import MonthForm, AdminStatsForm, ReservationForm
+from .forms import MonthForm, AdminStatsForm, ReservationForm,  VehicleStatusForm, VehicleNoteForm
 from accounts.models import DriverUser
 from requests.exceptions import RequestException
 from vehicles.utils import notify_driver_reservation_approved, send_notification
@@ -59,6 +59,21 @@ require_vehicles_admin = user_passes_test(is_vehicles_admin)
 #     return render(request, 'vehicles/admin_stats.html')
 
 # 后续你只需要在已有函数前加上这个装饰器组合，并统一模板路径写为 'vehicles/xxx.html' 即可。
+
+@login_required
+def recent_reservations_view(request, car_id):
+    car = get_object_or_404(Car, id=car_id)
+
+    recent_reservations = (
+        Reservation.objects
+        .filter(vehicle=car)
+        .order_by("-start_datetime")[:5]
+    )
+
+    return render(request, "vehicles/recent_reservations.html", {
+        "car": car,
+        "recent_reservations": recent_reservations,
+    })
 
 def get_status_text(vehicle, status_info):
     if status_info['is_repair']:
@@ -211,11 +226,23 @@ def vehicle_status_view(request):
     if not any(info['status'] == 'available' for info in status_map.values()):
         messages.warning(request, "当前车辆状态不可预约，请选择其他车辆")
 
+    # ✅ 新增：为每辆车构建结构化表单字典
+    from .forms import VehicleStatusForm, VehicleNoteForm
+
+    vehicle_forms = {}
+    note_forms = {}
+
+    for vehicle in vehicles:
+        vehicle_forms[vehicle.id] = VehicleStatusForm(instance=vehicle, prefix=f"car_{vehicle.id}")
+        note_forms[vehicle.id] = VehicleNoteForm(instance=vehicle, prefix=f"note_{vehicle.id}")
+
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
         'status_map': status_map,
         'today': localdate(),
         'now': now,
+        'vehicle_forms': vehicle_forms,
+        'note_forms': note_forms,
     })
 
 @login_required
@@ -898,57 +925,23 @@ def edit_reservation_view(request, reservation_id):
     reservation = get_object_or_404(Reservation, id=reservation_id)
 
     # ✅ 权限判断：仅本人或管理员可访问
-    if reservation.driver != request.user and not request.user.is_superuser:
-        return HttpResponseForbidden("⛔️ 无权修改他人预约。")
-
-    # ✅ 状态限制：仅允许修改 pending 或 reserved
     if reservation.status not in ['pending', 'reserved']:
         return HttpResponseForbidden("⛔️ 当前状态不可修改。")
 
     if request.method == 'POST':
         form = ReservationForm(
             request.POST,
+            request=request,
+            car=reservation.vehicle,
             instance=reservation,
             initial={'date': reservation.date, 'driver': reservation.driver}
         )
 
         if form.is_valid():
-            cleaned = form.cleaned_data
-            start_time = cleaned['start_time']
-            end_time = cleaned['end_time']
-            date = cleaned['date']
-            end_date = cleaned['end_date']
-
-            # ✅ 构造起止时间点
-            start_dt = datetime.combine(date, start_time)
-            end_dt = datetime.combine(end_date, end_time)
-
-            # ✅ 结束时间必须晚于开始时间
-            if end_dt <= start_dt:
-                messages.error(request, "⚠️ 结束时间必须晚于开始时间")
-                return redirect(request.path)
-
-            # ✅ 时长限制（最多13小时）
-            duration = (end_dt - start_dt).total_seconds() / 3600
-            if duration > 13:
-                messages.error(request, "⚠️ 预约时间不得超过13小时。")
-                return redirect(request.path)
-
-            # ✅ 若为跨日（夜班），检查是否符合夜班要求
-            if end_date > date:
-                if start_time < time(12, 0):
-                    messages.error(request, "⚠️ 夜班预约的开始时间必须为中午12:00以后。")
-                    return redirect(request.path)
-                if end_time > time(12, 0):
-                    messages.error(request, "⚠️ 夜班预约的结束时间必须为次日中午12:00以前。")
-                    return redirect(request.path)
-
-            # ✅ 保存更新
             updated_res = form.save(commit=False)
-            if not updated_res.driver:
-                updated_res.driver = request.user
-            updated_res.date = date
-            updated_res.end_date = end_date
+            updated_res.driver = updated_res.driver or request.user
+            updated_res.date = form.cleaned_data['date']
+            updated_res.end_date = form.cleaned_data['end_date']
             updated_res.save()
 
             messages.success(request, "✅ 预约已修改")
@@ -957,6 +950,7 @@ def edit_reservation_view(request, reservation_id):
         form = ReservationForm(
             instance=reservation,
             request=request,
+            car=reservation.vehicle,
             initial={'date': reservation.date, 'driver': reservation.driver}
         )
 
@@ -1678,45 +1672,33 @@ def edit_vehicle_notes(request, car_id):
         'selected_date': selected_date_str,
     })
 
-@csrf_exempt
 @login_required
+@require_POST
 def save_vehicle_note(request, car_id):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Invalid method'}, status=405)
-
-    try:
-        car = get_object_or_404(Car, id=car_id)
-        data = json.loads(request.body)
-        note = data.get('note', '').strip()
-
-        # 权限判断：是否为当天预约者
-        today = timezone.localdate()
-        user_reservation = Reservation.objects.filter(
-            vehicle=car,
-            driver=request.user,
-            date__lte=today,
-            end_date__gte=today,
-            status__in=["reserved", "out"]
-        ).first()
-        if not user_reservation:
-            return JsonResponse({'error': '无权限'}, status=403)
-
-        car.notes = note
-        car.save()
-        return JsonResponse({'success': True, 'note': note})
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-
-def recent_reservations_view(request, car_id):
     car = get_object_or_404(Car, id=car_id)
 
-    recent_reservations = (
-        Reservation.objects.filter(vehicle=car)
-        .order_by("-start_time")[:5]
-    )
+    # 权限判断：是否为当天预约者
+    today = timezone.localdate()
+    user_reservation = Reservation.objects.filter(
+        vehicle=car,
+        driver=request.user,
+        date__lte=today,
+        end_date__gte=today,
+        status__in=["reserved", "out"]
+    ).first()
+    if not user_reservation:
+        messages.error(request, "❌ 无权限编辑该车辆")
+        return redirect('vehicles:vehicle_status')
 
-    return render(request, "vehicles/recent_reservations.html", {
-        "car": car,
-        "recent_reservations": recent_reservations,
-    })
+    # 表单绑定
+    form = VehicleStatusForm(request.POST, instance=car, prefix=f"car_{car_id}")
+    note_form = VehicleNoteForm(request.POST, instance=car, prefix=f"note_{car_id}")
+
+    if form.is_valid() and note_form.is_valid():
+        form.save()
+        note_form.save()
+        messages.success(request, f"✅ {car.license_plate} 的车辆状态已保存")
+    else:
+        messages.error(request, "❌ 保存失败，请检查输入内容")
+
+    return redirect('vehicles:vehicle_status')
