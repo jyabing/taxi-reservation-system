@@ -1,0 +1,22 @@
+{# 传入 car 或 vehicle 作为 context.car 或 context.vehicle #}
+{% with car.status|default:"usable"|lower as v_status %}
+  <span class="badge d-inline-flex align-items-center gap-1
+        {% if v_status == 'usable' %}bg-success
+        {% elif v_status == 'maintenance' %}bg-warning text-dark
+        {% elif v_status == 'out' %}bg-info text-dark
+        {% elif v_status == 'retired' %}bg-secondary
+        {% else %}bg-light text-dark
+        {% endif %}">
+    {% if v_status == 'usable' %}
+      ✅ 使用可
+    {% elif v_status == 'maintenance' %}
+      🛠️ 维修中
+    {% elif v_status == 'out' %}
+      🚗 出库中
+    {% elif v_status == 'retired' %}
+      ♻️ 已报废
+    {% else %}
+      ❓ 未知状态
+    {% endif %}
+  </span>
+{% endwith %}

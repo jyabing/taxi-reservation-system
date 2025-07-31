@@ -67,7 +67,7 @@ class ReservableStatusFilter(SimpleListFilter):
             return [obj for obj in queryset if is_car_reservable(obj)]
         elif self.value() == 'no':
             return [obj for obj in queryset if not is_car_reservable(obj)]
-        return querysets
+        return queryset
 
 # ✅ 主注册类
 @admin.register(Car)

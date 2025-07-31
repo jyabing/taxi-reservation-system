@@ -86,7 +86,7 @@ def get_status_text(vehicle, status_info):
     elif status == 'reserved':
         return '🟦 有预约（未出库）'
     elif status == 'out':
-        return '🟩 使用中'
+        return '🟩 出库中'
     elif status == 'overdue':
         return '⏰ 超时未归还'
     elif status == 'expired':
@@ -100,18 +100,19 @@ def vehicle_list(request):
     return render(request, 'vehicles/vehicle_list.html', {'vehicles': vehicles})
 
 @login_required
-def vehicle_detail(request, pk):
-    vehicle = get_object_or_404(Car.objects.prefetch_related('images'), pk=pk)
+def vehicle_detail(request, vehicle_id):
+    vehicle = get_object_or_404(Car.objects.prefetch_related('images'), pk=vehicle_id)
     reservations = Reservation.objects.filter(vehicle=vehicle).order_by('-date')[:5]
 
     return render(request, 'vehicles/vehicle_detail.html', {
         'vehicle': vehicle,
         'reservations': reservations,
-        'is_retired': is_retired(vehicle),              # ✅ 新增
-        'is_under_repair': is_under_repair(vehicle),    # ✅ 新增
-        'is_admin_only': is_admin_only(vehicle),        # ✅ 新增
+        'is_retired': is_retired(vehicle),
+        'is_under_repair': is_under_repair(vehicle),
+        'is_admin_only': is_admin_only(vehicle),
     })
 
+    
 @login_required
 def vehicle_status_view(request):
     selected_date_str = request.GET.get('date')
@@ -173,7 +174,7 @@ def vehicle_status_view(request):
                     status = 'reserved'
                     break
 
-        # 当前用户的预约（当天）
+        # 只有当天预约该车的用户才能编辑
         user_reservation = res_list.filter(
             driver=request.user,
             status__in=['reserved', 'out'],
@@ -229,12 +230,14 @@ def vehicle_status_view(request):
     # ✅ 新增：为每辆车构建结构化表单字典
     from .forms import VehicleStatusForm, VehicleNoteForm
 
+    # ✅ 用 status_map 中实际展示的 vehicle 构建表单，确保 ID 匹配
     vehicle_forms = {}
     note_forms = {}
 
-    for vehicle in vehicles:
+    for vehicle in status_map.keys():
+        vehicle.refresh_from_db()
         vehicle_forms[vehicle.id] = VehicleStatusForm(instance=vehicle, prefix=f"car_{vehicle.id}")
-        note_forms[vehicle.id] = VehicleNoteForm(instance=vehicle, prefix=f"note_{vehicle.id}")
+        note_forms[vehicle.id] = VehicleNoteForm(instance=vehicle)
 
     return render(request, 'vehicles/status_view.html', {
         'selected_date': selected_date,
@@ -1675,30 +1678,20 @@ def edit_vehicle_notes(request, car_id):
 @login_required
 @require_POST
 def save_vehicle_note(request, car_id):
-    car = get_object_or_404(Car, id=car_id)
+    car = get_object_or_404(Car, pk=car_id)
 
-    # 权限判断：是否为当天预约者
-    today = timezone.localdate()
-    user_reservation = Reservation.objects.filter(
-        vehicle=car,
-        driver=request.user,
-        date__lte=today,
-        end_date__gte=today,
-        status__in=["reserved", "out"]
-    ).first()
-    if not user_reservation:
-        messages.error(request, "❌ 无权限编辑该车辆")
-        return redirect('vehicles:vehicle_status')
+    vehicle_form = VehicleStatusForm(request.POST, instance=car, prefix=f"car_{car_id}")
+    note_form = VehicleNoteForm(request.POST, instance=car)
 
-    # 表单绑定
-    form = VehicleStatusForm(request.POST, instance=car, prefix=f"car_{car_id}")
-    note_form = VehicleNoteForm(request.POST, instance=car, prefix=f"note_{car_id}")
-
-    if form.is_valid() and note_form.is_valid():
-        form.save()
-        note_form.save()
+    if vehicle_form.is_valid() and note_form.is_valid():
+        vehicle_form.save()
+        car.notes = note_form.cleaned_data.get('notes', '')
+        car.save()  # ✅ 强制写入备注字段
         messages.success(request, f"✅ {car.license_plate} 的车辆状态已保存")
     else:
+        print("❌ 表单验证失败")
+        print("vehicle_form.errors:", vehicle_form.errors)
+        print("note_form.errors:", note_form.errors)
         messages.error(request, "❌ 保存失败，请检查输入内容")
 
     return redirect('vehicles:vehicle_status')

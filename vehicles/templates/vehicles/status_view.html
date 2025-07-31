@@ -53,35 +53,44 @@
 
       <td class="text-center align-middle">
         <div class="d-flex flex-column align-items-start gap-1">
+
+          {# ✅ 显示车辆状态（使用中、出库中、维修中等） #}
+          {% include "partials/_car_status_badge.html" with car=vehicle %}
+
+          {# ✅ 如果当前可预约，显示“可预约”按钮 #}
           {% if info.reservable and not info.has_reservation and not info.is_repair %}
-            <a href="{% url 'vehicles:make_reservation_car' vehicle.id %}" class="badge bg-danger text-white">
-              🔴 可预约（点击预约）
+            <a href="{% url 'vehicles:make_reservation_car' vehicle.id %}"
+              class="badge d-inline-flex align-items-center gap-1 bg-danger text-white px-2 py-1 rounded-pill">
+              🟥 可预约（点击预约）
             </a>
-          {% else %}
-            <span class="badge bg-light text-dark">{{ info.status_text|safe }}</span>
           {% endif %}
 
+          {# ✅ 如果当前有预约（不论是谁），显示预约状态 #}
           {% if info.has_reservation %}
-            <div class="text-primary small">
-              🟦 有预约（未出库） — 
-            </div>
+            <span class="badge d-inline-flex align-items-center gap-1 bg-primary text-white px-2 py-1 rounded-pill">
+              📅 有预约（未出库）
+            </span>
           {% endif %}
 
+          {# ✅ 如果是当前用户预约的车，提示出库或入库按钮 #}
           {% if info.user_reservation %}
             <div class="alert alert-warning py-1 px-2 mb-0 small">
               🚗 你已预约该车：
               {{ info.user_reservation.start_time|time:"H:i" }}〜{{ info.user_reservation.end_time|time:"H:i" }}
               （状态：{{ info.user_reservation.get_status_display }}），本日将跳过显示。
             </div>
-          {% endif %}
 
-          {% if info.user_reservation %}
             {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
-              <button class="btn btn-sm btn-success mt-1" onclick="openTimePopup({{ info.user_reservation.id }}, 'departure')">🚗 出庫</button>
+              <button class="btn btn-sm btn-success mt-1" onclick="openTimePopup({{ info.user_reservation.id }}, 'departure')">
+                🚗 出庫
+              </button>
             {% elif info.user_reservation.status == 'reserved' and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
-              <button class="btn btn-sm btn-warning mt-1" onclick="openTimePopup({{ info.user_reservation.id }}, 'return')">🅿️ 入庫</button>
+              <button class="btn btn-sm btn-warning mt-1" onclick="openTimePopup({{ info.user_reservation.id }}, 'return')">
+                🅿️ 入庫
+              </button>
             {% endif %}
           {% endif %}
+
         </div>
       </td>
 
@@ -95,72 +104,108 @@
 
       <td data-vehicle-id="{{ vehicle.id }}">
         <div id="note-display-{{ vehicle.id }}">
+          {% if vehicle.has_etc == 'yes' %}
+            <div>✅ <span class="text-success">ETC有</span></div>
+          {% elif vehicle.has_etc == 'no' %}
+            <div>❌ <span class="text-secondary">ETC無</span></div>
+          {% elif vehicle.has_etc == 'self' %}
+            <div>🧳 ETC自備</div>
+          {% endif %}
+
+          {% if vehicle.has_oil_card == 'yes' %}
+            <div>✅ <span class="text-success">油卡有</span></div>
+          {% elif vehicle.has_oil_card == 'no' %}
+            <div>❌ <span class="text-secondary">油卡無</span></div>
+          {% elif vehicle.has_oil_card == 'self' %}
+            <div>🧳 油卡自備</div>
+          {% endif %}
+
+          {% if vehicle.has_terminal == 'yes' %}
+            <div>✅ <span class="text-success">刷卡機有</span></div>
+          {% elif vehicle.has_terminal == 'no' %}
+            <div>❌ <span class="text-secondary">刷卡機無</span></div>
+          {% endif %}
+
+          {% if vehicle.has_didi == 'yes' %}
+            <div>✅ <span class="text-success">Didi有</span></div>
+          {% elif vehicle.has_didi == 'no' %}
+            <div>❌ <span class="text-secondary">Didi無</span></div>
+          {% elif vehicle.has_didi == 'self' %}
+            <div>🧳 Didi自備</div>
+          {% endif %}
+
+          {% if vehicle.has_uber == 'yes' %}
+            <div>✅ <span class="text-success">Uber有</span></div>
+          {% elif vehicle.has_uber == 'no' %}
+            <div>❌ <span class="text-secondary">Uber無</span></div>
+          {% elif vehicle.has_uber == 'self' %}
+            <div>🧳 Uber自備</div>
+          {% endif %}
+
+          {% if vehicle.can_enter_hachioji %}
+            <div>✅ <span class="text-primary">可进入八条口</span></div>
+          {% endif %}
+
           {% if vehicle.notes %}
-            {% for line in vehicle.notes.splitlines %}
-              <div>
-                {% if "有" in line %}
-                  ✅ <span class="text-success">{{ line }}</span>
-                {% elif "無" in line %}
-                  ❌ <span class="text-secondary">{{ line }}</span>
-                {% elif "自备" in line %}
-                  🧳 {{ line }}
-                {% else %}
-                  {{ line }}
-                {% endif %}
-              </div>
-            {% endfor %}
-          {% else %}
-            <span class="text-muted">—</span>
+            <div>📝 {{ vehicle.notes|linebreaksbr }}</div>
           {% endif %}
         </div>
 
         <div id="note-edit-{{ vehicle.id }}" class="d-none">
-          <form method="post" action="{% url 'vehicles:save_vehicle_note' vehicle.id %}">
-            {% csrf_token %}
-            
+          {% with vehicle_form=vehicle_forms|get_item:vehicle.id note_form=note_forms|get_item:vehicle.id %}
+            {% if note_form and note_form.instance.id %}
+              <form method="post" action="{% url 'vehicles:save_vehicle_note' note_form.instance.id %}">
+                {% csrf_token %}
 
-            <!--carinfo/models.py 中找到 has_didi 和 has_uber 字段-->
-            {% with vehicle_form=vehicle_forms|get_item:vehicle.id note_form=note_forms|get_item:vehicle.id %}
-            <div class="row g-1 align-items-end">
-              <div class="col-md-4">
-                <label class="form-label form-label-sm">ETC</label>
-                {{ vehicle_form.has_etc }}
-              </div>
-              <div class="col-md-4">
-                <label class="form-label form-label-sm">油卡</label>
-                {{ vehicle_form.has_oil_card }}
-              </div>
-              <div class="col-md-4">
-                <label class="form-label form-label-sm">刷卡机</label>
-                {{ vehicle_form.has_terminal }}
-              </div>
-              <div class="col-md-4">
-                <label class="form-label form-label-sm">Didi</label>
-                {{ vehicle_form.has_didi }}
-              </div>
-              <div class="col-md-4">
-                <label class="form-label form-label-sm">Uber</label>
-                {{ vehicle_form.has_uber }}
-              </div>
-              <div class="col-md-4">
-                <div class="form-check mt-3">
-                  {{ vehicle_form.can_enter_hachioji }}
-                  <label class="form-check-label small">可进入八条口</label>
+                <div class="row g-1 align-items-end">
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm">ETC</label>
+                    {{ vehicle_form.has_etc }}
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm">油卡</label>
+                    {{ vehicle_form.has_oil_card }}
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm">刷卡机</label>
+                    {{ vehicle_form.has_terminal }}
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm">Didi</label>
+                    {{ vehicle_form.has_didi }}
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label form-label-sm">Uber</label>
+                    {{ vehicle_form.has_uber }}
+                  </div>
+                  <div class="col-md-4">
+                    <div class="form-check mt-3">
+                      {{ vehicle_form.can_enter_hachioji }}
+                      <label class="form-check-label small">可进入八条口</label>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div class="mt-2">
-              <label class="form-label form-label-sm">备注说明</label>
-              {{ note_form.notes }}
-            </div>
-            {% endwith %}
+                <div class="mt-2">
+                  <label class="form-label form-label-sm">备注说明</label>
+                  {{ note_form.notes }}
+                  
+                  {% if note_form.errors %}
+                    <div class="alert alert-danger mt-2 small">
+                      {{ note_form.errors.notes }}
+                    </div>
+                  {% endif %}
+                </div>
 
-            <div class="d-flex gap-1 mt-2">
-              <button type="submit" class="btn btn-sm btn-primary">💾 保存</button>
-              <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEdit({{ vehicle.id }})">取消</button>
-            </div>
-          </form>
+                <div class="d-flex gap-1 mt-2">
+                  <button type="submit" class="btn btn-sm btn-primary">💾 保存</button>
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEdit({{ vehicle.id }})">取消</button>
+                </div>
+              </form>
+            {% else %}
+              <div class="text-danger small">⚠️ 无法加载表单</div>
+            {% endif %}
+          {% endwith %}
         </div>
 
         {% if info.user_reservation and info.user_reservation.driver == request.user %}

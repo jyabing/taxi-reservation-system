@@ -127,21 +127,19 @@ class AdminStatsForm(forms.Form):
 
 
 class VehicleStatusForm(forms.ModelForm):
+    has_etc = forms.ChoiceField(choices=Car.YES_NO_SELF_CHOICES, label="ETC状态")
+    has_oil_card = forms.ChoiceField(choices=Car.YES_NO_SELF_CHOICES, label="油卡状态")
+    has_terminal = forms.ChoiceField(choices=Car.YES_NO_CHOICES, label="刷卡机状态")
+    has_didi = forms.ChoiceField(choices=Car.YES_NO_SELF_CHOICES, label="Didi状态")
+    has_uber = forms.ChoiceField(choices=Car.YES_NO_SELF_CHOICES, label="Uber状态")
+    can_enter_hachioji = forms.BooleanField(required=False, label="可进入八条口")
+
     class Meta:
         model = Car
         fields = [
             'has_etc', 'has_oil_card', 'has_terminal',
             'has_didi', 'has_uber', 'can_enter_hachioji'
         ]
-        widgets = {
-            'has_etc': forms.Select(attrs={'class': 'form-select'}),
-            'has_oil_card': forms.Select(attrs={'class': 'form-select'}),
-            'has_terminal': forms.Select(attrs={'class': 'form-select'}),
-            'has_didi': forms.Select(attrs={'class': 'form-select'}),
-            'has_uber': forms.Select(attrs={'class': 'form-select'}),
-            'can_enter_hachioji': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-        }
-    
 
 
 # ✅ 立即在下方添加：
@@ -149,32 +147,3 @@ class VehicleNoteForm(forms.ModelForm):
     class Meta:
         model = Car
         fields = ['notes']
-        widgets = {
-            'notes': forms.Textarea(attrs={
-                'rows': 2,
-                'class': 'form-control form-control-sm',
-                'placeholder': '请输入其他补充说明…'
-            }),
-        }
-
-        labels = {
-            'has_etc': 'ETC 状态',
-            'has_oil_card': '油卡 状态',
-            'has_terminal': '刷卡机 状态',
-            'has_didi': 'Didi 状态',
-            'has_uber': 'Uber 状态',
-            'can_enter_hachioji': '可进入八条口',
-        }
-
-# ✅ 备注说明独立表单
-class VehicleNoteForm(forms.ModelForm):
-    class Meta:
-        model = Car
-        fields = ['notes']
-        widgets = {
-            'notes': forms.Textarea(attrs={
-                'rows': 2,
-                'class': 'form-control form-control-sm',
-                'placeholder': '请输入其他补充说明…'
-            }),
-        }

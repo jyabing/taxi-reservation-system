@@ -5,7 +5,7 @@ from django.utils.timezone import localdate
 
 class Car(models.Model):
     STATUS_CHOICES = [
-        ('available', '可用'),
+        ('usable', '使用可'),
         ('repair', '维修中'),
         ('retired', '已报废'),
     ]
