@@ -175,12 +175,18 @@ def vehicle_status_view(request):
                     break
 
         # 只有当天预约该车的用户才能编辑
-        user_reservation = res_list.filter(
-            driver=request.user,
-            status__in=['reserved', 'out'],
-            date__lte=selected_date,
-            end_date__gte=selected_date
-        ).first()
+        user_reservation = None
+        for r in res_list:
+            if r.driver != request.user:
+                continue
+            if r.status not in ['reserved', 'out']:
+                continue
+            if r.actual_return:
+                continue
+            if r.end_datetime < now_dt:
+                continue
+            user_reservation = r
+            break
 
         # ✅ 所有人预约者显示（仅展示 selected_date 起始日的预约，防止跨日重复）
         reserver_labels = []
@@ -322,9 +328,12 @@ def reserve_vehicle_view(request, car_id):
                         driver=request.user,
                         date__lte=end_dt.date(),
                         end_date__gte=start_dt.date(),
+                        status__in=['pending', 'reserved', 'out'],  # ✅ 只检查有效状态
                     ).filter(
                         Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
                     ).exists()
+
+
                     if duplicate_by_same_user:
                         messages.warning(request, f"{start_date} 你已预约该车，已跳过。")
                         continue

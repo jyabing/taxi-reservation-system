@@ -73,7 +73,7 @@
           {% endif %}
 
           {# ✅ 如果是当前用户预约的车，提示出库或入库按钮 #}
-          {% if info.user_reservation %}
+          {% if info.user_reservation and info.user_reservation.date == selected_date %}
             <div class="alert alert-warning py-1 px-2 mb-0 small">
               🚗 你已预约该车：
               {{ info.user_reservation.start_time|time:"H:i" }}〜{{ info.user_reservation.end_time|time:"H:i" }}
@@ -81,11 +81,14 @@
             </div>
 
             {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
-              <button class="btn btn-sm btn-success mt-1" onclick="openTimePopup({{ info.user_reservation.id }}, 'departure')">
+              <button class="btn btn-sm btn-success mt-1" 
+                      onclick="showDepartureModal(this)" 
+                      data-id="{{ info.user_reservation.id }}" 
+                      data-last-return="{{ info.last_return|date:'Y-m-d H:i' }}">
                 🚗 出庫
               </button>
             {% elif info.user_reservation.status == 'reserved' and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
-              <button class="btn btn-sm btn-warning mt-1" onclick="openTimePopup({{ info.user_reservation.id }}, 'return')">
+              <button class="btn btn-sm btn-warning mt-1" onclick="showReturnModal({{ info.user_reservation.id }})">
                 🅿️ 入庫
               </button>
             {% endif %}
