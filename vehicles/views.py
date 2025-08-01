@@ -216,8 +216,23 @@ def vehicle_status_view(request):
         is_repair = "维修" in (vehicle.notes or "")
         reservable = is_car_reservable(vehicle) and not is_repair
 
+        # ✅ 获取当天主预约对象（用于判断是否已出库/入库）
+        current_reservation = None
+        for r in res_list_deduped:
+            if r.date != selected_date:
+                continue
+            if r.status == 'out':
+                current_reservation = r
+                break
+        if not current_reservation:
+            for r in res_list_deduped:
+                if r.date == selected_date and r.status == 'reserved':
+                    current_reservation = r
+                    break
+
         status_info = {
             'status': status,
+            'reservation': current_reservation,
             'user_reservation': user_reservation,
             'reserver_name': reserver_name,
             'reservable': reservable,

@@ -27,6 +27,13 @@
     font-size: 0.85rem;
     line-height: 1.4;
   }
+  .badge.bg-warning {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+  }
+  .badge.bg-secondary {
+    background-color: #6c757d !important;
+  }
 </style>
 
 <h4 class="mb-3">🚗 车辆预约状况（{{ selected_date }}）</h4>
@@ -67,10 +74,20 @@
 
           {# ✅ 如果当前有预约（不论是谁），显示预约状态 #}
           {% if info.has_reservation %}
+          {% if info.reservation and info.reservation.actual_departure and not info.reservation.actual_return %}
+            <span class="badge d-inline-flex align-items-center gap-1 bg-warning text-dark px-2 py-1 rounded-pill">
+              🚗 已出库（未入库）
+            </span>
+          {% elif info.reservation and info.reservation.actual_return %}
+            <span class="badge d-inline-flex align-items-center gap-1 bg-secondary text-white px-2 py-1 rounded-pill">
+              ✅ 已完成
+            </span>
+          {% else %}
             <span class="badge d-inline-flex align-items-center gap-1 bg-primary text-white px-2 py-1 rounded-pill">
               📅 有预约（未出库）
             </span>
           {% endif %}
+        {% endif %}
 
           {# ✅ 如果是当前用户预约的车，提示出库或入库按钮 #}
           {% if info.user_reservation and info.user_reservation.date == selected_date %}
