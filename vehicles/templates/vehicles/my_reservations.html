@@ -69,7 +69,9 @@
 {% include 'partials/_messages.html' %}
 
 <table class="japanese-style-table">
+  
   <thead>
+    <tr>导航中点击车辆状态，在备注中可以修改今日使用车辆的设备情况，请协助！</tr>
     <tr>
       <th>🚘 車輌</th>
       <th>📅 利用時間</th>
@@ -102,7 +104,7 @@
         </td>
         <td>{% include 'partials/_check_io_buttons.html' with r=r %}</td>
       </tr>
-
+      
       <!-- ✅ 插入新的提示行 -->
       <tr>
         <td colspan="4" style="font-size: 13px; color: #666; background-color: #f9f9f9;">
