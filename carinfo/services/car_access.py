@@ -21,4 +21,10 @@ def is_car_reservable(car):
     判断车辆是否允许预约：
     排除状态为报废 retired、维修中 under_repair 的车辆
     """
-    return car.status not in ['retired', 'under_repair']
+    return car.status == 'usable' and not car.is_reserved_only_by_admin
+
+def is_under_repair(car):
+    return car.status == 'repair'
+
+def is_retired(car):
+    return car.status == 'retired'

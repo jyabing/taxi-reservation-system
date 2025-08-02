@@ -19,13 +19,13 @@ def get_meter_only(dictionary, key):
 @register.filter
 def get_total(dictionary, key):
     try:
-        return dictionary.get(f"{key}_raw", 0)
+        return dictionary.get(key, {}).get("total", 0)
     except Exception:
         return 0
 
 @register.filter
 def get_bonus(dictionary, key):
     try:
-        return dictionary.get(f"{key}_split", 0)
+        return dictionary.get(key, {}).get("bonus", 0)
     except Exception:
         return 0

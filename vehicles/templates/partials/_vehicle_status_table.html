@@ -22,16 +22,27 @@
       <td>{{ vehicle.model }}</td>
 
       <td>
-        {% if info.is_repair %}
+        {# 主状态徽章（优先使用 vehicle.status 判断）#}
+        {% if vehicle.status == 'repair' %}
           <span class="badge bg-warning text-dark">🛠 维修中</span>
-        {% elif info.is_admin_only %}
-          <span class="badge bg-info text-dark">⚙️ 調配用車</span>
-        {% elif info.reservable %}
-          <span class="badge bg-success">✅ 使用可</span>
+        {% elif vehicle.status == 'retired' %}
+          <span class="badge bg-danger text-white">❌ 已报废</span>
+        {% elif vehicle.status == 'usable' %}
+          {% if info.reservable %}
+            <span class="badge bg-success">✅ 使用可</span>
+          {% else %}
+            <span class="badge bg-secondary">⛔ 不可预约</span>
+          {% endif %}
         {% else %}
-          <span class="badge bg-secondary">⛔ 不可预约</span>
+          <span class="badge bg-secondary">❓ 未知状态</span>
         {% endif %}
 
+        {# 调配用车徽章（补充状态，不与主状态互斥）#}
+        {% if info.is_admin_only %}
+          <div class="badge bg-info text-dark mt-1">⚙️ 調配用車</div>
+        {% endif %}
+
+        {# 出库状态（补充）#}
         {% if info.is_out %}
           <div class="text-warning mt-1">🔶 出库中 —</div>
         {% endif %}

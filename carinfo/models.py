@@ -37,7 +37,7 @@ class Car(models.Model):
     owner_company_name = models.CharField("所有者名称", max_length=100, blank=True)
 
     # --- 状态 ---
-    status = models.CharField("车辆状态", max_length=20, choices=STATUS_CHOICES, default='available')
+    status = models.CharField("车辆状态", max_length=20, choices=STATUS_CHOICES, default='usable')
     is_active = models.BooleanField("是否启用", default=True)
     is_reserved_only_by_admin = models.BooleanField("是否为调配用车（禁止普通用户预约）", default=False)  # ✅ 新增
     mileage = models.PositiveIntegerField("当前里程（km）", null=True, blank=True)

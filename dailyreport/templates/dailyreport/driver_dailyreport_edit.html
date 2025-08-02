@@ -208,16 +208,20 @@ input[type=number] {
           </div>
 
           <div>
-            <span id="total_{{ key }}">{{ totals|get_total:key|floatformat:"0" }}</span>
+            <span id="total_{{ key }}">
+              {{ totals|get_item:key|get_item:"total"|default:0|floatformat:"0" }}
+            </span>
             {% if key == "meter" %}
               <div class="small text-muted">
-                <small>(メータのみ: {{ meter_only_total|intcomma }})</small>
+                <small>(メータのみ: {{ totals.meter_only_total|default:0|intcomma }})</small>
               </div>
               <div class="small text-muted">
                 ※ 売上合計には、メーター金額および貸切金額のすべてが含まれます。
               </div>
             {% else %}
-              （<span id="bonus_{{ key }}">{{ totals|get_bonus:key|floatformat:"0" }}</span>）
+              （<span id="bonus_{{ key }}">
+                {{ totals|get_item:key|get_item:"bonus"|default:0|floatformat:"0" }}
+              </span>）
             {% endif %}
           </div>
         </div>

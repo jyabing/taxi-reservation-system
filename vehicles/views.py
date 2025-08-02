@@ -23,7 +23,7 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.core.mail import send_mail
 
-from carinfo.services.car_access import get_all_active_cars, is_car_reservable, get_car_by_id
+from carinfo.services.car_access import get_all_active_cars, is_car_reservable, get_car_by_id, is_under_repair
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 from carinfo.models import Car
@@ -76,10 +76,21 @@ def recent_reservations_view(request, car_id):
     })
 
 def get_status_text(vehicle, status_info):
-    if status_info['is_repair']:
-        return '🛠 维修中'
+    """
+    返回车辆状态文本（带图标），优先使用车辆本身的数据库字段 status。
+    """
+    print(f"🚨 调试输出：{vehicle.license_plate} 的 vehicle.status = {vehicle.status}")
 
-    status = status_info['status']
+    # ✅ 优先判断车辆数据库状态字段
+    if vehicle.status == 'repair':
+        return '🔧 维修中'
+    elif vehicle.status == 'retired':
+        return '🚫 已报废'
+    elif vehicle.status not in ['usable', 'repair', 'retired']:
+        return f'❓ 未知状态（值为 {vehicle.status}）'
+
+    # ✅ usable 状态下再判断预约情况
+    status = status_info.get('status', '')
 
     if status == 'available':
         return '🟥 可预约（点击预约）'
@@ -93,7 +104,7 @@ def get_status_text(vehicle, status_info):
         return '📅 已过期'
 
     return '<span class="text-muted">—</span>'
-
+    
 @login_required
 def vehicle_list(request):
     vehicles = get_all_active_cars()
@@ -213,8 +224,9 @@ def vehicle_status_view(request):
 
         reserver_name = '<br>'.join(reserver_labels) if reserver_labels else ''
 
-        is_repair = "维修" in (vehicle.notes or "")
-        reservable = is_car_reservable(vehicle) and not is_repair
+        #is_repair = "维修" in (vehicle.notes or "")
+        is_repair = vehicle.status == 'repair'
+        reservable = is_car_reservable(vehicle)
 
         # ✅ 获取当天主预约对象（用于判断是否已出库/入库）
         current_reservation = None

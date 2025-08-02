@@ -1,4 +1,6 @@
 import csv, os, sys
+import logging
+logger = logging.getLogger(__name__)
 from datetime import datetime, date, timedelta
 from tempfile import NamedTemporaryFile
 
@@ -22,7 +24,7 @@ from .services.calculations import calculate_deposit_difference  # ✅ 导入新
 from staffbook.services import get_driver_info
 from staffbook.utils import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
-from dailyreport.services.summary import calculate_totals_from_items, resolve_payment_method, calculate_received_summary, calculate_totals_from_instances, calculate_totals_from_formset, calculate_totals_from_queryset
+from dailyreport.services.summary import resolve_payment_method, calculate_received_summary, calculate_totals_from_instances, calculate_totals_from_formset
 
 
 from vehicles.models import Reservation
@@ -40,6 +42,10 @@ from dailyreport.utils.debug import debug_print
 DEBUG_PRINT_ENABLED = True
 #import builtins
 #builtins.print = lambda *args, **kwargs: None   #删除或注释掉
+
+def test_view(request):
+    print("✅ test_view 被调用", flush=True)
+    return HttpResponse("ok")
 
 debug_print("✅ DEBUG_PRINT 导入成功，模块已执行")
 # 直接测试原生 print 看能否打印
@@ -705,6 +711,9 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 编辑日报（管理员）
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
+    with open("/tmp/django_debug.log", "a", encoding="utf-8") as f:
+        f.write("✅ 进入视图 dailyreport_edit_for_driver\n")
+
     driver = get_driver_info(driver_id)
     if not driver:
         return render(request, "dailyreport/not_found.html", status=404)
@@ -818,18 +827,22 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     for f in formset.forms:
         if f.is_bound and f.is_valid():
             cleaned = f.cleaned_data
-            if cleaned.get("meter_fee") and not cleaned.get("DELETE", False):
+            if (cleaned.get("meter_fee") or cleaned.get("charter_fee")) and not cleaned.get("DELETE", False):
                 data_iter.append({
-                    'meter_fee': cleaned['meter_fee'],
+                    'meter_fee': cleaned.get('meter_fee'),
                     'payment_method': cleaned.get('payment_method'),
                     'note': cleaned.get('note', ''),
+                    'charter_fee': cleaned.get('charter_fee'),
+                    'charter_payment_method': cleaned.get('charter_payment_method'),
                     'DELETE': False,
                 })
-        elif f.instance and f.instance.meter_fee and not getattr(f.instance, 'DELETE', False):
+        elif f.instance and not getattr(f.instance, 'DELETE', False):
             data_iter.append({
-                'meter_fee': f.instance.meter_fee,
-                'payment_method': f.instance.payment_method,
-                'note': f.instance.note,
+                'meter_fee': getattr(f.instance, 'meter_fee', 0),
+                'payment_method': getattr(f.instance, 'payment_method', ''),
+                'note': getattr(f.instance, 'note', ''),
+                'charter_fee': getattr(f.instance, 'charter_fee', 0),
+                'charter_payment_method': getattr(f.instance, 'charter_payment_method', ''),
                 'DELETE': False,
             })
 
@@ -838,7 +851,15 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     for item in data_iter:
         print(item)
 
-    totals = calculate_totals_from_formset(data_iter)
+    totals_raw = calculate_totals_from_formset(data_iter)
+
+    totals = {
+        f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)
+    }
+    totals.update({
+        f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)
+    })
+    totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
 
     # ✅ 插入这句：提取 meter_only_total 值
     meter_only_total = totals.get("meter_only_total", 0)
@@ -853,7 +874,8 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         ('omron', 'オムロン'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
-        ("charter_cash", "貸切（現金）"),
+        # 🔥 不再重复显示 charter_cash：
+        #("charter_cash", "貸切（現金）"),
         ("charter_card", "貸切（クレジ）"),
         ("charter_bank", "貸切（振込）")
     ]
@@ -870,20 +892,21 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     ]
 
     cash = totals.get("cash_raw", 0)
-    etc = report.etc_collected or 0
+    etc = report.etc_collected or 0  # ✅ 仅用于显示，不再参与合计计算
 
     # 💡 安全获取 deposit_amt，防止 None 崩溃
     raw_deposit_amt = form.cleaned_data.get("deposit_amount") if form.is_bound else report.deposit_amount
-    deposit_amt = int(raw_deposit_amt) if raw_deposit_amt not in [None, ''] else 0  # 强制转为 0
-    
-    total_collected = cash + etc
+    deposit_amt = int(raw_deposit_amt) if raw_deposit_amt not in [None, ''] else 0
+
     total_sales = totals.get("meter_raw", 0)
-
-    # ✅ 添加这一行（确保模板中能显示メータのみ）
     meter_only_total = totals.get("meter_only_total", 0)
-    deposit_diff = total_collected - deposit_amt
 
-    # ✅ 传入所有合计值
+    deposit_diff = deposit_amt - cash  # ✅ 正确计算：仅入金 - 现现金额
+
+    # ✅ 保留变量供模板使用（虽然页面不再用 etc 合并）
+    total_collected = cash
+
+    # ✅ 构造上下文传入模板
     context = {
         'form': form,
         'formset': formset,
@@ -1575,8 +1598,3 @@ def export_vehicle_csv(request, year, month):
     ])
 
     return response
-
-
-def test_view(request):
-    print("✅ 打印测试成功！")
-    return HttpResponse("ok")

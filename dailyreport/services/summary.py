@@ -1,9 +1,9 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
-from .resolve import resolve_payment_method
+from .resolve import resolve_payment_method, is_charter
 from dailyreport.constants import PAYMENT_RATES, PAYMENT_KEYWORDS
-
+from dailyreport.utils import normalize
 
 def normalize(value, as_decimal=True):
     if value in [None, '']:
@@ -27,47 +27,59 @@ def is_cash_nagashi(payment_method: str, is_charter_flag: bool = False) -> bool:
     return any(k in payment_method for k in keywords)
 
 
-def resolve_payment_method(method: str) -> str:
-    if not method:
-        return ''
+def resolve_payment_method(raw_payment: str) -> str:
+    """
+    统一解析支付方式字段，返回用于统计的标准 key。
+    """
+    if not raw_payment:
+        return ""
+
+    raw_payment = raw_payment.strip()
+
+    charter_map = {
+        "貸切（現金）": "cash",  # ✅ 修改后
+        "貸切（クレジ）": "card",
+        "貸切（クレジット）": "card",
+        "貸切（振込）": "bank",
+    }
+    if raw_payment in charter_map:
+        return charter_map[raw_payment]
 
     cleaned = (
-        method.replace('　', '')  # 全角空格
-              .replace('（', '(')
-              .replace('）', ')')
-              .replace('\n', '')
-              .strip()
+        raw_payment.replace("　", "")
+                   .replace("（", "")
+                   .replace("）", "")
+                   .replace("(", "")
+                   .replace(")", "")
+                   .replace("\n", "")
+                   .strip()
+                   .lower()
     )
 
-    if cleaned == '現金(ながし)':
-        return 'cash'
-    elif cleaned.lower() == 'uber':
-        return 'uber'
-    elif cleaned.lower() == 'didi':
-        return 'didi'
-    elif cleaned == 'クレジットカード':
-        return 'credit'
-    elif '京交信' in cleaned:
-        return 'kyokushin'
-    elif 'オムロン' in cleaned:
-        return 'omron'
-    elif '京都市' in cleaned or '京田辺' in cleaned or '京丹後' in cleaned:
-        return 'kyotoshi'
-    elif '扫码' in cleaned or 'バーコード' in cleaned:
-        return 'qr'
+    for key, keywords in PAYMENT_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword.lower() in cleaned:
+                return key
 
-    elif '貸切' in cleaned:
-        if '現金' in cleaned:
-            return 'charter_cash'
-        elif '振込' in cleaned:
-            return 'charter_bank'
-        elif 'クレジ' in cleaned or 'クレジット' in cleaned:
-            return 'charter_card'
+    return ""
 
-    print(f"⚠️ 未识别支付方式: {method} -> cleaned: {cleaned}")
-    return ''
+def normalize(val):
+    try:
+        return Decimal(str(val)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    except Exception:
+        return Decimal("0")
+
+
+def is_charter_cash(key: str) -> bool:
+    """是否是貸切（現金）支付方式"""
+    return key in ["charter_cash", "貸切（現金）", "charter現金", "貸切現金"]
+
 
 def calculate_totals_from_formset(data_iter):
+    from decimal import Decimal
+    from dailyreport.constants import PAYMENT_RATES
+    from .resolve import resolve_payment_method, is_charter
+
     raw_totals = {key: Decimal("0") for key in PAYMENT_RATES}
     split_totals = {key: Decimal("0") for key in PAYMENT_RATES}
     meter_only_total = Decimal("0")
@@ -82,10 +94,12 @@ def calculate_totals_from_formset(data_iter):
         if key and fee > 0 and "キャンセル" not in note:
             raw_totals[key] += fee
             split_totals[key] += fee * PAYMENT_RATES[key]
-            if not is_charter(raw_payment):
+
+            if not is_charter(key):
                 meter_only_total += fee
                 meter_only_per_key[key] += fee
 
+        # 🔽 charter（貸切）处理
         charter_fee = normalize(item.get("charter_fee"))
         charter_method = item.get("charter_payment_method", "")
         charter_key = resolve_payment_method(charter_method)
@@ -94,77 +108,22 @@ def calculate_totals_from_formset(data_iter):
             raw_totals[charter_key] += charter_fee
             split_totals[charter_key] += charter_fee * PAYMENT_RATES[charter_key]
 
-    result = {f"{key}_raw": round(raw_totals[key]) for key in PAYMENT_RATES}
-    result.update({f"{key}_split": round(split_totals[key]) for key in PAYMENT_RATES})
-    result["meter_only_total"] = round(meter_only_total)
-    return result
+        # ✅ 补丁：兼容 “貸切誤填在 meter_fee” 的情况
+        if key and is_charter(key) and fee > 0 and "キャンセル" not in note:
+            raw_totals[key] += fee
+            split_totals[key] += fee * PAYMENT_RATES[key]
 
-
-def calculate_totals_from_queryset(queryset):
-    pairs = []
-    for item in queryset:
-        fee = getattr(item, 'meter_fee', None)
-        method = getattr(item, 'payment_method', None)
-        note = getattr(item, 'note', '')
-        if fee is None or fee <= 0 or 'キャンセル' in str(note):
-            continue
-        pairs.append((fee, method))
-    return calculate_totals_from_items(pairs)
-
-
-def calculate_totals_from_items(pairs):
-    raw_totals = {key: Decimal("0") for key in PAYMENT_RATES}
-    split_totals = {key: Decimal("0") for key in PAYMENT_RATES}
-    meter_only_total = Decimal("0")
-    meter_only_per_key = {key: Decimal("0") for key in PAYMENT_RATES}
-
-    for fee, raw_payment in pairs:
-        fee = normalize(fee)
-        key = resolve_payment_method(raw_payment)
-        if not key or fee <= 0:
-            continue
-        raw_totals[key] += fee
-        split_totals[key] += fee * PAYMENT_RATES[key]
-        if not is_charter(raw_payment):
-            meter_only_total += fee
-            meter_only_per_key[key] += fee
-
-    result = {f"{key}_raw": round(raw_totals[key]) for key in PAYMENT_RATES}
-    result.update({f"{key}_split": round(split_totals[key]) for key in PAYMENT_RATES})
-    result.update({f"{key}_meter_only_total": round(meter_only_per_key[key]) for key in PAYMENT_RATES})
-    result["meter_only_total"] = round(meter_only_total)
-    return result
-
-
-def build_totals_from_items(items):
-    totals = defaultdict(Decimal)
-    meter_only_total = Decimal('0')
-    rates = PAYMENT_RATES
-    for item in items:
-        fee = normalize(getattr(item, 'meter_fee', None))
-        note = getattr(item, 'note', '')
-        if fee <= 0 or 'キャンセル' in str(note):
-            continue
-        key = item.payment_method or 'unknown'
-        totals[f"total_{key}"] += fee
-        totals["total_meter"] += fee
-        if not is_charter(key):
-            meter_only_total += fee
-
-    totals_all = {}
-    for key in PAYMENT_RATES:
-        total = totals.get(f"total_{key}", Decimal('0'))
-        bonus = (total * rates.get(key, Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-        totals_all[key] = {"total": total, "bonus": bonus}
-
-    meter_total = totals.get("total_meter", Decimal("0"))
-    totals_all["meter"] = {
-        "total": meter_total,
-        "bonus": (meter_total * rates['meter']).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    # ✅ 返回结构化格式 totals[key] = {total: ..., bonus: ...}
+    result = {
+        key: {
+            "total": round(raw_totals[key]),
+            "bonus": round(split_totals[key])
+        }
+        for key in PAYMENT_RATES
     }
-    totals_all["meter_only_total"] = meter_only_total
-    return totals_all
 
+    result["meter_only_total"] = round(meter_only_total)
+    return result
 
 def calculate_received_summary(data_iter, etc_expected=None, etc_collected=None, etc_payment_method=""):
     received_meter_cash = Decimal("0")
@@ -186,7 +145,10 @@ def calculate_received_summary(data_iter, etc_expected=None, etc_collected=None,
             if is_cash_nagashi(raw_payment):
                 received_meter_cash += fee
         else:
-            received_charter += fee
+            if is_cash_nagashi(raw_payment) or resolve_payment_method(raw_payment) == "charter_cash":
+                received_meter_cash += fee
+            else:
+                received_charter += fee
 
     etc_collected = normalize(etc_collected)
     etc_expected = normalize(etc_expected)
@@ -211,8 +173,7 @@ def calculate_totals_from_instances(item_instances):
     print("[DEBUG] using calculate_totals_from_instances()")
 
     raw_totals = {key: Decimal("0") for key in PAYMENT_RATES}
-    meter_total = Decimal("0")
-    charter_total = Decimal("0")
+    meter_only_total = Decimal("0")
 
     for item in item_instances:
         note = getattr(item, 'note', '') or ''
@@ -220,25 +181,16 @@ def calculate_totals_from_instances(item_instances):
         payment_method = getattr(item, 'payment_method', '')
         method_key = resolve_payment_method(payment_method)
 
-        # ✅ 核心修正：如果支付方式是 charter 系，meter_fee 当作 charter_total
         if meter_fee > 0 and 'キャンセル' not in note and method_key:
             raw_totals[method_key] += meter_fee
-            meter_total += meter_fee
+            if not is_charter(method_key):
+                meter_only_total += meter_fee
 
-            # ✅ 如果是 charter 类型，也计入 charter_total
-            if method_key.startswith('charter_'):
-                charter_total += meter_fee
-
-        # charter_fee 字段暂时忽略（你没用上）
-        # charter_fee = normalize(getattr(item, 'charter_fee', 0))
-        # charter_method = getattr(item, 'charter_payment_method', '')
-        # charter_key = resolve_payment_method(charter_method)
-        # if charter_fee > 0 and 'キャンセル' not in note and charter_key:
-        #     raw_totals[charter_key] += charter_fee
-        #     charter_total += charter_fee
-
-    result = {f"{key}_raw": round(raw_totals[key]) for key in raw_totals}
-    result["total"] = sum(result.values())
-    result["meter_total"] = round(meter_total)
-    result["charter_total"] = round(charter_total)
+    result = {}
+    for key in PAYMENT_RATES:
+        result[key] = {
+            "total": round(raw_totals[key]),
+            "bonus": round(raw_totals[key] * PAYMENT_RATES[key])
+        }
+    result["meter_only_total"] = round(meter_only_total)
     return result
