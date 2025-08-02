@@ -22,7 +22,7 @@ from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemF
 from .services.calculations import calculate_deposit_difference  # ✅ 导入新函数
 
 from staffbook.services import get_driver_info
-from staffbook.utils import is_dailyreport_admin, get_active_drivers
+from staffbook.utils.permissions import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
 from dailyreport.services.summary import resolve_payment_method, calculate_received_summary, calculate_totals_from_instances, calculate_totals_from_formset
 

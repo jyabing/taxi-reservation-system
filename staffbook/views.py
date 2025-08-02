@@ -38,8 +38,10 @@ from django.core.paginator import Paginator
 from django.urls import reverse
 from decimal import Decimal, ROUND_HALF_UP
 
+
+
 from accounts.utils import check_module_permission
-from staffbook.utils import (
+from dailyreport.services.summary import (
     calculate_totals_from_queryset,
     calculate_totals_from_formset,  # 👈 加上这一行
 )

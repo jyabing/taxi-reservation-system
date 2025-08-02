@@ -28,3 +28,7 @@ def is_under_repair(car):
 
 def is_retired(car):
     return car.status == 'retired'
+
+def is_admin_only(car):
+    """判断车辆是否为管理员专用车"""
+    return car.is_reserved_only_by_admin

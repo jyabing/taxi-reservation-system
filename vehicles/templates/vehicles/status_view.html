@@ -90,7 +90,7 @@
         {% endif %}
 
           {# ✅ 如果是当前用户预约的车，提示出库或入库按钮 #}
-          {% if info.user_reservation and info.user_reservation.date == selected_date %}
+          {% if vehicle.id == driver_today_vehicle_id %}
             <div class="alert alert-warning py-1 px-2 mb-0 small">
               🚗 你已预约该车：
               {{ info.user_reservation.start_time|time:"H:i" }}〜{{ info.user_reservation.end_time|time:"H:i" }}
@@ -228,7 +228,7 @@
           {% endwith %}
         </div>
 
-        {% if info.user_reservation and info.user_reservation.driver == request.user %}
+        {% if vehicle.id == driver_today_vehicle_id %}
           <button class="btn btn-sm btn-outline-secondary mt-1" onclick="startEdit({{ vehicle.id }})">📝 编辑备注</button>
         {% endif %}
       </td>

@@ -194,3 +194,11 @@ def calculate_totals_from_instances(item_instances):
         }
     result["meter_only_total"] = round(meter_only_total)
     return result
+    
+
+def calculate_totals_from_queryset(queryset):
+    """
+    从 QuerySet 生成统计汇总（封装实例处理）
+    """
+    item_list = list(queryset)
+    return calculate_totals_from_instances(item_list)

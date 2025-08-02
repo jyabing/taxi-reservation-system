@@ -23,7 +23,15 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.core.mail import send_mail
 
-from carinfo.services.car_access import get_all_active_cars, is_car_reservable, get_car_by_id, is_under_repair
+from carinfo.services.car_access import (
+    get_all_active_cars,
+    is_car_reservable,
+    get_car_by_id,
+    is_under_repair,
+    is_retired,
+    is_admin_only,  # ✅ 没问题了
+)
+
 from django.db.models import F, ExpressionWrapper, DurationField, Sum
 from django.views.decorators.csrf import csrf_exempt
 from carinfo.models import Car
@@ -38,6 +46,7 @@ from vehicles.utils import notify_driver_reservation_approved, send_notification
 from dailyreport.models import Driver, DriverDailyReport, DriverDailyReportItem
 from vehicles.models import Reservation, Tip
 from vehicles.forms import VehicleNoteForm
+from staffbook.models import Driver
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
@@ -128,49 +137,57 @@ def vehicle_detail(request, vehicle_id):
 def vehicle_status_view(request):
     selected_date_str = request.GET.get('date')
     selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date() if selected_date_str else localdate()
+    now = timezone.localtime()
+    now_dt = now
 
+    # ✅ 获取当前用户关联的 Driver 实例
+    current_driver = Driver.objects.filter(user=request.user).first()
+
+    # ✅ 获取所有预约记录
     reservations = Reservation.objects.filter(
         date__lte=selected_date,
         end_date__gte=selected_date
     ).select_related('driver', 'vehicle')
 
+    # ✅ 找出“当前司机今天预约的车”的 vehicle_id，用于备注编辑按钮显示
+    driver_today_vehicle_id = None
+    if current_driver:
+        today_reservation = reservations.filter(
+            driver=request.user,
+            date__lte=selected_date,
+            end_date__gte=selected_date,
+            actual_return__isnull=True,
+            status__in=['reserved', 'out']
+        ).order_by('start_datetime').first()
+        if today_reservation:
+            driver_today_vehicle_id = today_reservation.vehicle_id
+
+    # ✅ 获取所有活跃车辆
     vehicles = get_all_active_cars()
     status_map = {}
-    now = timezone.localtime()
-    now_dt = now
 
     for vehicle in vehicles:
         res_list = reservations.filter(vehicle=vehicle).order_by('start_datetime')
 
-        # ✅ 去重处理：确保每条 reservation 只出现一次，且当前日期在预约范围内
         seen_reservation_ids = set()
         res_list_deduped = []
         for r in res_list:
-            if not r.driver:
-                continue
-            if r.id in seen_reservation_ids:
+            if not r.driver or r.id in seen_reservation_ids:
                 continue
             if selected_date < r.date or selected_date > r.end_date:
-                continue  # 当前选择日期不在预约日期区间内
-
+                continue
             seen_reservation_ids.add(r.id)
             res_list_deduped.append(r)
 
-        # 默认状态
-        if selected_date < timezone.localdate():
+        if selected_date < localdate():
             status = 'expired'
         else:
             status = 'available'
 
-        # 出库中优先
         if res_list.filter(status='out', actual_departure__isnull=False, actual_return__isnull=True).exists():
             status = 'out'
-
-        # 已过结束时间但尚未入库
         elif res_list.filter(status='out', end_datetime__lt=now_dt, actual_return__isnull=True).exists():
             status = 'overdue'
-
-        # 当前预约未出库
         else:
             future_reserved = res_list.filter(status='reserved', actual_departure__isnull=True)
             for r in future_reserved:
@@ -179,16 +196,16 @@ def vehicle_status_view(request):
                 if now_dt > expire_dt:
                     r.status = 'canceled'
                     r.save()
-                    if r.driver == request.user:
+                    if current_driver and r.driver_id == current_driver.id:
                         messages.warning(request, f"你对 {vehicle.license_plate} 的预约因超时未出库已被自动取消，请重新预约。")
                 else:
                     status = 'reserved'
                     break
 
-        # 只有当天预约该车的用户才能编辑
+        # ✅ 当前用户对该车的预约（用于出入库按钮）
         user_reservation = None
         for r in res_list:
-            if r.driver != request.user:
+            if not current_driver or r.driver_id != current_driver.id:
                 continue
             if r.status not in ['reserved', 'out']:
                 continue
@@ -199,19 +216,12 @@ def vehicle_status_view(request):
             user_reservation = r
             break
 
-        # ✅ 所有人预约者显示（仅展示 selected_date 起始日的预约，防止跨日重复）
         reserver_labels = []
         seen_res_ids = set()
-
         for r in res_list_deduped:
-            if r.status not in ['reserved', 'out']:
+            if r.status not in ['reserved', 'out'] or not r.driver:
                 continue
-            if not r.driver:
-                continue
-            if r.id in seen_res_ids:
-                continue
-            # ✅ 只在预约起始日（r.date）显示，防止跨日重复出现在后续日期中
-            if r.date != selected_date:
+            if r.id in seen_res_ids or r.date != selected_date:
                 continue
             seen_res_ids.add(r.id)
             label = (
@@ -221,19 +231,13 @@ def vehicle_status_view(request):
             )
             reserver_labels.append(label)
 
-
         reserver_name = '<br>'.join(reserver_labels) if reserver_labels else ''
-
-        #is_repair = "维修" in (vehicle.notes or "")
         is_repair = vehicle.status == 'repair'
         reservable = is_car_reservable(vehicle)
 
-        # ✅ 获取当天主预约对象（用于判断是否已出库/入库）
         current_reservation = None
         for r in res_list_deduped:
-            if r.date != selected_date:
-                continue
-            if r.status == 'out':
+            if r.date == selected_date and r.status == 'out':
                 current_reservation = r
                 break
         if not current_reservation:
@@ -253,20 +257,14 @@ def vehicle_status_view(request):
             'is_repair': is_repair,
         }
 
-        # 状态说明
         status_info['status_text'] = get_status_text(vehicle, status_info)
         status_map[vehicle] = status_info
 
     if not any(info['status'] == 'available' for info in status_map.values()):
         messages.warning(request, "当前车辆状态不可预约，请选择其他车辆")
 
-    # ✅ 新增：为每辆车构建结构化表单字典
-    from .forms import VehicleStatusForm, VehicleNoteForm
-
-    # ✅ 用 status_map 中实际展示的 vehicle 构建表单，确保 ID 匹配
     vehicle_forms = {}
     note_forms = {}
-
     for vehicle in status_map.keys():
         vehicle.refresh_from_db()
         vehicle_forms[vehicle.id] = VehicleStatusForm(instance=vehicle, prefix=f"car_{vehicle.id}")
@@ -279,6 +277,8 @@ def vehicle_status_view(request):
         'now': now,
         'vehicle_forms': vehicle_forms,
         'note_forms': note_forms,
+        'request_driver_id': current_driver.id if current_driver else None,
+        'driver_today_vehicle_id': driver_today_vehicle_id,  # ✅ 提供给模板判断是否显示备注编辑按钮
     })
 
 @login_required
