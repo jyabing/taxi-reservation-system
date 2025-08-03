@@ -1,6 +1,7 @@
 import subprocess, os
 from django.db import models
 from django.contrib import admin
+from rangefilter.filters import DateRangeFilter
 from django.http import HttpResponse
 from django.urls import path
 from django.utils.html import format_html
@@ -36,7 +37,7 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
     ]
 
     readonly_fields = ['etc_shortage']
-    list_filter = ['status', 'has_issue', 'driver']
+    list_filter = ['status', 'has_issue', 'driver',  ('date', DateRangeFilter)]
     search_fields = ('driver__name', 'vehicle__license_plate', 'note')
     inlines = [DriverDailyReportItemInline]
     list_per_page = 20

@@ -896,8 +896,9 @@ def my_reservations_view(request):
         reservation_infos[r.id] = info
 
     # ✅ 额外信息（公告等）
-    tips = Tip.objects.filter(active=True).order_by('order')
+    tips = Tip.objects.filter(is_active=True).order_by('created_at')
     notice_message = SystemNotice.objects.filter(is_active=True).first()
+    print("当前用户：", request.user)
 
     return render(request, 'vehicles/my_reservations.html', {
         'page_obj': page_obj,
