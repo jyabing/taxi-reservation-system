@@ -807,16 +807,17 @@ def reservation_dashboard(request):
 
 @login_required
 def my_reservations_view(request):
+    # ✅ 获取当前用户预约记录，按时间倒序
     all_reservations = Reservation.objects.filter(
         driver=request.user
     ).order_by('-date', '-start_time')
 
-    # ✅ 分页：提前限制最多处理10条
+    # ✅ 分页（每页最多显示10条）
     paginator = Paginator(all_reservations, 10)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
 
-    # ✅ 只处理当前页的数据，避免超时
+    # ✅ 自动取消超时未出库的预约（仅处理当前页）
     canceled_any = False
     for r in page_obj.object_list:
         if r.status == 'reserved' and not r.actual_departure:
@@ -832,7 +833,18 @@ def my_reservations_view(request):
                     print(f"[取消预约异常] ID={r.id} → {e}")
                 continue
 
-    # ✅ 计算预约间隔信息（也只处理当前页）
+    # ✅ 优化上次入库查询逻辑：批量查找后分组缓存
+    driver_ids = [r.driver_id for r in page_obj.object_list]
+    all_returns = Reservation.objects.filter(
+        driver_id__in=driver_ids,
+        actual_return__isnull=False
+    ).order_by('driver_id', '-actual_return')
+
+    returns_by_driver = defaultdict(list)
+    for res in all_returns:
+        returns_by_driver[res.driver_id].append(res)
+
+    # ✅ 计算预约间隔信息（当前页）
     reservation_infos = {}
     for r in page_obj.object_list:
         info = {}
@@ -846,11 +858,9 @@ def my_reservations_view(request):
                 print(f"[⛔ start_dt 构建失败] ID={r.id} → {e}")
             continue
 
-        last_return = Reservation.objects.filter(
-            driver=r.driver,
-            actual_return__isnull=False,
-            actual_return__lt=start_dt
-        ).order_by('-actual_return').first()
+        # ✅ 内存中找上一条入库记录
+        driver_returns = returns_by_driver.get(r.driver_id, [])
+        last_return = next((ret for ret in driver_returns if ret.actual_return < start_dt), None)
 
         if last_return:
             last_return_dt = last_return.actual_return
@@ -860,6 +870,7 @@ def my_reservations_view(request):
             info['last_return'] = last_return_dt
             info['diff_from_last_return'] = round(diff.total_seconds() / 3600, 1)
 
+        # ✅ 暂时保留原始“下次预约”逻辑（下一步优化）
         next_res = Reservation.objects.filter(
             driver=r.driver,
             status__in=['pending', 'reserved'],
@@ -884,31 +895,16 @@ def my_reservations_view(request):
 
         reservation_infos[r.id] = info
 
-    # 分页
-    paginator = Paginator(all_reservations, 10)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-
-    tips = Tip.objects.filter(is_active=True).order_by('-created_at')
-
-    # 仅用于走马灯通知
-    notice_message = None
-    notice = SystemNotice.objects.filter(is_active=True).order_by('-created_at').first()
-    if notice:
-        notice_message = notice.message
-
-    # 用于页面内部的 tips（如果你之后还要用）
-    tips = Tip.objects.filter(is_active=True).order_by('-created_at')
+    # ✅ 额外信息（公告等）
+    tips = Tip.objects.filter(active=True).order_by('order')
+    notice_message = SystemNotice.objects.filter(is_active=True).first()
 
     return render(request, 'vehicles/my_reservations.html', {
         'page_obj': page_obj,
-        'reservations': page_obj,
-        'today': timezone.localdate(),
-        'now': timezone.localtime(),
-        'tips': tips,
-        'canceled_any': canceled_any,
         'reservation_infos': reservation_infos,
-        'notice_message': notice.message if notice else None,  # ✅ 传入模板
+        'canceled_any': canceled_any,
+        'tips': tips,
+        'notice_message': notice_message,
     })
 
 @staff_member_required
