@@ -811,23 +811,32 @@ def my_reservations_view(request):
         driver=request.user
     ).order_by('-date', '-start_time')
 
-    # ✅ 自动取消超时未出库的预约
-    canceled_any = False
-    for r in all_reservations:
-        if r.status == 'reserved' and not r.actual_departure:
-            start_dt = timezone.make_aware(datetime.combine(r.date, r.start_time))
-            expire_dt = start_dt + timedelta(hours=1)
-            if timezone.now() > expire_dt:
-                r.status = 'canceled'
-                r.save()
-                canceled_any = True
+    # ✅ 分页：提前限制最多处理10条
+    paginator = Paginator(all_reservations, 10)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
 
-    # ✅ 计算预约相关时间间隔
+    # ✅ 只处理当前页的数据，避免超时
+    canceled_any = False
+    for r in page_obj.object_list:
+        if r.status == 'reserved' and not r.actual_departure:
+            try:
+                start_dt = make_aware(datetime.combine(r.date, r.start_time))
+                expire_dt = start_dt + timedelta(hours=1)
+                if timezone.now() > expire_dt:
+                    r.status = 'canceled'
+                    r.save()
+                    canceled_any = True
+            except Exception as e:
+                if settings.DEBUG:
+                    print(f"[取消预约异常] ID={r.id} → {e}")
+                continue
+
+    # ✅ 计算预约间隔信息（也只处理当前页）
     reservation_infos = {}
-    for r in all_reservations:
+    for r in page_obj.object_list:
         info = {}
 
-        # 上次入库
         try:
             start_dt = datetime.combine(r.date, r.start_time)
             if is_naive(start_dt):
@@ -847,12 +856,10 @@ def my_reservations_view(request):
             last_return_dt = last_return.actual_return
             if is_naive(last_return_dt):
                 last_return_dt = make_aware(last_return_dt)
-
             diff = start_dt - last_return_dt
             info['last_return'] = last_return_dt
             info['diff_from_last_return'] = round(diff.total_seconds() / 3600, 1)
 
-        # 下次预约
         next_res = Reservation.objects.filter(
             driver=r.driver,
             status__in=['pending', 'reserved'],
@@ -867,19 +874,13 @@ def my_reservations_view(request):
                     current_end_dt = make_aware(current_end_dt)
                 if is_naive(next_start_dt):
                     next_start_dt = make_aware(next_start_dt)
+                diff_next = next_start_dt - current_end_dt
+                info['next_reservation'] = next_start_dt
+                info['diff_to_next'] = round(diff_next.total_seconds() / 3600, 1)
             except Exception as e:
                 if settings.DEBUG:
                     print(f"[⛔ next_start_dt 构建失败] ID={r.id} → {e}")
                 continue
-
-            if is_naive(current_end_dt):
-                current_end_dt = make_aware(current_end_dt)
-            if is_naive(next_start_dt):
-                next_start_dt = make_aware(next_start_dt)
-
-            diff_next = next_start_dt - current_end_dt
-            info['next_reservation'] = next_start_dt
-            info['diff_to_next'] = round(diff_next.total_seconds() / 3600, 1)
 
         reservation_infos[r.id] = info
 
