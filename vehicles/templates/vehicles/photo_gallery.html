@@ -2,7 +2,9 @@
 
 <div class="thumbnail-gallery">
     {% for img in vehicle.images.all %}
-      <img src="{{ img.image.url }}" alt="车辆照片" class="thumbnail" onclick="showModal({{ forloop.counter0 }})">
+      {% if img.image %}
+        <img src="{{ img.image.url }}" alt="车辆照片" class="thumbnail" onclick="showModal({{ forloop.counter0 }})">
+      {% endif %}
     {% endfor %}
   </div>
   
@@ -81,8 +83,15 @@
   </style>
   
   <script>
-    const images = [{% for img in vehicle.images.all %}"{{ img.image.url }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
-    let currentIndex = 0;
+    
+  const images = [
+    {% for img in vehicle.images.all %}
+      {% if img.image %}
+        "{{ img.image.url }}"{% if not forloop.last %},{% endif %}
+      {% endif %}
+    {% endfor %}
+  ];
+  let currentIndex = 0;
   
     function showModal(index) {
       currentIndex = index;
