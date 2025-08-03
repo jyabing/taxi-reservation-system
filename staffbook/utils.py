@@ -16,43 +16,6 @@ PAYMENT_KEYWORDS = {
     'kyotoshi':  ['京都市'],
 }
 
-# ✅ 用于表单页：FormSet 汇总
-def calculate_totals_from_formset(data_iter):
-    result = {}
-    rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':        Decimal('0.05'),
-    }
-
-    for key in rates:
-        result[f"{key}_raw"] = Decimal('0')
-        result[f"{key}_split"] = Decimal('0')
-
-    for item in data_iter:
-        if item.get('DELETE'):
-            continue
-
-        fee = item.get('meter_fee') or Decimal('0')
-        method = item.get('payment_method')
-
-        # ✅ 无论支付方式如何，都加总至 meter_raw 和 meter_split
-        result["meter_raw"] += fee
-        result["meter_split"] += fee * rates['meter']
-
-        if method in rates:
-            result[f"{method}_raw"] += fee
-            result[f"{method}_split"] += (fee * rates[method])
-
-    return result
-
-
 # ✅ 用于 overview 页：QuerySet 汇总
 def calculate_totals_from_queryset(queryset):
     rates = {

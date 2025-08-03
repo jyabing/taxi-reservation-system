@@ -24,8 +24,10 @@ from .services.calculations import calculate_deposit_difference  # ✅ 导入新
 from staffbook.services import get_driver_info
 from staffbook.utils.permissions import is_dailyreport_admin, get_active_drivers
 from staffbook.models import Driver
-from dailyreport.services.summary import resolve_payment_method, calculate_received_summary, calculate_totals_from_instances, calculate_totals_from_formset
-
+from dailyreport.services.summary import (
+    resolve_payment_method, 
+    calculate_totals_from_instances, calculate_totals_from_formset
+)
 
 from vehicles.models import Reservation
 from urllib.parse import quote
@@ -501,7 +503,7 @@ def driver_dailyreport_month(request, driver_id):
         driver=driver,
         date__year=month.year,
         date__month=month.month
-    ).order_by('date')
+    ).order_by('-date')
 
     print("✅ 已进入视图，报告数:", reports_qs.count())
 
@@ -680,6 +682,7 @@ def dailyreport_create_for_driver(request, driver_id):
     else:
         data_iter = [f.instance for f in formset.forms]
         totals = calculate_totals_from_instances(data_iter)
+        print("🔍 totals =", totals)
 
     # ✅ 用于模板合计栏
     summary_keys = [
@@ -706,6 +709,7 @@ def dailyreport_create_for_driver(request, driver_id):
         'is_edit': False,
         'summary_keys': summary_keys,
         'totals': totals,
+        "nagashi_cash_total": nagashi_cash_total,
     })
 
 # ✅ 编辑日报（管理员）
@@ -1225,7 +1229,8 @@ def dailyreport_create_for_driver(request, driver_id):
 
     summary_keys = [
         ('meter', 'メーター(水揚)'),
-        ('cash', '現金(ながし)'),
+        ('nagashi_cash', '現金(ながし)'),   # ✅ 这是我们要加的合并字段（cash + charter_cash）
+        ('cash', '現金'),                   # ✅ 若仍想分开显示可保留，否则可删
         ('uber', 'Uber'),
         ('didi', 'Didi'),
         ('credit', 'クレジ'),
@@ -1233,9 +1238,6 @@ def dailyreport_create_for_driver(request, driver_id):
         ('omron', 'オムロン(愛のタクシーチケット)'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
-        ("charter_cash", "貸切（現金）"),
-        ("charter_card", "貸切（クレジ）"),
-        ("charter_bank", "貸切（振込）")
     ]
 
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
@@ -1246,6 +1248,7 @@ def dailyreport_create_for_driver(request, driver_id):
         'is_edit': False,
         'summary_keys': summary_keys,
         'totals': totals,
+        'nagashi_cash_total': nagashi_cash_total,
     })
 
 @user_passes_test(is_dailyreport_admin)
@@ -1326,9 +1329,6 @@ def dailyreport_overview(request):
         'omron':     Decimal('0.05'),
         'kyotoshi':  Decimal('0.05'),
         'qr':        Decimal('0.05'),
-        "charter_cash":  Decimal('0'),
-        "charter_card":  Decimal('0.05'),
-        "charter_bank": Decimal('0'),  # ✅ 按照振込设定为 0
     }
 
     totals_all = {}
@@ -1454,9 +1454,6 @@ def dailyreport_overview(request):
         ('omron', 'オムロン'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
-        ('charter_cash', '貸切(现金)'),
-        ('charter_card', '貸切(クレジ)'),
-        ('charter_bank', '貸切(振込)'),  # ✅ 按照振込设定为 0
     ]
 
     # 10. 月份导航

@@ -216,7 +216,7 @@ input[type=number] {
                 <small>(メータのみ: {{ totals.meter_only_total|default:0|intcomma }})</small>
               </div>
               <div class="small text-muted">
-                ※ 売上合計には、メーター金額および貸切金額のすべてが含まれます。
+                ※ 売上合計には、メーター金額すべてが含まれます。
               </div>
             {% else %}
               （<span id="bonus_{{ key }}">
@@ -314,7 +314,7 @@ input[type=number] {
 
           {% if deposit_amt < total_sales %}
             <div class="alert alert-warning py-1 px-2 small mb-2">
-              ℹ️ 売上合計 <strong>{{ total_sales|intcomma }}円</strong> 大于入金 <strong>{{ deposit_amt|intcomma }}円</strong>，可能包含貸切、未收 ETC 或其他延迟结算项。
+              ℹ️ 売上合計 <strong>{{ total_sales|intcomma }}円</strong> 大于入金 <strong>{{ deposit_amt|intcomma }}円</strong>，未收 ETC 或其他延迟结算项。
             </div>
           {% endif %}
         {% endif %}

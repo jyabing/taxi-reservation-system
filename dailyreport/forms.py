@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django import forms
 from django.forms import inlineformset_factory
-from django.forms.models import BaseInlineFormSet  # ✅ ← 需要这行
+from django.forms.models import BaseInlineFormSet
 from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage
 from vehicles.models import Reservation
 from dailyreport.utils.debug import apply_form_control_style
@@ -144,20 +144,7 @@ class DriverDailyReportItemForm(forms.ModelForm):
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
             'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
             'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),
-            'is_charter': forms.CheckboxInput(attrs={'class': 'form-check-input'}), 
-
-            # ✅ 加上 charter 字段
-            'charter_fee': forms.NumberInput(attrs={
-                'step': '1',
-                'class': 'form-control form-control-sm text-end auto-width-input charter-fee-input',
-                'type': 'number',
-                'inputmode': 'numeric',
-                'pattern': '[0-9]*',
-            }),
-            'charter_payment_method': forms.Select(attrs={
-                'class': 'form-select form-select-sm charter-payment-method-select'
-            }),
-        }
+        } 
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

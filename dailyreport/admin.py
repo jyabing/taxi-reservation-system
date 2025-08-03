@@ -83,6 +83,7 @@ class DriverDailyReportItemAdmin(admin.ModelAdmin):
     list_display = ['report', 'ride_time', 'ride_from', 'ride_to', 'meter_fee', 'payment_method', 'has_issue']
     list_filter = ['payment_method', 'has_issue']
     search_fields = ('ride_from', 'ride_to', 'note', 'comment')
+    readonly_fields = ['meter_fee']
 
 @admin.register(DriverReportImage)
 class DriverReportImageAdmin(admin.ModelAdmin):

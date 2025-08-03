@@ -205,11 +205,6 @@ document.addEventListener('DOMContentLoaded', () => {
       omron: "omron",
       kyotoshi: "kyotoshi",
       qr: "qr",
-
-      // ✅ 貸切系 → 全部归为 charter
-      charter_cash: "charter",
-      charter_transfer: "charter",
-
       // fallback 可加更多
         };
 
@@ -227,7 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
       omron: 0,
       kyotoshi: 0,
       qr: 0,
-      charter: 0, // 🆕 貸切合計
     };
 
     // 📊 合计每一行明细
@@ -254,20 +248,18 @@ document.addEventListener('DOMContentLoaded', () => {
       if (el) el.textContent = amount.toLocaleString();
     });
 
-    // ✅ 売上合計（含貸切）
+    // ✅ 売上合計
     const meterEl = document.getElementById("total_meter");
     if (meterEl) {
       const totalWithCharter = Object.values(totalMap).reduce((a, b) => a + b, 0);
       meterEl.textContent = totalWithCharter.toLocaleString();
     }
 
-    // ✅ メータのみ合計（不含貸切）
+    // ✅ メータのみ合計
     const meterOnlyEl = document.getElementById("total_meter_only");
     if (meterOnlyEl) {
-      const totalWithoutCharter = Object.entries(totalMap)
-        .filter(([key]) => key !== "charter")
-        .reduce((a, [_, b]) => a + b, 0);
-      meterOnlyEl.textContent = totalWithoutCharter.toLocaleString();
+      const totalAll = Object.values(totalMap).reduce((a, b) => a + b, 0);
+      meterOnlyEl.textContent = totalAll.toLocaleString();
     }
   }
 
@@ -276,13 +268,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const depositInput = document.querySelector("#deposit-input");
 
     const cashTotal = parseInt(document.querySelector("#total_cash")?.textContent || "0", 10);
-    const charterTotal = parseInt(document.querySelector("#total_charter")?.textContent || "0", 10);
+    
     const etcCollected = parseInt(document.querySelector("#id_etc_collected")?.value || "0", 10);
     const etcUncollected = parseInt(document.querySelector("#id_etc_uncollected")?.value || "0", 10);
     const totalSales = parseInt(document.querySelector("#total_meter")?.textContent || "0", 10);
 
     const deposit = parseInt(depositInput?.value || "0", 10);
-    const totalCollected = cashTotal + charterTotal + etcCollected;
+    const totalCollected = cashTotal + etcCollected;
 
     const panel = document.querySelector("#smart-hint-panel");
     if (!panel) return;
@@ -292,12 +284,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (deposit < totalCollected) {
       html += `
         <div class="alert alert-danger py-1 px-2 small mb-2">
-          ⚠️ 入金額が不足しています。請求額（現金 + 貸切 + ETC）は <strong>${totalCollected.toLocaleString()}円</strong> ですが、入力された入金額は <strong>${deposit.toLocaleString()}円</strong> です。
+          ⚠️ 入金額が不足しています。請求額（現金 + ETC）は <strong>${totalCollected.toLocaleString()}円</strong> ですが、入力された入金額は <strong>${deposit.toLocaleString()}円</strong> です。
         </div>`;
     } else {
       html += `
         <div class="alert alert-success py-1 px-2 small mb-2">
-          ✔️ 入金額は現金 + 貸切 + ETC をカバーしています。
+          ✔️ 入金額は現金 + ETC をカバーしています。
         </div>`;
     }
 
@@ -311,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (deposit < totalSales) {
       html += `
         <div class="alert alert-warning py-1 px-2 small mb-2">
-          ℹ️ 売上合計 <strong>${totalSales.toLocaleString()}円</strong> 大于入金 <strong>${deposit.toLocaleString()}円</strong>，可能包含未收 ETC、貸切、或其他延迟结算项。
+          ℹ️ 売上合計 <strong>${totalSales.toLocaleString()}円</strong> 大于入金 <strong>${deposit.toLocaleString()}円</strong>，可能包含未收 ETC、或其他延迟结算项。
         </div>`;
     }
 

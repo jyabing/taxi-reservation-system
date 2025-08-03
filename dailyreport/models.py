@@ -32,10 +32,6 @@ PAYMENT_METHOD_CHOICES = [
     ('kyokushin', '京交信'),
     ('omron', 'オムロン（愛のタクシーチケット）'),
     ('kyotoshi', '京都市他'),
-
-    # ✅ 貸切（包车）
-    ('charter_cash', '貸切（現金）'),
-    ('charter_transfer', '貸切（振込）'),
 ]
 
 
@@ -216,7 +212,6 @@ class DriverDailyReportItem(models.Model):
     num_female = models.IntegerField("女性", blank=True, null=True)
     meter_fee = models.DecimalField("メータ料金", max_digits=7, decimal_places=2, blank=True, null=True)
     
-    charter_fee = models.DecimalField("貸切金额", max_digits=7, decimal_places=2, blank=True, null=True)  # ✅ 新增字段
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)
@@ -226,9 +221,6 @@ class DriverDailyReportItem(models.Model):
     combined_group = models.CharField("合算グループ", max_length=100, blank=True, null=True)
 
     def save(self, *args, **kwargs):
-        # ✅ 自动判定：是否为“包车”支付方式
-        self.is_charter = self.payment_method in ['charter_cash', 'charter_bank']
-
         # ✅ 已有逻辑：如果 comment 不为空就设为有异常
         self.has_issue = bool(self.comment.strip())
         

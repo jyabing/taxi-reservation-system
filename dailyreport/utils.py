@@ -66,65 +66,6 @@ def calculate_totals_from_items(item_iterable):
 
     return totals
 
-
-# ✅ 前端页面编辑时，从 form.cleaned_data 或实例计算合计
-def calculate_totals_from_formset(form_data_list):
-    pairs = []
-    for item in form_data_list:
-        try:
-            # 兼容 cleaned_data (dict) 和 instance (model)
-            if isinstance(item, dict):
-                if item.get('DELETE'):
-                    continue
-                fee = item.get('meter_fee')
-                method = item.get('payment_method')
-                note = str(item.get('note', '') or '')
-            else:
-                if getattr(item, 'DELETE', False):
-                    continue
-                fee = getattr(item, 'meter_fee', None)
-                method = getattr(item, 'payment_method', None)
-                note = str(getattr(item, 'note', '') or '')
-
-            # ✅ 排除负数或空金额
-            if not fee or fee <= 0:
-                continue
-
-            # ✅ 排除キャンセル项目（支持中英文大小写）
-            if 'キャンセル' in note or 'cancel' in note.lower():
-                continue
-
-            print("🧾 传入项目：", fee, method)  # ✅ 添加这行调试打印
-            pairs.append((fee, method))
-
-            pairs.append((fee, method))
-        except Exception as e:
-            print(f"⚠️ 合计计算中错误项: {e}")
-            continue
-
-
-    return calculate_totals_from_items(pairs)
-
-# ✅ 直接从模型实例列表计算合计
-# 后端构造新对象或 instance 时调用
-def calculate_totals_from_instances(item_instances):
-    pairs = []
-    for item in item_instances:
-        if getattr(item, 'DELETE', False):  # 一般模型中不会有 DELETE，但保留逻辑
-            continue
-        fee = getattr(item, 'meter_fee', None)
-        method = getattr(item, 'payment_method', None)
-        note = getattr(item, 'note', '')
-
-        # ✅ 排除负数和“キャンセル”备注
-        if fee is None or fee <= 0:
-            continue
-        if 'キャンセル' in str(note):
-            continue
-
-        pairs.append((fee, method))
-    return calculate_totals_from_items(pairs)
-
 # ✅ 通用样式工具：为所有字段添加 Bootstrap class
 def apply_form_control_style(fields):
     for name, field in fields.items():
