@@ -828,9 +828,14 @@ def my_reservations_view(request):
         info = {}
 
         # 上次入库
-        start_dt = datetime.combine(r.date, r.start_time)
-        if is_naive(start_dt):
-            start_dt = make_aware(start_dt)
+        try:
+            start_dt = datetime.combine(r.date, r.start_time)
+            if is_naive(start_dt):
+                start_dt = make_aware(start_dt)
+        except Exception as e:
+            if settings.DEBUG:
+                print(f"[⛔ start_dt 构建失败] ID={r.id} → {e}")
+            continue
 
         last_return = Reservation.objects.filter(
             driver=r.driver,
@@ -855,8 +860,17 @@ def my_reservations_view(request):
         ).order_by('date', 'start_time').first()
 
         if next_res:
-            current_end_dt = datetime.combine(r.end_date, r.end_time)
-            next_start_dt = datetime.combine(next_res.date, next_res.start_time)
+            try:
+                current_end_dt = datetime.combine(r.end_date, r.end_time)
+                next_start_dt = datetime.combine(next_res.date, next_res.start_time)
+                if is_naive(current_end_dt):
+                    current_end_dt = make_aware(current_end_dt)
+                if is_naive(next_start_dt):
+                    next_start_dt = make_aware(next_start_dt)
+            except Exception as e:
+                if settings.DEBUG:
+                    print(f"[⛔ next_start_dt 构建失败] ID={r.id} → {e}")
+                continue
 
             if is_naive(current_end_dt):
                 current_end_dt = make_aware(current_end_dt)
