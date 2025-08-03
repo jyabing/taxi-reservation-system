@@ -695,10 +695,6 @@ def dailyreport_create_for_driver(request, driver_id):
         ('omron', 'オムロン(愛のタクシーチケット)'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
-        
-        ("charter_cash", "貸切（現金）"),
-        ("charter_card", "貸切（クレジ）"),
-        ("charter_bank", "貸切（振込）")
     ]
 
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
@@ -878,10 +874,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         ('omron', 'オムロン'),
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
-        # 🔥 不再重复显示 charter_cash：
-        #("charter_cash", "貸切（現金）"),
-        ("charter_card", "貸切（クレジ）"),
-        ("charter_bank", "貸切（振込）")
     ]
 
     summary_panel_data = [

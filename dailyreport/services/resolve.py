@@ -18,24 +18,8 @@ def resolve_payment_method(raw_payment: str) -> str:
     if raw_payment in PAYMENT_RATES:
         return raw_payment
 
-    # ✅ 显式匹配下拉框显示文本（你模板中用的）
-    dropdown_map = {
-        "貸切（現金）": "cash",
-        "貸切（クレジット）": "charter_card",
-        "貸切（振込）": "charter_bank",
-    }
-
     if raw_payment in dropdown_map:
         return dropdown_map[raw_payment]
-
-    # ✅ fallback：常规关键词匹配
-    fallback_map = {
-        "現金": "cash",
-        "クレジットカード": "charter_card",
-        "クレジ": "charter_card",
-        "振込": "charter_bank",
-        "バーコード": "charter_barcode",
-    }
     
     if raw_payment in fallback_map:
         return fallback_map[raw_payment]

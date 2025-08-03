@@ -19,13 +19,6 @@ def resolve_payment_method(raw_payment: str) -> str:
         return ""
 
     raw_payment = raw_payment.strip()
-
-    charter_map = {
-        "貸切（現金）": "charter_cash",
-        "貸切（クレジ）": "charter_card",
-        "貸切（クレジット）": "charter_card",
-        "貸切（振込）": "charter_bank",
-    }
     if raw_payment in charter_map:
         return charter_map[raw_payment]
 
