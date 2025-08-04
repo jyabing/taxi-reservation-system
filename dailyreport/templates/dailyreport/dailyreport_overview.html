@@ -21,20 +21,22 @@
 
 <!-- ✅ 导出按钮 -->
 <div class="my-3">
-  <a href="{% url 'dailyreport:export_dailyreports_csv' year=current_year month=current_month %}"
-      class="btn btn-sm btn-outline-primary me-2">
-    📤 导出 {{ current_year }}年{{ current_month }}月全员每日统计 Excel
-  </a>
+  {% if current_year and current_month %}
+    <a href="{% url 'dailyreport:export_dailyreports_csv' year=current_year month=current_month %}"
+       class="btn btn-sm btn-outline-primary me-2">
+      📤 导出 {{ current_year }}年{{ current_month }}月全员每日统计 Excel
+    </a>
 
-  <a href="{% url 'dailyreport:export_monthly_summary_excel' year=current_year month=current_month %}"
-    class="btn btn-sm btn-outline-success">
-    📤 导出 {{ current_year }}年{{ current_month }}月月度汇总 Excel
-  </a>
+    <a href="{% url 'dailyreport:export_monthly_summary_excel' year=current_year month=current_month %}"
+      class="btn btn-sm btn-outline-success">
+      📤 导出 {{ current_year }}年{{ current_month }}月月度汇总 Excel
+    </a>
 
-  <a href="{% url 'dailyreport:export_vehicle_csv' year=current_year month=current_month %}"
-    class="btn btn-sm btn-outline-info">
-  🚗 导出 {{ current_year }}年{{ current_month }}月車両運運輸 CSV
-  </a>
+    <a href="{% url 'dailyreport:export_vehicle_csv' year=current_year month=current_month %}"
+      class="btn btn-sm btn-outline-info">
+      🚗 导出 {{ current_year }}年{{ current_month }}月車両運運輸 CSV
+    </a>
+  {% endif %}
 </div>
 
 <!-- ✅ 月份切换按钮与统一标题 -->

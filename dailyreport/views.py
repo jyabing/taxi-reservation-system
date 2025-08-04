@@ -1275,153 +1275,97 @@ def my_dailyreports(request):
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_overview(request):
     # 1. 基本参数
-    today     = now().date()
-    keyword   = request.GET.get('keyword', '').strip()
-    month_str = request.GET.get('month', today.strftime('%Y-%m'))
+    today = now().date()
+    keyword = request.GET.get('keyword', '').strip()
+    month_str = request.GET.get('month', '')
 
-    # 2. 解析 month_str
+    # 2. 解析月份
     try:
         month = datetime.strptime(month_str, "%Y-%m")
     except ValueError:
         month = today.replace(day=1)
         month_str = month.strftime('%Y-%m')
 
-    drivers = get_active_drivers(month, keyword)
+    # ✅ 新增
+    month_label = f"{month.year}年{month.month:02d}月"
+    prev_month = (month - relativedelta(months=1)).strftime('%Y-%m')
+    next_month = (month + relativedelta(months=1)).strftime('%Y-%m')
 
-    # 3. 构建 reports
-    reports = DriverDailyReport.objects.filter(
+    # 3. 拆分年月（供导出按钮用）
+    export_year = month.year
+    export_month = month.month
+
+    # 4. 获取所有日报（含离职者）
+    reports_all = DriverDailyReport.objects.filter(
         date__year=month.year,
         date__month=month.month,
-        driver__in=drivers  # ✅ 限定为当月在职司机
     )
 
-    # 4. 构建 totals
+    # 5. 获取在职司机（用于展示和计算）
+    drivers = get_active_drivers(month, keyword)
+    reports = reports_all.filter(driver__in=drivers)
+
+    # 6. 构建 totals 合计
     totals = defaultdict(Decimal)
-    items = DriverDailyReportItem.objects.filter(report__in=reports)
+    items = DriverDailyReportItem.objects.filter(report__in=reports_all)
     for item in items:
-        print(f"[ITEM] id={item.id}, payment_method=《{item.payment_method}》, note=《{item.note}》")
         resolved_key = resolve_payment_method(item.payment_method)
-        print(f"[RESOLVED] → {resolved_key}")
 
-        # 仅使用 meter_fee
         fee = item.meter_fee or Decimal('0')
-
-        if fee <= 0:
-            continue
-        if item.note and 'キャンセル' in item.note:
-            continue
-        if not resolved_key:
+        if fee <= 0 or (item.note and 'キャンセル' in item.note) or not resolved_key:
             continue
 
         totals[f"total_{resolved_key}"] += fee
         totals["total_meter"] += fee
+        totals["meter_only_total"] += fee
 
-
-    # 4.5 构建 totals_all
+    # 7. 分成费率
     rates = {
-        'meter':  Decimal('0.9091'),
-        'cash':   Decimal('0'),
-        'uber':   Decimal('0.05'),
-        'didi':   Decimal('0.05'),
-        'credit': Decimal('0.05'),
+        'meter':     Decimal('0.9091'),
+        'cash':      Decimal('0'),
+        'uber':      Decimal('0.05'),
+        'didi':      Decimal('0.05'),
+        'credit':    Decimal('0.05'),
         'kyokushin': Decimal('0.05'),
         'omron':     Decimal('0.05'),
         'kyotoshi':  Decimal('0.05'),
         'qr':        Decimal('0.05'),
     }
 
-    totals_all = {}
-    meter_total = Decimal('0')
-    meter_only_total = Decimal('0')
-    for key in ['cash', 'uber', 'didi', 'credit', 'kyokushin', 'omron', 'kyotoshi', 'qr']:
-        amt = totals.get(f"total_{key}", Decimal('0'))
-        bonus = (amt * rates.get(key, Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-        totals_all[key] = {"total": amt, "bonus": bonus}
-        meter_total += amt
-    totals_all["meter"] = {
-        "total": meter_total,
-        "bonus": (meter_total * rates['meter']).quantize(Decimal('1'), rounding=ROUND_HALF_UP),
-    }
-    totals_all["meter_only_total"] = meter_only_total
-
-    # 5. 税前
-    gross = totals.get('total_meter') or Decimal('0')
-    totals['meter_pre_tax'] = (gross / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-
-    # 6. 分成
     def split(key):
         amt = totals.get(f"total_{key}") or Decimal('0')
         return (amt * rates[key]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
-    totals.update({
-        'meter_split':  split('meter'),
-        'cash_split':   split('cash'),
-        'uber_split':   split('uber'),
-        'didi_split':   split('didi'),
-        'credit_split': split('credit'),
-        'kyokushin_split': split('kyokushin'),
-        'omron_split':     split('omron'),
-        'kyotoshi_split':  split('kyotoshi'),
-        'qr_split':     split('qr'),
-    })
-
-    # 6.5 合计字典
+    # 8. 汇总 totals_all
     totals_all = {
-        "meter": {
-            "total": totals.get("total_meter", Decimal("0")),
-            "bonus": totals.get("meter_split", Decimal("0")),
-        },
-        "cash": {
-            "total": totals.get("total_cash", Decimal("0")),
-            "bonus": totals.get("cash_split", Decimal("0")),
-        },
-        "uber": {
-            "total": totals.get("total_uber", Decimal("0")),
-            "bonus": totals.get("uber_split", Decimal("0")),
-        },
-        "didi": {
-            "total": totals.get("total_didi", Decimal("0")),
-            "bonus": totals.get("didi_split", Decimal("0")),
-        },
-        "credit": {
-            "total": totals.get("total_credit", Decimal("0")),
-            "bonus": totals.get("credit_split", Decimal("0")),
-        },
-        "kyokushin": {
-            "total": totals.get("total_kyokushin", Decimal("0")),
-            "bonus": totals.get("kyokushin_split", Decimal("0")),
-        },
-        "omron": {
-            "total": totals.get("total_omron", Decimal("0")),
-            "bonus": totals.get("omron_split", Decimal("0")),
-        },
-        "kyotoshi": {
-            "total": totals.get("total_kyotoshi", Decimal("0")),
-            "bonus": totals.get("kyotoshi_split", Decimal("0")),
-        },
-        "qr": {
-            "total": totals.get("total_qr", Decimal("0")),
-            "bonus": totals.get("qr_split", Decimal("0")),
-        },
-        "etc_expected": {
-            "total": totals.get("total_etc_expected", Decimal("0")),
-            "bonus": Decimal("0"),
-        },
-        "etc_collected": {
-            "total": totals.get("total_etc_collected", Decimal("0")),
-            "bonus": Decimal("0"),
-        },
+        k: {
+            "total": totals.get(f"total_{k}", Decimal("0")),
+            "bonus": split(k),
+        }
+        for k in rates
     }
 
-    # 6.6 不足额
+    # ETC 不进入分成计算
+    totals_all["etc_expected"] = {
+        "total": totals.get("total_etc_expected", Decimal("0")),
+        "bonus": Decimal("0"),
+    }
+    totals_all["etc_collected"] = {
+        "total": totals.get("total_etc_collected", Decimal("0")),
+        "bonus": Decimal("0"),
+    }
+    totals_all["meter_only_total"] = totals.get("meter_only_total", Decimal("0"))
+
+    # 9. 税前合计
+    gross = totals.get('total_meter') or Decimal('0')
+    totals['meter_pre_tax'] = (gross / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+
+    # 10. ETC 不足合计
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
-    # 7. 构造每人合计（高效聚合方式，避免 N+1 查询）
-    
-    # 一次性查询每位司机的总计金额（减少 DB IO）
+    # 11. 每位司机总额
     items = DriverDailyReportItem.objects.filter(report__in=reports)
     report_sums = items.values('report__driver').annotate(total=Sum('meter_fee'))
-
     fee_map = {r['report__driver']: r['total'] or Decimal("0") for r in report_sums}
 
     driver_data = []
@@ -1437,10 +1381,10 @@ def dailyreport_overview(request):
             'month_str': month_str,
         })
 
-    # 8. 分页
+    # 12. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
 
-    # 9. 合计键
+    # 13. 合计卡片顺序（与模板一致）
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金'),
@@ -1453,25 +1397,19 @@ def dailyreport_overview(request):
         ('qr', '扫码'),
     ]
 
-    # 10. 月份导航
-    prev_month_str = (month - relativedelta(months=1)).strftime('%Y-%m')
-    next_month_str = (month + relativedelta(months=1)).strftime('%Y-%m')
-
-    print("🧮 最终 totals_all =", totals_all)  # ← 添加这行调试输出
-
     return render(request, 'dailyreport/dailyreport_overview.html', {
-        'page_obj': page_obj,
-        'month': month,
-        'month_str': month.strftime('%Y-%m'),
-        'month_label': month.strftime('%Y年%m月'),
-        'prev_month': prev_month_str,
-        'next_month': next_month_str,
-        'keyword': keyword,
+        'totals': totals,
         'totals_all': totals_all,
-        'summary_keys': summary_keys,
         'etc_shortage_total': etc_shortage_total,
-        'current_year': month.year,
-        'current_month': month.month,
+        'drivers': drivers,
+        'page_obj': page_obj,
+        'month_str': month_str,
+        'current_year': export_year,
+        'current_month': export_month,
+        'summary_keys': summary_keys,
+        'month_label': month_label,
+        'prev_month': prev_month,
+        'next_month': next_month,
     })
 
     

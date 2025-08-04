@@ -124,3 +124,28 @@ def calculate_totals_from_instances(item_instances):
 
 def calculate_totals_from_queryset(queryset):
     return calculate_totals_from_instances(list(queryset))
+
+def resolve_payment_method(method: str) -> str:
+    if not method:
+        return ""
+    method = method.strip().lower()
+
+    if "cash" in method or "現金" in method:
+        return "cash"
+    elif "uber" in method:
+        return "uber"
+    elif "didi" in method:
+        return "didi"
+    elif "credit" in method or "クレジット" in method:
+        return "credit"
+    elif "kyokushin" in method or "京交信" in method:
+        return "kyokushin"
+    elif "omron" in method or "オムロン" in method:
+        return "omron"
+    elif "kyotoshi" in method or "京都市" in method:
+        return "kyotoshi"
+    elif "qr" in method or "扫码" in method or "wechat" in method or "alipay" in method:
+        return "qr"
+    elif "etc" in method:
+        return "etc"
+    return ""
