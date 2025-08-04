@@ -53,18 +53,20 @@ def calculate_totals_from_formset(data_iter):
         payment_method = data.get("payment_method", "")
         method_key = resolve_payment_method(payment_method)
 
-        if meter_fee > 0 and "キャンセル" not in note and method_key:
-            raw_totals[method_key] += meter_fee
+        if meter_fee > 0 and "キャンセル" not in note:
             meter_only_total += meter_fee
+            if method_key:
+                raw_totals[method_key] += meter_fee
 
             if is_cash(method_key):
                 nagashi_cash_total += meter_fee
                 nagashi_cash_bonus += meter_fee * PAYMENT_RATES.get(method_key, 0)
 
+    # ✅ 修正：只遍历 PAYMENT_RATES，防止统计非法 key（例如 ""）
     result = {
         key: {
-            "total": round(raw_totals[key]),
-            "bonus": round(raw_totals[key] * PAYMENT_RATES[key])
+            "total": round(raw_totals.get(key, 0)),
+            "bonus": round(raw_totals.get(key, 0) * PAYMENT_RATES[key])
         }
         for key in PAYMENT_RATES
     }
@@ -76,6 +78,7 @@ def calculate_totals_from_formset(data_iter):
     }
 
     return result
+
 
 def calculate_totals_from_instances(item_instances):
     raw_totals = defaultdict(Decimal)
@@ -89,18 +92,22 @@ def calculate_totals_from_instances(item_instances):
         payment_method = getattr(item, "payment_method", "")
         method_key = resolve_payment_method(payment_method)
 
-        if meter_fee > 0 and "キャンセル" not in note and method_key:
-            raw_totals[method_key] += meter_fee
+        print(f"[🧾 ITEM] id={item.id}, pay=《{payment_method}》=> key=《{method_key}》, fee={meter_fee}")
+
+        if meter_fee > 0 and "キャンセル" not in note:
             meter_only_total += meter_fee
+            if method_key:
+                raw_totals[method_key] += meter_fee
 
             if is_cash(method_key):
                 nagashi_cash_total += meter_fee
                 nagashi_cash_bonus += meter_fee * PAYMENT_RATES.get(method_key, 0)
 
+    # ✅ 同样修正遍历 key 来源
     result = {
         key: {
-            "total": round(raw_totals[key]),
-            "bonus": round(raw_totals[key] * PAYMENT_RATES[key])
+            "total": round(raw_totals.get(key, 0)),
+            "bonus": round(raw_totals.get(key, 0) * PAYMENT_RATES[key])
         }
         for key in PAYMENT_RATES
     }
@@ -111,10 +118,9 @@ def calculate_totals_from_instances(item_instances):
         "bonus": round(nagashi_cash_bonus)
     }
 
-    result["meter_total"] = round(meter_only_total)  # ✅ 添加这一行
+    result["meter_total"] = round(meter_only_total)
 
     return result
-
 
 def calculate_totals_from_queryset(queryset):
     return calculate_totals_from_instances(list(queryset))

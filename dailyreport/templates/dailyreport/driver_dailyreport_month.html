@@ -48,13 +48,12 @@
             <td>{{ report.date|date:"Y年n月j日" }}</td>
             <td>
                 <p class="text-dark fw-bold">合計: ￥{{ report.total_all|default:0|intcomma }}</p>
-                <p class="text-muted">（メータのみ: ￥{{ report.total_meter|default:0|intcomma }}）</p>
+                <p class="text-muted">（メータのみ: ￥{{ report.meter_only_total|default:0|intcomma }}）</p>
 
                 {% comment %} Optional debug info {% endcomment %}
                 {# 🔧 調試用：可删除或注释掉 #}
                 {# <p class="text-danger small">
-                    🐞 DEBUG: total_all={{ report.total_all }},
-                    meter={{ report.total_meter }}
+                    🐞 DEBUG: total_all={{ report.total_all }}, meter_only_total={{ report.meter_only_total }}
                 </p> #}
                 
                 <p class="text-muted small">※ 売上合計には、メーター金額のすべてが含まれます。</p>

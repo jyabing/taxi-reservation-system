@@ -518,10 +518,11 @@ def driver_dailyreport_month(request, driver_id):
 
         totals = calculate_totals_from_instances(items)
 
-        report.total_meter = totals.get('meter_only_total', Decimal("0"))  # ✅ 更新为 meter_only_total
-        report.total_all = sum(v["total"] for k, v in totals.items() if isinstance(v, dict))  # ✅ 统计所有支付方式总和
+        # ✅ 正确赋值给模板中用到的字段
+        report.total_all = sum(v["total"] for k, v in totals.items() if isinstance(v, dict))
+        report.meter_only_total = totals.get("meter_only_total", Decimal("0"))
 
-        print(f"[TOTAL] total={report.total_all}, meter={report.total_meter}")
+        print(f"[TOTAL] total_all={report.total_all}, meter_only_total={report.meter_only_total}")
 
         report_list.append(report)
 
@@ -1290,7 +1291,8 @@ def dailyreport_overview(request):
     # 3. 构建 reports
     reports = DriverDailyReport.objects.filter(
         date__year=month.year,
-        date__month=month.month
+        date__month=month.month,
+        driver__in=drivers  # ✅ 限定为当月在职司机
     )
 
     # 4. 构建 totals

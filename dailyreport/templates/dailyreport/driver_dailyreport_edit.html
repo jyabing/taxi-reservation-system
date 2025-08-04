@@ -201,27 +201,28 @@ input[type=number] {
         <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
           <div class="small text-muted">
             {% if key == "meter" %}
-              売上合計
-            {% else %}
-              {{ label }} 合計
-            {% endif %}
-          </div>
-
-          <div>
-            <span id="total_{{ key }}">
-              {{ totals|get_item:key|get_item:"total"|default:0|floatformat:"0" }}
-            </span>
-            {% if key == "meter" %}
-              <div class="small text-muted">
-                <small>(メータのみ: {{ totals.meter_only_total|default:0|intcomma }})</small>
-              </div>
-              <div class="small text-muted">
-                ※ 売上合計には、メーター金額すべてが含まれます。
+              <div class="small text-muted">売上合計</div>
+              <div>
+                <span id="total_meter">
+                  {{ totals.meter_total|default:0|intcomma }}  {# ← 应该显示收入合计，如 17,800 #}
+                </span>
+                <div class="small text-muted">
+                  <small>(メータのみ: {{ totals.meter_only_total|default:0|intcomma }})</small>  {# ← 应该显示 21,000 #}
+                </div>
+                <div class="small text-muted">
+                  ※ 売上合計には、支払方法付きのデータのみが含まれます。
+                </div>
               </div>
             {% else %}
-              （<span id="bonus_{{ key }}">
-                {{ totals|get_item:key|get_item:"bonus"|default:0|floatformat:"0" }}
-              </span>）
+              <div class="small text-muted">{{ label }} 合計</div>
+              <div>
+                <span id="total_{{ key }}">
+                  {{ totals|get_item:key|get_item:"total"|default:0|floatformat:"0" }}
+                </span>
+                （<span id="bonus_{{ key }}">
+                  {{ totals|get_item:key|get_item:"bonus"|default:0|floatformat:"0" }}
+                </span>）
+              </div>
             {% endif %}
           </div>
         </div>

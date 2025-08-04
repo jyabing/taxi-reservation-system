@@ -53,9 +53,9 @@ class DriverDailyReportForm(forms.ModelForm):
             'gas_volume':   forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control auto-width-input', 'placeholder': '0.00 L'}),
             'mileage':      forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control auto-width-input', 'placeholder': '0.00 KM'}),
             # ✅ ETC 字段
-            'etc_collected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input', 'placeholder': '例：2110'}),
+            'etc_collected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input'}),
             'etc_payment_method': forms.Select(attrs={'class': 'form-select'}),
-            'etc_uncollected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input', 'placeholder': '例：470'}),
+            'etc_uncollected': forms.NumberInput(attrs={'step': '1', 'class': 'form-control auto-width-input'}),
             'etc_shortage': forms.NumberInput(attrs={'step': '1', 'readonly': 'readonly', 'class': 'form-control auto-width-input text-danger', 'placeholder': 'ETC不足额,自动计算'}),
         }
 
@@ -103,6 +103,30 @@ class DriverDailyReportForm(forms.ModelForm):
                         self.fields['clock_out'].initial = res.actual_return.time()
                     if res.vehicle:
                         self.fields['vehicle'].initial = res.vehicle
+
+    
+
+    # ✅ 插入位置开始：ETC 字段清洗
+    def clean_etc_collected(self):
+        value = self.cleaned_data.get('etc_collected')
+        if value in [None, '', '例：2110']:
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            self.add_error('etc_collected', '数値を入力してください')
+            return None
+
+    def clean_etc_uncollected(self):
+        value = self.cleaned_data.get('etc_uncollected')
+        if value in [None, '', '例：470']:
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            self.add_error('etc_uncollected', '数値を入力してください')
+            return None
+    # ✅ 插入位置结束
 
     def clean(self):
         cleaned_data = super().clean()
