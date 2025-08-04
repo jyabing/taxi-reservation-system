@@ -826,13 +826,11 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     for f in formset.forms:
         if f.is_bound and f.is_valid():
             cleaned = f.cleaned_data
-            if (cleaned.get("meter_fee") or cleaned.get("charter_fee")) and not cleaned.get("DELETE", False):
+            if cleaned.get("meter_fee") and not cleaned.get("DELETE", False):
                 data_iter.append({
                     'meter_fee': cleaned.get('meter_fee'),
                     'payment_method': cleaned.get('payment_method'),
                     'note': cleaned.get('note', ''),
-                    'charter_fee': cleaned.get('charter_fee'),
-                    'charter_payment_method': cleaned.get('charter_payment_method'),
                     'DELETE': False,
                 })
         elif f.instance and not getattr(f.instance, 'DELETE', False):
@@ -840,8 +838,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                 'meter_fee': getattr(f.instance, 'meter_fee', 0),
                 'payment_method': getattr(f.instance, 'payment_method', ''),
                 'note': getattr(f.instance, 'note', ''),
-                'charter_fee': getattr(f.instance, 'charter_fee', 0),
-                'charter_payment_method': getattr(f.instance, 'charter_payment_method', ''),
                 'DELETE': False,
             })
 
@@ -1220,7 +1216,7 @@ def dailyreport_create_for_driver(request, driver_id):
 
     summary_keys = [
         ('meter', 'メーター(水揚)'),
-        ('nagashi_cash', '現金(ながし)'),   # ✅ 这是我们要加的合并字段（cash + charter_cash）
+        ('nagashi_cash', '現金(ながし)'),   # ✅ 这是我们要加的合并字段
         ('cash', '現金'),                   # ✅ 若仍想分开显示可保留，否则可删
         ('uber', 'Uber'),
         ('didi', 'Didi'),
@@ -1305,10 +1301,8 @@ def dailyreport_overview(request):
         resolved_key = resolve_payment_method(item.payment_method)
         print(f"[RESOLVED] → {resolved_key}")
 
-        # 统一取得金额（优先 meter_fee，再考虑 charter_fee）
+        # 仅使用 meter_fee
         fee = item.meter_fee or Decimal('0')
-        if fee <= 0 and item.charter_fee:
-            fee = item.charter_fee or Decimal('0')
 
         if fee <= 0:
             continue
@@ -1337,13 +1331,11 @@ def dailyreport_overview(request):
     totals_all = {}
     meter_total = Decimal('0')
     meter_only_total = Decimal('0')
-    for key in ['cash', 'uber', 'didi', 'credit', 'kyokushin', 'omron', 'kyotoshi', 'qr', 'charter']:
+    for key in ['cash', 'uber', 'didi', 'credit', 'kyokushin', 'omron', 'kyotoshi', 'qr']:
         amt = totals.get(f"total_{key}", Decimal('0'))
         bonus = (amt * rates.get(key, Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         totals_all[key] = {"total": amt, "bonus": bonus}
         meter_total += amt
-        if key != 'charter':
-            meter_only_total += amt
     totals_all["meter"] = {
         "total": meter_total,
         "bonus": (meter_total * rates['meter']).quantize(Decimal('1'), rounding=ROUND_HALF_UP),
