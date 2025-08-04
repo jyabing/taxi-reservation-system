@@ -16,14 +16,20 @@ def resolve_payment_method(raw_payment: str) -> str:
 
     cleaned = (
         raw_payment.replace("　", "")
-                   .replace("（", "")
-                   .replace("）", "")
-                   .replace("(", "")
-                   .replace(")", "")
-                   .replace("\n", "")
-                   .strip()
-                   .lower()
-    )
+                    .replace("（", "")
+                    .replace("）", "")
+                    .replace("(", "")
+                    .replace(")", "")
+                    .replace("＜", "")  # ✅ 加这一行
+                    .replace("＞", "")  # ✅ 加这一行
+                    .replace("《", "")  # ✅ 加这一行
+                    .replace("》", "")  # ✅ 加这一行
+                    .replace("\n", "")
+                    .strip()
+                    .lower()
+        )
+
+    print(f"[解析] raw={raw_payment} => cleaned={cleaned}")  # ✅ 加上这行
 
     for key, keywords in PAYMENT_KEYWORDS.items():
         for keyword in keywords:

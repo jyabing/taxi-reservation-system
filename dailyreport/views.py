@@ -518,11 +518,10 @@ def driver_dailyreport_month(request, driver_id):
 
         totals = calculate_totals_from_instances(items)
 
-        report.total_meter = totals.get('meter_total', Decimal("0"))
-        report.charter_total = totals.get('charter_total', Decimal("0"))
-        report.total_all = report.total_meter + report.charter_total
+        report.total_meter = totals.get('meter_only_total', Decimal("0"))  # ✅ 更新为 meter_only_total
+        report.total_all = sum(v["total"] for k, v in totals.items() if isinstance(v, dict))  # ✅ 统计所有支付方式总和
 
-        print(f"[TOTAL] total={report.total_all}, meter={report.total_meter}, charter={report.charter_total}")
+        print(f"[TOTAL] total={report.total_all}, meter={report.total_meter}")
 
         report_list.append(report)
 
@@ -1302,13 +1301,25 @@ def dailyreport_overview(request):
     totals = defaultdict(Decimal)
     items = DriverDailyReportItem.objects.filter(report__in=reports)
     for item in items:
-        if item.meter_fee is None or item.meter_fee <= 0:
+        print(f"[ITEM] id={item.id}, payment_method=《{item.payment_method}》, note=《{item.note}》")
+        resolved_key = resolve_payment_method(item.payment_method)
+        print(f"[RESOLVED] → {resolved_key}")
+
+        # 统一取得金额（优先 meter_fee，再考虑 charter_fee）
+        fee = item.meter_fee or Decimal('0')
+        if fee <= 0 and item.charter_fee:
+            fee = item.charter_fee or Decimal('0')
+
+        if fee <= 0:
             continue
         if item.note and 'キャンセル' in item.note:
             continue
-        payment = item.payment_method or 'unknown'
-        totals[f"total_{payment}"] += item.meter_fee
-        totals["total_meter"] += item.meter_fee
+        if not resolved_key:
+            continue
+
+        totals[f"total_{resolved_key}"] += fee
+        totals["total_meter"] += fee
+
 
     # 4.5 构建 totals_all
     rates = {

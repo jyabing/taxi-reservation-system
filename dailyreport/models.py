@@ -217,7 +217,7 @@ class DriverDailyReportItem(models.Model):
     comment = models.TextField("录入员注释", blank=True)
     is_flagged = models.BooleanField(default=False, verbose_name="标记为重点")
     has_issue = models.BooleanField("是否异常", default=False)
-    is_charter = models.BooleanField("是否为貸切", default=False)
+
     combined_group = models.CharField("合算グループ", max_length=100, blank=True, null=True)
 
     def save(self, *args, **kwargs):

@@ -5,13 +5,15 @@ from decimal import Decimal
 # ⛳ 支付方式关键字与费率配置
 PAYMENT_KEYWORDS = {
     'qr':        ['qr', 'コード', '扫码', 'barcode', 'wechat', 'paypay', '支付宝', 'aupay', 'line', 'スマホ'],
-    'kyokushin': ['京交信タクチケ'],
-    'omron':     ['オムロン(愛のタクシーチケット)'],
+    'kyokushin': ['京交信タクチケ', '京交信', '京交信タクシーチケット', '京交信券', '京交信チケット', '京交信券'],
+    'omron': ['オムロン', 'オムロン(愛のタクシーチケット)', 'オムロン券', '愛のタクシーチケット'],
     'kyotoshi':  ['京都市'],
-    'credit':    ['クレジット', 'クレジットカード', 'クレカ', 'credit', 'visa', 'mastercard'],
+    'credit': ['クレジット', 'クレジットカード', 'クレカ', 'クレジ' 'credit', 'credit_card', 'visa', 'mastercard'],
     
     'uber':      ['uber', 'uber現金', 'uber（現金）', 'ウーバー', 'ウーバー現金'],
     'didi':      ['didi', 'didi現金', 'didi（現金）', 'didi cash', 'ディディ', 'ディディ現金'],
+    'cash':      ['cash', '現金', 'ながし', 'uber_cash'],  # ✅ 新增这一行
+    
 }
 
 PAYMENT_RATES = {

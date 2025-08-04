@@ -111,6 +111,8 @@ def calculate_totals_from_instances(item_instances):
         "bonus": round(nagashi_cash_bonus)
     }
 
+    result["meter_total"] = round(meter_only_total)  # ✅ 添加这一行
+
     return result
 
 

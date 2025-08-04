@@ -16,9 +16,6 @@
                   {% with 10 as common_threshold %}
 
                     {# ✅ 常用项主导航栏显示 #}
-                    {% if click_vehicle_status >= common_threshold %}
-                      <a href="{% url 'vehicles:vehicle_status' %}">🚗 車両状態</a>
-                    {% endif %}
                     {% if click_weekly >= common_threshold %}
                       <a href="{% url 'vehicles:weekly_overview' %}">📅 一周预约概览</a>
                     {% endif %}
@@ -27,7 +24,7 @@
                     {% endif %}
 
                     {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
-                      <a href="{% url 'vehicles:reservation_dashboard' %}">🚖 配车系统</a>
+                      <a href="{% url 'vehicles:weekly_overview' %}">📅 一周预约概览</a>
                       <a href="{% url 'vehicles:reservation_approval_list' %}">🛠️ 审批面板</a>
                       <a href="{% url 'vehicles:admin_stats' %}" style="color:purple;">📊 管理员统计</a>
                     {% endif %}
@@ -38,7 +35,7 @@
                       </button>
                       <ul class="dropdown-menu dropdown-menu-end">
                         {% if click_weekly < common_threshold %}
-                          <li><a class="dropdown-item" href="{% url 'vehicles:weekly_overview' %}">📅 一周预约概览</a></li>
+                          <li><a class="dropdown-item" href="{% url 'vehicles:reservation_dashboard' %}">🚖 配车系统</a></li>
                         {% endif %}
                         {% if click_my_res < common_threshold %}
                           <li><a class="dropdown-item" href="{% url 'vehicles:my_reservations' %}">📋 私の予約</a></li>
