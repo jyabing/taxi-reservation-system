@@ -211,7 +211,7 @@ class DriverDailyReportItem(models.Model):
     num_male = models.IntegerField("男性", blank=True, null=True)
     num_female = models.IntegerField("女性", blank=True, null=True)
     meter_fee = models.DecimalField("メータ料金", max_digits=7, decimal_places=2, blank=True, null=True)
-    
+    is_charter = models.BooleanField(default=False)  # ✅ 添加 default
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)
