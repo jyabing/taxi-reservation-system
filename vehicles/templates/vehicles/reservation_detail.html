@@ -14,7 +14,7 @@
   <li><strong>状态：</strong>{{ reservation.get_status_display }}</li>
 </ul>
 
-<a href="{% url 'weekly_overview' %}">← 返回周视图</a>
+<a href="{% url 'vehicles:weekly_overview' %}">← 返回周视图</a>
 {% endblock %}
 
 {% block extra_style %}
