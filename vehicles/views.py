@@ -1743,3 +1743,40 @@ def save_vehicle_note(request, car_id):
         messages.error(request, "❌ 保存失败，请检查输入内容")
 
     return redirect('vehicles:vehicle_status')
+
+
+# ✅ 加入到 vehicles/views.py 顶部位置
+from django.views.decorators.http import require_GET
+from django.utils.dateparse import parse_datetime
+
+# ✅ 新增冲突检测 API（支持立即调用）
+@require_GET
+@login_required
+def check_reservation_conflict(request):
+    car_id = request.GET.get("car_id")
+    start_str = request.GET.get("start_datetime")
+    end_str = request.GET.get("end_datetime")
+
+    if not car_id or not start_str or not end_str:
+        return JsonResponse({'status': 'error', 'message': '缺少参数'}, status=400)
+
+    try:
+        start_dt = parse_datetime(start_str)
+        end_dt = parse_datetime(end_str)
+        if not start_dt or not end_dt:
+            raise ValueError("时间格式不正确")
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'时间解析失败: {e}'}, status=400)
+
+    # ✅ 查询是否有冲突预约（非当前用户）
+    conflict_exists = Reservation.objects.filter(
+        vehicle_id=car_id,
+        start_datetime__lt=end_dt,
+        end_datetime__gt=start_dt,
+        status__in=['reserved', 'out']
+    ).exclude(driver=request.user).exists()
+
+    if conflict_exists:
+        return JsonResponse({'status': 'conflict'})
+    else:
+        return JsonResponse({'status': 'ok'})
