@@ -227,7 +227,25 @@ input[type=number] {
           </div>
         </div>
       {% endfor %}
-    </div>
+
+      <!-- ✅ 追加：貸切収入・売上合計・入金合計 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <div class="small text-muted">貸切現金</div>
+        <div>
+          <span id="charter-cash-total">
+            {{ totals.charter_cash_total|default:0|intcomma }}
+          </span> 円
+        </div>
+      </div>
+
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <div class="small text-muted">貸切未収</div>
+        <div>
+          <span id="charter-uncollected-total">
+            {{ totals.charter_uncollected_total|default:0|intcomma }}
+          </span> 円
+        </div>
+      </div>
       
       <!-- ✅ 入金 + ETC 综合区域 -->
       <div class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
@@ -248,7 +266,7 @@ input[type=number] {
           {% endif %}
         {% endif %}
 
-        <label class="small text-muted mt-2 d-block">過不足（入金 - 現金）</label>
+        <label class="small text-muted mt-2 d-block">過不足（入金 - 現金(ながし)  - 貸切現金）</label>
         <div id="difference-output" class="form-control-plaintext text-end small text-muted" style="min-height: 1.5em;">
           {{ form.deposit_difference.value|default:"--" }}
         </div>
@@ -332,6 +350,10 @@ input[type=number] {
           <th style="white-space: nowrap;">料金</th>
           <th style="white-space: nowrap;">支付</th>
           <th style="white-space: nowrap;">強調</th>
+          <th style="white-space: nowrap;">貸切</th>
+          
+          <th style="white-space: nowrap;">貸切金額</th>
+          <th style="white-space: nowrap;">処理</th>
           <th>注釈</th>
           <th style="white-space: nowrap;">操作</th>
         </tr>
@@ -380,6 +402,20 @@ input[type=number] {
               {{ form.is_flagged }}
             </td>
 
+            <td class="text-center">
+              {% if form.is_charter.errors %}
+                <div class="text-danger small">{{ form.is_charter.errors.0 }}</div>
+              {% endif %}
+              {{ form.is_charter }}
+            </td>
+
+            <td>
+              {{ form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}
+            </td>
+            <td>
+              {{ form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
+            </td>
+
             <td>
               {% if form.note.value %}📝{% endif %}
               {% if form.note.errors %}
@@ -417,6 +453,11 @@ input[type=number] {
           <td>{{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}</td>
           <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}</td>
           <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
+
+          <td class="text-center">{{ formset.empty_form.is_charter }}</td>
+          <td>{{ formset.empty_form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}</td>
+          <td>{{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}</td>
+
           <td>{{ formset.empty_form.note|add_class:"form-control" }}</td>
           <td style="white-space:nowrap;">
             <button type="button" class="btn btn-danger btn-sm delete-row">削除</button>

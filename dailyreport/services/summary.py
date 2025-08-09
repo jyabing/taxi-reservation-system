@@ -86,11 +86,19 @@ def calculate_totals_from_instances(item_instances):
     nagashi_cash_total = Decimal(0)
     nagashi_cash_bonus = Decimal(0)
 
+    # 🔽 新增 charter 部分合计变量
+    charter_cash_total = Decimal(0)
+    charter_uncollected_total = Decimal(0)
+
     for item in item_instances:
         note = getattr(item, "note", "") or ""
         meter_fee = normalize(getattr(item, "meter_fee", 0))
         payment_method = getattr(item, "payment_method", "")
         method_key = resolve_payment_method(payment_method)
+
+        is_charter = getattr(item, "is_charter", False)
+        charter_amount = normalize(getattr(item, "charter_amount_jpy", 0))
+        charter_method = getattr(item, "charter_payment_method", "")
 
         print(f"[🧾 ITEM] id={item.id}, pay=《{payment_method}》=> key=《{method_key}》, fee={meter_fee}")
 
@@ -103,7 +111,14 @@ def calculate_totals_from_instances(item_instances):
                 nagashi_cash_total += meter_fee
                 nagashi_cash_bonus += meter_fee * PAYMENT_RATES.get(method_key, 0)
 
-    # ✅ 同样修正遍历 key 来源
+        # 🔽 处理 charter 部分
+        if is_charter and charter_amount > 0:
+            if charter_method == "cash":
+                charter_cash_total += charter_amount
+            elif charter_method == "uncollected":
+                charter_uncollected_total += charter_amount
+
+    # ✅ 原本的 result 保留
     result = {
         key: {
             "total": round(raw_totals.get(key, 0)),
@@ -117,8 +132,18 @@ def calculate_totals_from_instances(item_instances):
         "total": round(nagashi_cash_total),
         "bonus": round(nagashi_cash_bonus)
     }
-
     result["meter_total"] = round(meter_only_total)
+
+    # ✅ 追加 charter 和合计部分
+    result["charter_cash_total"] = round(charter_cash_total)
+    result["charter_uncollected_total"] = round(charter_uncollected_total)
+    result["deposit_total"] = round(nagashi_cash_total + charter_cash_total)
+    result["sales_total"] = round(
+        nagashi_cash_total +
+        charter_cash_total +
+        charter_uncollected_total +
+        sum(raw_totals.get(k, 0) for k in PAYMENT_RATES)
+    )
 
     return result
 

@@ -212,7 +212,52 @@ class DriverDailyReportItem(models.Model):
     num_female = models.IntegerField("女性", blank=True, null=True)
     meter_fee = models.DecimalField("メータ料金", max_digits=7, decimal_places=2, blank=True, null=True)
     is_charter = models.BooleanField(default=False)  # ✅ 添加 default
+    
+    #charter_amount_jpy = models.DecimalField(max_digits=8, decimal_places=0, default=0)
+    #charter_payment_method = models.CharField(max_length=20, blank=True, default="")
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
+
+     # === ↓↓↓ 包车收款明细字段：用于计算貸切現金/未収合计 ↓↓↓ ===
+
+    charter_payment_method = models.CharField(
+        max_length=20,
+        choices=[
+            ('self_wechat', '司机微信/支付宝'),
+            ('rmb_cash', '人民币现金'),
+            ('jpy_cash', '日元现金'),
+            ('to_company', '转付公司'),
+            ('boss_wechat', '老板微信'),
+            ('bank_transfer', '银行转账'),
+        ],
+        default="jpy_cash",             # ← 如需默认选项，加上
+        blank=True,
+        null=True,
+        verbose_name='貸切收款方式'
+    )
+
+    charter_amount_original = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='貸切原始金额（元/円）'
+    )
+
+    charter_exchange_rate = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='換算汇率'
+    )
+
+    charter_amount_jpy = models.DecimalField(
+        max_digits=10, decimal_places=0,
+        blank=True,
+        null=True,
+        verbose_name='貸切日元金额'
+    )
+
+    # === ↑↑↑ 包车字段结束 ↑↑↑ ===
+
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)
     is_flagged = models.BooleanField(default=False, verbose_name="标记为重点")

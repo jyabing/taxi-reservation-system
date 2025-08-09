@@ -229,10 +229,57 @@ document.addEventListener('DOMContentLoaded', () => {
       const fee = parseInt(row.querySelector("input[name$='-meter_fee']")?.value || 0);
       const methodRaw = row.querySelector("select[name$='-payment_method']")?.value || "";
       const method = resolveJsPaymentMethod(methodRaw);
+
       if (fee > 0 && totalMap.hasOwnProperty(method)) {
         totalMap[method] += fee;
       }
     });
+
+    // 🔢 合计 charter（包车）相关字段
+    let charterCashTotal = 0;
+    let charterUncollectedTotal = 0;
+
+    document.querySelectorAll("tr.report-item-row").forEach(row => {
+      const isCharter = row.querySelector("input[type='checkbox'][name$='-is_charter']")?.checked;
+      const charterAmount = parseInt(row.querySelector("input[name$='-charter_amount_jpy']")?.value || 0);
+      const charterMethod = row.querySelector("select[name$='-charter_payment_method']")?.value;
+
+      // 现金(或已收)类：你可以按你的口径调整
+      const CHARTER_CASH_METHODS = ['jpy_cash', 'rmb_cash', 'self_wechat', 'boss_wechat'];
+
+      // 非现金 / 未收（从司机视角）
+      const CHARTER_UNCOLLECTED_METHODS = ['to_company', 'bank_transfer', '']; // 空值也算未收以免漏算
+
+      // ……updateTotals 里替换统计逻辑……
+      if (isCharter && charterAmount > 0) {
+        if (CHARTER_CASH_METHODS.includes(charterMethod)) {
+          charterCashTotal += charterAmount;
+        } else if (CHARTER_UNCOLLECTED_METHODS.includes(charterMethod)) {
+          charterUncollectedTotal += charterAmount;
+        }
+      }
+    });
+
+    // 写入包车合计
+    const charterCashEl = document.getElementById("charter-cash-total");
+    if (charterCashEl) charterCashEl.textContent = charterCashTotal.toLocaleString();
+
+    const charterUncollectedEl = document.getElementById("charter-uncollected-total");
+    if (charterUncollectedEl) charterUncollectedEl.textContent = charterUncollectedTotal.toLocaleString();
+
+    // 入金合計 = ながし現金合計 + 貸切現金
+    const depositTotal = totalMap.cash + charterCashTotal;
+    const depositEl = document.getElementById("deposit-total");
+    if (depositEl) depositEl.textContent = depositTotal.toLocaleString();
+
+    // 売上合計 = 全支付方式 + 貸切現金 + 貸切未収
+    const salesTotal =
+      Object.values(totalMap).reduce((a, b) => a + b, 0) +
+      charterCashTotal + charterUncollectedTotal;
+
+    const salesEl = document.getElementById("sales-total");
+    if (salesEl) salesEl.textContent = salesTotal.toLocaleString();
+
 
     // ➕ ETC 收款金额也加入合计
     const etcAmount = parseInt(document.getElementById("id_etc_collected")?.value || 0);
@@ -262,6 +309,9 @@ document.addEventListener('DOMContentLoaded', () => {
       meterOnlyEl.textContent = totalAll.toLocaleString();
     }
   }
+
+    // ✅ 显式挂到全局
+    window.updateTotals = updateTotals;
 
   // ✅ 智能提示面板更新函数
   function updateSmartHintPanel() {
@@ -353,4 +403,43 @@ document.addEventListener('DOMContentLoaded', () => {
   updateEtcInclusionWarning();
   updateRowNumbersAndIndexes();
   updateTotals();
+});
+
+// —— 11. 勾选「貸切」后自动复制金额和支付方式 ——
+// 要求：每一行明细中包含以下 class：.meter-fee-input, .payment-method-select,
+// .charter-amount-input, .charter-payment-method-select
+
+document.addEventListener("change", function (e) {
+  const el = e.target;
+  if (!el.matches("input[type='checkbox'][name$='-is_charter']")) return;
+
+  const row = el.closest("tr");
+  if (!row) return;
+
+  const meterInput = row.querySelector(".meter-fee-input");
+  const paySelect = row.querySelector(".payment-method-select");
+  const charterAmountInput = row.querySelector(".charter-amount-input");
+  const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
+
+  if (!charterAmountInput || !charterPaymentSelect) return;
+
+  if (el.checked) {
+    // 自动填入金额
+    charterAmountInput.value = meterInput?.value || "";
+
+    // 原“支付”是现金系 → 直接当作“日元现金”
+    const pm = paySelect?.value || "";
+    if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm)) {
+      charterPaymentSelect.value = "jpy_cash";      // ← 新枚举
+    } else {
+      // 非现金 → 默认记到“转付公司”（你也可以换成 bank_transfer）
+      charterPaymentSelect.value = "to_company";
+    }
+  } else {
+    charterAmountInput.value = "";
+    charterPaymentSelect.value = "";
+  }
+    // ✅ 显式挂到全局（必须放在函数定义之后）
+  window.updateTotals = updateTotals;
+  updateTotals(); // ✅ 勾选切换时也更新合计
 });
