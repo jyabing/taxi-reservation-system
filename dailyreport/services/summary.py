@@ -1,45 +1,16 @@
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
+
+# 只使用外部实现，避免被本文件的重复定义覆盖
 from .resolve import resolve_payment_method
-from dailyreport.constants import PAYMENT_RATES, PAYMENT_KEYWORDS
+from dailyreport.constants import PAYMENT_RATES  # 如果未使用 PAYMENT_KEYWORDS，这里不要再导入它
 from dailyreport.utils import normalize
 
-def normalize(val):
-    try:
-        return Decimal(str(val)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    except Exception:
-        return Decimal("0")
-
-def resolve_payment_method(raw_payment: str) -> str:
-    """
-    统一解析支付方式关键词，返回 key（如 cash、card、uber、didi 等）
-    """
-    if not raw_payment:
-        return ""
-
-    raw_payment = raw_payment.strip()
-
-    cleaned = (
-        raw_payment.replace("　", "")
-                   .replace("（", "")
-                   .replace("）", "")
-                   .replace("(", "")
-                   .replace(")", "")
-                   .replace("\n", "")
-                   .strip()
-                   .lower()
-    )
-
-    for key, keywords in PAYMENT_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword.lower() in cleaned:
-                return key
-
-    return ""
 
 def is_cash(payment_method: str) -> bool:
-    return payment_method in ["cash", "uber_cash", "didi_cash", "go_cash"]
+    # 后端只认 'cash'；平台现金前端已并入 cash，这里不要再出现 *_cash 枚举
+    return payment_method == "cash"
 
 def calculate_totals_from_formset(data_iter):
     raw_totals = defaultdict(Decimal)
@@ -47,26 +18,46 @@ def calculate_totals_from_formset(data_iter):
     nagashi_cash_total = Decimal(0)
     nagashi_cash_bonus = Decimal(0)
 
+    # 与实例版保持一致的貸切统计
+    charter_cash_total = Decimal(0)
+    charter_uncollected_total = Decimal(0)
+
+    CHARTER_CASH_METHODS = {"jpy_cash", "rmb_cash", "self_wechat", "boss_wechat"}
+    CHARTER_UNCOLLECTED_METHODS = {"to_company", "bank_transfer", ""}
+
     for data in data_iter:
-        note = data.get("note", "") or ""
+        note = (data.get("note") or "").strip()
         meter_fee = normalize(data.get("meter_fee", 0))
         payment_method = data.get("payment_method", "")
         method_key = resolve_payment_method(payment_method)
 
+        is_charter = bool(data.get("is_charter", False))
+        charter_amount = normalize(data.get("charter_amount_jpy", 0))
+        charter_method = (data.get("charter_payment_method") or "").strip()
+
+        # 只统计有效非取消单
         if meter_fee > 0 and "キャンセル" not in note:
-            meter_only_total += meter_fee
-            if method_key:
-                raw_totals[method_key] += meter_fee
+            # メータのみ：只算“非貸切”行
+            if not is_charter:
+                meter_only_total += meter_fee
+                if method_key:
+                    raw_totals[method_key] += meter_fee
+                if is_cash(method_key):
+                    nagashi_cash_total += meter_fee
+                    nagashi_cash_bonus += meter_fee * PAYMENT_RATES.get(method_key, 0)
 
-            if is_cash(method_key):
-                nagashi_cash_total += meter_fee
-                nagashi_cash_bonus += meter_fee * PAYMENT_RATES.get(method_key, 0)
+        # 貸切金额：按枚举分别进 现金 / 未収
+        if is_charter and charter_amount > 0:
+            if charter_method in CHARTER_CASH_METHODS:
+                charter_cash_total += charter_amount
+            elif charter_method in CHARTER_UNCOLLECTED_METHODS:
+                charter_uncollected_total += charter_amount
 
-    # ✅ 修正：只遍历 PAYMENT_RATES，防止统计非法 key（例如 ""）
+    # 输出结构
     result = {
         key: {
             "total": round(raw_totals.get(key, 0)),
-            "bonus": round(raw_totals.get(key, 0) * PAYMENT_RATES[key])
+            "bonus": round(raw_totals.get(key, 0) * PAYMENT_RATES[key]),
         }
         for key in PAYMENT_RATES
     }
@@ -74,8 +65,14 @@ def calculate_totals_from_formset(data_iter):
     result["meter_only_total"] = round(meter_only_total)
     result["nagashi_cash"] = {
         "total": round(nagashi_cash_total),
-        "bonus": round(nagashi_cash_bonus)
+        "bonus": round(nagashi_cash_bonus),
     }
+
+    # 额外给出与实例版一致的几个汇总，供上层使用（不影响已有字段）
+    result["charter_cash_total"] = round(charter_cash_total)
+    result["charter_uncollected_total"] = round(charter_uncollected_total)
+    result["deposit_total"] = round(nagashi_cash_total + charter_cash_total)
+    result["sales_total"] = round(meter_only_total + charter_cash_total + charter_uncollected_total)
 
     return result
 
@@ -86,9 +83,13 @@ def calculate_totals_from_instances(item_instances):
     nagashi_cash_total = Decimal(0)
     nagashi_cash_bonus = Decimal(0)
 
-    # 🔽 新增 charter 部分合计变量
+    # 🔽 貸切合计
     charter_cash_total = Decimal(0)
     charter_uncollected_total = Decimal(0)
+
+    # 与前端一致的貸切枚举（如你已有统一函数，可改成调用）
+    CHARTER_CASH_METHODS = {"jpy_cash", "rmb_cash", "self_wechat", "boss_wechat"}
+    CHARTER_UNCOLLECTED_METHODS = {"to_company", "bank_transfer", ""}
 
     for item in item_instances:
         note = getattr(item, "note", "") or ""
@@ -96,81 +97,61 @@ def calculate_totals_from_instances(item_instances):
         payment_method = getattr(item, "payment_method", "")
         method_key = resolve_payment_method(payment_method)
 
-        is_charter = getattr(item, "is_charter", False)
+        is_charter = bool(getattr(item, "is_charter", False))
         charter_amount = normalize(getattr(item, "charter_amount_jpy", 0))
-        charter_method = getattr(item, "charter_payment_method", "")
+        charter_method_raw = getattr(item, "charter_payment_method", "") or ""
+        charter_method = charter_method_raw.strip()
 
-        print(f"[🧾 ITEM] id={item.id}, pay=《{payment_method}》=> key=《{method_key}》, fee={meter_fee}")
-
+        # 💡 只统计“有效非取消单”
         if meter_fee > 0 and "キャンセル" not in note:
-            meter_only_total += meter_fee
-            if method_key:
-                raw_totals[method_key] += meter_fee
+            # ✅ メータのみ：只算“非貸切”行
+            if not is_charter:
+                meter_only_total += meter_fee
+                if method_key:
+                    raw_totals[method_key] += meter_fee
+                if is_cash(method_key):
+                    nagashi_cash_total += meter_fee
+                    nagashi_cash_bonus += meter_fee * PAYMENT_RATES.get(method_key, 0)
 
-            if is_cash(method_key):
-                nagashi_cash_total += meter_fee
-                nagashi_cash_bonus += meter_fee * PAYMENT_RATES.get(method_key, 0)
-
-        # 🔽 处理 charter 部分
+        # 🔽 貸切金额按支付方式分别进入“現金/未収”
         if is_charter and charter_amount > 0:
-            if charter_method == "cash":
+            if charter_method in CHARTER_CASH_METHODS:
                 charter_cash_total += charter_amount
-            elif charter_method == "uncollected":
+            elif charter_method in CHARTER_UNCOLLECTED_METHODS:
                 charter_uncollected_total += charter_amount
+            # 其它未知枚举不计入，避免误差
 
-    # ✅ 原本的 result 保留
+    # ✅ 输出结构：各支付方式 total/bonus（bonus 按你既有费率）
     result = {
         key: {
             "total": round(raw_totals.get(key, 0)),
-            "bonus": round(raw_totals.get(key, 0) * PAYMENT_RATES[key])
+            "bonus": round(raw_totals.get(key, 0) * PAYMENT_RATES[key]),
         }
         for key in PAYMENT_RATES
     }
 
+    # ✅ メータのみ
     result["meter_only_total"] = round(meter_only_total)
+    # 如需保留“ながし現金”单独显示：
     result["nagashi_cash"] = {
         "total": round(nagashi_cash_total),
-        "bonus": round(nagashi_cash_bonus)
+        "bonus": round(nagashi_cash_bonus),
     }
+    # 若模板还读这个字段，让它等于メータのみ（兼容）
     result["meter_total"] = round(meter_only_total)
 
-    # ✅ 追加 charter 和合计部分
+    # ✅ 貸切合计
     result["charter_cash_total"] = round(charter_cash_total)
     result["charter_uncollected_total"] = round(charter_uncollected_total)
+
+    # ✅ 入金合计（現金(ながし) + 貸切現金）
     result["deposit_total"] = round(nagashi_cash_total + charter_cash_total)
-    result["sales_total"] = round(
-        nagashi_cash_total +
-        charter_cash_total +
-        charter_uncollected_total +
-        sum(raw_totals.get(k, 0) for k in PAYMENT_RATES)
-    )
+
+    # ✅ 売上合計 = メータのみ + 貸切現金 + 貸切未収
+    # 这里不要再把 nagashi_cash 或 sum(raw_totals) 叠加一次（它们已包含在 meter_only_total 内）
+    result["sales_total"] = round(meter_only_total + charter_cash_total + charter_uncollected_total)
 
     return result
 
 def calculate_totals_from_queryset(queryset):
     return calculate_totals_from_instances(list(queryset))
-
-def resolve_payment_method(method: str) -> str:
-    if not method:
-        return ""
-    method = method.strip().lower()
-
-    if "cash" in method or "現金" in method:
-        return "cash"
-    elif "uber" in method:
-        return "uber"
-    elif "didi" in method:
-        return "didi"
-    elif "credit" in method or "クレジット" in method:
-        return "credit"
-    elif "kyokushin" in method or "京交信" in method:
-        return "kyokushin"
-    elif "omron" in method or "オムロン" in method:
-        return "omron"
-    elif "kyotoshi" in method or "京都市" in method:
-        return "kyotoshi"
-    elif "qr" in method or "扫码" in method or "wechat" in method or "alipay" in method:
-        return "qr"
-    elif "etc" in method:
-        return "etc"
-    return ""

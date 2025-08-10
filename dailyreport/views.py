@@ -518,11 +518,15 @@ def driver_dailyreport_month(request, driver_id):
 
         totals = calculate_totals_from_instances(items)
 
-        # ✅ 正确赋值给模板中用到的字段
-        report.total_all = sum(v["total"] for k, v in totals.items() if isinstance(v, dict))
+        # 预览页口径与编辑页保持一致：
+        # 合計 = 売上合計 = メータのみ + 貸切現金 + 貸切未収
+        report.total_all = totals.get("sales_total", Decimal("0"))
+
+        # メータのみ（不含貸切）
         report.meter_only_total = totals.get("meter_only_total", Decimal("0"))
 
-        print(f"[TOTAL] total_all={report.total_all}, meter_only_total={report.meter_only_total}")
+        # 可保留调试，确认数值
+        print(f"[TOTAL] sales_total={report.total_all}, meter_only_total={report.meter_only_total}")
 
         report_list.append(report)
 
