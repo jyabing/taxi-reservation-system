@@ -207,7 +207,9 @@ input[type=number] {
                   {{ totals.meter_total|default:0|intcomma }}  {# ← 应该显示收入合计，如 17,800 #}
                 </span>
                 <div class="small text-muted">
-                  <small>(メータのみ: {{ totals.meter_only_total|default:0|intcomma }})</small>  {# ← 应该显示 21,000 #}
+                  <small>(メータのみ: <span id="total_meter_only">
+                    {{ totals.meter_only_total|default:0|intcomma }}
+                  </span>)</small>
                 </div>
                 <div class="small text-muted">
                   ※ 売上合計には、支払方法付きのデータのみが含まれます。
@@ -255,7 +257,7 @@ input[type=number] {
         {{ form.deposit_amount|add_class:"form-control form-control-sm text-end"|attr:"id:deposit-input"|attr:"style:min-width:80px;"|attr:"placeholder:0" }}
 
         <!-- ✅ ETC 包含判断提示（JS 动态修改） -->
-        <div id="etc-include-warning" class="small mt-1"></div>
+        <div id="etc-included-warning" class="small mt-1"></div>
 
         <!-- ✅ ETC 包含判断提示 -->
         {% if report.etc_collected and report.deposit_amount %}
@@ -293,6 +295,51 @@ input[type=number] {
         <label class="small text-muted">ETC 未收=空車合計（円）</label>
         {{ form.etc_uncollected|add_class:"form-control form-control-sm text-end" }}
       </div>
+
+
+      <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
+      <div class="border rounded px-3 py-2" style="min-width: 280px;">
+        <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
+        <div class="row g-2 align-items-end">
+          <!-- 空車ETC金额 -->
+          <div class="col-6">
+            <label for="id_etc_empty_amount" class="form-label small">空車ETC 金額（円）</label>
+            <input type="number" class="form-control form-control-sm text-end"
+                   id="id_etc_empty_amount" name="etc_empty_amount" min="0" step="1" value="">
+          </div>
+          <!-- 回程费受领额 -->
+          <div class="col-6">
+            <label for="id_etc_return_fee_claimed" class="form-label small">回程費 受領額（円）</label>
+            <input type="number" class="form-control form-control-sm text-end"
+                   id="id_etc_return_fee_claimed" name="etc_return_fee_claimed" min="0" step="1" value="">
+          </div>
+          <!-- 回程费支付方式 -->
+          <div class="col-6">
+            <label for="id_etc_return_fee_method" class="form-label small">回程費 支払方法</label>
+            <select id="id_etc_return_fee_method" name="etc_return_fee_method" class="form-select form-select-sm">
+              <option value="none">— 個別（別払い/なし）—</option>
+              <option value="app_ticket">アプリ/チケット 一体結算</option>
+              <option value="cash_to_driver">現金（直接司机）</option>
+            </select>
+          </div>
+          <!-- 空車ETC 使用卡 -->
+          <div class="col-6">
+            <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
+            <select id="id_etc_empty_card" name="etc_empty_card" class="form-select form-select-sm">
+              <option value="company">会社カード</option>
+              <option value="own">自己カード</option>
+              <option value="guest">お客様カード</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-text mt-2">
+          <small>
+            覆盖规则：支払方法 = <strong>アプリ/チケット</strong> 时，回程費用于覆盖空車ETC；<br>
+            覆盖不足 → <strong>司机負担</strong>；覆盖过多 → 記為 <strong>未收ETC</strong>（展示/統計用）。
+          </small>
+        </div>
+      </div>
+      <!-- === 追加结束 === -->
 
       <!-- ✅ ETC 应收合计（只读） -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
