@@ -519,8 +519,12 @@ input[type=number] {
     <button type="submit" class="btn btn-primary">💾 保存する</button>
   </form>
 
-  <div class="text-center mt-3">
-    <button type="button" class="btn btn-outline-primary" id="add-row-btn">➕ 行を追加</button>
+  <div class="text-center mt-2 d-flex justify-content-center gap-2">
+    <div class="input-group" style="max-width: 260px;">
+      <span class="input-group-text">行に挿入</span>
+      <input type="number" min="1" class="form-control" id="insert-index-input" placeholder="例: 10">
+      <button type="button" class="btn btn-outline-secondary" id="insert-at-btn">指定行に挿入</button>
+    </div>
   </div>
   
 </div>

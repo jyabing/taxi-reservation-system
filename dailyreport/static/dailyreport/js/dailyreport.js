@@ -49,25 +49,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (breakTimeHidden) breakTimeHidden.value = toHM(realBreak);
   }
 
-  // —— 3. 行号与索引同步 ——
+  // —— 3. 行号与索引同步（安全版：仅更新显示编号）——
   function updateRowNumbersAndIndexes() {
-    const rows = document.querySelectorAll("tr.report-item-row");
-    let index = 0;
-    rows.forEach(row => {
-      if (row.style.display === "none") return;
-      row.querySelector(".row-number").textContent = index + 1;
-      row.querySelectorAll("input, select, textarea, label").forEach(el => {
-        ["name", "id", "for"].forEach(attr => {
-          if (el.hasAttribute(attr)) {
-            el.setAttribute(attr, el.getAttribute(attr).replace(/-\d+-/, `-${index}-`));
-          }
-        });
-      });
-      index++;
+    const rows = Array.from(document.querySelectorAll("tr.report-item-row"))
+      .filter(r => r.style.display !== "none");
+
+    rows.forEach((row, i) => {
+      const cell = row.querySelector(".row-number");
+      if (cell) cell.textContent = i + 1; // 仅更新显示用行号（1-based）
     });
 
-    const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
-    if (totalEl) totalEl.value = index;
+    // ⚠️ 不修改任何 input/select 的 name/id/for
+    // ⚠️ 不修改 ManagementForm 的 TOTAL_FORMS
   }
 
   // —— 4. 单行事件绑定 ——
@@ -105,38 +98,112 @@ document.addEventListener('DOMContentLoaded', () => {
     if (methodSelect) methodSelect.addEventListener("change", updateTotals);
   }
 
-  // —— 5. 增加一行 ——
-  document.getElementById("add-row-btn")?.addEventListener("click", () => {
+  // 帮助函数：用空模板克隆新行（prefix=当前TOTAL_FORMS）
+  function makeNewRowFromTemplate() {
     const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
     const template = document.getElementById("empty-form-template");
-    if (!template || !totalEl) return;
+    if (!template || !totalEl) return null;
 
-    const count = parseInt(totalEl.value, 10);
-    const newHtml = template.innerHTML.replace(/__num__/g, count + 1).replace(/__prefix__/g, count);
-    const row = document.createElement("tr");
-    row.classList.add("report-item-row");
-    row.innerHTML = newHtml;
+    const count = parseInt(totalEl.value, 10);  // 新行索引 = 现有总数
+    const html = template.innerHTML
+      .replace(/__prefix__/g, count)
+      .replace(/__num__/g, count + 1); // 行号显示可以先用 count+1
 
-    document.querySelector("table.report-table > tbody").appendChild(row);
-    bindRowEvents(row);
+    const temp = document.createElement("tbody");
+    temp.innerHTML = html;
+    return { tr: temp.querySelector("tr"), count };
+  }
+
+  
+  // —— 5. 增加一行 ——（安全：只递增 TOTAL_FORMS，不重排旧行）
+  document.getElementById("add-row-btn")?.addEventListener("click", () => {
+    const tbody = getDataTbody();
+    const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
+    if (!tbody || !totalEl) return;
+
+    const created = makeNewRowFromTemplate();
+    if (!created) return;
+
+    tbody.appendChild(created.tr);
+
+    // 关键：递增 TOTAL_FORMS（只在新增时改）
+    totalEl.value = String(parseInt(totalEl.value, 10) + 1);
+
+    bindRowEvents(created.tr);
     updateRowNumbersAndIndexes();
     updateTotals();
   });
 
-  // —— 6. 向下插入一行 ——
+
+  // 取得数据用 tbody（排除隐藏模板 tbody）
+function getDataTbody() {
+  // 优先：不是 #empty-form-template 的 tbody
+  let tb = document.querySelector("table.report-table > tbody:not(#empty-form-template)");
+  if (tb) return tb;
+  // 兜底：取第一个 tbody，但排除模板
+  const bodies = Array.from(document.querySelectorAll("table.report-table > tbody"));
+  return bodies.find(b => b.id !== "empty-form-template") || null;
+}
+
+/**
+ * 按 1-based 行号在该位置“插入一行”
+ * 例：insertRowAt(10) → 在第10行“之前”插入（新行成为新的第10行）
+ */
+function insertRowAt(n) {
+  const tbody = getDataTbody();
+  if (!tbody) return;
+
+  const rows = Array.from(tbody.querySelectorAll("tr.report-item-row"))
+    .filter(r => r.style.display !== "none");
+
+  // 规范化 n（1-based）
+  let pos = parseInt(n, 10);
+  if (isNaN(pos) || pos < 1) pos = 1;
+  if (pos > rows.length + 1) pos = rows.length + 1;
+
+  const newRow = makeNewRowFromTemplate();
+  if (!newRow) return;
+
+  // 插入：在第 pos 行“之前”；如果 pos 是末尾+1 就 append
+  if (pos <= rows.length) {
+    tbody.insertBefore(newRow, rows[pos - 1]);
+  } else {
+    tbody.appendChild(newRow);
+  }
+
+  // ✅ 递增 TOTAL_FORMS
+  if (totalEl) totalEl.value = String(parseInt(totalEl.value, 10) + 1);
+
+  // 绑定事件 & 重新编号 & 重新汇总
+  bindRowEvents(newRow);
+  updateRowNumbersAndIndexes();
+  updateTotals();
+}
+
+  // 绑定“指定行插入”按钮
+  document.getElementById("insert-at-btn")?.addEventListener("click", () => {
+    const v = document.getElementById("insert-index-input")?.value;
+    insertRowAt(v);
+  });
+
+  // —— 6. 向下插入一行 ——（安全：只递增 TOTAL_FORMS，不重排旧行）
   document.querySelector("table.report-table").addEventListener("click", (e) => {
     if (!e.target.classList.contains("insert-below")) return;
-    const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
-    const template = document.querySelector("#empty-form-template");
-    if (!template || !totalEl) return;
 
-    const count = parseInt(totalEl.value, 10);
-    const tempDiv = document.createElement("tbody");
-    tempDiv.innerHTML = template.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count + 1);
-    const newRow = tempDiv.querySelector("tr");
+    const tbody = getDataTbody();
+    const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
+    if (!tbody || !totalEl) return;
+
+    const created = makeNewRowFromTemplate();
+    if (!created) return;
+
     const currentRow = e.target.closest("tr");
-    currentRow.parentNode.insertBefore(newRow, currentRow.nextSibling);
-    bindRowEvents(newRow);
+    tbody.insertBefore(created.tr, currentRow.nextSibling);
+
+    // ✅ 递增 TOTAL_FORMS
+    totalEl.value = String(parseInt(totalEl.value, 10) + 1);
+
+    bindRowEvents(created.tr);
     updateRowNumbersAndIndexes();
     updateTotals();
   });
