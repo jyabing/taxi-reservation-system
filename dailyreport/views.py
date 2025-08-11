@@ -10,7 +10,7 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
 from django.utils import timezone
-from django.db.models import Sum, Case, When, F, DecimalField, Q
+from django.db.models import Sum, Case, When, F, DecimalField, Q, Count
 from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
 from django.urls import reverse
@@ -28,6 +28,7 @@ from dailyreport.services.summary import (
     resolve_payment_method, 
     calculate_totals_from_instances, calculate_totals_from_formset
 )
+from dailyreport.constants import CHARTER_CASH_KEYS, CHARTER_UNCOLLECTED_KEYS
 
 from vehicles.models import Reservation
 from urllib.parse import quote
@@ -1309,19 +1310,47 @@ def dailyreport_overview(request):
     drivers = get_active_drivers(month, keyword)
     reports = reports_all.filter(driver__in=drivers)
 
-    # 6. 构建 totals 合计
+    # 6. 构建 totals 合计（ORM 聚合：覆盖 普通+貸切）
     totals = defaultdict(Decimal)
-    items = DriverDailyReportItem.objects.filter(report__in=reports_all)
-    for item in items:
-        resolved_key = resolve_payment_method(item.payment_method)
+    counts = defaultdict(int)
 
-        fee = item.meter_fee or Decimal('0')
-        if fee <= 0 or (item.note and 'キャンセル' in item.note) or not resolved_key:
-            continue
+    items_all = DriverDailyReportItem.objects.filter(report__in=reports_all)
 
-        totals[f"total_{resolved_key}"] += fee
-        totals["total_meter"] += fee
-        totals["meter_only_total"] += fee
+    # 仅 meter_fee（不含貸切）——用于“メーター(水揚)”与“meter_only_total”
+    meter_sum = items_all.aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
+    totals["total_meter"] = meter_sum
+    totals["meter_only_total"] = meter_sum
+
+    # 支付方式键及其别名（normal: payment_method；charter: charter_payment_method）
+    ALIASES = {
+        'cash':      {'normal': ['cash'],                 'charter': ['cash', 'jp_cash']},
+        'credit':    {'normal': ['credit', 'credit_card'],'charter': ['credit', 'credit_card']},
+        'uber':      {'normal': ['uber'],                 'charter': ['uber']},
+        'didi':      {'normal': ['didi'],                 'charter': ['didi']},
+        'kyokushin': {'normal': ['kyokushin'],            'charter': ['kyokushin']},
+        'omron':     {'normal': ['omron'],                'charter': ['omron']},
+        'kyotoshi':  {'normal': ['kyotoshi'],             'charter': ['kyotoshi']},
+        'qr':        {'normal': ['qr','scanpay'],         'charter': ['qr','scanpay']},
+    }
+
+    for key, alias in ALIASES.items():
+        agg = items_all.aggregate(
+            normal = Sum('meter_fee',          filter=Q(payment_method__in=alias['normal'])),
+            charter= Sum('charter_amount_jpy', filter=Q(charter_payment_method__in=alias['charter'])),
+            c_norm = Count('id',               filter=Q(payment_method__in=alias['normal'])),
+            c_char = Count('id',               filter=Q(charter_payment_method__in=alias['charter'])),
+        )
+        totals[f"total_{key}"] = (agg['normal'] or 0) + (agg['charter'] or 0)
+        counts[key] = (agg['c_norm'] or 0) + (agg['c_char'] or 0)
+
+    # 额外卡片：貸切現金 / 貸切未収
+    from dailyreport.constants import CHARTER_CASH_KEYS, CHARTER_UNCOLLECTED_KEYS
+    totals['charter_cash_total'] = items_all.aggregate(
+        x=Sum('charter_amount_jpy', filter=Q(charter_payment_method__in=CHARTER_CASH_KEYS))
+    )['x'] or Decimal('0')
+    totals['charter_uncollected_total'] = items_all.aggregate(
+        x=Sum('charter_amount_jpy', filter=Q(charter_payment_method__in=CHARTER_UNCOLLECTED_KEYS))
+    )['x'] or Decimal('0')
 
     # 7. 分成费率
     rates = {
@@ -1414,6 +1443,7 @@ def dailyreport_overview(request):
         'month_label': month_label,
         'prev_month': prev_month,
         'next_month': next_month,
+        'counts': counts,
     })
 
     

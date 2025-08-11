@@ -1,7 +1,7 @@
 {% extends "staffbook/base_staffbook.html" %}
 {% load humanize %}
 {% load time_filters %}
-{% load custom_totals %}
+{% load custom_tags %}
 {% block content %}
 
 <!-- ✅ 搜索栏 -->
@@ -46,20 +46,39 @@
   <a href="?month={{ next_month }}&keyword={{ keyword }}" class="btn btn-outline-primary">次の月 &rarr;</a>
 </div>
 
-{# ✅ 日式风格全員合計（金额（分成額）） #}
+{# ✅ 日式风格全員合計（金额（件数）） #}
 <div class="d-flex flex-wrap gap-3 mb-4" id="payment-summary-panel">
   {% for key, label in summary_keys %}
     <div class="card shadow-sm text-center" style="min-width: 140px;">
       <div class="card-body p-2">
         <div class="small text-muted">{{ label }}合計</div>
         <div class="fw-bold fs-5">
-          {{ totals_all|get_total:key|floatformat:'0'|intcomma }}（{{ totals_all|get_bonus:key|floatformat:'0'|intcomma }}）
+          {{ totals_all|get_total:key|floatformat:'0'|intcomma }}（{{ counts|get_count:key|default:0|intcomma }}）
         </div>
       </div>
     </div>
   {% endfor %}
 
-  {# ✅ 新增：ETC 不足額 卡片 #}
+  {# ➕ 新增：貸切現金 / 貸切未収 两张卡（不参与分成，仅展示金额） #}
+  <div class="card shadow-sm text-center" style="min-width: 160px;">
+    <div class="card-body p-2">
+      <div class="small text-muted">貸切現金 合計</div>
+      <div class="fw-bold fs-5">
+        {{ totals.charter_cash_total|default:0|floatformat:'0'|intcomma }} 円
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm text-center" style="min-width: 160px;">
+    <div class="card-body p-2">
+      <div class="small text-muted">貸切未収 合計</div>
+      <div class="fw-bold fs-5">
+        {{ totals.charter_uncollected_total|default:0|floatformat:'0'|intcomma }} 円
+      </div>
+    </div>
+  </div>
+
+  {# ✅ 保留：ETC 不足額 卡片 #}
   <div class="card shadow-sm text-center border-danger" style="min-width: 160px;">
     <div class="card-body p-2">
       <div class="small text-danger">ETC 不足額</div>
