@@ -31,10 +31,7 @@
       📤 导出 {{ current_year }}年{{ current_month }}月全员每日统计 Excel
     </a>
 
-    <a href="{% url 'dailyreport:export_monthly_summary_excel' year=current_year month=current_month %}"
-      class="btn btn-sm btn-outline-success">
-      📤 导出 {{ current_year }}年{{ current_month }}月月度汇总 Excel
-    </a>
+
 
     <a href="{% url 'dailyreport:export_vehicle_csv' year=current_year month=current_month %}"
       class="btn btn-sm btn-outline-info">
@@ -100,7 +97,13 @@
       <table class="table table-hover align-middle">
         <thead class="table-light">
           <tr>
-            <th>従業員名</th>
+            <th>
+              従業員名
+              <a class="btn btn-sm btn-outline-secondary ms-1"
+                href="?month={{ month_str }}&keyword={{ keyword }}&sort=code_asc">番号↑</a>
+              <a class="btn btn-sm btn-outline-secondary"
+                href="?month={{ month_str }}&keyword={{ keyword }}&sort=code_desc">番号↓</a>
+            </th>
             <th>
               合計メータ料金
               <a class="btn btn-sm btn-outline-secondary ms-2"

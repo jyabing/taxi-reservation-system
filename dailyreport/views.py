@@ -1,5 +1,5 @@
-import csv, os, sys
-import logging
+import csv, os, sys, logging
+from io import BytesIO
 logger = logging.getLogger(__name__)
 from datetime import datetime, date, timedelta
 from tempfile import NamedTemporaryFile
@@ -306,101 +306,90 @@ def dailyreport_list(request):
 # 全员每日明细（每个日期一个 Sheet，仿截图样式）
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_excel(request, year, month):
-    from collections import defaultdict
-    from decimal import Decimal, ROUND_HALF_UP
-    from tempfile import NamedTemporaryFile
-    from urllib.parse import quote
+    """全员每日 Excel 导出（索引 + 每日 + 月度(集計)）
+    - 金额列：¥#,##0
+    - L/KM 两位小数
+    - 月度(集計)出勤時数(h) 两位小数
+    - 负数過不足标红
+    """
+    # 依赖（更友好提示）
+    try:
+        import xlsxwriter
+    except ModuleNotFoundError:
+        return HttpResponse("XlsxWriter 未安装。请在虚拟环境中运行：pip install XlsxWriter", status=500)
 
-    from django.db.models import Sum
-    from django.db.models.functions import Lower, Trim
-    from django.http import FileResponse
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+    # 常量
+    FEE_RATE = Decimal("0.05")
+    # ながし現金判定（普通单）
+    CASH_METHODS = {"cash", "uber_cash", "didi_cash", "go_cash"}
+    # 貸切現金 / 貸切未収 判定
+    CHARTER_CASH_KEYS = {"jpy_cash", "jp_cash", "cash"}
+    CHARTER_UNCOLLECTED_KEYS = {"to_company", "invoice", "uncollected", "未収", "請求"}
 
-    TAX_RATE = Decimal("0.10")
-    FEE_RATE = Decimal("0.05")  # 平台手数料
-    CASH_METHODS = ["cash", "uber_cash", "didi_cash", "go_cash"]  # 非貸切の現金系
-    CHARTER_CASH_KEYS = ["jpy_cash", "jp_cash", "cash"]           # 貸切現金（兼容三写法）
-    CHARTER_UNCOLLECTED_KEYS = ["to_company", "invoice", "uncollected", "未収", "請求"]
-
+    # 数据：整月日报
     reports = (
-        DriverDailyReport.objects.filter(date__year=year, date__month=month)
+        DriverDailyReport.objects
+        .filter(date__year=year, date__month=month)
         .select_related("driver")
         .prefetch_related("items")
         .order_by("date", "driver__name")
     )
-
     by_date = defaultdict(list)
     for r in reports:
         by_date[r.date].append(r)
 
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    center = Alignment(horizontal="center", vertical="center")
-    right = Alignment(horizontal="right", vertical="center")
-    bold = Font(bold=True)
-    red_bold = Font(bold=True, color="CC0000")
-    gray = PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")
-    yellow = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-    blue = PatternFill(start_color="DAEEF3", end_color="DAEEF3", fill_type="solid")
-    thin = Side(style="thin")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
+    # 单日行计算
     def compute_row(r):
-        qs = r.items.all().annotate(
-            pm=Lower(Trim("payment_method")),
-            cpm=Lower(Trim("charter_payment_method")),
-        )
+        def norm(s): return str(s).strip().lower() if s else ""
 
-        # メータのみ（非貸切）
-        meter_only = qs.filter(is_charter=False).aggregate(s=Sum("meter_fee"))["s"] or 0
+        meter_only = 0
+        nagashi_cash = 0
+        charter_cash = 0
+        charter_uncol = 0
+        amt = {"kyokushin": 0, "omron": 0, "kyotoshi": 0, "uber": 0, "credit": 0, "paypay": 0, "didi": 0}
 
-        # ながし現金（非貸切 現金系のみ）
-        nagashi_cash = qs.filter(is_charter=False, pm__in=CASH_METHODS)\
-                         .aggregate(s=Sum("meter_fee"))["s"] or 0
+        for it in r.items.all():
+            is_charter = bool(getattr(it, "is_charter", False))
+            pm = norm(getattr(it, "payment_method", None))
+            cpm = norm(getattr(it, "charter_payment_method", None))
+            meter_fee = int(getattr(it, "meter_fee", 0) or 0)
+            charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
 
-        # 貸切現金 / 貸切未収
-        charter_cash = qs.filter(is_charter=True, cpm__in=CHARTER_CASH_KEYS)\
-                         .aggregate(s=Sum("charter_amount_jpy"))["s"] or 0
-        charter_uncol = qs.filter(is_charter=True, cpm__in=CHARTER_UNCOLLECTED_KEYS)\
-                          .aggregate(s=Sum("charter_amount_jpy"))["s"] or 0
+            if not is_charter:
+                meter_only += meter_fee
+                if pm in CASH_METHODS:
+                    nagashi_cash += meter_fee
+                if pm == "kyokushin": amt["kyokushin"] += meter_fee
+                elif pm == "omron":   amt["omron"] += meter_fee
+                elif pm == "kyotoshi":amt["kyotoshi"] += meter_fee
+                elif pm == "uber":    amt["uber"] += meter_fee
+                elif pm in {"credit", "credit_card"}: amt["credit"] += meter_fee
+                elif pm in {"qr", "scanpay"}:         amt["paypay"] += meter_fee
+                elif pm == "didi":    amt["didi"] += meter_fee
+            else:
+                if cpm in CHARTER_CASH_KEYS:        charter_cash += charter_jpy
+                if cpm in CHARTER_UNCOLLECTED_KEYS: charter_uncol += charter_jpy
+                if cpm == "kyokushin": amt["kyokushin"] += charter_jpy
+                elif cpm == "omron":   amt["omron"] += charter_jpy
+                elif cpm == "kyotoshi":amt["kyotoshi"] += charter_jpy
+                elif cpm == "uber":    amt["uber"] += charter_jpy
+                elif cpm in {"credit", "credit_card"}: amt["credit"] += charter_jpy
+                elif cpm in {"qr", "scanpay"}:         amt["paypay"] += charter_jpy
+                elif cpm == "didi":    amt["didi"] += charter_jpy
 
-        # 平台売上（非貸切 + 貸切）
-        def amt_normal(keys):
-            return qs.filter(is_charter=False, pm__in=keys).aggregate(s=Sum("meter_fee"))["s"] or 0
-        def amt_charter(keys):
-            return qs.filter(is_charter=True, cpm__in=keys).aggregate(s=Sum("charter_amount_jpy"))["s"] or 0
+        fee_calc = lambda x: int((Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if x else 0
+        uber_fee, credit_fee, paypay_fee, didi_fee = map(fee_calc, [amt["uber"], amt["credit"], amt["paypay"], amt["didi"]])
 
-        kyokushin = amt_normal(["kyokushin"]) + amt_charter(["kyokushin"])
-        omron     = amt_normal(["omron"])     + amt_charter(["omron"])
-        kyotoshi  = amt_normal(["kyotoshi"])  + amt_charter(["kyotoshi"])
-        uber      = amt_normal(["uber"])      + amt_charter(["uber"])
-        credit    = amt_normal(["credit", "credit_card"]) + amt_charter(["credit", "credit_card"])
-        paypay    = amt_normal(["qr", "scanpay"])
-        didi      = amt_normal(["didi"])      + amt_charter(["didi"])
-
-        def fee(x):
-            return int((Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if x else 0
-        uber_fee, credit_fee, paypay_fee, didi_fee = map(fee, [uber, credit, paypay, didi])
-
-        # ETC 两列
         etc_collected_val = r.etc_collected
-        etc_ride_total = int(etc_collected_val if etc_collected_val not in [None, ""]
-                             else (r.etc_collected_cash or 0) + (r.etc_collected_app or 0))
+        etc_ride_total = int(etc_collected_val if etc_collected_val not in [None, ""] else (r.etc_collected_cash or 0) + (r.etc_collected_app or 0))
         etc_empty_total = int(getattr(r, "etc_uncollected", 0) or 0)
 
-        # 未収合計（平台合计之和）
-        uncol_total = int(uber + didi + credit + kyokushin + omron + kyotoshi + paypay)
-
-        # ✅ 水揚合計＝メータのみ＋貸切現金＋貸切未収（＝売上合計）
+        uncol_total = int(amt["uber"] + amt["didi"] + amt["credit"] + amt["kyokushin"] + amt["omron"] + amt["kyotoshi"] + amt["paypay"])
         water_total = int(meter_only) + int(charter_cash) + int(charter_uncol)
 
-        # 税抜/消費税
         tax_ex = int((Decimal(water_total) / Decimal("1.1")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         tax = water_total - tax_ex
 
-        # ✅ 過不足＝入金 − ながし現金 − 貸切現金
         deposit_amt = int(r.deposit_amount or 0)
         deposit_diff = deposit_amt - int(nagashi_cash) - int(charter_cash)
 
@@ -411,90 +400,131 @@ def export_dailyreports_excel(request, year, month):
             "clock_out": r.clock_out.strftime("%H:%M") if r.clock_out else "",
             "nagashi_cash": int(nagashi_cash),
             "charter_cash": int(charter_cash),
-
             "etc_ride_total": etc_ride_total,
             "etc_empty_total": etc_empty_total,
             "charter_uncol": int(charter_uncol),
-
-            "kyokushin": int(kyokushin),
-            "omron": int(omron),
-            "kyotoshi": int(kyotoshi),
-            "uber": int(uber), "uber_fee": uber_fee,
-            "credit": int(credit), "credit_fee": credit_fee,
-            "paypay": int(paypay), "paypay_fee": paypay_fee,
-            "didi": int(didi), "didi_fee": didi_fee,
-
-            "uncol_total": int(uncol_total),
-            "fee_total": int(uber_fee + credit_fee + paypay_fee + didi_fee),
-            "water_total": int(water_total),
-            "tax_ex": tax_ex,
-            "tax": tax,
-            "gas_l": float(r.gas_volume or 0),
-            "km": float(r.mileage or 0),
-
+            "kyokushin": int(amt["kyokushin"]), "omron": int(amt["omron"]), "kyotoshi": int(amt["kyotoshi"]),
+            "uber": int(amt["uber"]), "uber_fee": uber_fee,
+            "credit": int(amt["credit"]), "credit_fee": credit_fee,
+            "paypay": int(amt["paypay"]), "paypay_fee": paypay_fee,
+            "didi": int(amt["didi"]), "didi_fee": didi_fee,
+            "uncol_total": int(uncol_total), "fee_total": int(uber_fee + credit_fee + paypay_fee + didi_fee),
+            "water_total": int(water_total), "tax_ex": tax_ex, "tax": tax,
+            "gas_l": float(r.gas_volume or 0), "km": float(r.mileage or 0),
             "deposit_diff": int(deposit_diff),
         }
 
+    # === 工作簿 & 样式 ===
+    output = BytesIO()
+    wb = xlsxwriter.Workbook(output, {'in_memory': True, 'constant_memory': True})
+
+    # 基础样式
+    fmt_header = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#DDDDDD', 'border': 1})
+    fmt_subheader_red = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#CC0000'})
+    fmt_border = wb.add_format({'border': 1})
+    fmt_total_base = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right'})
+    fmt_right = wb.add_format({'align': 'right', 'valign': 'vcenter'})
+    fmt_neg_red = wb.add_format({'font_color': '#CC0000'})
+
+    # 金额/两位小数样式
+    fmt_yen     = wb.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '¥#,##0'})
+    fmt_yen_tot = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right', 'num_format': '¥#,##0'})
+    fmt_num_2d   = wb.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '#,##0.00'})
+    fmt_num_2d_t = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right', 'num_format': '#,##0.00'})
+
+    # 列宽
+    col_widths = {
+        0:10, 1:12, 2:9, 3:9, 4:12, 5:12, 6:12, 7:14, 8:12, 9:12, 10:12, 11:12,
+        12:12, 13:10, 14:14, 15:10, 16:12, 17:10, 18:12, 19:10, 20:12, 21:12,
+        22:12, 23:12, 24:12, 25:12, 26:12, 27:12
+    }
+
+    # 两行表头（每日 & 集计共用）
+    row1 = [
+        "社員番号","従業員","出勤時刻","退勤時刻",
+        "1.ながし現金","2.貸切現金",
+        "3.ETC","", "貸切未収",
+        "4.京交信売上","5.オムロン売上","6.京都市他売上",
+        "7.Uber売上","", "8.クレジット売上","", "9.PayPay売上","", "10.DiDi売上","",
+        "未収合計","手数料合計",
+        "水揚合計","税抜収入","消費税",
+        "11.ガソリン(L)","12.距離(KM)","過不足"
+    ]
+    row2 = ["","","","",
+            "","",
+            "乗車合計","空車ETC金額","",
+            "","","",
+            "","手数料","","手数料","","手数料","","手数料",
+            "","",
+            "","","",
+            "","",
+            ""]
+
+    def write_headers(ws):
+        ws.write_row(0, 0, row1, fmt_header)
+        ws.write_row(1, 0, row2, fmt_header)
+        merges = [
+            (0,0,1,0),(0,1,1,1),(0,2,1,2),(0,3,1,3),
+            (0,4,1,4),(0,5,1,5),
+            (0,8,1,8),(0,9,1,9),(0,10,1,10),(0,11,1,11),
+            (0,20,1,20),(0,21,1,21),
+            (0,22,1,22),(0,23,1,23),(0,24,1,24),
+            (0,25,1,25),(0,26,1,26),
+            (0,27,1,27),
+        ]
+        for r1_, c1_, r2_, c2_ in merges:
+            ws.merge_range(r1_, c1_, r2_, c2_, row1[c1_], fmt_header)
+        for c in (13,15,17,19):
+            ws.write(1, c, row2[c], fmt_subheader_red)
+        for c, w in col_widths.items():
+            ws.set_column(c, c, w)
+
+    # 金额/两位小数列定位
+    MONEY_COLS = {4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27}
+    TWO_DEC_COLS = {25, 26}  # L / KM
+
+    def write_mixed_row(ws, r, values, is_total=False):
+        """按列写入：金额¥、两位小数、其他"""
+        for c, v in enumerate(values):
+            if c in MONEY_COLS:
+                num = float(v or 0)
+                ws.write_number(r, c, num, fmt_yen_tot if is_total else fmt_yen)
+            elif c in TWO_DEC_COLS:
+                num = float(v or 0)
+                ws.write_number(r, c, num, fmt_num_2d_t if is_total else fmt_num_2d)
+            else:
+                ws.write(r, c, v, fmt_total_base if is_total else fmt_border)
+
+    # === 索引 Sheet ===
+    idx_ws = wb.add_worksheet("索引")
+    idx_ws.write_row(0, 0, ["日付", "件数"], fmt_header)
+    rr = 1
+    for d, reps in sorted(by_date.items()):
+        idx_ws.write_row(rr, 0, [d.strftime("%Y-%m-%d"), len(reps)], fmt_border)
+        rr += 1
+    idx_ws.set_column(0, 0, 14); idx_ws.set_column(1, 1, 8)
+    idx_ws.freeze_panes(1, 0)  # 冻结表头
+
+    # === 每日 Sheet ===
     for d, day_reports in sorted(by_date.items()):
-        # 同一天内按社員番号升序
         def _code_key(rep):
             code = getattr(rep.driver, "driver_code", "") if rep.driver else ""
             return (int(code) if str(code).isdigit() else 10**9, str(code))
         day_reports = sorted(day_reports, key=_code_key)
 
-        ws = wb.create_sheet(title=d.strftime("%Y-%m-%d"))
+        ws = wb.add_worksheet(d.strftime("%Y-%m-%d"))
+        write_headers(ws)
+        ws.freeze_panes(2, 2)  # 冻结两行表头 + 左两列
 
-        # —— 双表头（社員番号在最左；最后一列为 過不足）——
-        row1 = [
-            "社員番号", "従業員", "出勤時刻", "退勤時刻",
-            "1.ながし現金", "2.貸切現金",
-            "3.ETC", "", "貸切未収",
-            "4.京交信売上", "5.オムロン売上", "6.京都市他売上",
-            "7.Uber売上", "", "8.クレジット売上", "", "9.PayPay売上", "", "10.DiDi売上", "",
-            "未収合計", "手数料合計",
-            "水揚合計", "税抜収入", "消費税",
-            "11.ガソリン(L)", "12.距離(KM)",
-            "過不足"
-        ]
-        row2 = [
-            "", "", "", "",
-            "", "",
-            "乗車合計", "空車ETC金額", "",
-            "", "", "",
-            "", "手数料", "", "手数料", "", "手数料", "", "手数料",
-            "", "",
-            "", "", "",
-            "", "",  # Z, AA
-            ""       # AB
-        ]
-        ws.append(row1); ws.append(row2)
-
-        merges = [
-            ("A1","A2"), ("B1","B2"), ("C1","C2"), ("D1","D2"),
-            ("E1","E2"), ("F1","F2"),
-            ("I1","I2"), ("J1","J2"), ("K1","K2"), ("L1","L2"),
-            ("U1","U2"), ("V1","U2".replace("U2","V2")),  # V1~V2
-            ("W1","W2"), ("X1","X2"), ("Y1","Y2"),
-            ("Z1","Z2"), ("AA1","AA2"),
-            ("AB1","AB2"),
-        ]
-        for a, b in merges:
-            ws.merge_cells(f"{a}:{b}")
-
-        for row in ws.iter_rows(min_row=1, max_row=2):
-            for c in row:
-                c.alignment = center; c.font = bold; c.fill = gray; c.border = border
-        for pos in ["N2", "P2", "R2", "T2"]:
-            ws[pos].font = red_bold; ws[pos].alignment = center
-
+        r = 2
         totals = defaultdict(Decimal)
-        for r in day_reports:
-            data = compute_row(r)
-            ws.append([
+
+        for rep in day_reports:
+            data = compute_row(rep)
+            row_vals = [
                 data["driver_code"], data["driver"], data["clock_in"], data["clock_out"],
                 data["nagashi_cash"], data["charter_cash"],
-                data["etc_ride_total"], data["etc_empty_total"],
-                data["charter_uncol"],
+                data["etc_ride_total"], data["etc_empty_total"], data["charter_uncol"],
                 data["kyokushin"], data["omron"], data["kyotoshi"],
                 data["uber"], data["uber_fee"],
                 data["credit"], data["credit_fee"],
@@ -504,13 +534,16 @@ def export_dailyreports_excel(request, year, month):
                 data["water_total"], data["tax_ex"], data["tax"],
                 data["gas_l"], data["km"],
                 data["deposit_diff"],
-            ])
+            ]
+            write_mixed_row(ws, r, row_vals, is_total=False)
+
             for k, v in data.items():
                 if isinstance(v, (int, float, Decimal)):
                     totals[k] += Decimal(str(v))
+            r += 1
 
-        ws.append([
-            "合計", "", "", "",
+        total_vals = [
+            "合計","","","",
             int(totals["nagashi_cash"]), int(totals["charter_cash"]),
             int(totals["etc_ride_total"]), int(totals["etc_empty_total"]), int(totals["charter_uncol"]),
             int(totals["kyokushin"]), int(totals["omron"]), int(totals["kyotoshi"]),
@@ -522,174 +555,152 @@ def export_dailyreports_excel(request, year, month):
             int(totals["water_total"]), int(totals["tax_ex"]), int(totals["tax"]),
             float(totals["gas_l"]), float(totals["km"]),
             int(totals["deposit_diff"]),
-        ])
-        last = ws.max_row
-        for c in ws[last]:
-            c.font = bold; c.fill = yellow; c.border = border
-            if isinstance(c.value, (int, float)): c.alignment = right
+        ]
+        write_mixed_row(ws, r, total_vals, is_total=True)
 
-        # 着色：ETC列(G/H)、水揚/税(W/X/Y)
-        for col in ws.iter_cols(min_col=7, max_col=8, min_row=3, max_row=last-1):
-            for c in col: c.fill = blue
-        for col in ws.iter_cols(min_col=23, max_col=25, min_row=3, max_row=last-1):
-            for c in col: c.fill = yellow
+        # 「過不足」（列 27）负数标红
+        if r > 2:
+            ws.conditional_format(2, 27, r-1, 27, {
+                'type': 'cell', 'criteria': '<', 'value': 0, 'format': fmt_neg_red
+            })
 
-        # 数字右对齐 + 边框
-        for row in ws.iter_rows(min_row=3, max_row=last):
-            for i, c in enumerate(row, start=1):
-                c.border = border
-                if i >= 5: c.alignment = right
+    # === 月度(集計) Sheet ===
+    summary_ws = wb.add_worksheet(f"{year}-{month:02d} 月度(集計)")
+    # 表头
+    summary_ws.write_row(0, 0, row1, fmt_header)
+    summary_ws.write_row(1, 0, row2, fmt_header)
+    merges = [
+        (0,0,1,0),(0,1,1,1),(0,2,1,2),(0,3,1,3),
+        (0,4,1,4),(0,5,1,5),
+        (0,8,1,8),(0,9,1,9),(0,10,1,10),(0,11,1,11),
+        (0,20,1,20),(0,21,1,21),
+        (0,22,1,22),(0,23,1,23),(0,24,1,24),
+        (0,25,1,25),(0,26,1,26),
+        (0,27,1,27),
+    ]
+    for r1_, c1_, r2_, c2_ in merges:
+        summary_ws.merge_range(r1_, c1_, r2_, c2_, row1[c1_], fmt_header)
+    for c, w in col_widths.items():
+        summary_ws.set_column(c, c, w)
+    summary_ws.freeze_panes(2, 2)
 
-        widths = {
-            "A":10, "B":12, "C":9, "D":9, "E":12, "F":12,
-            "G":12, "H":14, "I":12, "J":12, "K":12, "L":12,
-            "M":12, "N":10, "O":14, "P":10, "Q":12, "R":10, "S":12, "T":10,
-            "U":12, "V":12, "W":12, "X":12, "Y":12, "Z":12, "AA":12, "AB":12,
-        }
-        for col, w in widths.items():
-            ws.column_dimensions[col].width = w
+    # 聚合（每司机）
+    per_driver = {}
+    def add_to_driver(rep, data):
+        if not rep.driver:
+            return
+        did = rep.driver.id
+        if did not in per_driver:
+            per_driver[did] = {
+                "code": getattr(rep.driver, "driver_code", "") or "",
+                "name": rep.driver.name,
+                "days": 0,
+                "hours": Decimal("0"),
+                "nagashi_cash":0,"charter_cash":0,
+                "etc_ride_total":0,"etc_empty_total":0,"charter_uncol":0,
+                "kyokushin":0,"omron":0,"kyotoshi":0,
+                "uber":0,"uber_fee":0,"credit":0,"credit_fee":0,
+                "paypay":0,"paypay_fee":0,"didi":0,"didi_fee":0,
+                "uncol_total":0,"fee_total":0,
+                "water_total":0,"tax_ex":0,"tax":0,
+                "gas_l":Decimal("0"),"km":Decimal("0"),
+                "deposit_diff":0,
+            }
+        row = per_driver[did]
+        row["days"] += 1  # 有日报记一天
 
+        # 出勤时数（跨日修正，扣休憩）
+        try:
+            if rep.clock_in and rep.clock_out and rep.date:
+                dt_in = datetime.combine(rep.date, rep.clock_in)
+                dt_out = datetime.combine(rep.date, rep.clock_out)
+                if dt_out <= dt_in:
+                    dt_out += timedelta(days=1)
+                dur = dt_out - dt_in
+                brk = getattr(rep, "休憩時間", None) or timedelta()
+                sec = max(0, (dur - brk).total_seconds())
+                row["hours"] += Decimal(str(sec/3600.0))
+        except Exception:
+            pass
+
+        for k in [
+            "nagashi_cash","charter_cash","etc_ride_total","etc_empty_total","charter_uncol",
+            "kyokushin","omron","kyotoshi","uber","uber_fee","credit","credit_fee",
+            "paypay","paypay_fee","didi","didi_fee",
+            "uncol_total","fee_total","water_total","tax_ex","tax","deposit_diff"
+        ]:
+            row[k] += int(data[k])
+        row["gas_l"] += Decimal(str(data["gas_l"]))
+        row["km"]    += Decimal(str(data["km"]))
+
+    for reps in by_date.values():
+        for rep in reps:
+            add_to_driver(rep, compute_row(rep))
+
+    # 写入 + 合计
+    def _sort_key(code, name):
+        return (int(code) if str(code).isdigit() else 10**9, str(code) or name)
+
+    r = 2
+    totals_sum = defaultdict(Decimal)
+    for _, row in sorted(per_driver.items(), key=lambda kv: _sort_key(kv[1]["code"], kv[1]["name"])):
+        hours_2d = row["hours"].quantize(Decimal("0.01"))
+        sum_vals = [
+            row["code"], row["name"], row["days"], float(hours_2d),
+            row["nagashi_cash"], row["charter_cash"],
+            row["etc_ride_total"], row["etc_empty_total"], row["charter_uncol"],
+            row["kyokushin"], row["omron"], row["kyotoshi"],
+            row["uber"], row["uber_fee"],
+            row["credit"], row["credit_fee"],
+            row["paypay"], row["paypay_fee"],
+            row["didi"], row["didi_fee"],
+            row["uncol_total"], row["fee_total"],
+            row["water_total"], row["tax_ex"], row["tax"],
+            float(row["gas_l"]), float(row["km"]),
+            row["deposit_diff"],
+        ]
+        write_mixed_row(summary_ws, r, sum_vals, is_total=False)
+        # 将“出勤時数(h)”强制两位小数样式
+        summary_ws.write_number(r, 3, float(hours_2d), fmt_num_2d)
+
+        for k, v in row.items():
+            if k in ("code","name"): continue
+            if isinstance(v, (int, float, Decimal)):
+                totals_sum[k] += Decimal(str(v))
+        r += 1
+
+    hours_total_2d = totals_sum["hours"].quantize(Decimal("0.01"))
+    sum_total_vals = [
+        "合計","", int(totals_sum["days"]), float(hours_total_2d),
+        int(totals_sum["nagashi_cash"]), int(totals_sum["charter_cash"]),
+        int(totals_sum["etc_ride_total"]), int(totals_sum["etc_empty_total"]), int(totals_sum["charter_uncol"]),
+        int(totals_sum["kyokushin"]), int(totals_sum["omron"]), int(totals_sum["kyotoshi"]),
+        int(totals_sum["uber"]), int(totals_sum["uber_fee"]),
+        int(totals_sum["credit"]), int(totals_sum["credit_fee"]),
+        int(totals_sum["paypay"]), int(totals_sum["paypay_fee"]),
+        int(totals_sum["didi"]), int(totals_sum["didi_fee"]),
+        int(totals_sum["uncol_total"]), int(totals_sum["fee_total"]),
+        int(totals_sum["water_total"]), int(totals_sum["tax_ex"]), int(totals_sum["tax"]),
+        float(totals_sum["gas_l"]), float(totals_sum["km"]),
+        int(totals_sum["deposit_diff"]),
+    ]
+    write_mixed_row(summary_ws, r, sum_total_vals, is_total=True)
+    # 覆盖“出勤時数(h)”为两位小数合计样式
+    summary_ws.write_number(r, 3, float(hours_total_2d), fmt_num_2d_t)
+
+    # 负数過不足标红
+    if r > 2:
+        summary_ws.conditional_format(2, 27, r-1, 27, {
+            'type': 'cell', 'criteria': '<', 'value': 0, 'format': fmt_neg_red
+        })
+
+    # === 导出 ===
+    wb.close()
+    output.seek(0)
     filename = f"{year}年{month}月_全員毎日集計.xlsx"
-    tmp = NamedTemporaryFile(); wb.save(tmp.name); tmp.seek(0)
-    return FileResponse(tmp, as_attachment=True, filename=quote(filename),
+    return FileResponse(output, as_attachment=True, filename=quote(filename),
                         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-
-#导出全员每月汇总（每个司机一个 Sheet（表单））
-@user_passes_test(is_dailyreport_admin)
-def export_monthly_summary_excel(request, year, month):
-    reports = DriverDailyReport.objects.filter(
-        date__year=year, date__month=month
-    ).select_related('driver').prefetch_related('items')
-
-    driver_summary = defaultdict(lambda: defaultdict(Decimal))
-    driver_info = {}
-
-    for report in reports:
-        driver = report.driver
-        if not driver:
-            continue
-
-        driver_code = driver.driver_code or ''
-        driver_name = driver.name or ''
-        driver_info[driver_code] = driver_name
-
-        for item in report.items.all():
-            if (
-                item.payment_method and
-                item.meter_fee and item.meter_fee > 0 and
-                (not item.note or 'キャンセル' not in item.note)
-            ):
-                driver_summary[driver_code][item.payment_method] += item.meter_fee
-
-        etc_expected = Decimal(report.etc_expected or 0)
-        etc_collected = Decimal(report.etc_collected or 0)
-        etc_deficit = max(Decimal("0"), etc_collected - etc_expected)
-
-        driver_summary[driver_code]['etc_expected'] += etc_expected
-        driver_summary[driver_code]['etc_collected'] += etc_collected
-        driver_summary[driver_code]['etc_deficit'] += etc_deficit
-        driver_summary[driver_code]['deposit_diff'] += report.deposit_difference or 0
-        driver_summary[driver_code]['mileage'] += Decimal(report.mileage or 0)
-        driver_summary[driver_code]['gas'] += Decimal(report.gas_volume or 0)
-
-    wb = Workbook()
-    ws = wb.active
-
-    last_day = monthrange(year, month)[1]
-    ws.title = f"{year}年{month}月（{month}月1日~{month}月{last_day}日）"
-
-    headers = [
-        '社員番号', '司机',
-        '現金', 'Uber', 'Didi', 'クレジットカード', '扫码支付',
-        '京交信', 'オムロン', '京都市他',
-        'ETC应收', 'ETC实收', 'ETC差額', 'ETC不足額',
-        '過不足額', '走行距離(KM)', '給油量(L)'
-    ]
-    ws.append(headers)
-
-    total_row = defaultdict(Decimal)
-
-    for driver_code in sorted(driver_summary.keys()):
-        data = driver_summary[driver_code]
-        etc_expected = data.get('etc_expected', Decimal('0'))
-        etc_collected = data.get('etc_collected', Decimal('0'))
-        etc_diff = etc_expected - etc_collected
-
-        row = [
-            driver_code,
-            driver_info.get(driver_code, ''),
-            data.get('cash', Decimal('0')),
-            data.get('uber', Decimal('0')),
-            data.get('didi', Decimal('0')),
-            data.get('credit', Decimal('0')),
-            data.get('qr', Decimal('0')),
-            data.get('kyokushin', Decimal('0')),
-            data.get('omron', Decimal('0')),
-            data.get('kyotoshi', Decimal('0')),
-            etc_expected,
-            etc_collected,
-            etc_diff,
-            data.get('etc_deficit', Decimal('0')),
-            data.get('deposit_diff', Decimal('0')),
-            data.get('mileage', Decimal('0')),
-            data.get('gas', Decimal('0')),
-        ]
-        ws.append(row)
-
-        # 加入合计
-        for i, key in enumerate([
-            'cash', 'uber', 'didi', 'credit', 'qr',
-            'kyokushin', 'omron', 'kyotoshi',
-            'etc_expected', 'etc_collected', 'etc_diff', 'etc_deficit',
-            'deposit_diff', 'mileage', 'gas'
-        ], start=2):
-            value = row[i]
-            total_row[key] += value if isinstance(value, Decimal) else Decimal(str(value))
-
-    # 添加合计行
-    ws.append([
-        '合計', '',
-        total_row['cash'], total_row['uber'], total_row['didi'], total_row['credit'], total_row['qr'],
-        total_row['kyokushin'], total_row['omron'], total_row['kyotoshi'],
-        total_row['etc_expected'], total_row['etc_collected'],
-        total_row['etc_expected'] - total_row['etc_collected'],
-        total_row['etc_deficit'],
-        total_row['deposit_diff'], total_row['mileage'], total_row['gas']
-    ])
-
-    # 样式美化：自动列宽
-    for col in ws.columns:
-        max_len = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-        ws.column_dimensions[get_column_letter(col[0].column)].width = max_len + 2
-
-    # 样式：文字居左，其余居中，合计加粗背景
-    align_center = Alignment(horizontal="center", vertical="center")
-    align_left = Alignment(horizontal="left", vertical="center")
-    bold_font = Font(bold=True)
-    fill = PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")
-    last_row = ws.max_row
-
-    for row in ws.iter_rows(min_row=2, max_row=last_row):
-        for idx, cell in enumerate(row):
-            if idx == 0 or idx == 1:  # 司机代码/姓名
-                cell.alignment = align_left
-            else:
-                cell.alignment = align_center
-            if cell.row == last_row:
-                cell.font = bold_font
-                cell.fill = fill
-
-    # 导出文件
-    from tempfile import NamedTemporaryFile
-    tmp = NamedTemporaryFile()
-    wb.save(tmp.name)
-    tmp.seek(0)
-
-    filename = f"{year}年{month}月_全员月报汇总.xlsx"
-    response = FileResponse(tmp, as_attachment=True, filename=quote(filename))
-    response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    return response
 
 
 # ✅ 功能：查看某位司机的月度日报合计
@@ -1668,29 +1679,46 @@ def dailyreport_overview(request):
         for r in per_driver
     }
 
-    # ✅ 读取排序参数（默认金额降序）
-    sort = request.GET.get('sort', 'amount_desc')
-    reverse = (sort != 'amount_asc')   # desc 为 True, asc 为 False
+    # —— 读取排序参数（默认金额降序）
+    sort = request.GET.get("sort", "amount_desc")
 
-    # ✅ 用 ordered_drivers，而不是 drivers
-    ordered_drivers = sorted(
-        list(drivers),  # 先实化 QuerySet
-        key=lambda d: (
-            fee_map.get(d.id, Decimal('0')),                      # 金额
-            (getattr(d, 'driver_code', '') or d.name or '')       # 稳定次序辅助
-        ),
-        reverse=reverse
-    )
+    # 供排序用：社員番号 -> (是否非数字, 数字或字符串)
+    def code_key(d):
+        code = (getattr(d, "driver_code", "") or "").strip()
+        if code.isdigit():
+            return (0, int(code))
+        return (1, code)  # 非数字的排在数字后面
 
+    # —— 计算“売上合計”（你上面已经算了 fee_map）
+    # fee_map: driver_id -> 金额(Decimal)
+
+    # —— 排序驱动顺序
+    if sort == "code_asc":
+        ordered_drivers = sorted(drivers, key=code_key)
+    elif sort == "code_desc":
+        ordered_drivers = sorted(drivers, key=code_key, reverse=True)
+    elif sort == "amount_asc":
+        ordered_drivers = sorted(
+            drivers,
+            key=lambda d: (fee_map.get(d.id, Decimal("0")), code_key(d))
+        )
+    else:  # "amount_desc" 默认
+        ordered_drivers = sorted(
+            drivers,
+            key=lambda d: (fee_map.get(d.id, Decimal("0")), code_key(d)),
+            reverse=True
+        )
+
+    # —— 生成列表数据：按 ordered_drivers 的顺序
     driver_data = []
-    for d in ordered_drivers:  # ← 这里改成 ordered_drivers
+    for d in ordered_drivers:
         total = fee_map.get(d.id, Decimal("0"))
         has_any = d.id in fee_map
         has_issue = reports.filter(driver=d, has_issue=True).exists()
         note = "⚠️ 異常あり" if has_issue else ("（未報告）" if not has_any else "")
         driver_data.append({
             'driver': d,
-            'total_fee': total,   # 模板“合計メータ料金”列显示用
+            'total_fee': total,
             'note': note,
             'month_str': month_str,
         })
@@ -1729,4 +1757,6 @@ def dailyreport_overview(request):
         'prev_month': prev_month,
         'next_month': next_month,
         'counts': counts,
+        
+        'sort': sort,                      # ✅ 新增
     })
