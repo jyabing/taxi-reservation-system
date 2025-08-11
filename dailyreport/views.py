@@ -124,7 +124,7 @@ def dailyreport_delete_for_driver(request, driver_id, pk):
     if request.method == "POST":
         report.delete()
         messages.success(request, "已删除该日报记录。")
-        return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+        return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
     return render(request, 'dailyreport/dailyreport_confirm_delete.html', {
         'report': report,
         'driver': driver,
@@ -254,7 +254,7 @@ def dailyreport_delete_for_driver(request, driver_id, pk):
     if request.method == "POST":
         report.delete()
         messages.success(request, "已删除该日报记录。")
-        return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+        return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
     return render(request, 'dailyreport/dailyreport_confirm_delete.html', {
         'report': report,
         'driver': driver,
@@ -634,7 +634,7 @@ def dailyreport_create_for_driver(request, driver_id):
             date = datetime.strptime(request.GET.get('date'), "%Y-%m-%d").date()
         except ValueError:
             messages.error(request, "无效的日期格式")
-            return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
 
         # 如果日报已存在，则直接跳转
         existing = DriverDailyReport.objects.filter(driver=driver, date=date).first()
@@ -671,7 +671,7 @@ def dailyreport_create_for_driver(request, driver_id):
             formset.save()
 
             messages.success(request, '新增日报成功')
-            return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
         else:
             print("日报主表错误：", report_form.errors)
             print("明细表错误：", formset.errors)
@@ -1168,7 +1168,7 @@ def dailyreport_create_for_driver(request, driver_id):
             date = datetime.strptime(request.GET.get('date'), "%Y-%m-%d").date()
         except ValueError:
             messages.error(request, "无效的日期格式")
-            return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
 
         existing = DriverDailyReport.objects.filter(driver=driver, date=date).first()
         if existing:
@@ -1201,7 +1201,7 @@ def dailyreport_create_for_driver(request, driver_id):
             formset.save()
 
             messages.success(request, '新增日报成功')
-            return redirect('dailyreport:driver_basic_info', driver_id=driver.id)
+            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
         else:
             print("日报主表错误：", report_form.errors)
             print("明细表错误：", formset.errors)

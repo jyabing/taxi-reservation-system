@@ -290,10 +290,9 @@ input[type=number] {
         {{ form.etc_payment_method|add_class:"form-select form-select-sm" }}
       </div>
 
-      <!-- ✅ ETC 未收区域 -->
-      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-        <label class="small text-muted">ETC 未收=空車合計（円）</label>
-        {{ form.etc_uncollected|add_class:"form-control form-control-sm text-end" }}
+      <!-- 🔒 隐藏“ETC 未收=空車合計（円）”；仍参与提交（值由 JS 自动回填） -->
+      <div class="d-none">
+        {{ form.etc_uncollected }}
       </div>
 
 
@@ -344,7 +343,7 @@ input[type=number] {
       <!-- ✅ ETC 应收合计（只读） -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
         <label class="small text-muted">ETC 应收合计（円）</label>
-        <input type="text" class="form-control form-control-sm text-end bg-light" readonly
+        <input type="text" id="etc-expected-output" class="form-control form-control-sm text-end bg-light" readonly
               value="{{ report.etc_expected|default_if_none:'0' }}">
       </div>
 

@@ -151,6 +151,7 @@ function getDataTbody() {
  */
 function insertRowAt(n) {
   const tbody = getDataTbody();
+  const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
   if (!tbody) return;
 
   const rows = Array.from(tbody.querySelectorAll("tr.report-item-row"))
@@ -278,6 +279,34 @@ function insertRowAt(n) {
       document.getElementById('id_etc_shortage').classList.toggle('text-danger', etcDriverBurden > 0);
       document.getElementById('id_etc_shortage').classList.toggle('fw-bold', etcDriverBurden > 0);
     }
+
+    /* >>>>>>>>>>>>>>>  新增【应收合计】计算 ———— 起点  <<<<<<<<<<<<<<<< */
+    // 乗車ETC（実車）合計
+    const rideTotalForExpected = parseInt(document.getElementById('id_etc_collected')?.value || "0", 10) || 0;
+
+    // 空車ETC 金額（优先新字段 id_etc_empty_amount；没有则兼容旧的“未收ETC”）
+    let emptyAmountForExpected = 0;
+    if (document.getElementById('id_etc_empty_amount')) {
+      emptyAmountForExpected = parseInt(document.getElementById('id_etc_empty_amount')?.value || "0", 10) || 0;
+    } else {
+      // 旧口径兼容（没有“空車金额”输入时，用“未收ETC”来拼应收显示）
+      emptyAmountForExpected = parseInt(document.getElementById('id_etc_uncollected')?.value || "0", 10) || 0;
+    }
+
+    const etcExpected = rideTotalForExpected + emptyAmountForExpected;
+
+    // 写到只读展示框
+    const expectedDisplay = document.getElementById('etc-expected-output');
+    if (expectedDisplay) {
+      expectedDisplay.value = etcExpected.toLocaleString();
+    }
+
+    // 如果模板里有隐藏字段 #id_etc_expected（将来要回传后端），也一起回填（可选）
+    const hiddenExpected = document.getElementById('id_etc_expected');
+    if (hiddenExpected) {
+      hiddenExpected.value = etcExpected;
+    }
+    /* >>>>>>>>>>>>>>>  新增【应收合计】计算 ———— 终点  <<<<<<<<<<<<<<<< */
   }
 
   // 统一口径：避免双重口径冲突，直接复用 Difference 的结果
@@ -536,6 +565,7 @@ function insertRowAt(n) {
   [
     ['id_etc_collected_cash', [updateEtcDifference, updateEtcShortage]],
     ['id_etc_uncollected', [updateEtcDifference, updateEtcShortage]],
+    ['id_etc_empty_amount', [updateEtcDifference, updateEtcShortage]],
     ['id_etc_collected', [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
     ['id_deposit_amount', [updateEtcDifference, updateEtcInclusionWarning]],
     ['clock_in', [updateDuration]],
