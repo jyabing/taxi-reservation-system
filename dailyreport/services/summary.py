@@ -1,12 +1,17 @@
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
+from django.db.models import Sum, Q
+from dailyreport.models import DriverDailyReportItem
 
 # 只使用外部实现，避免被本文件的重复定义覆盖
 from .resolve import resolve_payment_method
 from dailyreport.constants import PAYMENT_RATES  # 如果未使用 PAYMENT_KEYWORDS，这里不要再导入它
 from dailyreport.utils import normalize
 
+# 你项目里现金系的支付方式（保持与你数据库一致）
+CASH_METHODS = ["cash", "uber_cash", "didi_cash", "go_cash"]
 
 def is_cash(payment_method: str) -> bool:
     # 后端只认 'cash'；平台现金前端已并入 cash，这里不要再出现 *_cash 枚举
@@ -155,3 +160,47 @@ def calculate_totals_from_instances(item_instances):
 
 def calculate_totals_from_queryset(queryset):
     return calculate_totals_from_instances(list(queryset))
+
+def build_month_aggregates(items_qs):
+    """
+    月报聚合：
+    - 現金合計（只统计非貸切的现金系 meter_fee）
+    - 貸切現金 合計（统计 is_charter=True 且 charter_payment_method='jpy_cash' 的 charter_amount_jpy）
+    - 貸切未収 合計（统计 is_charter=True 且 charter_payment_method='to_company' 的 charter_amount_jpy）
+    """
+    if not isinstance(items_qs, (DriverDailyReportItem._default_manager.__class__().all().__class__,)):
+        # 容错：传进来不是 QuerySet 的情况
+        items_qs = DriverDailyReportItem.objects.none()
+
+    # ✅ 普通現金合計（明确排除貸切）
+    cash_total = (
+        items_qs.filter(
+            is_charter=False,
+            payment_method__in=CASH_METHODS
+        ).aggregate(total=Sum("meter_fee"))["total"]
+        or Decimal("0")
+    )
+
+    # ✅ 貸切現金 合計
+    charter_cash_total = (
+        items_qs.filter(
+            is_charter=True,
+            charter_payment_method="jpy_cash"
+        ).aggregate(total=Sum("charter_amount_jpy"))["total"]
+        or Decimal("0")
+    )
+
+    # ✅ 貸切未収 合計
+    charter_uncollected_total = (
+        items_qs.filter(
+            is_charter=True,
+            charter_payment_method="to_company"
+        ).aggregate(total=Sum("charter_amount_jpy"))["total"]
+        or Decimal("0")
+    )
+
+    return {
+        "cash_total": cash_total,
+        "charter_cash_total": charter_cash_total,
+        "charter_uncollected_total": charter_uncollected_total,
+    }

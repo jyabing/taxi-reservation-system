@@ -167,14 +167,25 @@ class DriverDailyReportItemForm(forms.ModelForm):
             }),
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
             'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
-            'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),
-        } 
+            'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),'charter_amount_jpy': forms.NumberInput(attrs={
+                'step': '1',
+                'class': 'form-control form-control-sm text-end charter-amount-input',
+                'inputmode': 'numeric',
+                'pattern': '[0-9]*',
+            }),
+            'charter_payment_method': forms.Select(attrs={
+                'class': 'form-select form-select-sm charter-payment-method-select',
+            }),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # ✅ 显式取消必填，避免“这个字段是必填项”错误
         self.fields['num_male'].required = False
         self.fields['num_female'].required = False
+        # ⬇️ 关键：两项不必填，避免校验失败被清空
+        self.fields['charter_amount_jpy'].required = False
+        self.fields['charter_payment_method'].required = False
 
 # 4. 明细 FormSet（必须最后）
 ReportItemFormSet = inlineformset_factory(

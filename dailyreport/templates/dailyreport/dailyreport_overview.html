@@ -14,6 +14,10 @@
     <label class="form-label">対象月</label>
     <input type="month" name="month" value="{{ month_str }}" class="form-control">
   </div>
+
+  <!-- ✅ 这里新增：保留当前排序 -->
+  <input type="hidden" name="sort" value="{{ current_sort }}">
+
   <div class="col">
     <button type="submit" class="btn btn-primary">検索</button>
   </div>
@@ -22,7 +26,7 @@
 <!-- ✅ 导出按钮 -->
 <div class="my-3">
   {% if current_year and current_month %}
-    <a href="{% url 'dailyreport:export_dailyreports_csv' year=current_year month=current_month %}"
+    <a href="{% url 'dailyreport:export_dailyreports_excel' year=current_year month=current_month %}"
        class="btn btn-sm btn-outline-primary me-2">
       📤 导出 {{ current_year }}年{{ current_month }}月全员每日统计 Excel
     </a>
@@ -97,7 +101,13 @@
         <thead class="table-light">
           <tr>
             <th>従業員名</th>
-            <th>合計メータ料金</th>
+            <th>
+              合計メータ料金
+              <a class="btn btn-sm btn-outline-secondary ms-2"
+                href="?month={{ month_str }}&keyword={{ keyword }}&sort={% if current_sort == 'amount_desc' %}amount_asc{% else %}amount_desc{% endif %}">
+                金額{% if current_sort == 'amount_desc' %}↓{% else %}↑{% endif %}
+              </a>
+            </th>
             <th>備考</th>
             <th>操作</th>
           </tr>
@@ -143,21 +153,21 @@
     {% if page_obj.has_previous %}
       <li class="page-item">
         <a class="page-link"
-           href="?month={{ month|date:'Y-m' }}&page={{ page_obj.previous_page_number }}">前へ</a>
+          href="?month={{ month_str }}&keyword={{ keyword }}&sort={{ current_sort }}&page={{ page_obj.previous_page_number }}">前へ</a>
       </li>
     {% endif %}
 
     {% for num in page_obj.paginator.page_range %}
       <li class="page-item {% if page_obj.number == num %}active{% endif %}">
         <a class="page-link"
-           href="?month={{ month|date:'Y-m' }}&page={{ num }}">{{ num }}</a>
+          href="?month={{ month_str }}&keyword={{ keyword }}&sort={{ current_sort }}&page={{ num }}">{{ num }}</a>
       </li>
     {% endfor %}
 
     {% if page_obj.has_next %}
       <li class="page-item">
         <a class="page-link"
-           href="?month={{ month|date:'Y-m' }}&page={{ page_obj.next_page_number }}">次へ</a>
+          href="?month={{ month_str }}&keyword={{ keyword }}&sort={{ current_sort }}&page={{ page_obj.next_page_number }}">次へ</a>
       </li>
     {% endif %}
   </ul>

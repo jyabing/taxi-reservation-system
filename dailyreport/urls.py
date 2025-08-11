@@ -16,8 +16,8 @@ urlpatterns = [
     # 日报总览 / 列表 / 导出
     path('dailyreports/', views.dailyreport_list, name='dailyreport_list'),  # （管理员或司机）所有日报功能入口
     path('dailyreports/overview/', views.dailyreport_overview, name='dailyreport_overview'),
-    path('export/daily/<int:year>/<int:month>/', views.export_dailyreports_csv, name='export_dailyreports_csv'),#全员每日csv导出
-    path("dailyreport/export/monthly/<int:year>/<int:month>/", export_monthly_summary_excel, name="export_monthly_summary_excel"),#全员每月csv导出
+    path('export/daily/<int:year>/<int:month>/', views.export_dailyreports_excel, name='export_dailyreports_excel'),#全员每日excel导出
+    path("dailyreport/export/monthly/<int:year>/<int:month>/", export_monthly_summary_excel, name="export_monthly_summary_excel"),#全员每月excel导出
     path('export/vehicle/<int:year>/<int:month>/', views.export_vehicle_csv, name='export_vehicle_csv'), # ✅ 車両運輸実績表 CSV 出力
 
 

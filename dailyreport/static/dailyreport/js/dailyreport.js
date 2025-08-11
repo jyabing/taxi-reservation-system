@@ -152,31 +152,31 @@ function getDataTbody() {
 function insertRowAt(n) {
   const tbody = getDataTbody();
   const totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
-  if (!tbody) return;
+  if (!tbody || !totalEl) return;
 
   const rows = Array.from(tbody.querySelectorAll("tr.report-item-row"))
     .filter(r => r.style.display !== "none");
 
   // 规范化 n（1-based）
   let pos = parseInt(n, 10);
-  if (isNaN(pos) || pos < 1) pos = 1;
+  if (Number.isNaN(pos) || pos < 1) pos = 1;
   if (pos > rows.length + 1) pos = rows.length + 1;
 
-  const newRow = makeNewRowFromTemplate();
-  if (!newRow) return;
+  const created = makeNewRowFromTemplate();
+  if (!created) return;
 
-  // 插入：在第 pos 行“之前”；如果 pos 是末尾+1 就 append
+  // 在第 pos 行“之前”插入；若 pos 是末尾+1 就 append
   if (pos <= rows.length) {
-    tbody.insertBefore(newRow, rows[pos - 1]);
+    tbody.insertBefore(created.tr, rows[pos - 1]);
   } else {
-    tbody.appendChild(newRow);
+    tbody.appendChild(created.tr);
   }
 
-  // ✅ 递增 TOTAL_FORMS
-  if (totalEl) totalEl.value = String(parseInt(totalEl.value, 10) + 1);
+  // 递增 TOTAL_FORMS
+  totalEl.value = String(parseInt(totalEl.value, 10) + 1);
 
-  // 绑定事件 & 重新编号 & 重新汇总
-  bindRowEvents(newRow);
+  // 绑定 & 重算
+  bindRowEvents(created.tr);
   updateRowNumbersAndIndexes();
   updateTotals();
 }
@@ -188,7 +188,7 @@ function insertRowAt(n) {
   });
 
   // —— 6. 向下插入一行 ——（安全：只递增 TOTAL_FORMS，不重排旧行）
-  document.querySelector("table.report-table").addEventListener("click", (e) => {
+  document.querySelector("table.report-table")?.addEventListener("click", (e) => {
     if (!e.target.classList.contains("insert-below")) return;
 
     const tbody = getDataTbody();
@@ -590,37 +590,63 @@ function insertRowAt(n) {
 // 要求：每一行明细中包含以下 class：.meter-fee-input, .payment-method-select,
 // .charter-amount-input, .charter-payment-method-select
 
+// 勾选「貸切」时：自动复制金额与支付方式，并在勾选后如再改金额/支付方式也会同步
 document.addEventListener("change", function (e) {
   const el = e.target;
+
+  // 只监听 formset 中的「is_charter」复选框
   if (!el.matches("input[type='checkbox'][name$='-is_charter']")) return;
 
   const row = el.closest("tr");
   if (!row) return;
 
-  const meterInput = row.querySelector(".meter-fee-input");
-  const paySelect = row.querySelector(".payment-method-select");
-  const charterAmountInput = row.querySelector(".charter-amount-input");
-  const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
+  const meterInput            = row.querySelector(".meter-fee-input");
+  const paySelect             = row.querySelector(".payment-method-select");
+  const charterAmountInput    = row.querySelector(".charter-amount-input");
+  const charterPaymentSelect  = row.querySelector(".charter-payment-method-select");
 
   if (!charterAmountInput || !charterPaymentSelect) return;
 
   if (el.checked) {
-    // 自动填入金额
+    // 1) 勾选 → 立即按当前行的金額/支付写入「貸切」两个字段
     charterAmountInput.value = meterInput?.value || "";
 
-    // 原“支付”是现金系 → 直接当作“日元现金”
     const pm = paySelect?.value || "";
     if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm)) {
-      charterPaymentSelect.value = "jpy_cash";      // ← 新枚举
+      charterPaymentSelect.value = "jpy_cash";   // 你的现金枚举
     } else {
-      // 非现金 → 默认记到“转付公司”（你也可以换成 bank_transfer）
-      charterPaymentSelect.value = "to_company";
+      charterPaymentSelect.value = "to_company"; // 非现金默认记到转付公司
+    }
+
+    // 2) 额外：本次勾选后，如果用户又修改金額或支付方式，自动同步到「貸切」字段（只绑定一次）
+    if (meterInput) {
+      meterInput.addEventListener("input", () => {
+        if (el.checked && charterAmountInput) {
+          const v = meterInput.value || "";
+          charterAmountInput.value = /^\d+$/.test(v) ? v : ""; // 只接收数字
+          window.updateTotals?.();
+        }
+      }, { once: true });
+    }
+
+    if (paySelect) {
+      paySelect.addEventListener("change", () => {
+        if (!el.checked || !charterPaymentSelect) return;
+        const pm2 = paySelect.value || "";
+        if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm2)) {
+          charterPaymentSelect.value = "jpy_cash";
+        } else {
+          charterPaymentSelect.value = "to_company";
+        }
+        window.updateTotals?.();
+      }, { once: true });
     }
   } else {
-    charterAmountInput.value = "";
+    // 取消勾选 → 清空「貸切」两个字段
+    charterAmountInput.value   = "";
     charterPaymentSelect.value = "";
   }
-    // ✅ 显式挂到全局（必须放在函数定义之后）
-  window.updateTotals = updateTotals;
-  updateTotals(); // ✅ 勾选切换时也更新合计
+
+  // 勾选切换时刷新合计
+  window.updateTotals?.();
 });
