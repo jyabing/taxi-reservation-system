@@ -586,6 +586,44 @@ function insertRowAt(n) {
   updateTotals();
 });
 
+
+// ==== 工具：按貸切勾选状态，禁用/启用 当行的 料金 与 支付，并在取消时清空貸切字段 ====
+function getRow(el) {
+  return el.closest('tr') || el.closest('.report-item-row') || document;
+}
+function applyCharterState(row, isCharter) {
+  if (!row) return;
+  const meterInput           = row.querySelector(".meter-fee-input");
+  const paySelect            = row.querySelector(".payment-method-select");
+  const charterAmountInput   = row.querySelector(".charter-amount-input");
+  const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
+
+  // 勾选：料金/支付禁用；取消：恢复
+  if (meterInput) meterInput.disabled = !!isCharter;
+  if (paySelect)  paySelect.disabled  = !!isCharter;
+
+  // 取消勾选：清空貸切两个字段
+  if (!isCharter) {
+    if (charterAmountInput) {
+      charterAmountInput.value = "";
+      charterAmountInput.dispatchEvent(new Event('input',  { bubbles: true }));
+      charterAmountInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (charterPaymentSelect) {
+      charterPaymentSelect.value = "";
+      charterPaymentSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
+  if (typeof updateTotals === "function") updateTotals();
+}
+// 首次进场时，把所有行按当前勾选状态套用一次
+function hydrateAllCharterRows() {
+  document
+    .querySelectorAll("input[type='checkbox'][name$='-is_charter']")
+    .forEach(chk => applyCharterState(getRow(chk), chk.checked));
+}
+
 // —— 11. 勾选「貸切」后自动复制金额和支付方式 ——
 // 要求：每一行明细中包含以下 class：.meter-fee-input, .payment-method-select,
 // .charter-amount-input, .charter-payment-method-select
@@ -594,59 +632,63 @@ function insertRowAt(n) {
 document.addEventListener("change", function (e) {
   const el = e.target;
 
-  // 只监听 formset 中的「is_charter」复选框
+  // 只监听 formset 中的 is_charter
   if (!el.matches("input[type='checkbox'][name$='-is_charter']")) return;
 
-  const row = el.closest("tr");
+  const row = getRow(el);
   if (!row) return;
 
-  const meterInput            = row.querySelector(".meter-fee-input");
-  const paySelect             = row.querySelector(".payment-method-select");
-  const charterAmountInput    = row.querySelector(".charter-amount-input");
-  const charterPaymentSelect  = row.querySelector(".charter-payment-method-select");
+  const meterInput           = row.querySelector(".meter-fee-input");
+  const paySelect            = row.querySelector(".payment-method-select");
+  const charterAmountInput   = row.querySelector(".charter-amount-input");
+  const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
 
-  if (!charterAmountInput || !charterPaymentSelect) return;
-
-  if (el.checked) {
-    // 1) 勾选 → 立即按当前行的金額/支付写入「貸切」两个字段
-    charterAmountInput.value = meterInput?.value || "";
-
-    const pm = paySelect?.value || "";
-    if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm)) {
-      charterPaymentSelect.value = "jpy_cash";   // 你的现金枚举
-    } else {
-      charterPaymentSelect.value = "to_company"; // 非现金默认记到转付公司
-    }
-
-    // 2) 额外：本次勾选后，如果用户又修改金額或支付方式，自动同步到「貸切」字段（只绑定一次）
-    if (meterInput) {
-      meterInput.addEventListener("input", () => {
-        if (el.checked && charterAmountInput) {
-          const v = meterInput.value || "";
-          charterAmountInput.value = /^\d+$/.test(v) ? v : ""; // 只接收数字
-          window.updateTotals?.();
-        }
-      }, { once: true });
-    }
-
-    if (paySelect) {
-      paySelect.addEventListener("change", () => {
-        if (!el.checked || !charterPaymentSelect) return;
-        const pm2 = paySelect.value || "";
-        if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm2)) {
-          charterPaymentSelect.value = "jpy_cash";
-        } else {
-          charterPaymentSelect.value = "to_company";
-        }
-        window.updateTotals?.();
-      }, { once: true });
-    }
-  } else {
-    // 取消勾选 → 清空「貸切」两个字段
-    charterAmountInput.value   = "";
-    charterPaymentSelect.value = "";
+  if (!charterAmountInput || !charterPaymentSelect) {
+    // 即便缺少，也先做禁用/恢复，以免卡住编辑
+    applyCharterState(row, el.checked);
+    return;
   }
 
-  // 勾选切换时刷新合计
+  if (el.checked) {
+    // 1) 复制当前金额到「貸切金額」
+    charterAmountInput.value = meterInput?.value || "";
+
+    // 2) 复制支付方式到「処理」（现金→jpy_cash，其他→to_company）
+    const pm = paySelect?.value || "";
+    if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm)) {
+      charterPaymentSelect.value = "jpy_cash";
+    } else {
+      charterPaymentSelect.value = "to_company";
+    }
+
+    // 3) 勾选后禁用「料金/支付」
+    applyCharterState(row, true);
+
+    // 4) 本次勾选后，若用户修改金额/支付，再同步到貸切（只需绑定一次）
+    if (meterInput) {
+      const syncAmount = () => {
+        if (el.checked) {
+          const v = meterInput.value || "";
+          charterAmountInput.value = /^\d+$/.test(v) ? v : "";
+          window.updateTotals?.();
+        }
+      };
+      meterInput.addEventListener("input", syncAmount, { once: true });
+    }
+    if (paySelect) {
+      const syncPM = () => {
+        if (!el.checked) return;
+        const pm2 = paySelect.value || "";
+        charterPaymentSelect.value =
+          ["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm2) ? "jpy_cash" : "to_company";
+        window.updateTotals?.();
+      };
+      paySelect.addEventListener("change", syncPM, { once: true });
+    }
+  } else {
+    // 取消勾选：恢复编辑并清空貸切
+    applyCharterState(row, false);
+  }
+
   window.updateTotals?.();
 });

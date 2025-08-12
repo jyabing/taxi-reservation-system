@@ -17,6 +17,7 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models.functions import Cast
 from django.db.models import TimeField, F, Q
+from django.db import transaction
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.conf import settings
@@ -948,12 +949,37 @@ def check_out(request, reservation_id):
     reservation = get_object_or_404(Reservation, id=reservation_id)
     if request.user != reservation.driver:
         return HttpResponseForbidden("你不能操作别人的预约")
-    if reservation.actual_departure:
-        messages.warning(request, "你已经出库了！")
-    else:
+
+    with transaction.atomic():
+        # 锁定当前预约行，避免并发修改（有些数据库会忽略，但不影响兼容性）
+        Reservation.objects.select_for_update().filter(pk=reservation.pk)
+
+        # 已经出库就不重复操作
+        if reservation.actual_departure:
+            messages.warning(request, "你已经出库了！")
+            return redirect('vehicles:vehicle_status')
+
+        # 🚫 同一用户是否还有其它“出库未入库”的记录
+        unfinished_qs = (
+            Reservation.objects
+            .select_for_update()
+            .filter(
+                driver=request.user,
+                status='out',
+                actual_return__isnull=True,
+            )
+            .exclude(id=reservation.id)
+        )
+        if unfinished_qs.exists():
+            messages.error(request, "因有未完成入库操作的记录，请完成上一次入库操作后再进行本次出库。")
+            return redirect('vehicles:vehicle_status')
+
+        # ✅ 正常登记出库（和检查同一事务内，避免竞态）
         reservation.actual_departure = timezone.now()
+        reservation.status = 'out'
         reservation.save()
-        messages.success(request, "出库登记成功")
+
+    messages.success(request, "出库登记成功")
     return redirect('vehicles:vehicle_status')
 
 @login_required
@@ -1053,26 +1079,45 @@ def confirm_check_io(request):
     reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
 
     if action_type == "departure":
-        # ✅ 查找上次入库
-        last_return = Reservation.objects.filter(
-            driver=request.user,
-            actual_return__isnull=False,
-            actual_return__lt=actual_time
-        ).order_by("-actual_return").first()
-
-        if last_return:
-            diff = actual_time - last_return.actual_return
-            if diff < timedelta(hours=10):
-                next_allowed = last_return.actual_return + timedelta(hours=10)
-                messages.error(request, f"距上次入库还未满10小时，请于 {next_allowed.strftime('%H:%M')} 后再试出库。")
+        from django.db import transaction
+        with transaction.atomic():
+            # 🚫 拦截：同一用户是否还有“出库未入库”的其他记录
+            unfinished_qs = (
+                Reservation.objects
+                .select_for_update()
+                .filter(
+                    driver=request.user,
+                    status='out',
+                    actual_return__isnull=True,
+                )
+                .exclude(id=reservation.id)
+            )
+            if unfinished_qs.exists():
+                messages.error(request, "因有未完成入库操作的记录，请完成上一次入库操作后再进行本次出库。")
                 return redirect("vehicles:my_reservations")
 
-        # ✅ 更新状态
-        reservation.actual_departure = actual_time
-        reservation.status = "out"
-        reservation.save()
+            # ✅（可放事务内）查找上次入库并做 10 小时冷却校验
+            last_return = (
+                Reservation.objects
+                .filter(driver=request.user, actual_return__isnull=False, actual_return__lt=actual_time)
+                .order_by("-actual_return")
+                .first()
+            )
+            if last_return:
+                diff = actual_time - last_return.actual_return
+                if diff < timedelta(hours=10):
+                    next_allowed = last_return.actual_return + timedelta(hours=10)
+                    messages.error(request, f"距上次入库还未满10小时，请于 {next_allowed.strftime('%H:%M')} 后再试出库。")
+                    return redirect("vehicles:my_reservations")
+
+            # ✅ 更新状态（与检查同一事务，避免并发窗口）
+            reservation.actual_departure = actual_time
+            reservation.status = "out"
+            reservation.save()
+
         messages.success(request, "✅ 出库记录已保存。")
         return redirect("vehicles:my_reservations")
+
 
     elif action_type == "return":
         reservation.actual_return = actual_time

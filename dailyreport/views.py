@@ -24,7 +24,7 @@ from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemF
 from .services.calculations import calculate_deposit_difference  # ✅ 导入新函数
 
 from staffbook.services import get_driver_info
-from staffbook.utils.permissions import is_dailyreport_admin, get_active_drivers
+
 from staffbook.models import Driver
 from dailyreport.services.summary import (
     resolve_payment_method, 
@@ -55,6 +55,67 @@ def test_view(request):
 debug_print("✅ DEBUG_PRINT 导入成功，模块已执行")
 # 直接测试原生 print 看能否打印
 print("🔥🔥🔥 原生 print 测试：views.py 模块加载成功")
+
+def is_dailyreport_admin(user):
+    """
+    允许：superuser 或 拥有 dailyreport_admin / dailyreport 模块权限；回退 is_staff。
+    如你的权限键不同，请把下面的 key 改成你实际使用的。
+    """
+    try:
+        return (
+            check_module_permission(user, 'dailyreport_admin')
+            or check_module_permission(user, 'dailyreport')
+            or getattr(user, 'is_superuser', False)
+        )
+    except Exception:
+        return bool(getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False))
+
+# 你文件里大量写了 @user_passes_test(is_dailyreport_admin)，继续可用；
+# 若需要装饰器名，也提供一个等价别名：
+dailyreport_admin_required = user_passes_test(is_dailyreport_admin)
+
+def get_active_drivers(month_obj=None, keyword=None):
+    """
+    兼容旧代码：month_obj 不传则默认今天所在月份。
+    staffbook.utils 里原函数签名需要 month_obj；这里包装一下以便无参调用。
+    """
+    # 基本“在职当月”过滤（根据你 models 的字段名适当调整）
+    qs = Driver.objects.all()
+    if month_obj is None:
+        month_obj = date.today()
+
+    year = month_obj.year
+    month = month_obj.month
+    # 当月起止
+    from datetime import date as _date
+    from calendar import monthrange as _monthrange
+    first_day = _date(year, month, 1)
+    last_day = _date(year, month, _monthrange(year, month)[1])
+
+    try:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(hire_date__lte=last_day)
+            & (Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day))
+        )
+    except Exception:
+        # 若字段不匹配，退化为不过滤
+        pass
+
+    if hasattr(Driver, 'is_active'):
+        try:
+            qs = qs.filter(is_active=True)
+        except Exception:
+            pass
+
+    if keyword:
+        try:
+            from django.db.models import Q
+            qs = qs.filter(Q(name__icontains=keyword) | Q(code__icontains=keyword))
+        except Exception:
+            pass
+
+    return qs.order_by('name')
 
 # ✅ 新增日报
 @user_passes_test(is_dailyreport_admin)

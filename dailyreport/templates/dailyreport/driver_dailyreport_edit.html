@@ -438,7 +438,7 @@ input[type=number] {
               {% if form.payment_method.errors %}
                 <div class="text-danger small">{{ form.payment_method.errors.0 }}</div>
               {% endif %}
-              {{ form.payment_method|add_class:"form-select form-select-sm" }}
+              {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
             </td>
 
             <td class="text-center">
@@ -497,7 +497,7 @@ input[type=number] {
           <td>{{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
           <td>{{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}</td>
           <td>{{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}</td>
-          <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm" }}</td>
+          <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}</td>
           <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
 
           <td class="text-center">{{ formset.empty_form.is_charter }}</td>
