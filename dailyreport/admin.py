@@ -13,8 +13,14 @@ class DriverDailyReportItemInline(admin.TabularInline):
     model = DriverDailyReportItem
     extra = 0
     fields = [
-        'ride_time', 'ride_from', 'via', 'ride_to', 'num_male', 'num_female',
-        'meter_fee', 'payment_method', 'note', 'comment', 'is_flagged', 'has_issue'
+        'ride_time', 'ride_from', 'via', 'ride_to',
+        'num_male', 'num_female',
+        # ——— 计价与支付（通常一起录入）———
+        'meter_fee', 'payment_method',
+        # ——— 貸切相关 ———
+        'is_charter', 'charter_amount_jpy', 'charter_payment_method',
+        # ——— 备注与标记 ———
+        'note', 'comment', 'is_flagged', 'has_issue',
     ]
     readonly_fields = ['has_issue']
 
@@ -80,10 +86,31 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
 
 @admin.register(DriverDailyReportItem)
 class DriverDailyReportItemAdmin(admin.ModelAdmin):
-    list_display = ['report', 'ride_time', 'ride_from', 'ride_to', 'meter_fee', 'payment_method', 'has_issue']
-    list_filter = ['payment_method', 'has_issue']
+    # 列表页显示：加入貸切三字段
+    list_display = [
+        'report', 'ride_time', 'ride_from', 'ride_to',
+        'is_charter', 'charter_amount_jpy', 'charter_payment_method',
+        'meter_fee', 'payment_method', 'has_issue',
+    ]
+
+    # 过滤器：可按貸切与其支付方式筛选
+    list_filter = ['is_charter', 'charter_payment_method', 'payment_method', 'has_issue']
+
+    # 搜索保持不变
     search_fields = ('ride_from', 'ride_to', 'note', 'comment')
-    readonly_fields = ['meter_fee']
+
+    # 详情页字段顺序：把貸切分组放在计价之后
+    fields = (
+        'report',
+        'ride_time', 'ride_from', 'via', 'ride_to',
+        'num_male', 'num_female',
+        'meter_fee', 'payment_method',
+        'is_charter', 'charter_amount_jpy', 'charter_payment_method',
+        'note', 'comment', 'is_flagged', 'has_issue',
+    )
+
+    # 只读：保留你原来的 meter_fee，并把 has_issue 也设为只读（与 Inline 一致）
+    readonly_fields = ['meter_fee', 'has_issue']
 
 @admin.register(DriverReportImage)
 class DriverReportImageAdmin(admin.ModelAdmin):

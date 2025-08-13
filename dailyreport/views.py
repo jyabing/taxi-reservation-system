@@ -381,11 +381,13 @@ def export_dailyreports_excel(request, year, month):
 
     # 常量
     FEE_RATE = Decimal("0.05")
+
     # ながし現金判定（普通单）
     CASH_METHODS = {"cash", "uber_cash", "didi_cash", "go_cash"}
-    # 貸切現金 / 貸切未収 判定
-    CHARTER_CASH_KEYS = {"jpy_cash", "jp_cash", "cash"}
-    CHARTER_UNCOLLECTED_KEYS = {"to_company", "invoice", "uncollected", "未収", "請求"}
+
+    # 貸切現金 / 貸切未収 判定（全部按小写比较；“現金”不受 lower 影响，但保留以直观表达）
+    #CHARTER_CASH_KEYS = {"jpy_cash", "jp_cash", "cash", "現金"}
+    #CHARTER_UNCOLLECTED_KEYS = {"to_company", "invoice", "uncollected", "未収", "請求"}
 
     # 数据：整月日报
     reports = (
@@ -428,8 +430,13 @@ def export_dailyreports_excel(request, year, month):
                 elif pm in {"qr", "scanpay"}:         amt["paypay"] += meter_fee
                 elif pm == "didi":    amt["didi"] += meter_fee
             else:
-                if cpm in CHARTER_CASH_KEYS:        charter_cash += charter_jpy
-                if cpm in CHARTER_UNCOLLECTED_KEYS: charter_uncol += charter_jpy
+                # 先二分：现金 vs 非现金（非现金一律视为未収/后结）
+                if cpm in CHARTER_CASH_KEYS:
+                    charter_cash += charter_jpy
+                else:
+                    charter_uncol += charter_jpy
+
+                # 再做渠道归集（用于未収合计、平台费率等）
                 if cpm == "kyokushin": amt["kyokushin"] += charter_jpy
                 elif cpm == "omron":   amt["omron"] += charter_jpy
                 elif cpm == "kyotoshi":amt["kyotoshi"] += charter_jpy
@@ -1616,7 +1623,17 @@ def dailyreport_overview(request):
         date__year=month.year,
         date__month=month.month,
     )
+
     drivers = get_active_drivers(month, keyword)
+
+    # —— 视图层兜底关键字过滤（name/kana/driver_code）
+    if keyword:
+        drivers = drivers.filter(
+            Q(name__icontains=keyword) |
+            Q(kana__icontains=keyword) |
+            Q(driver_code__icontains=keyword)
+        )
+
     reports = reports_all.filter(driver__in=drivers)
 
     # 5. 取本月所有明细并归一化字段
