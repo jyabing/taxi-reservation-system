@@ -61,6 +61,11 @@
   display: inline-block;
   margin-bottom: 4px;
 }
+
+/* 维修中置灰 */
+.maintenance { background:#eee; color:#888; }
+.maintenance a { pointer-events:none; color:#888; text-decoration:none; }
+.badge-maint { font-size:12px; padding:2px 6px; border:1px solid #bbb; border-radius:4px; margin-left:6px; }
 </style>
 
 <table class="japanese-week-table">
@@ -74,33 +79,40 @@
   </thead>
   <tbody>
     {% for row in vehicle_data %}
-      <td class="text-start">
-        <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold">
-          {{ row.vehicle.license_plate }}
-        </a>
+      {# 行级：维修中置灰 #}
+      <tr class="{% if row.vehicle.is_maintenance %}maintenance{% endif %}">
+        <td class="text-start">
+          <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold">
+            {{ row.vehicle.license_plate }}
+          </a>
 
-        {% if row.reminders %}
-          <div class="mt-1 small">
-            {% for r in row.reminders %}
-              <div
-                class="px-2 py-1 rounded mb-1"
-                style="font-size:12px;
-                      {% if r.is_today %} background:#fff3cd; color:#856404;
-                      {% elif '推迟' in r.message or '过期' in r.message %} background:#f8d7da; color:#721c24;
-                      {% elif '还有' in r.message %} background:#d1ecf1; color:#0c5460;
-                      {% else %} background:#eee; color:#333;
-                      {% endif %}">
-                {% if r.type == 'inspection' %}🧾{% elif r.type == 'insurance' %}🛡{% elif r.type == 'maintenance' %}🔧{% else %}📌{% endif %}
-                {{ r.message }}
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
-      </td>
+          {# 行头可以附带车辆级别提醒 #}
+          {% if row.reminders %}
+            <div class="mt-1 small">
+              {% for r in row.reminders %}
+                <div
+                  class="px-2 py-1 rounded mb-1"
+                  style="font-size:12px;
+                        {% if r.is_today %} background:#fff3cd; color:#856404;
+                        {% elif '推迟' in r.message or '过期' in r.message %} background:#f8d7da; color:#721c24;
+                        {% elif '还有' in r.message %} background:#d1ecf1; color:#0c5460;
+                        {% else %} background:#eee; color:#333;
+                        {% endif %}">
+                  {% if r.type == 'inspection' %}🧾{% elif r.type == 'insurance' %}🛡{% elif r.type == 'maintenance' %}🔧{% else %}📌{% endif %}
+                  {{ r.message }}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </td>
+
         {% for cell in row.days %}
-          <td style="{% if cell.is_past %}color:#aaa;{% endif %}">
-            {# 维修中 #}
-            {% if row.vehicle.status == 'maintenance' %}
+          {# 单元格：维修中置灰；过去日浅灰字 #}
+          <td class="{% if row.vehicle.is_maintenance %}maintenance{% endif %}"
+              style="{% if cell.is_past %}color:#aaa;{% endif %}">
+
+            {# 维修中：每天都显示字样，禁用一切链接 #}
+            {% if row.vehicle.is_maintenance %}
               <span>🛠️ 维修中</span>
 
             {# 已有预约 #}
@@ -121,39 +133,8 @@
                 </div>
               {% endfor %}
 
-              {# ✅ 不管有没有空隙，都要渲染提醒 #}
+              {# 当日提醒 #}
               {% if not cell.is_past %}
-                {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
-                  {% if date_reminders %}
-                    <div class="mt-1" style="font-size:12px;">
-                      {% for rmsg in date_reminders %}
-                        <div style="font-size:12px;
-                                    {% if '还有' in rmsg.message %}color:#0c63e4;           {# 蓝色 #}
-                                    {% elif '本日' in rmsg.message %}color:#d17700;          {# 橙色 #}
-                                    {% elif '推迟' in rmsg.message or '过期' in rmsg.message %}color:#c1121f; {# 红色 #}
-                                    {% else %}color:#666;
-                                    {% endif %}">
-                          ⚠️ {{ rmsg.message }}
-                        </div>
-                      {% endfor %}
-                    </div>
-                  {% endif %}
-                {% endwith %}
-              {% endif %}
-
-              {# 如果当天还有空隙可预约 #}
-              {% if not cell.is_past %}
-                {% include 'vehicles/weekly_empty_after.html' %}
-              {% endif %}
-
-            {# 整天空缺 #}
-            {% else %}
-              {% if not cell.is_past %}
-                <a href="{% url 'vehicles:make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">
-                  📝 申请预约
-                </a>
-
-                {# 每日提醒渲染部分 #}
                 {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
                   {% if date_reminders %}
                     <div class="mt-1" style="font-size:12px;">
@@ -162,15 +143,48 @@
                                     {% if '还有' in rmsg.message %}color:#0c63e4;
                                     {% elif '本日' in rmsg.message %}color:#d17700;
                                     {% elif '推迟' in rmsg.message or '过期' in rmsg.message %}color:#c1121f;
-                                    {% else %}color:#666;
-                                    {% endif %}">
+                                    {% else %}color:#666;{% endif %}">
                           ⚠️ {{ rmsg.message }}
                         </div>
                       {% endfor %}
                     </div>
                   {% endif %}
                 {% endwith %}
+              {% endif %}
 
+              {# 可预约空隙提示（非维修才会走到这里） #}
+              {% if not cell.is_past %}
+                {% include 'vehicles/weekly_empty_after.html' %}
+              {% endif %}
+
+            {# 整天空缺 #}
+            {% else %}
+              {% if not cell.is_past %}
+                {# 非维修时才显示预约入口 #}
+                {% if not row.vehicle.is_maintenance %}
+                  <a href="{% url 'vehicles:make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">
+                    📝 申请预约
+                  </a>
+                {% else %}
+                  <div>🛠️ 维修中</div>
+                {% endif %}
+
+                {# 当日提醒 #}
+                {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
+                  {% if date_reminders %}
+                    <div class="mt-1" style="font-size:12px;">
+                      {% for rmsg in date_reminders %}
+                        <div style="font-size:12px;
+                                    {% if '还有' in rmsg.message %}color:#0c63e4;
+                                    {% elif '本日' in rmsg.message %}color:#d17700;
+                                    {% elif '推迟' in rmsg.message or '过期' in rmsg.message %}color:#c1121f;
+                                    {% else %}color:#666;{% endif %}">
+                          ⚠️ {{ rmsg.message }}
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
               {% else %}
                 <span>—</span>
               {% endif %}
@@ -187,7 +201,6 @@
 </p>
 
 {% endblock %}
-
 
 {% block extra_js %}
 <script>

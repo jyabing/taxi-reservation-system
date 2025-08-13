@@ -3,8 +3,9 @@ from django import forms
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
 from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage
-from vehicles.models import Reservation
+from vehicles.models import Reservation as VehicleReservation
 from dailyreport.utils.debug import apply_form_control_style
+from carinfo.models import Car  # 保持你项目里的实际路径
 
 
 # ✅ 1. 自定义 FormSet（放在 ReportItemFormSet 之前！）
@@ -85,10 +86,10 @@ class DriverDailyReportForm(forms.ModelForm):
 
         # ✅ 自动注入 clock_in / clock_out / vehicle（仅在 GET 且有 instance 时生效）
         if instance and not self.data:
-            driver_user = instance.driver.user
+            driver_user = getattr(instance.driver, "user", None)
             if driver_user:
                 res = (
-                    Reservation.objects
+                    VehicleReservation.objects           # ← 这里用 VehicleReservation
                     .filter(
                         driver=driver_user,
                         actual_departure__date=instance.date,
@@ -104,7 +105,6 @@ class DriverDailyReportForm(forms.ModelForm):
                     if res.vehicle:
                         self.fields['vehicle'].initial = res.vehicle
 
-    
 
     # ✅ 插入位置开始：ETC 字段清洗
     def clean_etc_collected(self):

@@ -511,6 +511,14 @@ def weekly_overview_view(request):
 
     vehicles = get_all_active_cars()
 
+    # ★ 给每辆车打“维修中”布尔标记（兼容多种写法）
+    for v in vehicles:
+        status_val = getattr(v, "status", None)
+        # 如果你 carinfo.services 里已经有 is_under_repair，用它兜底
+        v.is_maintenance = (
+            status_val in ("repair", "maintenance", "under_maintenance")
+        ) or is_under_repair(v)
+
     global_reminders = []
     for car in vehicles:
         fields = [
@@ -615,6 +623,7 @@ def weekly_overview_view(request):
                 'date': d,
                 'reservations': day_reservations,
                 'is_past': is_past,
+                'is_maintenance': vehicle.is_maintenance,   # ★ 新增
             })
 
         # ✅ 添加提醒结构到 row（避免再次使用 reminders = []）
@@ -649,7 +658,7 @@ def weekly_overview_view(request):
         'cooldown_end': cooldown_end,
         'today': base_date,
         'selected_date': date_str if date_str else today.strftime("%Y-%m-%d"),
-        'reminders': global_reminders,  # ✅ 新增
+        'reminders': global_reminders, 
     })
     
 @login_required
