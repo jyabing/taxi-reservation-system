@@ -47,10 +47,15 @@
           <tr>
             <td>{{ report.date|date:"Y年n月j日" }}</td>
             <td>
-                <p class="text-dark fw-bold">合計: ￥{{ report.total_all|default:0|intcomma }}</p>
+                <p class="text-dark fw-bold">合計: ￥{{ report.total_all|floatformat:"0"|intcomma }}</p>
                 <p class="text-muted">（メータのみ: ￥{{ report.meter_only_total|default:0|intcomma }}）</p>
                 
-                <p class="text-muted small">※ 売上合計には、メーター金額のすべてが含まれます。</p>
+                <p class="text-muted small">
+                  ※ 売上合計 = メータのみ ＋ 貸切現金 ＋ 貸切未収
+                  {% if report.charter_unknown_total and report.charter_unknown_total|floatformat:"0" != "0" %}
+                    ＋ 未分類(￥{{ report.charter_unknown_total|floatformat:"0"|intcomma }})
+                  {% endif %}
+                </p>
             </td>
             <td>{{ report.note|default:"" }}</td>
             <td>

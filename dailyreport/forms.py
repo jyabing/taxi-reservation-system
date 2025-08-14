@@ -14,23 +14,42 @@ class RequiredReportItemFormSet(BaseInlineFormSet):
         super().clean()
 
         for form in self.forms:
-            # 忽略已标记为删除的行
+            # 已经主动删除的行跳过
             if form.cleaned_data.get('DELETE'):
                 continue
 
-            # 只要金额或支付方式有填写，就视为有效行
+            meter_fee   = form.cleaned_data.get('meter_fee')
+            pay_method  = form.cleaned_data.get('payment_method')
+
+            # ★ 貸切相关字段
+            is_charter  = form.cleaned_data.get('is_charter')
+            charter_amt = form.cleaned_data.get('charter_amount_jpy')
+            charter_pm  = form.cleaned_data.get('charter_payment_method')
+
+            # ★ “这一行是否有内容”的判断，必须把貸切字段也算上
             has_data = any([
-                form.cleaned_data.get('meter_fee'),
-                form.cleaned_data.get('payment_method'),
+                meter_fee,
+                pay_method,
+                is_charter,
+                charter_amt,
+                charter_pm,
             ])
 
-            if has_data:
-                # 只强制支付方式为必填
-                if not form.cleaned_data.get('payment_method'):
-                    form.add_error('payment_method', '支払方法は必須です。')
-            else:
-                # 如果整行都为空白，自动标记为删除（避免报错）
+            if not has_data:
+                # 整行都空：自动删除，避免抛错
                 form.cleaned_data['DELETE'] = True
+                continue
+
+            # ★ 分支校验：貸切 vs 非貸切
+            if is_charter or charter_amt or charter_pm:
+                # 視為「貸切」行：只要求 charter_payment_method
+                if not charter_pm:
+                    form.add_error('charter_payment_method', '貸切の処理方法を選択してください。')
+                # 注意：貸切行不强制普通 payment_method
+            else:
+                # 非貸切行：填写了料金就必须有普通支付方式
+                if meter_fee and not pay_method:
+                    form.add_error('payment_method', '支払方法は必須です。')
 
 # ✅2. 主表 Form：编辑日报基本信息（出勤时间、备注、车辆等）
 class DriverDailyReportForm(forms.ModelForm):
@@ -167,7 +186,8 @@ class DriverDailyReportItemForm(forms.ModelForm):
             }),
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
             'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
-            'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),'charter_amount_jpy': forms.NumberInput(attrs={
+            'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),
+            'charter_amount_jpy': forms.NumberInput(attrs={
                 'step': '1',
                 'class': 'form-control form-control-sm text-end charter-amount-input',
                 'inputmode': 'numeric',
@@ -180,12 +200,16 @@ class DriverDailyReportItemForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # ✅ 显式取消必填，避免“这个字段是必填项”错误
+        # ✅ 这些你原来就有
         self.fields['num_male'].required = False
         self.fields['num_female'].required = False
-        # ⬇️ 关键：两项不必填，避免校验失败被清空
         self.fields['charter_amount_jpy'].required = False
         self.fields['charter_payment_method'].required = False
+
+        # ✅ 关键：给「貸切」复选框一个确定的类名，便于 JS 选择器命中
+        if 'is_charter' in self.fields:
+            cls = self.fields['is_charter'].widget.attrs.get('class', '')
+            self.fields['is_charter'].widget.attrs['class'] = (cls + ' charter-checkbox').strip()
 
 # 4. 明细 FormSet（必须最后）
 ReportItemFormSet = inlineformset_factory(

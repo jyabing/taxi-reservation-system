@@ -541,24 +541,79 @@ function insertRowAt(n) {
   }
 
   // ✅ 页面加载后绑定事件
-  document.addEventListener("DOMContentLoaded", function () {
-    const depositInput = document.querySelector("#deposit-input");
-    const etcInputs = [
-      document.querySelector("#id_etc_collected"),
-      document.querySelector("#id_etc_uncollected"),
-    ];
+document.addEventListener("DOMContentLoaded", function () {
+  const depositInput = document.querySelector("#deposit-input");
+  const etcInputs = [
+    document.querySelector("#id_etc_collected"),
+    document.querySelector("#id_etc_uncollected"),
+  ];
 
-    // 监听字段变化，实时刷新智能提示
-    [depositInput, ...etcInputs].forEach((input) => {
-      if (input) {
-        input.addEventListener("input", updateSmartHintPanel);
-      }
-    });
-
-    // 初始执行一次
-    updateSmartHintPanel();
+  // 监听字段变化，实时刷新智能提示
+  [depositInput, ...etcInputs].forEach((input) => {
+    if (input) {
+      input.addEventListener("input", updateSmartHintPanel);
+    }
   });
 
+  // =========================
+  // ★ 初始化「貸切」行的 料金 只读态（不清空、不 disabled）
+  // =========================
+  document.querySelectorAll("tr.report-item-row").forEach((row) => {
+    const chk       = row.querySelector("input[type='checkbox'][name$='-is_charter']");
+    const meter     = row.querySelector(".meter-fee-input");
+    // 保险起见，清除任何历史 disabled
+    if (meter) meter.removeAttribute("disabled");
+
+    if (chk && chk.checked && meter) {
+      // 勾选时：只读 + 灰色外观；保留原值
+      meter.setAttribute("readonly", "readonly");
+      meter.classList.add("readonly");
+      // 强制保持现值（防止其他监听清空）
+      if (!meter.dataset.originalValue) meter.dataset.originalValue = meter.value || "";
+      meter.value = meter.dataset.originalValue;
+    }
+  });
+
+  // ★ 绑定现有的「貸切」复选框 → 状态变化时应用只读逻辑
+  document.querySelectorAll("input[type='checkbox'][name$='-is_charter']").forEach((chk) => {
+    chk.addEventListener("change", () => {
+      const row   = chk.closest("tr");
+      const meter = row?.querySelector(".meter-fee-input");
+      if (!meter) return;
+      meter.removeAttribute("disabled"); // 兜底
+      if (chk.checked) {
+        if (!meter.dataset.originalValue) meter.dataset.originalValue = meter.value || "";
+        meter.setAttribute("readonly", "readonly");
+        meter.classList.add("readonly");
+        meter.value = meter.dataset.originalValue;
+      } else {
+        meter.removeAttribute("readonly");
+        meter.classList.remove("readonly");
+      }
+    });
+  });
+
+  // 初始执行一次
+  updateSmartHintPanel();
+
+  // ★ 页面加载时，已勾选的行套用只读灰态（不清空）
+  if (typeof hydrateAllCharterRows === 'function') {
+    hydrateAllCharterRows();
+  } else {
+    // 兜底：直接处理一次
+    document.querySelectorAll("tr.report-item-row").forEach((row) => {
+      const chk = row.querySelector("input[type='checkbox'][name$='-is_charter']");
+      const meter = row.querySelector(".meter-fee-input");
+      if (chk && chk.checked && meter) {
+        meter.removeAttribute('disabled');
+        if (!meter.dataset.originalValue) meter.dataset.originalValue = meter.value || "";
+        meter.setAttribute('readonly', 'readonly');
+        meter.classList.add('readonly');
+        meter.value = meter.dataset.originalValue;
+      }
+    });
+  }
+});
 
 
   // —— 9. 绑定监听 ——
@@ -588,9 +643,6 @@ function insertRowAt(n) {
 
 
 // ==== 工具：按貸切勾选状态，禁用/启用 当行的 料金 与 支付，并在取消时清空貸切字段 ====
-function getRow(el) {
-  return el.closest('tr') || el.closest('.report-item-row') || document;
-}
 function applyCharterState(row, isCharter) {
   if (!row) return;
   const meterInput           = row.querySelector(".meter-fee-input");
@@ -598,11 +650,26 @@ function applyCharterState(row, isCharter) {
   const charterAmountInput   = row.querySelector(".charter-amount-input");
   const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
 
-  // 勾选：料金/支付禁用；取消：恢复
-  if (meterInput) meterInput.disabled = !!isCharter;
-  if (paySelect)  paySelect.disabled  = !!isCharter;
+  // ★ 永远不要 disabled / 清空 料金；用 readonly + 外观变灰，确保提交保留值
+  if (meterInput) {
+    meterInput.removeAttribute('disabled'); // 清历史残留
+    // 记录原值（只记录一次）
+    if (!meterInput.dataset.originalValue) {
+      meterInput.dataset.originalValue = meterInput.value || "";
+    }
+    if (isCharter) {
+      meterInput.setAttribute('readonly', 'readonly');
+      meterInput.classList.add('readonly');
+      // 强制保持原值，防止其他监听清空
+      meterInput.value = meterInput.dataset.originalValue;
+    } else {
+      meterInput.removeAttribute('readonly');
+      meterInput.classList.remove('readonly');
+      // 允许编辑，保留现值
+    }
+  }
 
-  // 取消勾选：清空貸切两个字段
+  // 取消勾选：清空「貸切」两个字段（保留你的逻辑）
   if (!isCharter) {
     if (charterAmountInput) {
       charterAmountInput.value = "";
@@ -631,8 +698,6 @@ function hydrateAllCharterRows() {
 // 勾选「貸切」时：自动复制金额与支付方式，并在勾选后如再改金额/支付方式也会同步
 document.addEventListener("change", function (e) {
   const el = e.target;
-
-  // 只监听 formset 中的 is_charter
   if (!el.matches("input[type='checkbox'][name$='-is_charter']")) return;
 
   const row = getRow(el);
@@ -644,14 +709,16 @@ document.addEventListener("change", function (e) {
   const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
 
   if (!charterAmountInput || !charterPaymentSelect) {
-    // 即便缺少，也先做禁用/恢复，以免卡住编辑
     applyCharterState(row, el.checked);
     return;
   }
 
   if (el.checked) {
+    // ★ 先抓住当前料金值（若后面有脚本清空，最后再强制写回）
+    const prevMeter = meterInput ? (meterInput.value || "") : "";
+
     // 1) 复制当前金额到「貸切金額」
-    charterAmountInput.value = meterInput?.value || "";
+    charterAmountInput.value = prevMeter;
 
     // 2) 复制支付方式到「処理」（现金→jpy_cash，其他→to_company）
     const pm = paySelect?.value || "";
@@ -661,8 +728,28 @@ document.addEventListener("change", function (e) {
       charterPaymentSelect.value = "to_company";
     }
 
-    // 3) 勾选后禁用「料金/支付」
+    // 3) 料金设为只读（不 disabled、不清空）
     applyCharterState(row, true);
+
+    // ★ 强制回填料金（防止别的监听清空）
+    if (meterInput) {
+      if (!meterInput.dataset.originalValue) meterInput.dataset.originalValue = prevMeter;
+      meterInput.value = meterInput.dataset.originalValue || prevMeter || "";
+    }
+
+    // ★ 支付方式设为现金（如果不是现金/为空）
+    if (paySelect) {
+      const isCashLike = (v) => (v || "").toLowerCase().includes('cash') || /現金/.test(v || "");
+      if (!isCashLike(paySelect.value)) {
+        const cashOpt = Array.from(paySelect.options || []).find(
+          o => isCashLike(o.value) || isCashLike(o.textContent)
+        );
+        if (cashOpt) {
+          paySelect.value = cashOpt.value;
+          paySelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    }
 
     // 4) 本次勾选后，若用户修改金额/支付，再同步到貸切（只需绑定一次）
     if (meterInput) {

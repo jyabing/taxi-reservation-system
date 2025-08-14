@@ -59,6 +59,19 @@ input[type=number]::-webkit-inner-spin-button {
 input[type=number] {
   -moz-appearance: textfield;
 }
+  /* 料金只读的外观（不影响提交） */
+  .meter-fee-input[readonly],
+  input[name$="-meter_fee"][readonly]{
+    background:#eee !important;
+    color:#666 !important;
+    cursor:not-allowed;
+  }
+  /* （可选）如果你上面给 select 加了 locked-select，就一起加灰样式 */
+  .locked-select{
+    background:#f5f5f5 !important;
+    color:#666 !important;
+    pointer-events:none; /* 阻止点击但值仍会提交 */
+  }
 </style>
 
 {% block content %}
@@ -545,7 +558,70 @@ input[type=number] {
       background-color: #fff8b3 !important;
     }
   </style>
+<script>
+(function () {
+  function lockStyle(el, on) {
+    if (!el) return;
+    if (on) {
+      // 先记住原值
+      if (!el.dataset.keep) {
+        el.dataset.keep = el.value || '';
+      }
+      el.readOnly = true;
+      el.style.backgroundColor = '#eee';
+      el.style.color = '#666';
+      el.style.cursor = 'not-allowed';
+      el.style.pointerEvents = 'none';
+      el.value = el.dataset.keep; // 回填保存的值
+    } else {
+      el.readOnly = false;
+      el.style.backgroundColor = '';
+      el.style.color = '';
+      el.style.cursor = '';
+      el.style.pointerEvents = '';
+    }
+  }
 
+  function applyForRow(chk) {
+    const row = chk.closest('tr');
+    if (!row) return;
+    const fee   = row.querySelector('input[name$="-meter_fee"]');                 
+    const chAmt = row.querySelector('input[name$="-charter_amount_jpy"]');        
+    const chPM  = row.querySelector('select[name$="-charter_payment_method"]');   
+    const pay   = row.querySelector('select[name$="-payment_method"]');           
+
+    if (!fee) return;
+    fee.removeAttribute('disabled');
+
+    if (chk.checked) {
+      // 保留現有料金
+      if (!fee.dataset.keep) {
+        fee.dataset.keep = fee.value || '';
+      }
+      lockStyle(fee, true);
+      if (chAmt) chAmt.value = fee.dataset.keep || '';
+      if (chPM && pay) {
+        const txt = pay.options[pay.selectedIndex]?.text || '';
+        const isCash = /cash/i.test(pay.value||'') || /現金/.test(txt);
+        chPM.value = isCash ? 'jpy_cash' : 'to_company';
+        chPM.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    } else {
+      lockStyle(fee, false);
+      delete fee.dataset.keep; // 解除記錄
+      if (chAmt) chAmt.value = '';
+      if (chPM) chPM.value  = '';
+    }
+    if (window.updateTotals) window.updateTotals();
+  }
+
+  document.querySelectorAll('input[type="checkbox"][name$="-is_charter"]').forEach(chk => {
+    chk.addEventListener('change', () => applyForRow(chk));
+    if (chk.checked) applyForRow(chk);
+  });
+
+})();
+</script>
 
 
 {% endblock %}

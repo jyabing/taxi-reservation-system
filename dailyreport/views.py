@@ -770,55 +770,124 @@ def export_dailyreports_excel(request, year, month):
                         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+def _normalize(val: str) -> str:
+    """把 charter_payment_method 归一化，防止显示文案/大小写导致漏算"""
+    if not val:
+        return ''
+    v = str(val).strip().lower()
+    mapping = {
+        # 规范值
+        'jpy_cash':'jpy_cash','rmb_cash':'rmb_cash',
+        'self_wechat':'self_wechat','boss_wechat':'boss_wechat',
+        'to_company':'to_company','bank_transfer':'bank_transfer',
+        '--------':'','------':'','': '',
+        # 现场常见写法 → 规范值（按你实际打印出来的补充）
+        '現金':'jpy_cash','现金':'jpy_cash','日元現金':'jpy_cash','日元现金':'jpy_cash',
+        '人民幣現金':'rmb_cash','人民币现金':'rmb_cash',
+        '自有微信':'self_wechat','老板微信':'boss_wechat',
+        '公司回收':'to_company','会社回収':'to_company','公司结算':'to_company',
+        '銀行振込':'bank_transfer','bank':'bank_transfer',
+        # ……把你打印出来的值逐个补齐
+    }
 
-# ✅ 功能：查看某位司机的月度日报合计
+    return mapping.get(v, v)
+
+def _totals_of(items):
+    """一次性算出  メータのみ / 貸切現金 / 貸切未収 / 未分類  和  sales_total"""
+    meter_only = Decimal('0')
+    charter_cash = Decimal('0')
+    charter_uncol = Decimal('0')
+    charter_unknown = Decimal('0')
+
+    for it in items:
+        if getattr(it, 'is_charter', False):
+            amt = Decimal(getattr(it, 'charter_amount_jpy', 0) or 0)
+            if amt <= 0:
+                continue
+            method = _normalize(getattr(it, 'charter_payment_method', ''))
+            if method in {'jpy_cash', 'rmb_cash', 'self_wechat', 'boss_wechat'}:
+                charter_cash += amt
+            elif method in {'to_company', 'bank_transfer', ''}:
+                charter_uncol += amt
+            else:
+                # 未知的枚举也计入总额，避免漏算（但单列“未知”便于后续清洗）
+                charter_unknown += amt
+        else:
+            # メータのみ：与编辑页一致，要求存在支付方式才计入
+            if getattr(it, 'payment_method', None):
+                meter_only += Decimal(it.meter_fee or 0)
+
+    sales_total = meter_only + charter_cash + charter_uncol + charter_unknown
+    return {
+        'meter_only_total': meter_only,
+        'charter_cash_total': charter_cash,
+        'charter_uncollected_total': charter_uncol,
+        'charter_unknown_total': charter_unknown,
+        'sales_total': sales_total,
+    }
+
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_month(request, driver_id):
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     driver = get_object_or_404(Driver, id=driver_id)
-    month_str = request.GET.get("month")
-    if not month_str:
-        month = datetime.today().date().replace(day=1)
-    else:
-        month = datetime.strptime(month_str, "%Y-%m").date()
 
-    reports_qs = DriverDailyReport.objects.filter(
-        driver=driver,
-        date__year=month.year,
-        date__month=month.month
-    ).order_by('-date')
+    # 解析 ?month=YYYY-MM
+    month_str = request.GET.get("month", "")
+    try:
+        month = datetime.strptime(month_str, "%Y-%m").date().replace(day=1)
+        month_str = month.strftime("%Y-%m")
+    except Exception:
+        month = timezone.localdate().replace(day=1)
+        month_str = month.strftime("%Y-%m")
 
-    print("✅ 已进入视图，报告数:", reports_qs.count())
+    reports_qs = (
+        DriverDailyReport.objects
+        .filter(driver=driver, date__year=month.year, date__month=month.month)
+        .order_by('-date')
+        .prefetch_related('items')  # ✅ 避免 N+1
+    )
 
     report_list = []
-
     for report in reports_qs:
         items = report.items.all()
 
-        print(f"[DEBUG] items count: {items.count()}")
-        for item in items:
-            print(f"[ITEM] id={item.id}, payment_method=《{item.payment_method}》, note=《{item.note}》")
+        # 如需定位特定一天（例：2025-08-10），开启下面这个 if block：
+        # if report.date.strftime('%Y-%m-%d') == '2025-08-10':
+        #     for it in items:
+        #         print(f"[DEBUG-8/10] id={it.id}, is_charter={getattr(it,'is_charter',None)}, "
+        #               f"meter_fee={it.meter_fee}, payment_method={it.payment_method!r}, "
+        #               f"charter_amount_jpy={getattr(it,'charter_amount_jpy',None)}, "
+        #               f"charter_payment_method={getattr(it,'charter_payment_method',None)!r}")
 
-        totals = calculate_totals_from_instances(items)
+        # ✅ 更健壮的合计（归一化 + 未知兜底）
+        totals = _totals_of(items)
 
-        # 预览页口径与编辑页保持一致：
-        # 合計 = 売上合計 = メータのみ + 貸切現金 + 貸切未収
-        report.total_all = totals.get("sales_total", Decimal("0"))
-
-        # メータのみ（不含貸切）
-        report.meter_only_total = totals.get("meter_only_total", Decimal("0"))
-
-        # 可保留调试，确认数值
-        print(f"[TOTAL] sales_total={report.total_all}, meter_only_total={report.meter_only_total}")
+        report.total_all = totals['sales_total']                # 合計：メータのみ + 貸切現金 + 貸切未収 (+ 未分類)
+        report.meter_only_total = totals['meter_only_total']    # メータのみ（不含貸切）
+        report.charter_unknown_total = totals['charter_unknown_total']  # 可选：模板显示方便排查
 
         report_list.append(report)
+
+    # 上/下月（可选：模板里做月切换链接）
+    prev_month = (month - timedelta(days=1)).replace(day=1).strftime('%Y-%m')
+    next_month = (month.replace(day=28) + timedelta(days=4)).replace(day=1).strftime('%Y-%m')
 
     return render(request, 'dailyreport/driver_dailyreport_month.html', {
         'driver': driver,
         'month': month,
-        'reports': report_list,  # ✅ 使用构建好的新列表
+        'reports': report_list,
+
+        # ✅ 模板使用的几个上下文（你的模板里有）
+        'selected_month': month_str,
+        'selected_date': request.GET.get("date", ""),
+        'today': timezone.localdate(),
+
+        # （可选）提供 prev/next，若你想加“前の月 / 次の月”按钮
+        'prev_month': prev_month,
+        'next_month': next_month,
     })
+
 
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_add_selector(request, driver_id):
