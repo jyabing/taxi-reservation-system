@@ -641,6 +641,71 @@ document.addEventListener("DOMContentLoaded", function () {
   updateTotals();
 });
 
+// ===== 夜班按时间排序（00:xx 排在 23:xx 之后） =====
+(function () {
+  function parseHHMM(str) {
+    if (!str) return null;
+    const m = String(str).trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+    return h * 60 + mm; // 分钟
+  }
+
+  function getAnchorMinutes() {
+    // 优先用出勤时间（clock_in），没有则用 12:00 作为跨日分界
+    const el = document.querySelector("input[name='clock_in']") || document.getElementById("id_clock_in");
+    const v = el && el.value ? el.value : "12:00";
+    const m = parseHHMM(v);
+    return m == null ? 12 * 60 : m;
+  }
+
+  function sortRowsByTime() {
+    const anchor = getAnchorMinutes();
+    const tbody = document.querySelector("table.report-table tbody:not(#empty-form-template)");
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll("tr.report-item-row"));
+    // 计算每行的排序 key（小于 anchor 的，加 24h）
+    const pairs = rows.map(row => {
+      const t = row.querySelector(".ride-time-input")?.value || "";
+      let mins = parseHHMM(t);
+      // 空时间放到最后
+      if (mins == null) mins = Number.POSITIVE_INFINITY;
+      else if (mins < anchor) mins += 24 * 60;
+      return { row, key: mins };
+    });
+
+    pairs.sort((a, b) => a.key - b.key);
+    pairs.forEach(p => tbody.appendChild(p.row));
+
+    // 只更新显示的行号，不改表单索引
+    let idx = 1;
+    pairs.forEach(p => {
+      const num = p.row.querySelector(".row-number");
+      if (num) num.textContent = idx++;
+    });
+  }
+
+  // 初始化与事件
+  window.addEventListener("DOMContentLoaded", () => {
+    sortRowsByTime();
+    // 出勤时间变化 -> 重新排序
+    const clk = document.querySelector("input[name='clock_in']") || document.getElementById("id_clock_in");
+    if (clk) clk.addEventListener("input", sortRowsByTime);
+
+    // 任意一行的乘车时间变化 -> 重新排序
+    document.addEventListener("input", (e) => {
+      if (e.target && e.target.classList.contains("ride-time-input")) {
+        sortRowsByTime();
+      }
+    });
+  });
+
+  // 暴露给其它代码（可选）
+  window.sortDailyRowsByTime = sortRowsByTime;
+})();
+
 
 // ==== 工具：按貸切勾选状态，禁用/启用 当行的 料金 与 支付，并在取消时清空貸切字段 ====
 function applyCharterState(row, isCharter) {
