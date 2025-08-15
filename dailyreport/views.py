@@ -1,7 +1,7 @@
 import csv, os, sys, logging
 from io import BytesIO
 logger = logging.getLogger(__name__)
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from tempfile import NamedTemporaryFile
 
 from django.contrib.auth.decorators import user_passes_test, login_required
@@ -10,14 +10,15 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
 from django.utils import timezone
-from django.db.models import Sum, Case, When, F, DecimalField, Q, Count
+from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F
+from django.db.models.functions import Substr, Cast
 from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
 from django.urls import reverse
 from django.utils.http import urlencode
 from dateutil.relativedelta import relativedelta
 
-from django.db.models.functions import Lower, Trim
+from django.db.models.functions import Lower, Trim, ExtractHour, ExtractMinute
 from dailyreport.constants import PAYMENT_RATES
 
 
@@ -58,6 +59,33 @@ debug_print("✅ DEBUG_PRINT 导入成功，模块已执行")
 # 直接测试原生 print 看能否打印
 print("🔥🔥🔥 原生 print 测试：views.py 模块加载成功")
 
+NIGHT_END_MIN = 5 * 60  # 05:00
+
+def _sorted_items_qs(report):
+    """
+    ride_time 为字符串(HH:MM)时的排序：
+    05:00 之前的时间 +24h 排到当天最后
+    """
+    return (
+        report.items
+        .annotate(
+            _hour=Cast(Substr('ride_time', 1, 2), IntegerField()),
+            _minute=Cast(Substr('ride_time', 4, 2), IntegerField()),
+        )
+        .annotate(_total_min=F('_hour') * 60 + F('_minute'))
+        .annotate(
+            _minutes_for_sort=ExpressionWrapper(
+                F('_total_min') + Case(
+                    When(_total_min__lt=NIGHT_END_MIN, then=Value(24 * 60)),
+                    default=Value(0),
+                ),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by('_minutes_for_sort', 'id')
+    )
+# --- end 明细时间排序 ---
+
 def is_dailyreport_admin(user):
     """
     允许：superuser 或 拥有 dailyreport_admin / dailyreport 模块权限；回退 is_staff。
@@ -95,7 +123,6 @@ def get_active_drivers(month_obj=None, keyword=None):
     last_day = _date(year, month, _monthrange(year, month)[1])
 
     try:
-        from django.db.models import Q
         qs = qs.filter(
             Q(hire_date__lte=last_day)
             & (Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day))
@@ -112,7 +139,6 @@ def get_active_drivers(month_obj=None, keyword=None):
 
     if keyword:
         try:
-            from django.db.models import Q
             qs = qs.filter(Q(name__icontains=keyword) | Q(code__icontains=keyword))
         except Exception:
             pass
@@ -1085,6 +1111,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
+        formset.queryset = _sorted_items_qs(report)
 
         for form_item in formset.forms:
             if not form_item.has_changed():
@@ -1232,6 +1259,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
         form = DriverDailyReportForm(instance=report, initial=initial)
         formset = ReportItemFormSet(instance=report)
+        formset.queryset = _sorted_items_qs(report)
 
     # === 以下保持你原有合计/上下文逻辑 ===
     data_iter = []

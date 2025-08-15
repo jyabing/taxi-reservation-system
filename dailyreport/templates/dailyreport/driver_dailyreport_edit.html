@@ -301,6 +301,9 @@ input[type=number] {
 
         <label class="small text-muted mt-2 d-block">支付方式</label>
         {{ form.etc_payment_method|add_class:"form-select form-select-sm" }}
+
+        <label class="small text-muted mt-2 d-block">貸切の場合、お客様が乗って高速道路をご利用したので、</label>
+        <label class="small text-muted mt-2 d-block">日計で空車合計でも、乗車合計に記入ください</label>
       </div>
 
       <!-- 🔒 隐藏“ETC 未收=空車合計（円）”；仍参与提交（值由 JS 自动回填） -->
@@ -360,12 +363,17 @@ input[type=number] {
         <label class="small text-muted">ETC 应收合计（円）</label>
         <input type="text" id="etc-expected-output" class="form-control form-control-sm text-end bg-light" readonly
               value="{{ report.etc_expected|default_if_none:'0' }}">
+        <label class="small text-muted mt-2 d-block">乗車ETC合計＋空車ETC金额</label>
       </div>
+      
 
       <!-- ✅ ETC 不足额 -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
         <label for="{{ form.etc_shortage.id_for_label }}" class="small text-danger">ETC不足（円）</label>
         {{ form.etc_shortage|add_class:"form-control form-control-sm text-end text-danger"|attr:"readonly" }}
+        <label class="small text-muted mt-2 d-block">应收合计 - 实收金额</label>
+        <label class="small text-muted mt-2 d-block">“ETC 实际收回”不是一个单独填写的字段，</label>
+        <label class="small text-muted mt-2 d-block">而是由日报明细的付款方式数据动态汇总出来的</label>
       </div>
 
       <!-- ETC 未收提醒区 -->
