@@ -548,7 +548,10 @@ input[type=number] {
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
 
-  <!-- ✅ 引入自定义脚本 -->
+  <!-- ✅ 引入自定义脚本之前先注入费率 -->
+  <script>
+    window.PAYMENT_RATES = {{ payment_rates|safe }};
+  </script>
   <script src="{% static 'dailyreport/js/dailyreport.js' %}"></script>
 
   <!-- ✅ 保留高亮样式（无需多份 JS） -->

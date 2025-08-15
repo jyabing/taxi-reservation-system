@@ -472,6 +472,27 @@ function insertRowAt(n) {
       if (el) el.textContent = v.toLocaleString();
     });
 
+    // === 追加开始：计算并渲染「括号里的分成/手数料」 ===
+    const rateOf = (k) =>
+      (window.PAYMENT_RATES && window.PAYMENT_RATES[k] != null)
+        ? Number(window.PAYMENT_RATES[k])
+        : 0;
+
+    // 这些 key 在面板里都有「（<span id="bonus_xxx">…</span>）」括号
+    const BONUS_KEYS = ['credit','qr','kyokushin','omron','kyotoshi','uber','didi','go'];
+
+    BONUS_KEYS.forEach((k) => {
+      const el = document.getElementById(`bonus_${k}`);
+      if (!el) return;
+      const subtotal = Number(totalMap[k] || 0);
+      const feeYen = Math.round(subtotal * rateOf(k)); // 分成/手数料
+      el.textContent = feeYen.toLocaleString();
+    });
+    // 现金没有分成，强制归零（如果模板里有）
+    const bonusCashEl = document.getElementById('bonus_cash');
+    if (bonusCashEl) bonusCashEl.textContent = '0';
+    // === 追加结束 ===
+
     // ✅ メータのみ（不含貸切 & 不含ETC）
     const meterSum = Object.values(totalMap).reduce((a, b) => a + b, 0);
     const meterOnlyEl = document.getElementById("total_meter_only");

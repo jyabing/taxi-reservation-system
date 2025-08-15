@@ -18,6 +18,8 @@ from django.utils.http import urlencode
 from dateutil.relativedelta import relativedelta
 
 from django.db.models.functions import Lower, Trim
+from dailyreport.constants import PAYMENT_RATES
+
 
 from dailyreport.models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet
@@ -1292,6 +1294,9 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     meter_only_total = totals.get("meter_only_total", 0)
     deposit_diff = getattr(report, "deposit_difference", deposit_amt - cash)
 
+    # ==== 新增：把费率给到前端 ====
+    payment_rates = {k: float(v) for k, v in PAYMENT_RATES.items()}
+
     context = {
         'form': form,
         'formset': formset,
@@ -1310,6 +1315,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'total_sales': total_sales,
         'meter_only_total': meter_only_total,
         'deposit_diff': deposit_diff,
+        'payment_rates': payment_rates,  # ← 新增这一行
     }
     return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
 
