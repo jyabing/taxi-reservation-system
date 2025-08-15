@@ -231,13 +231,13 @@ function insertRowAt(n) {
     const rideTotal = readIntById('id_etc_collected', 0);       // 你现有字段：总的ETC使用额（历史用法）
 
     // —— 空车ETC（回程）逻辑：尽量兼容“新字段”，若没有就走旧口径回退 ——
-    // 新字段（可选）：id_etc_empty_amount（空车ETC金额）、id_etc_return_fee_claimed（回程费额度）、
-    //                id_etc_return_fee_method（app_ticket / cash_to_driver / none）、id_etc_empty_card（company/own/guest）
-    const hasNewEmpty = !!document.getElementById('id_etc_empty_amount');
-    let emptyAmount = hasNewEmpty ? readIntById('id_etc_empty_amount', 0) : 0;
+    // 新字段（可选）：id_etc_uncollected（空车ETC金额）、id_etc_return_fee_claimed（回程费额度）、
+    //                id_etc_return_fee_method（app_ticket / cash_to_driver / none）、id_etc_payment_method（company_card/personal_card）
+    const hasNewEmpty = !!document.getElementById('id_etc_uncollected');
+    let emptyAmount = hasNewEmpty ? readIntById('id_etc_uncollected', 0) : 0;
     const returnFee = hasNewEmpty ? readIntById('id_etc_return_fee_claimed', 0) : 0;
     const returnFeeMethod = hasNewEmpty ? (document.getElementById('id_etc_return_fee_method')?.value || 'none') : 'none';
-    const emptyCard = hasNewEmpty ? (document.getElementById('id_etc_empty_card')?.value || 'company') : 'company';
+    const emptyCard = hasNewEmpty ? (document.getElementById('id_etc_payment_method')?.value || 'company_card') : 'company_card';
 
     // 覆盖额：只有回程费“随 app/チケット 一起结算”的部分视作覆盖
     const coveredByCustomer = (returnFeeMethod === 'app_ticket') ? returnFee : 0;
@@ -247,11 +247,11 @@ function insertRowAt(n) {
 
     if (hasNewEmpty) {
       // 有新字段：按卡来源判断是否公司承担
-      if (emptyCard === 'company' || emptyCard === '') {
+      if (emptyCard === 'company_card' || emptyCard === '') {
         etcUncollected  = Math.max(0, coveredByCustomer - emptyAmount);
         etcDriverBurden = Math.max(0, emptyAmount - coveredByCustomer);
       } else {
-        // own / guest：公司不回收，也不扣司机（你口径：0）
+        // personal_card：公司不回收，也不扣司机（你口径：0）
         etcUncollected  = 0;
         etcDriverBurden = 0;
       }
@@ -284,10 +284,10 @@ function insertRowAt(n) {
     // 乗車ETC（実車）合計
     const rideTotalForExpected = parseInt(document.getElementById('id_etc_collected')?.value || "0", 10) || 0;
 
-    // 空車ETC 金額（优先新字段 id_etc_empty_amount；没有则兼容旧的“未收ETC”）
+    // 空車ETC 金額（优先新字段 id_etc_uncollected；没有则兼容旧的“未收ETC”）
     let emptyAmountForExpected = 0;
-    if (document.getElementById('id_etc_empty_amount')) {
-      emptyAmountForExpected = parseInt(document.getElementById('id_etc_empty_amount')?.value || "0", 10) || 0;
+    if (document.getElementById('id_etc_uncollected')) {
+      emptyAmountForExpected = parseInt(document.getElementById('id_etc_uncollected')?.value || "0", 10) || 0;
     } else {
       // 旧口径兼容（没有“空車金额”输入时，用“未收ETC”来拼应收显示）
       emptyAmountForExpected = parseInt(document.getElementById('id_etc_uncollected')?.value || "0", 10) || 0;
@@ -472,6 +472,27 @@ function insertRowAt(n) {
       if (el) el.textContent = v.toLocaleString();
     });
 
+    // === 追加开始：计算并渲染「括号里的分成/手数料」 ===
+    const rateOf = (k) =>
+      (window.PAYMENT_RATES && window.PAYMENT_RATES[k] != null)
+        ? Number(window.PAYMENT_RATES[k])
+        : 0;
+
+    // 这些 key 在面板里都有「（<span id="bonus_xxx">…</span>）」括号
+    const BONUS_KEYS = ['credit','qr','kyokushin','omron','kyotoshi','uber','didi','go'];
+
+    BONUS_KEYS.forEach((k) => {
+      const el = document.getElementById(`bonus_${k}`);
+      if (!el) return;
+      const subtotal = Number(totalMap[k] || 0);
+      const feeYen = Math.round(subtotal * rateOf(k)); // 分成/手数料
+      el.textContent = feeYen.toLocaleString();
+    });
+    // 现金没有分成，强制归零（如果模板里有）
+    const bonusCashEl = document.getElementById('bonus_cash');
+    if (bonusCashEl) bonusCashEl.textContent = '0';
+    // === 追加结束 ===
+
     // ✅ メータのみ（不含貸切 & 不含ETC）
     const meterSum = Object.values(totalMap).reduce((a, b) => a + b, 0);
     const meterOnlyEl = document.getElementById("total_meter_only");
@@ -541,31 +562,86 @@ function insertRowAt(n) {
   }
 
   // ✅ 页面加载后绑定事件
-  document.addEventListener("DOMContentLoaded", function () {
-    const depositInput = document.querySelector("#deposit-input");
-    const etcInputs = [
-      document.querySelector("#id_etc_collected"),
-      document.querySelector("#id_etc_uncollected"),
-    ];
+document.addEventListener("DOMContentLoaded", function () {
+  const depositInput = document.querySelector("#deposit-input");
+  const etcInputs = [
+    document.querySelector("#id_etc_collected"),
+    document.querySelector("#id_etc_uncollected"),
+  ];
 
-    // 监听字段变化，实时刷新智能提示
-    [depositInput, ...etcInputs].forEach((input) => {
-      if (input) {
-        input.addEventListener("input", updateSmartHintPanel);
-      }
-    });
-
-    // 初始执行一次
-    updateSmartHintPanel();
+  // 监听字段变化，实时刷新智能提示
+  [depositInput, ...etcInputs].forEach((input) => {
+    if (input) {
+      input.addEventListener("input", updateSmartHintPanel);
+    }
   });
 
+  // =========================
+  // ★ 初始化「貸切」行的 料金 只读态（不清空、不 disabled）
+  // =========================
+  document.querySelectorAll("tr.report-item-row").forEach((row) => {
+    const chk       = row.querySelector("input[type='checkbox'][name$='-is_charter']");
+    const meter     = row.querySelector(".meter-fee-input");
+    // 保险起见，清除任何历史 disabled
+    if (meter) meter.removeAttribute("disabled");
+
+    if (chk && chk.checked && meter) {
+      // 勾选时：只读 + 灰色外观；保留原值
+      meter.setAttribute("readonly", "readonly");
+      meter.classList.add("readonly");
+      // 强制保持现值（防止其他监听清空）
+      if (!meter.dataset.originalValue) meter.dataset.originalValue = meter.value || "";
+      meter.value = meter.dataset.originalValue;
+    }
+  });
+
+  // ★ 绑定现有的「貸切」复选框 → 状态变化时应用只读逻辑
+  document.querySelectorAll("input[type='checkbox'][name$='-is_charter']").forEach((chk) => {
+    chk.addEventListener("change", () => {
+      const row   = chk.closest("tr");
+      const meter = row?.querySelector(".meter-fee-input");
+      if (!meter) return;
+      meter.removeAttribute("disabled"); // 兜底
+      if (chk.checked) {
+        if (!meter.dataset.originalValue) meter.dataset.originalValue = meter.value || "";
+        meter.setAttribute("readonly", "readonly");
+        meter.classList.add("readonly");
+        meter.value = meter.dataset.originalValue;
+      } else {
+        meter.removeAttribute("readonly");
+        meter.classList.remove("readonly");
+      }
+    });
+  });
+
+  // 初始执行一次
+  updateSmartHintPanel();
+
+  // ★ 页面加载时，已勾选的行套用只读灰态（不清空）
+  if (typeof hydrateAllCharterRows === 'function') {
+    hydrateAllCharterRows();
+  } else {
+    // 兜底：直接处理一次
+    document.querySelectorAll("tr.report-item-row").forEach((row) => {
+      const chk = row.querySelector("input[type='checkbox'][name$='-is_charter']");
+      const meter = row.querySelector(".meter-fee-input");
+      if (chk && chk.checked && meter) {
+        meter.removeAttribute('disabled');
+        if (!meter.dataset.originalValue) meter.dataset.originalValue = meter.value || "";
+        meter.setAttribute('readonly', 'readonly');
+        meter.classList.add('readonly');
+        meter.value = meter.dataset.originalValue;
+      }
+    });
+  }
+});
 
 
   // —— 9. 绑定监听 ——
   [
     ['id_etc_collected_cash', [updateEtcDifference, updateEtcShortage]],
     ['id_etc_uncollected', [updateEtcDifference, updateEtcShortage]],
-    ['id_etc_empty_amount', [updateEtcDifference, updateEtcShortage]],
+    ['id_etc_uncollected', [updateEtcDifference, updateEtcShortage]],
     ['id_etc_collected', [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
     ['id_deposit_amount', [updateEtcDifference, updateEtcInclusionWarning]],
     ['clock_in', [updateDuration]],
@@ -586,6 +662,118 @@ function insertRowAt(n) {
   updateTotals();
 });
 
+// ===== 夜班按时间排序（00:xx 排在 23:xx 之后）— 仅在提交时执行 =====
+(function () {
+  function parseHHMM(str) {
+    if (!str) return null;
+    const m = String(str).trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h  = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+    return h * 60 + mm;
+  }
+
+  function getAnchorMinutes() {
+    const el = document.querySelector("input[name='clock_in']") || document.getElementById("id_clock_in");
+    const v  = el && el.value ? el.value : "12:00";
+    const m  = parseHHMM(v);
+    return m == null ? 12 * 60 : m;
+  }
+
+  function sortRowsByTime() {
+    const anchor = getAnchorMinutes();
+    const tbody  = document.querySelector("table.report-table tbody:not(#empty-form-template)");
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll("tr.report-item-row"));
+    const pairs = rows.map(row => {
+      // 改：按字段名匹配 ride_time；兼容老的 .ride-time-input
+      const t = (row.querySelector("input[name$='-ride_time']") ||
+                 row.querySelector(".ride-time-input") ||
+                 row.querySelector(".time-input"))?.value || "";
+      let mins = parseHHMM(t);
+      if (mins == null) mins = Number.POSITIVE_INFINITY;
+      else if (mins < anchor) mins += 24 * 60;
+      return { row, key: mins };
+    });
+
+    pairs.sort((a, b) => a.key - b.key).forEach(p => tbody.appendChild(p.row));
+
+    // 只更新显示行号
+    let idx = 1;
+    pairs.forEach(p => {
+      const num = p.row.querySelector(".row-number");
+      if (num) num.textContent = idx++;
+    });
+  }
+
+  // 只在“保存提交”时排序；不再绑定任何 input 事件
+  window.addEventListener("DOMContentLoaded", () => {
+    const form = document.querySelector('form[method="post"]');
+    if (!form) return;
+    form.addEventListener('submit', () => {
+      sortRowsByTime();
+      if (typeof updateRowNumbersAndIndexes === 'function') {
+        updateRowNumbersAndIndexes();
+      }
+      // 不改 name/index/TOTAL_FORMS，只排序 DOM 以便保存前视觉上按时间。
+    });
+  });
+
+  // 可选：暴露给其他代码手动调用
+  window.sortDailyRowsByTime = sortRowsByTime;
+})();
+
+
+// ==== 工具：按貸切勾选状态，禁用/启用 当行的 料金 与 支付，并在取消时清空貸切字段 ====
+function applyCharterState(row, isCharter) {
+  if (!row) return;
+  const meterInput           = row.querySelector(".meter-fee-input");
+  const paySelect            = row.querySelector(".payment-method-select");
+  const charterAmountInput   = row.querySelector(".charter-amount-input");
+  const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
+
+  // ★ 永远不要 disabled / 清空 料金；用 readonly + 外观变灰，确保提交保留值
+  if (meterInput) {
+    meterInput.removeAttribute('disabled'); // 清历史残留
+    // 记录原值（只记录一次）
+    if (!meterInput.dataset.originalValue) {
+      meterInput.dataset.originalValue = meterInput.value || "";
+    }
+    if (isCharter) {
+      meterInput.setAttribute('readonly', 'readonly');
+      meterInput.classList.add('readonly');
+      // 强制保持原值，防止其他监听清空
+      meterInput.value = meterInput.dataset.originalValue;
+    } else {
+      meterInput.removeAttribute('readonly');
+      meterInput.classList.remove('readonly');
+      // 允许编辑，保留现值
+    }
+  }
+
+  // 取消勾选：清空「貸切」两个字段（保留你的逻辑）
+  if (!isCharter) {
+    if (charterAmountInput) {
+      charterAmountInput.value = "";
+      charterAmountInput.dispatchEvent(new Event('input',  { bubbles: true }));
+      charterAmountInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (charterPaymentSelect) {
+      charterPaymentSelect.value = "";
+      charterPaymentSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
+  if (typeof updateTotals === "function") updateTotals();
+}
+// 首次进场时，把所有行按当前勾选状态套用一次
+function hydrateAllCharterRows() {
+  document
+    .querySelectorAll("input[type='checkbox'][name$='-is_charter']")
+    .forEach(chk => applyCharterState(getRow(chk), chk.checked));
+}
+
 // —— 11. 勾选「貸切」后自动复制金额和支付方式 ——
 // 要求：每一行明细中包含以下 class：.meter-fee-input, .payment-method-select,
 // .charter-amount-input, .charter-payment-method-select
@@ -593,60 +781,84 @@ function insertRowAt(n) {
 // 勾选「貸切」时：自动复制金额与支付方式，并在勾选后如再改金额/支付方式也会同步
 document.addEventListener("change", function (e) {
   const el = e.target;
-
-  // 只监听 formset 中的「is_charter」复选框
   if (!el.matches("input[type='checkbox'][name$='-is_charter']")) return;
 
-  const row = el.closest("tr");
+  const row = getRow(el);
   if (!row) return;
 
-  const meterInput            = row.querySelector(".meter-fee-input");
-  const paySelect             = row.querySelector(".payment-method-select");
-  const charterAmountInput    = row.querySelector(".charter-amount-input");
-  const charterPaymentSelect  = row.querySelector(".charter-payment-method-select");
+  const meterInput           = row.querySelector(".meter-fee-input");
+  const paySelect            = row.querySelector(".payment-method-select");
+  const charterAmountInput   = row.querySelector(".charter-amount-input");
+  const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
 
-  if (!charterAmountInput || !charterPaymentSelect) return;
-
-  if (el.checked) {
-    // 1) 勾选 → 立即按当前行的金額/支付写入「貸切」两个字段
-    charterAmountInput.value = meterInput?.value || "";
-
-    const pm = paySelect?.value || "";
-    if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm)) {
-      charterPaymentSelect.value = "jpy_cash";   // 你的现金枚举
-    } else {
-      charterPaymentSelect.value = "to_company"; // 非现金默认记到转付公司
-    }
-
-    // 2) 额外：本次勾选后，如果用户又修改金額或支付方式，自动同步到「貸切」字段（只绑定一次）
-    if (meterInput) {
-      meterInput.addEventListener("input", () => {
-        if (el.checked && charterAmountInput) {
-          const v = meterInput.value || "";
-          charterAmountInput.value = /^\d+$/.test(v) ? v : ""; // 只接收数字
-          window.updateTotals?.();
-        }
-      }, { once: true });
-    }
-
-    if (paySelect) {
-      paySelect.addEventListener("change", () => {
-        if (!el.checked || !charterPaymentSelect) return;
-        const pm2 = paySelect.value || "";
-        if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm2)) {
-          charterPaymentSelect.value = "jpy_cash";
-        } else {
-          charterPaymentSelect.value = "to_company";
-        }
-        window.updateTotals?.();
-      }, { once: true });
-    }
-  } else {
-    // 取消勾选 → 清空「貸切」两个字段
-    charterAmountInput.value   = "";
-    charterPaymentSelect.value = "";
+  if (!charterAmountInput || !charterPaymentSelect) {
+    applyCharterState(row, el.checked);
+    return;
   }
 
-  // 勾选切换时刷新合计
+  if (el.checked) {
+    // ★ 先抓住当前料金值（若后面有脚本清空，最后再强制写回）
+    const prevMeter = meterInput ? (meterInput.value || "") : "";
+
+    // 1) 复制当前金额到「貸切金額」
+    charterAmountInput.value = prevMeter;
+
+    // 2) 复制支付方式到「処理」（现金→jpy_cash，其他→to_company）
+    const pm = paySelect?.value || "";
+    if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm)) {
+      charterPaymentSelect.value = "jpy_cash";
+    } else {
+      charterPaymentSelect.value = "to_company";
+    }
+
+    // 3) 料金设为只读（不 disabled、不清空）
+    applyCharterState(row, true);
+
+    // ★ 强制回填料金（防止别的监听清空）
+    if (meterInput) {
+      if (!meterInput.dataset.originalValue) meterInput.dataset.originalValue = prevMeter;
+      meterInput.value = meterInput.dataset.originalValue || prevMeter || "";
+    }
+
+    // ★ 支付方式设为现金（如果不是现金/为空）
+    if (paySelect) {
+      const isCashLike = (v) => (v || "").toLowerCase().includes('cash') || /現金/.test(v || "");
+      if (!isCashLike(paySelect.value)) {
+        const cashOpt = Array.from(paySelect.options || []).find(
+          o => isCashLike(o.value) || isCashLike(o.textContent)
+        );
+        if (cashOpt) {
+          paySelect.value = cashOpt.value;
+          paySelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    }
+
+    // 4) 本次勾选后，若用户修改金额/支付，再同步到貸切（只需绑定一次）
+    if (meterInput) {
+      const syncAmount = () => {
+        if (el.checked) {
+          const v = meterInput.value || "";
+          charterAmountInput.value = /^\d+$/.test(v) ? v : "";
+          window.updateTotals?.();
+        }
+      };
+      meterInput.addEventListener("input", syncAmount, { once: true });
+    }
+    if (paySelect) {
+      const syncPM = () => {
+        if (!el.checked) return;
+        const pm2 = paySelect.value || "";
+        charterPaymentSelect.value =
+          ["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm2) ? "jpy_cash" : "to_company";
+        window.updateTotals?.();
+      };
+      paySelect.addEventListener("change", syncPM, { once: true });
+    }
+  } else {
+    // 取消勾选：恢复编辑并清空貸切
+    applyCharterState(row, false);
+  }
+
   window.updateTotals?.();
 });

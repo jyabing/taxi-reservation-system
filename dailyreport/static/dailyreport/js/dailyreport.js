@@ -231,13 +231,13 @@ function insertRowAt(n) {
     const rideTotal = readIntById('id_etc_collected', 0);       // 你现有字段：总的ETC使用额（历史用法）
 
     // —— 空车ETC（回程）逻辑：尽量兼容“新字段”，若没有就走旧口径回退 ——
-    // 新字段（可选）：id_etc_empty_amount（空车ETC金额）、id_etc_return_fee_claimed（回程费额度）、
-    //                id_etc_return_fee_method（app_ticket / cash_to_driver / none）、id_etc_empty_card（company/own/guest）
-    const hasNewEmpty = !!document.getElementById('id_etc_empty_amount');
-    let emptyAmount = hasNewEmpty ? readIntById('id_etc_empty_amount', 0) : 0;
+    // 新字段（可选）：id_etc_uncollected（空车ETC金额）、id_etc_return_fee_claimed（回程费额度）、
+    //                id_etc_return_fee_method（app_ticket / cash_to_driver / none）、id_etc_payment_method（company_card/personal_card）
+    const hasNewEmpty = !!document.getElementById('id_etc_uncollected');
+    let emptyAmount = hasNewEmpty ? readIntById('id_etc_uncollected', 0) : 0;
     const returnFee = hasNewEmpty ? readIntById('id_etc_return_fee_claimed', 0) : 0;
     const returnFeeMethod = hasNewEmpty ? (document.getElementById('id_etc_return_fee_method')?.value || 'none') : 'none';
-    const emptyCard = hasNewEmpty ? (document.getElementById('id_etc_empty_card')?.value || 'company') : 'company';
+    const emptyCard = hasNewEmpty ? (document.getElementById('id_etc_payment_method')?.value || 'company_card') : 'company_card';
 
     // 覆盖额：只有回程费“随 app/チケット 一起结算”的部分视作覆盖
     const coveredByCustomer = (returnFeeMethod === 'app_ticket') ? returnFee : 0;
@@ -247,11 +247,11 @@ function insertRowAt(n) {
 
     if (hasNewEmpty) {
       // 有新字段：按卡来源判断是否公司承担
-      if (emptyCard === 'company' || emptyCard === '') {
+      if (emptyCard === 'company_card' || emptyCard === '') {
         etcUncollected  = Math.max(0, coveredByCustomer - emptyAmount);
         etcDriverBurden = Math.max(0, emptyAmount - coveredByCustomer);
       } else {
-        // own / guest：公司不回收，也不扣司机（你口径：0）
+        // personal_card：公司不回收，也不扣司机（你口径：0）
         etcUncollected  = 0;
         etcDriverBurden = 0;
       }
@@ -284,10 +284,10 @@ function insertRowAt(n) {
     // 乗車ETC（実車）合計
     const rideTotalForExpected = parseInt(document.getElementById('id_etc_collected')?.value || "0", 10) || 0;
 
-    // 空車ETC 金額（优先新字段 id_etc_empty_amount；没有则兼容旧的“未收ETC”）
+    // 空車ETC 金額（优先新字段 id_etc_uncollected；没有则兼容旧的“未收ETC”）
     let emptyAmountForExpected = 0;
-    if (document.getElementById('id_etc_empty_amount')) {
-      emptyAmountForExpected = parseInt(document.getElementById('id_etc_empty_amount')?.value || "0", 10) || 0;
+    if (document.getElementById('id_etc_uncollected')) {
+      emptyAmountForExpected = parseInt(document.getElementById('id_etc_uncollected')?.value || "0", 10) || 0;
     } else {
       // 旧口径兼容（没有“空車金额”输入时，用“未收ETC”来拼应收显示）
       emptyAmountForExpected = parseInt(document.getElementById('id_etc_uncollected')?.value || "0", 10) || 0;
@@ -641,7 +641,7 @@ document.addEventListener("DOMContentLoaded", function () {
   [
     ['id_etc_collected_cash', [updateEtcDifference, updateEtcShortage]],
     ['id_etc_uncollected', [updateEtcDifference, updateEtcShortage]],
-    ['id_etc_empty_amount', [updateEtcDifference, updateEtcShortage]],
+    ['id_etc_uncollected', [updateEtcDifference, updateEtcShortage]],
     ['id_etc_collected', [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
     ['id_deposit_amount', [updateEtcDifference, updateEtcInclusionWarning]],
     ['clock_in', [updateDuration]],
@@ -662,45 +662,44 @@ document.addEventListener("DOMContentLoaded", function () {
   updateTotals();
 });
 
-// ===== 夜班按时间排序（00:xx 排在 23:xx 之后） =====
+// ===== 夜班按时间排序（00:xx 排在 23:xx 之后）— 仅在提交时执行 =====
 (function () {
   function parseHHMM(str) {
     if (!str) return null;
     const m = String(str).trim().match(/^(\d{1,2}):(\d{2})$/);
     if (!m) return null;
-    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const h  = Math.min(23, Math.max(0, parseInt(m[1], 10)));
     const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
-    return h * 60 + mm; // 分钟
+    return h * 60 + mm;
   }
 
   function getAnchorMinutes() {
-    // 优先用出勤时间（clock_in），没有则用 12:00 作为跨日分界
     const el = document.querySelector("input[name='clock_in']") || document.getElementById("id_clock_in");
-    const v = el && el.value ? el.value : "12:00";
-    const m = parseHHMM(v);
+    const v  = el && el.value ? el.value : "12:00";
+    const m  = parseHHMM(v);
     return m == null ? 12 * 60 : m;
   }
 
   function sortRowsByTime() {
     const anchor = getAnchorMinutes();
-    const tbody = document.querySelector("table.report-table tbody:not(#empty-form-template)");
+    const tbody  = document.querySelector("table.report-table tbody:not(#empty-form-template)");
     if (!tbody) return;
 
     const rows = Array.from(tbody.querySelectorAll("tr.report-item-row"));
-    // 计算每行的排序 key（小于 anchor 的，加 24h）
     const pairs = rows.map(row => {
-      const t = row.querySelector(".ride-time-input")?.value || "";
+      // 改：按字段名匹配 ride_time；兼容老的 .ride-time-input
+      const t = (row.querySelector("input[name$='-ride_time']") ||
+                 row.querySelector(".ride-time-input") ||
+                 row.querySelector(".time-input"))?.value || "";
       let mins = parseHHMM(t);
-      // 空时间放到最后
       if (mins == null) mins = Number.POSITIVE_INFINITY;
       else if (mins < anchor) mins += 24 * 60;
       return { row, key: mins };
     });
 
-    pairs.sort((a, b) => a.key - b.key);
-    pairs.forEach(p => tbody.appendChild(p.row));
+    pairs.sort((a, b) => a.key - b.key).forEach(p => tbody.appendChild(p.row));
 
-    // 只更新显示的行号，不改表单索引
+    // 只更新显示行号
     let idx = 1;
     pairs.forEach(p => {
       const num = p.row.querySelector(".row-number");
@@ -708,22 +707,20 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // 初始化与事件
+  // 只在“保存提交”时排序；不再绑定任何 input 事件
   window.addEventListener("DOMContentLoaded", () => {
-    sortRowsByTime();
-    // 出勤时间变化 -> 重新排序
-    const clk = document.querySelector("input[name='clock_in']") || document.getElementById("id_clock_in");
-    if (clk) clk.addEventListener("input", sortRowsByTime);
-
-    // 任意一行的乘车时间变化 -> 重新排序
-    document.addEventListener("input", (e) => {
-      if (e.target && e.target.classList.contains("ride-time-input")) {
-        sortRowsByTime();
+    const form = document.querySelector('form[method="post"]');
+    if (!form) return;
+    form.addEventListener('submit', () => {
+      sortRowsByTime();
+      if (typeof updateRowNumbersAndIndexes === 'function') {
+        updateRowNumbersAndIndexes();
       }
+      // 不改 name/index/TOTAL_FORMS，只排序 DOM 以便保存前视觉上按时间。
     });
   });
 
-  // 暴露给其它代码（可选）
+  // 可选：暴露给其他代码手动调用
   window.sortDailyRowsByTime = sortRowsByTime;
 })();
 

@@ -312,10 +312,13 @@ input[type=number] {
       <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
       <div class="border rounded px-3 py-2" style="min-width: 280px;">
         <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
+  <div class="small text-muted">🧾 メータ小票 記載用：</div>
+
+  <div style="font-family:ui-monospace,Menlo,monospace;">空車ETC {{ report.etc_uncollected|default:0 }}円</div>
         <div class="row g-2 align-items-end">
           <!-- 空車ETC金额 -->
           <div class="col-6">
-            <label for="id_etc_empty_amount" class="form-label small">空車ETC 金額（円）</label>
+            <label for="id_etc_uncollected" class="form-label small">空車ETC 金額（円）</label>
             <input type="number" class="form-control form-control-sm text-end"
                    id="id_etc_uncollected" name="etc_uncollected" min="0" step="1" value="">
           </div>
@@ -336,11 +339,10 @@ input[type=number] {
           </div>
           <!-- 空車ETC 使用卡 -->
           <div class="col-6">
-            <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
+            <label for="id_etc_payment_method" class="form-label small">空車ETC カード</label>
             <select id="id_etc_empty_card" name="etc_empty_card" class="form-select form-select-sm">
               <option value="company">会社カード</option>
               <option value="own">自己カード</option>
-              <option value="guest">お客様カード</option>
             </select>
           </div>
         </div>

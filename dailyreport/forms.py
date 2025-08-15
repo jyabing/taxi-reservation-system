@@ -52,7 +52,24 @@ class RequiredReportItemFormSet(BaseInlineFormSet):
                     form.add_error('payment_method', '支払方法は必須です。')
 
 # ✅2. 主表 Form：编辑日报基本信息（出勤时间、备注、车辆等）
+# --- forms.py 顶部：新增或替换为仅三项 ---
+ETC_PAYMENT_CHOICES = [
+    ("", "--------"),
+    ("company_card", "会社カード"),
+    ("personal_card", "個人カード（禁止）"),
+]
+# ---------------------------------------
+
 class DriverDailyReportForm(forms.ModelForm):
+
+    # 覆盖 etc_payment_method 字段为受控的三选项、class Meta: 之前（或之后都行，但一定在类内部，且不要再有同名字段的其它定义）
+    etc_payment_method = forms.ChoiceField(
+        choices=ETC_PAYMENT_CHOICES,          # 你在顶部已定义三项
+        required=False,
+        label="空車ETC カード",
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+
     class Meta:
         model = DriverDailyReport
         fields = [
@@ -147,6 +164,17 @@ class DriverDailyReportForm(forms.ModelForm):
             return None
     # ✅ 插入位置结束
 
+    
+    # 改动 2：兜底校验
+    def clean_etc_payment_method(self):
+        v = (self.cleaned_data.get("etc_payment_method") or "").strip().lower()
+        if v in {"customer_card", "guest_card", "customer", "guest", "お客様", "お客様カード"}:
+            return ""
+        if v not in {"", "company_card", "personal_card"}:
+            return ""
+        return v
+    
+    
     def clean(self):
         cleaned_data = super().clean()
 
