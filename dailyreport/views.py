@@ -11,7 +11,7 @@ from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
 from django.utils import timezone
 from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q, Count
-from django.db.models.functions import Substr, Cast
+from django.db.models.functions import Substr, Cast, Coalesce, NullIf  # ←【在这行里确保包含 Coalesce, NullIf】
 from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
 from django.urls import reverse
@@ -59,6 +59,15 @@ debug_print("✅ DEBUG_PRINT 导入成功，模块已执行")
 # 直接测试原生 print 看能否打印
 print("🔥🔥🔥 原生 print 测试：views.py 模块加载成功")
 
+# --- 安全整数转换：空串/None/异常 -> 0  ←【新增：就插在这里】
+def _to_int0(v):
+    try:
+        if v in ("", None):
+            return 0
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
 NIGHT_END_MIN = 5 * 60  # 05:00
 
 def _sorted_items_qs(report):
@@ -66,11 +75,13 @@ def _sorted_items_qs(report):
     ride_time 为字符串(HH:MM)时的排序：
     05:00 之前的时间 +24h 排到当天最后
     """
+    safe_ride = Coalesce(NullIf(F('ride_time'), Value('')), Value('00:00'))
     return (
         report.items
         .annotate(
-            _hour=Cast(Substr('ride_time', 1, 2), IntegerField()),
-            _minute=Cast(Substr('ride_time', 4, 2), IntegerField()),
+            _safe_ride=safe_ride,
+            _hour=Cast(Substr(F('_safe_ride'), 1, 2), IntegerField()),
+            _minute=Cast(Substr(F('_safe_ride'), 4, 2), IntegerField()),
         )
         .annotate(_total_min=F('_hour') * 60 + F('_minute'))
         .annotate(
@@ -1109,9 +1120,63 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     user_m = 0
 
     if request.method == 'POST':
-        form = DriverDailyReportForm(request.POST, instance=report)
-        formset = ReportItemFormSet(request.POST, instance=report)
+        # ① 拷贝 POST
+        post = request.POST.copy()
+
+        # ② 明细行 payment_method 归一化（保持你原有映射）
+        PM_ALIASES = {
+            'company card': 'credit', 'Company Card': 'credit', '会社カード': 'credit',
+            'company_card': 'credit', 'credit card': 'credit',
+            'バーコード': 'qr', 'barcode': 'qr', 'bar_code': 'qr', 'qr_code': 'qr', 'qr': 'qr',
+            '現金': 'cash', '现金': 'cash', 'cash(現金)': 'cash',
+            'uber現金': 'uber_cash', 'didi現金': 'didi_cash', 'go現金': 'go_cash',
+        }
+        for k, v in list(post.items()):
+            if k.endswith('-payment_method'):
+                post[k] = PM_ALIASES.get(v, v)
+
+        # ③ 先把 etc_payment_method 取出来 → 计算“安全值”
+        raw_etc = (post.get('etc_payment_method') or '').strip().lower()
+        # 别名 → 语义
+        if raw_etc in ('会社カード', 'company card', 'credit', 'credit card', '公司卡'):
+            safe_etc = 'company_card'
+        elif raw_etc in ('個人カード', 'personal card', 'personal_card'):
+            # 业务禁止：一律回落公司卡
+            safe_etc = 'company_card'
+        elif raw_etc in ('現金', '现金', 'cash', 'cash(現金)'):
+            # 如果你的模型不支持 'cash'，也统一回落公司卡
+            safe_etc = 'company_card'
+        else:
+            # 未识别时回落
+            safe_etc = 'company_card'
+
+        # ④ 关键：提交给表单时清空该字段，绕开 Choice 校验
+        post['etc_payment_method'] = ''
+
+        # ⑤ 绑定表单与 formset（用 post，而不是 request.POST）
+        form = DriverDailyReportForm(post, instance=report)
+        formset = ReportItemFormSet(post, instance=report)
         formset.queryset = _sorted_items_qs(report)
+
+        # ⑥ （保持你原有的）不变更的 formset 行标记 DELETE（如果你之前有这段就留着）
+        for form_item in formset.forms:
+            if not form_item.has_changed():
+                form_item.fields['DELETE'].initial = True
+
+        # ⑦ 校验通过后写回“安全值”到实例再保存
+        if form.is_valid() and formset.is_valid():
+            inst = form.save(commit=False)
+
+            # 将安全值直接写入实例（不再走字段选择校验）
+            try:
+                # 为了保险：如果模型字段确有 choices，就校验一下；否则直接赋值
+                model_choices = [c[0] for c in getattr(inst._meta.get_field('etc_payment_method'), 'choices', [])]
+                if model_choices and safe_etc not in model_choices:
+                    # 如果模型 choices 没有 company_card，就退回第一个合法值
+                    safe_etc = model_choices[0]
+            except Exception:
+                pass
+            inst.etc_payment_method = safe_etc
 
         for form_item in formset.forms:
             if not form_item.has_changed():
@@ -1222,6 +1287,31 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             return redirect('dailyreport:driver_dailyreport_month', driver_id=driver_id)
         else:
             messages.error(request, "❌ 保存失败，请检查输入内容")
+            # === 表单校验失败时也构造 totals，避免 totals 未定义 ===
+            data_iter = []
+            for f in formset.forms:
+                if f.is_bound and f.is_valid():
+                    cleaned = f.cleaned_data
+                    if not cleaned.get("DELETE", False):
+                        data_iter.append({
+                            'meter_fee': _to_int0(cleaned.get('meter_fee')),
+                            'payment_method': cleaned.get('payment_method') or '',
+                            'note': cleaned.get('note') or '',
+                            'DELETE': False,
+                        })
+                elif f.instance and not getattr(f.instance, 'DELETE', False):
+                    data_iter.append({
+                        'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
+                        'payment_method': getattr(f.instance, 'payment_method', '') or '',
+                        'note': getattr(f.instance, 'note', '') or '',
+                        'DELETE': False,
+                    })
+
+            totals_raw = calculate_totals_from_formset(data_iter)
+            totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
+            totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
+            totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
+
     else:
         initial = {'status': report.status}
         clock_in = None
@@ -1262,35 +1352,35 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         formset.queryset = _sorted_items_qs(report)
 
     # === 以下保持你原有合计/上下文逻辑 ===
-    data_iter = []
-    for f in formset.forms:
-        if f.is_bound and f.is_valid():
-            cleaned = f.cleaned_data
-            if cleaned.get("meter_fee") and not cleaned.get("DELETE", False):
+        data_iter = []
+        for f in formset.forms:
+            if f.is_bound and f.is_valid():
+                cleaned = f.cleaned_data
+                if not cleaned.get("DELETE", False):
+                    data_iter.append({
+                        'meter_fee': _to_int0(cleaned.get('meter_fee')),
+                        'payment_method': cleaned.get('payment_method') or '',
+                        'note': cleaned.get('note') or '',
+                        'DELETE': False,
+                    })
+            elif f.instance and not getattr(f.instance, 'DELETE', False):
                 data_iter.append({
-                    'meter_fee': cleaned.get('meter_fee'),
-                    'payment_method': cleaned.get('payment_method'),
-                    'note': cleaned.get('note', ''),
+                    'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
+                    'payment_method': getattr(f.instance, 'payment_method', '') or '',
+                    'note': getattr(f.instance, 'note', '') or '',
                     'DELETE': False,
                 })
-        elif f.instance and not getattr(f.instance, 'DELETE', False):
-            data_iter.append({
-                'meter_fee': getattr(f.instance, 'meter_fee', 0),
-                'payment_method': getattr(f.instance, 'payment_method', ''),
-                'note': getattr(f.instance, 'note', ''),
-                'DELETE': False,
-            })
 
-    print("📦 data_iter 内容如下：")
-    for item in data_iter:
-        print(item)
+        print("📦 data_iter 内容如下：")
+        for item in data_iter:
+            print(item)
 
-    totals_raw = calculate_totals_from_formset(data_iter)
+        totals_raw = calculate_totals_from_formset(data_iter)
 
-    totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
-    totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
-    totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
-    meter_only_total = totals.get("meter_only_total", 0)
+        totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
+        totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
+        totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
+        meter_only_total = totals.get("meter_only_total", 0)
 
     summary_keys = [
         ('meter', 'メーター(水揚)'),

@@ -781,6 +781,7 @@ function hydrateAllCharterRows() {
 // 勾选「貸切」时：自动复制金额与支付方式，并在勾选后如再改金额/支付方式也会同步
 document.addEventListener("change", function (e) {
   const el = e.target;
+  // 兼容 name 选择器与 class 选择器两种写法
   if (!el.matches("input[type='checkbox'][name$='-is_charter']")) return;
 
   const row = getRow(el);
@@ -791,74 +792,108 @@ document.addEventListener("change", function (e) {
   const charterAmountInput   = row.querySelector(".charter-amount-input");
   const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
 
-  if (!charterAmountInput || !charterPaymentSelect) {
-    applyCharterState(row, el.checked);
-    return;
-  }
+  // 工具：把任意输入转为整数（非数字→0）
+  const toInt = (v) => {
+    const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const isCashLike = (v) => (v || "").toLowerCase().includes("cash") || /現金/.test(v || "");
 
   if (el.checked) {
-    // ★ 先抓住当前料金值（若后面有脚本清空，最后再强制写回）
-    const prevMeter = meterInput ? (meterInput.value || "") : "";
+    // 1) 复制当前料金到「貸切金額」（做整数化）
+    const feeInt = toInt(meterInput ? meterInput.value : 0);
+    if (charterAmountInput) charterAmountInput.value = String(feeInt);
 
-    // 1) 复制当前金额到「貸切金額」
-    charterAmountInput.value = prevMeter;
-
-    // 2) 复制支付方式到「処理」（现金→jpy_cash，其他→to_company）
-    const pm = paySelect?.value || "";
-    if (["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm)) {
-      charterPaymentSelect.value = "jpy_cash";
-    } else {
-      charterPaymentSelect.value = "to_company";
+    // 2) 按当前支付方式映射「処理」
+    if (charterPaymentSelect) {
+      const pm = paySelect?.value || "";
+      charterPaymentSelect.value = isCashLike(pm) ? "jpy_cash" : "to_company";
     }
 
     // 3) 料金设为只读（不 disabled、不清空）
     applyCharterState(row, true);
-
-    // ★ 强制回填料金（防止别的监听清空）
     if (meterInput) {
-      if (!meterInput.dataset.originalValue) meterInput.dataset.originalValue = prevMeter;
-      meterInput.value = meterInput.dataset.originalValue || prevMeter || "";
+      meterInput.readOnly = true;
+      meterInput.classList.add("disabled");
+      // 保底：若其他脚本清空过，这里强制回写整数化后的值
+      meterInput.value = String(feeInt);
     }
 
-    // ★ 支付方式设为现金（如果不是现金/为空）
-    if (paySelect) {
-      const isCashLike = (v) => (v || "").toLowerCase().includes('cash') || /現金/.test(v || "");
-      if (!isCashLike(paySelect.value)) {
-        const cashOpt = Array.from(paySelect.options || []).find(
-          o => isCashLike(o.value) || isCashLike(o.textContent)
-        );
-        if (cashOpt) {
-          paySelect.value = cashOpt.value;
-          paySelect.dispatchEvent(new Event('change', { bubbles: true }));
-        }
+    // 4) 主支付方式统一成现金（若当前不是现金）
+    if (paySelect && !isCashLike(paySelect.value)) {
+      const cashOpt = Array.from(paySelect.options || []).find(
+        (o) => isCashLike(o.value) || isCashLike(o.textContent)
+      );
+      if (cashOpt) {
+        paySelect.value = cashOpt.value;
+        paySelect.dispatchEvent(new Event("change", { bubbles: true }));
       }
     }
 
-    // 4) 本次勾选后，若用户修改金额/支付，再同步到貸切（只需绑定一次）
-    if (meterInput) {
-      const syncAmount = () => {
-        if (el.checked) {
-          const v = meterInput.value || "";
-          charterAmountInput.value = /^\d+$/.test(v) ? v : "";
+    // 5) 绑定“持续同步”（仅当本行未绑定过）
+    if (row && !row.dataset.charterSyncBound) {
+      row.dataset.charterSyncBound = "1";
+
+      // 金额同步：用户修改料金时，实时同步到貸切金额（只在勾选状态下生效）
+      if (meterInput && charterAmountInput) {
+        const syncAmount = () => {
+          if (!el.checked) return;
+          const v = toInt(meterInput.value);
+          charterAmountInput.value = String(v);
           window.updateTotals?.();
-        }
-      };
-      meterInput.addEventListener("input", syncAmount, { once: true });
-    }
-    if (paySelect) {
-      const syncPM = () => {
-        if (!el.checked) return;
-        const pm2 = paySelect.value || "";
-        charterPaymentSelect.value =
-          ["cash", "uber_cash", "didi_cash", "go_cash"].includes(pm2) ? "jpy_cash" : "to_company";
-        window.updateTotals?.();
-      };
-      paySelect.addEventListener("change", syncPM, { once: true });
+        };
+        meterInput.addEventListener("input", syncAmount);
+        meterInput.addEventListener("change", syncAmount);
+      }
+
+      // 支付方式同步：用户修改支付方式时，实时同步「処理」并尽量保持现金
+      if (paySelect && charterPaymentSelect) {
+        const syncPM = () => {
+          if (!el.checked) return;
+          const pm2 = paySelect.value || "";
+          charterPaymentSelect.value = isCashLike(pm2) ? "jpy_cash" : "to_company";
+          window.updateTotals?.();
+        };
+        paySelect.addEventListener("change", syncPM);
+      }
     }
   } else {
-    // 取消勾选：恢复编辑并清空貸切
+    // 取消勾选：恢复输入，不清空任何金额，保持值为数字字符串
     applyCharterState(row, false);
+    if (meterInput) {
+      meterInput.readOnly = false;
+      meterInput.classList.remove("disabled");
+      meterInput.value = String(toInt(meterInput.value));
+    }
+    if (charterAmountInput) {
+      charterAmountInput.value = String(toInt(charterAmountInput.value));
+    }
   }
 
   window.updateTotals?.();
 });
+
+// === 提交前兜底：所有金额空串 → '0'（杜绝 "" 进入后端） ===
+(function () {
+  const form = document.querySelector("form");
+  if (!form) return;
+  form.addEventListener("submit", function () {
+    const sel = [
+      ".meter-fee-input",
+      ".charter-amount-input",
+      ".deposit-input",
+      ".toll-input"
+    ].join(",");
+    document.querySelectorAll(sel).forEach((inp) => {
+      if (!inp) return;
+      const v = inp.value;
+      if (v === "" || v == null) {
+        inp.value = "0";
+      } else {
+        // 统一为数字字符串
+        const n = parseInt(String(v).replace(/[^\d-]/g, ""), 10);
+        inp.value = Number.isFinite(n) ? String(n) : "0";
+      }
+    });
+  });
+})();

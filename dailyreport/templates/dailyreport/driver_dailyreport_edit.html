@@ -623,7 +623,10 @@ input[type=number] {
       lockStyle(fee, false);
       delete fee.dataset.keep; // 解除記錄
       if (chAmt) chAmt.value = '';
-      if (chPM) chPM.value  = '';
+      if (chPM && !chPM.value) {
+        chPM.value  = 'to_company'; // 给个安全默认值，避免必填报错
+        chPM.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     }
     if (window.updateTotals) window.updateTotals();
   }
