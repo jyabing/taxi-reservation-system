@@ -24,8 +24,8 @@
       <ul class="list-group">
         {% for r in recent_reservations %}
           <li class="list-group-item">
-            {{ r.start_time|date:"Y/m/d H:i" }} ～ {{ r.end_time|date:"H:i" }}
-            ｜{{ r.driver }}
+            {{ r.date|date:"Y-m-d" }} {{ r.start_time|time:"H:i" }} – {{ r.end_time|time:"H:i" }}
+            | {{ r.driver.username }}
           </li>
         {% endfor %}
       </ul>
