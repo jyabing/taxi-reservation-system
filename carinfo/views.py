@@ -1,5 +1,6 @@
 import datetime, openpyxl
 from datetime import date
+from django.utils import timezone
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -9,8 +10,8 @@ from accounts.utils import check_module_permission
 from vehicles.models import Reservation
 from .models import Car
 from .forms import CarForm
+from django.db.models import Q
 
-import datetime
 from carinfo.services.car_access import get_car_by_id 
 
 
@@ -246,10 +247,26 @@ def car_detail_modal(request, pk):
     # ✅ 权限判断：只有管理员或有权限者能看到管理信息
     show_management = request.user.is_superuser or request.user.has_perm("carinfo.view_management_info")
 
-    # ✅ 追加：最近预约记录
-    recent_reservations = Reservation.objects.filter(
-        vehicle=car
-    ).select_related('driver').order_by('-start_time')[:5]
+    # ✅ 追加：最近预约记录（优先未来：按 date+start_time 升序，不足再补过去最近）
+    today = timezone.localdate()
+    now_time = timezone.localtime().time()
+
+    base_qs = Reservation.objects.filter(vehicle=car).select_related('driver')
+
+    # 未来：日期在今天之后，或就是今天但开始时间 >= 当前时间
+    future_qs = base_qs.filter(
+        Q(date__gt=today) | Q(date=today, start_time__gte=now_time)
+    ).order_by('date', 'start_time')
+
+    recent_reservations = list(future_qs[:5])
+
+    # 不足 5 条时，用最近过去补足（过去按“越近越前”取，再接到末尾）
+    if len(recent_reservations) < 5:
+        missing = 5 - len(recent_reservations)
+        past_qs = base_qs.filter(
+            Q(date__lt=today) | Q(date=today, start_time__lt=now_time)
+        ).order_by('-date', '-start_time')[:missing]
+        recent_reservations += list(past_qs)
 
     return render(request, 'carinfo/car_detail_modal.html', {
         'car': car,
