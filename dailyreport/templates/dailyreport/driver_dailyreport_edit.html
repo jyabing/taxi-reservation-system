@@ -497,8 +497,7 @@ input[type=number] {
             <td style="white-space: nowrap;">
               <div class="d-flex flex-row gap-1">
                 {% if form.instance.pk %}
-                  {{ form.DELETE.as_hidden }}
-                  {{ form.DELETE }}
+                  {{ form.DELETE|add_class:"d-none delete-flag" }}
                   <button type="button" class="btn btn-sm btn-danger delete-row">削除</button>
                 {% else %}
                   <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
@@ -529,7 +528,7 @@ input[type=number] {
 
           <td>{{ formset.empty_form.note|add_class:"form-control" }}</td>
           <td style="white-space:nowrap;">
-            <button type="button" class="btn btn-danger btn-sm delete-row">削除</button>
+            <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
             <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
           </td>
         </tr>
@@ -637,6 +636,34 @@ input[type=number] {
   });
 
 })();
+</script>
+
+<script>
+document.addEventListener('click', function (e) {
+  // 删除已保存的行（有 pk）
+  if (e.target.closest('.delete-row')) {
+    const row = e.target.closest('tr');
+    const del = row.querySelector('input[name$="-DELETE"]');
+    if (del) {
+      del.checked = true;      // 勾选 DELETE
+      del.value = "on";        // 确保提交时有值
+    }
+    row.style.display = 'none'; // 隐藏这一行
+    if (window.updateTotals) window.updateTotals();
+  }
+
+  // 移除新建的行（还没保存过）
+  if (e.target.closest('.remove-row')) {
+    const row = e.target.closest('tr');
+    row.parentNode.removeChild(row);
+
+    const totalInput = document.querySelector('input[name$="-TOTAL_FORMS"]');
+    if (totalInput) {
+      totalInput.value = String(Math.max(0, parseInt(totalInput.value || '0', 10) - 1));
+    }
+    if (window.updateTotals) window.updateTotals();
+  }
+});
 </script>
 
 

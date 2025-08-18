@@ -179,7 +179,7 @@ def dailyreport_edit(request, pk):
         DriverDailyReportItem,
         form=DriverDailyReportItemForm,
         formset=RequiredReportItemFormSet,
-        extra=1,
+        extra=0,
         can_delete=True,
         max_num=40
     )

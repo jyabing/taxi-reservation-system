@@ -2,6 +2,7 @@ from datetime import timedelta
 from django import forms
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
+from django.core.exceptions import ValidationError
 from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage
 from vehicles.models import Reservation as VehicleReservation
 from dailyreport.utils.debug import apply_form_control_style
@@ -245,7 +246,7 @@ ReportItemFormSet = inlineformset_factory(
     DriverDailyReportItem,
     form=DriverDailyReportItemForm,
     formset=RequiredReportItemFormSet,
-    extra=1,
+    extra=0,
     can_delete=True,
     max_num=40
 )
