@@ -1,173 +1,326 @@
 {% extends "staffbook/base_staffbook.html" %}
-{% block content %}
+{% load humanize %}
+{% load custom_filters %}
 
+{% block content %}
 <div class="container mt-4">
   <div class="card shadow" style="width:90vw;max-width:1400px;margin:0 auto;">
     <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
-        <i class="fa fa-user me-2"></i>
-        <b>{{ driver.name }}</b>
-        <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
-        <span class="ms-auto" style="font-size:0.95em;">
-            事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
-        </span>
+      <i class="fa fa-user me-2"></i>
+      <b>{{ driver.name }}</b>
+      <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
+      <span class="ms-auto" style="font-size:0.95em;">
+        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+      </span>
     </div>
+
     <div class="card-body">
-        {% include "staffbook/driver_tab_nav.html" %}
-        
+      {% include "staffbook/driver_tab_nav.html" %}
 
-  <div class="mt-3">
-    <!-- 月份 & 编辑切换 -->
-    <form method="get" class="d-flex align-items-center mb-3">
-      <input type="hidden" name="sub"  value="{{ sub_tab }}">
-      <label class="me-2">対象月：</label>
-      <input type="month" name="month" value="{{ month }}"
-             class="form-control form-control-sm me-2" onchange="this.form.submit()">
-      {% if mode == 'view' %}
-        <a href="?sub={{ sub_tab }}&month={{ month }}&mode=edit"
-           class="btn btn-sm btn-outline-primary">編集</a>
-      {% else %}
-        <a href="?sub={{ sub_tab }}&month={{ month }}"
-           class="btn btn-sm btn-outline-secondary">キャンセル</a>
-      {% endif %}
-    </form>
+      <div class="mt-3">
+        <!-- 対象月 & 編集切替 -->
+        <form method="get" class="d-flex align-items-center mb-3">
+          <input type="hidden" name="sub" value="{{ sub_tab }}">
+          <label class="me-2">対象月：</label>
+          <input type="month" name="month" value="{{ month }}"
+                 class="form-control form-control-sm me-2" onchange="this.form.submit()">
+          {% if mode == 'view' %}
+            <a href="?sub={{ sub_tab }}&month={{ month }}&mode=edit"
+               class="btn btn-sm btn-outline-primary">編集</a>
+          {% else %}
+            <a href="?sub={{ sub_tab }}&month={{ month }}"
+               class="btn btn-sm btn-outline-secondary">キャンセル</a>
+          {% endif %}
+        </form>
 
-    <!-- 子标签导航 -->
-    <ul class="nav nav-pills mb-3">
-      <li class="nav-item">
-        <a class="nav-link {% if sub_tab == 'attendance' %}active{% endif %}"
-           href="?sub=attendance&month={{ month }}{% if mode == 'edit' %}&mode =edit{% endif %}">
-          勤怠
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if sub_tab == 'payment' %}active{% endif %}"
-           href="?sub=payment&month={{ month }}{% if mode == 'edit' %}&mode = edit{% endif %}">
-          支給
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if sub_tab == 'deduction' %}active{% endif %}"
-           href="?sub=deduction&month={{ month }}{% if mode == 'edit' %}&mode=edit{% endif %}">
-          控除
-        </a>
-      </li>
-    </ul>
+        <!-- 二级标签 -->
+        <ul class="nav nav-pills mb-3">
+          <li class="nav-item">
+            <a class="nav-link {% if sub_tab == 'attendance' %}active{% endif %}"
+               href="?sub=attendance&month={{ month }}{% if mode == 'edit' %}&mode=edit{% endif %}">勤怠</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if sub_tab == 'payment' %}active{% endif %}"
+               href="?sub=payment&month={{ month }}{% if mode == 'edit' %}&mode=edit{% endif %}">支給</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if sub_tab == 'deduction' %}active{% endif %}"
+               href="?sub=deduction&month={{ month }}{% if mode == 'edit' %}&mode=edit{% endif %}">控除</a>
+          </li>
+        </ul>
 
-    {% if mode == 'view' %}
-      {# 只读模式：用表格展示 #}
-      <table class="table table-bordered">
-        <thead>
-          <tr>
-            {% if sub_tab == 'attendance' %}
-              <th>就業日数</th><th>出勤日数</th><th>欠勤日数</th>
-              <th>休日出勤日数</th><th>有給日数</th>
-              <th>残業時間</th><th>深夜時間</th><th>休日時間</th>
-              <th>総労働時間</th><th>遅刻分(分)</th><th>早退分(分)</th>
-            {% elif sub_tab == 'payment' %}
-              <th>基本給</th><th>残業手当</th><th>深夜手当</th>
-              <th>休日手当</th><th>通勤手当</th><th>資格手当</th>
-              <th>役職手当</th><th>住宅手当</th><th>家族手当</th><th>総支給額</th>
-            {% else %}
-              <th>健康保険</th><th>介護保険</th><th>厚生年金</th><th>雇用保険</th>
-              <th>労災保険</th><th>所得税</th><th>住民税</th>
-              <th>税金合計</th><th>その他控除</th><th>総控除額</th><th>差引支給額</th>
-            {% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in records %}
-            <tr>
-              {% if sub_tab == 'attendance' %}
-                <td>{{ r.working_days }}</td><td>{{ r.attendance_days }}</td>
-                <td>{{ r.absence_days }}</td><td>{{ r.holiday_work_days }}</td>
-                <td>{{ r.paid_leave_days }}</td>
-                <td>{{ r.overtime_hours }}</td><td>{{ r.night_hours }}</td>
-                <td>{{ r.holiday_hours }}</td><td>{{ r.total_working_hours }}</td>
-                <td>{{ r.late_minutes }}</td><td>{{ r.early_minutes }}</td>
-              {% elif sub_tab == 'payment' %}
-                <td>{{ r.basic_pay }}</td><td>{{ r.overtime_allowance }}</td>
-                <td>{{ r.night_allowance }}</td><td>{{ r.holiday_allowance }}</td>
-                <td>{{ r.commute_allowance }}</td><td>{{ r.bonus }}</td>
-                <td>{{ r.other_allowances }}</td><td>{{ r.special_allowance }}</td>
-                <td>{{ r.transportation_allowance }}</td>
-                <td>{{ r.total_pay }}</td>
-              {% else %}
-                <td>{{ r.health_insurance_deduction }}</td>
-                <td>{{ r.health_care_insurance_deduction }}</td>
-                <td>{{ r.pension_deduction }}</td>
-                <td>{{ r.employment_insurance_deduction }}</td>
-                <td>{{ r.workers_insurance_deduction }}</td>
-                <td>{{ r.income_tax_deduction }}</td>
-                <td>{{ r.resident_tax_deduction }}</td>
-                <td>{{ r.tax_total }}</td><td>{{ r.other_deductions }}</td>
-                <td>{{ r.total_deductions }}</td><td>{{ r.net_pay }}</td>
-              {% endif %}
-            </tr>
-          {% empty %}
-            <tr><td colspan="{% if sub_tab == 'attendance' %}11{% elif sub_tab == 'payment' %}10{% else %}11{% endif %}"
-                     class="text-center">暂无记录。</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+        {% if sub_tab == 'payment' or sub_tab == 'deduction' %}
+          <div class="alert alert-info py-2 px-3 mb-3" style="font-size:0.95em;">
+            <div class="row">
+              <div class="col-md-4 mb-1">
+                <b>売上対象月</b>：<span class="ms-1">{{ sales_month_str }}</span>
+                <span class="text-muted ms-2">（給与月の前月の売上で計算）</span>
+              </div>
+              <div class="col-md-4 mb-1">
+                <b>当月売上（不含税）</b>：<span class="ms-1">{{ monthly_sales_excl_tax|jpy }} 円</span>
+                <span class="text-muted ms-2">(メーター＋貸切 ÷ 1.10)</span>
+              </div>
+              <div class="col-md-4 mb-1">
+                <b>売上分段控除</b>：<span class="ms-1">{{ progressive_fee|jpy }} 円</span>
+              </div>
+            </div>
+          </div>
+        {% endif %}
 
-    {% else %}
-      {# 编辑模式：用 FormSet 渲染 #}
-      <form method="post">{% csrf_token %}
-        {{ formset.management_form }}
-        <table class="table table-bordered">
-          <thead>
-            <tr>
-              {% if sub_tab == 'attendance' %}
-                <th>就業日数</th><th>出勤日数</th><th>欠勤日数</th>
-                <th>休日出勤日数</th><th>有給日数</th>
-                <th>残業時間</th><th>深夜時間</th><th>休日時間</th>
-                <th>総労働時間</th><th>遅刻分</th><th>早退分</th>
-              {% elif sub_tab == 'payment' %}
-                <th>基本給</th><th>残業手当</th><th>深夜手当</th>
-                <th>休日手当</th><th>通勤手当</th><th>資格手当</th>
-                <th>役職手当</th><th>住宅手当</th><th>家族手当</th><th>総支給額</th>
-              {% else %}
-                <th>健康保険</th><th>介護保険</th><th>厚生年金</th><th>雇用保険</th>
-                <th>労災保険</th><th>所得税</th><th>住民税</th>
-                <th>税金合計</th><th>その他</th><th>総控除額</th><th>差引支給額</th>
-              {% endif %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for form in formset %}
-            <tr>
-              {% if sub_tab == 'attendance' %}
-                <td>{{ form.working_days }}</td><td>{{ form.attendance_days }}</td>
-                <td>{{ form.absence_days }}</td><td>{{ form.holiday_work_days }}</td>
-                <td>{{ form.paid_leave_days }}</td>
-                <td>{{ form.overtime_hours }}</td><td>{{ form.night_hours }}</td>
-                <td>{{ form.holiday_hours }}</td><td>{{ form.total_working_hours }}</td>
-                <td>{{ form.late_minutes }}</td><td>{{ form.early_minutes }}</td>
-              {% elif sub_tab == 'payment' %}
-                <td>{{ form.basic_pay }}</td><td>{{ form.overtime_allowance }}</td>
-                <td>{{ form.night_allowance }}</td><td>{{ form.holiday_allowance }}</td>
-                <td>{{ form.commute_allowance }}</td><td>{{ form.bonus }}</td>
-                <td>{{ form.other_allowances }}</td><td>{{ form.special_allowance }}</td>
-                <td>{{ form.transportation_allowance }}</td>
-                <td>{{ form.total_pay }}</td>
-              {% else %}
-                <td>{{ form.health_insurance_deduction }}</td>
-                <td>{{ form.health_care_insurance_deduction }}</td>
-                <td>{{ form.pension_deduction }}</td>
-                <td>{{ form.employment_insurance_deduction }}</td>
-                <td>{{ form.workers_insurance_deduction }}</td>
-                <td>{{ form.income_tax_deduction }}</td>
-                <td>{{ form.resident_tax_deduction }}</td>
-                <td>{{ form.tax_total }}</td><td>{{ form.other_deductions }}</td>
-                <td>{{ form.total_deductions }}</td><td>{{ form.net_pay }}</td>
-              {% endif %}
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <button class="btn btn-primary">保存</button>
-      </form>
+        {% if mode == 'view' %}
+          <!-- 只读模式 -->
+          <table class="table table-bordered">
+            <thead>
+              <tr>
+                {% if sub_tab == 'attendance' %}
+                  <th>出勤日数</th><th>欠勤日数</th>
+                  <th>休日出勤日数</th><th>有給日数</th>
+                  <th>残業時間</th><th>深夜時間</th><th>休日時間</th>
+                  <th>総労働時間</th><th>遅刻分(分)</th><th>早退分(分)</th>
+                {% elif sub_tab == 'payment' %}
+                  <th>基本給</th><th>残業手当/p(= 割増1+2+3+4)</th><th>深夜手当</th>
+                  <th>休日手当</th><th>通勤手当</th><th>資格手当</th>
+                  <th>役職手当</th><th>住宅手当</th><th>家族手当</th><th>総支給額(= 所有支給项求和（含残業手当）)</th>
+                {% else %}
+                  <th>健康保険</th><th>介護保険</th><th>厚生年金</th><th>雇用保険</th>
+                  <th>労災保険</th><th>所得税</th><th>住民税</th>
+                  <th>税金合計</th><th>売上分段控除</th><th>その他控除</th>
+                  <th>総控除額</th><th>差引支給額</th>
+                {% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in records %}
+                <tr>
+                  {% if sub_tab == 'attendance' %}
+                    <td>{{ r.attendance_days|default:r.attendance_days }}</td>
+                    <td>{{ r.absence_days }}</td><td>{{ r.holiday_work_days }}</td>
+                    <td>{{ r.paid_leave_days }}</td>
+                    <td>{{ r.view_overtime_hours|default:r.overtime_hours }}</td>
+                    <td>{{ r.night_hours }}</td>
+                    <td>{{ r.holiday_hours }}</td>
+                    <td>{{ r.view_total_working_hours|default:r.total_working_hours }}</td>
+                    <td>{{ r.late_minutes }}</td><td>{{ r.early_minutes }}</td>
 
-    {% endif %}
+                  {% elif sub_tab == 'payment' %}
+                    <td>{{ r.basic_pay|jpy }}</td>
+                    <td>{% with ov=r.view_overtime_allowance|default:r.overtime_allowance %}{{ ov|jpy }}{% endwith %}</td>
+                    <td>{{ r.night_allowance|jpy }}</td>
+                    <td>{{ r.holiday_allowance|jpy }}</td>
+                    <td>{{ r.commute_allowance|jpy }}</td>
+                    <td>{{ r.bonus|jpy }}</td>
+                    <td>{{ r.other_allowances|jpy }}</td>
+                    <td>{{ r.special_allowance|jpy }}</td>
+                    <td>{{ r.transportation_allowance|jpy }}</td>
+                    <td>{% with tp=r.view_total_pay|default:r.total_pay %}{{ tp|jpy }}{% endwith %}</td>
+
+                  {% else %}
+                    <td>{{ r.health_insurance_deduction|jpy }}</td>
+                    <td>{{ r.health_care_insurance_deduction|jpy }}</td>
+                    <td>{{ r.pension_deduction|jpy }}</td>
+                    <td>{{ r.employment_insurance_deduction|jpy }}</td>
+                    <td>{{ r.workers_insurance_deduction|jpy }}</td>
+                    <td>{{ r.income_tax_deduction|jpy }}</td>
+                    <td>{{ r.resident_tax_deduction|jpy }}</td>
+                    <td>{{ r.tax_total|jpy }}</td>
+                    <td>{{ r.progressive_fee|jpy }}</td>
+                    <td>{{ r.other_deductions|jpy }}</td>
+                    <td>{{ r.total_deductions|jpy }}</td>
+                    <td>{{ r.net_pay|jpy }}</td>
+                  {% endif %}
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="{% if sub_tab == 'attendance' %}10{% elif sub_tab == 'payment' %}10{% else %}12{% endif %}"
+                      class="text-center">暂无记录。</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if sub_tab == 'deduction' and mode == 'view' %}
+            <div class="mt-2">
+              <table class="table table-sm table-bordered" style="max-width:900px">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width:18%">社会保険合計</th>
+                    <th style="width:18%">課税対象額</th>
+                    <th style="width:18%">振込支給額</th>
+                    <th style="width:18%">現金支給額</th>
+                    <th style="width:18%">差引支給額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for r in records %}
+                    <tr>
+                      <td>{{ r.view_summary.social_ins_total|jpy }}</td>
+                      <td>{{ r.view_summary.taxable_amount|jpy }}</td>
+                      <td>{{ r.view_summary.bank_transfer|jpy }}</td>
+                      <td>{{ r.view_summary.cash_payment|jpy }}</td>
+                      <td>{{ r.view_summary.net_pay|jpy }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              <small class="text-muted">
+                ※ 課税対象額 = 総支給額 − 非課税手当（通勤手当・交通費）− 社会保険合計。
+              </small>
+            </div>
+          {% endif %}
+
+        {% else %}
+          <!-- 编辑模式：只渲染当前 tab 对应字段的 formset -->
+          <form method="post">{% csrf_token %}
+            {{ formset.management_form }}
+            {{ formset.non_form_errors }}
+            <table class="table table-bordered">
+              <thead>
+                <tr>
+                  {% if sub_tab == 'attendance' %}
+                    <th>出勤日数</th><th>欠勤日数</th>
+                    <th>休日出勤日数</th><th>有給日数</th>
+                    <th>残業時間</th><th>深夜時間</th><th>休日時間</th>
+                    <th>総労働時間</th><th>遅刻分</th><th>早退分</th>
+                  {% elif sub_tab == 'payment' %}
+                    <th>基本給</th><th>残業手当</th><th>深夜手当</th>
+                    <th>休日手当</th><th>通勤手当</th><th>資格手当</th>
+                    <th>役職手当</th><th>住宅手当</th><th>家族手当</th><th>総支給額</th>
+                  {% else %}
+                    <th>健康保険</th><th>介護保険</th><th>厚生年金</th><th>雇用保険</th>
+                    <th>労災保険</th><th>所得税</th><th>住民税</th>
+                    <th>税金合計</th><th>売上分段控除</th><th>その他控除</th>
+                    <th>総控除額</th><th>差引支給額</th>
+                  {% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for form in formset %}
+                  <tr>
+                    {{ form.id }}
+                    {{ form.non_field_errors }}
+
+                    {% if sub_tab == 'attendance' %}
+                      <td>{{ form.attendance_days }}{{ form.attendance_days.errors }}</td>
+                      <td>{{ form.absence_days }}{{ form.absence_days.errors }}</td>
+                      <td>{{ form.holiday_work_days }}{{ form.holiday_work_days.errors }}</td>
+                      <td>{{ form.paid_leave_days }}{{ form.paid_leave_days.errors }}</td>
+                      <td>{{ form.overtime_hours }}{{ form.overtime_hours.errors }}</td>
+                      <td>{{ form.night_hours }}{{ form.night_hours.errors }}</td>
+                      <td>{{ form.holiday_hours }}{{ form.holiday_hours.errors }}</td>
+                      <td>{{ form.total_working_hours }}{{ form.total_working_hours.errors }}</td>
+                      <td>{{ form.late_minutes }}{{ form.late_minutes.errors }}</td>
+                      <td>{{ form.early_minutes }}{{ form.early_minutes.errors }}</td>
+
+                    {% elif sub_tab == 'payment' %}
+                      <td><div class="d-flex flex-column align-items-end">{{ form.basic_pay }}{{ form.basic_pay.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.overtime_allowance }}{{ form.overtime_allowance.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.night_allowance }}{{ form.night_allowance.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.holiday_allowance }}{{ form.holiday_allowance.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.commute_allowance }}{{ form.commute_allowance.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.bonus }}{{ form.bonus.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.other_allowances }}{{ form.other_allowances.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.special_allowance }}{{ form.special_allowance.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.transportation_allowance }}{{ form.transportation_allowance.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.total_pay }}{{ form.total_pay.errors }}<small class="text-muted money-preview"></small></div></td>
+
+                    {% else %}
+                      <td><div class="d-flex flex-column align-items-end">{{ form.health_insurance_deduction }}{{ form.health_insurance_deduction.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.health_care_insurance_deduction }}{{ form.health_care_insurance_deduction.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.pension_deduction }}{{ form.pension_deduction.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.employment_insurance_deduction }}{{ form.employment_insurance_deduction.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.workers_insurance_deduction }}{{ form.workers_insurance_deduction.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.income_tax_deduction }}{{ form.income_tax_deduction.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.resident_tax_deduction }}{{ form.resident_tax_deduction.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.tax_total }}{{ form.tax_total.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.progressive_fee }}{{ form.progressive_fee.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.other_deductions }}{{ form.other_deductions.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.total_deductions }}{{ form.total_deductions.errors }}<small class="text-muted money-preview"></small></div></td>
+                      <td><div class="d-flex flex-column align-items-end">{{ form.net_pay }}{{ form.net_pay.errors }}<small class="text-muted money-preview"></small></div></td>
+                    {% endif %}
+                  </tr>
+                {% empty %}
+                  <tr>
+                    <td colspan="{% if sub_tab == 'attendance' %}11{% elif sub_tab == 'payment' %}10{% else %}12{% endif %}" class="text-center">
+                      暂无记录。
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+
+            
+
+            <!-- 内联 JS：金额预览 + 合计（仅前端友好，不影响服务端计算） -->
+            <script>
+              function formatComma(val){ if(val===''||val===null||val===undefined) return ''; const n=Number(val); return isNaN(n)?val:n.toLocaleString('en-US'); }
+              function updateMoneyPreview(input){ const td=input.closest('td'); if(!td) return; const p=td.querySelector('.money-preview'); if(p) p.textContent='≈ '+formatComma(input.value)+' 円'; }
+              function num(v){ const n=Number((v||'').toString().replace(/,/g,'')); return isNaN(n)?0:n; }
+              function q(tr,suffix){ return tr.querySelector(`input[name$='-${suffix}']`); }
+
+              function calcPaymentRow(tr){
+                const total = num(q(tr,'basic_pay')?.value)
+                            + num(q(tr,'overtime_allowance')?.value)
+                            + num(q(tr,'night_allowance')?.value)
+                            + num(q(tr,'holiday_allowance')?.value)
+                            + num(q(tr,'commute_allowance')?.value)
+                            + num(q(tr,'bonus')?.value)
+                            + num(q(tr,'other_allowances')?.value)
+                            + num(q(tr,'special_allowance')?.value)
+                            + num(q(tr,'transportation_allowance')?.value);
+                const tgt = q(tr,'total_pay'); if(tgt){ tgt.value = Math.round(total); updateMoneyPreview(tgt); }
+              }
+
+              function calcDeductionRow(tr){
+                const tax = num(q(tr,'health_insurance_deduction')?.value)
+                          + num(q(tr,'health_care_insurance_deduction')?.value)
+                          + num(q(tr,'pension_deduction')?.value)
+                          + num(q(tr,'employment_insurance_deduction')?.value)
+                          + num(q(tr,'workers_insurance_deduction')?.value)
+                          + num(q(tr,'income_tax_deduction')?.value)
+                          + num(q(tr,'resident_tax_deduction')?.value);
+                const taxTotal = q(tr,'tax_total'); if(taxTotal){ taxTotal.value = Math.round(tax); updateMoneyPreview(taxTotal); }
+
+                const totalDeds = tax + num(q(tr,'progressive_fee')?.value) + num(q(tr,'other_deductions')?.value);
+                const dedsInput = q(tr,'total_deductions'); if(dedsInput){ dedsInput.value = Math.round(totalDeds); updateMoneyPreview(dedsInput); }
+
+                const net = num(q(tr,'total_pay')?.value) - totalDeds;
+                const netInput = q(tr,'net_pay'); if(netInput){ netInput.value = Math.round(net); updateMoneyPreview(netInput); }
+              }
+
+              document.addEventListener('DOMContentLoaded', function(){
+                document.querySelectorAll('table input').forEach(inp=>{
+                  if (inp.type==='text' || inp.type==='number'){
+                    inp.classList.add('text-end'); updateMoneyPreview(inp);
+                    inp.addEventListener('input', ()=>updateMoneyPreview(inp));
+                    inp.setAttribute('step','1'); inp.setAttribute('inputmode','numeric');
+                    // 失焦时强制整数
+                    inp.addEventListener('blur',()=>{ const v=(inp.value||'').replace(/,/g,''); if(v!==''&&!isNaN(Number(v))){ inp.value=String(Math.round(Number(v))); updateMoneyPreview(inp); } });
+                  }
+                });
+                const subTab = new URLSearchParams(location.search).get('sub') || '{{ sub_tab }}';
+                document.querySelectorAll('table tbody tr').forEach(tr=>{
+                  if (subTab==='payment'){
+                    calcPaymentRow(tr);
+                    ['basic_pay','overtime_allowance','night_allowance','holiday_allowance',
+                     'commute_allowance','bonus','other_allowances','special_allowance','transportation_allowance'
+                    ].forEach(f=>{ const el=q(tr,f); if(el) el.addEventListener('input', ()=>calcPaymentRow(tr)); });
+                  }else if (subTab==='deduction'){
+                    // progressive_fee 只读
+                    document.querySelectorAll("input[name$='-progressive_fee']").forEach(el=>el.readOnly=true);
+                    calcDeductionRow(tr);
+                    ['health_insurance_deduction','health_care_insurance_deduction','pension_deduction','employment_insurance_deduction',
+                     'workers_insurance_deduction','income_tax_deduction','resident_tax_deduction','other_deductions',
+                     'tax_total','total_deductions','net_pay','total_pay','progressive_fee'
+                    ].forEach(f=>{ const el=q(tr,f); if(el) el.addEventListener('input', ()=>calcDeductionRow(tr)); });
+                  }
+                });
+              });
+            </script>
+
+            <button type="submit" class="btn btn-primary">保存</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
   </div>
+</div>
 {% endblock %}

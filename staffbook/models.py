@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator
 from carinfo.models import Car
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 # 📌 插入在 import 之后，模型定义之前
 RESIDENCE_STATUS_CHOICES = [
@@ -299,6 +300,10 @@ class DriverPayrollRecord(models.Model):
     income_tax_deduction = models.DecimalField('所得税扣除', max_digits=10, decimal_places=2, default=0)
     resident_tax_deduction = models.DecimalField('住民税扣除', max_digits=10, decimal_places=2, default=0)
     tax_total = models.DecimalField('税金合計', max_digits=10, decimal_places=2, default=0)
+    
+    # 売上分段控除（自動計算で保存）
+    progressive_fee = models.DecimalField('売上分段控除', max_digits=10, decimal_places=2, default=0)
+    
     other_deductions = models.DecimalField('其他扣除', max_digits=10, decimal_places=2, default=0)
     total_deductions = models.DecimalField('総控除額', max_digits=10, decimal_places=2, default=0)
     # --- 最终金额 ---
@@ -313,6 +318,36 @@ class DriverPayrollRecord(models.Model):
         ordering = ['-month']
         verbose_name = "工资记录"
         verbose_name_plural = "工资记录"
+
+    def _as_dec(self, v):
+        return v if isinstance(v, Decimal) else Decimal(str(v or 0))
+
+    def recompute_totals(self):
+        """総控除額・差引支給額を自動再計算"""
+        # 総控除額 ＝ 法定控除合計 + その他控除 + 売上分段控除
+        total_deds = (
+            self._as_dec(self.health_insurance_deduction) +
+            self._as_dec(self.health_care_insurance_deduction) +
+            self._as_dec(self.pension_deduction) +
+            self._as_dec(self.employment_insurance_deduction) +
+            self._as_dec(self.workers_insurance_deduction) +
+            self._as_dec(self.income_tax_deduction) +
+            self._as_dec(self.resident_tax_deduction) +
+            self._as_dec(self.other_deductions) +
+            self._as_dec(self.progressive_fee)
+        )
+        self.total_deductions = total_deds
+
+        # 差引支給額 ＝ 総支給額 − 総控除額
+        self.net_pay = self._as_dec(self.total_pay) - self._as_dec(self.total_deductions)
+
+    def save(self, *args, **kwargs):
+        try:
+            self.recompute_totals()
+        except Exception:
+            pass  # 防御：合計失敗でも保存は継続
+        super().save(*args, **kwargs)
+    # ===== INSERT-M: 自動合計ロジック END =====
 
     def __str__(self):
         return f"{self.driver} - {self.month.strftime('%Y-%m')} 工资"

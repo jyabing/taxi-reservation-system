@@ -1,4 +1,5 @@
 from django import template
+from decimal import Decimal, InvalidOperation
 
 register = template.Library()
 
@@ -22,3 +23,21 @@ def to_int(value):
         return int(float(value))
     except (ValueError, TypeError):
         return 0
+
+@register.filter(name="jpy")
+def jpy(value):
+    """
+    金额格式化：去小数 -> 千位逗号
+    None/"" -> "0"
+    任意可转成数字的值都能安全处理（包含 Decimal / str / int / float）。
+    """
+    if value is None or value == "":
+        return "0"
+    try:
+        n = int(Decimal(str(value)).quantize(Decimal("1")))
+    except (InvalidOperation, ValueError):
+        try:
+            n = int(float(value))
+        except Exception:
+            return value  # 非数字，原样返回
+    return f"{n:,}"
