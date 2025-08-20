@@ -747,7 +747,7 @@ def driver_tax_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_salary(request, driver_id):
-    import datetime as _dt  # ← 加这一行，确保本函数总能拿到“模块”
+    #import datetime as _dt  # ← 加这一行，确保本函数总能拿到“模块”
     """
     給与情報：勤怠 / 支給 / 控除
     - 上部情報：売上対象月(前月)・当月売上(不含税)・分段控除
@@ -784,7 +784,6 @@ def driver_salary(request, driver_id):
     monthly_sales_excl_tax = Decimal('0')
     progressive_fee_value  = 0
     try:
-        from dailyreport.models import DriverDailyReportItem  # 你文件顶部已导入也没关系
         items_qs = DriverDailyReportItem.objects.filter(
             report__driver=driver,
             report__date__gte=sales_start,
@@ -817,11 +816,10 @@ def driver_salary(request, driver_id):
     # -------- タブごとのフィールド --------
     fields_by_tab = {
         'attendance': [
-            # 'working_days' は廃止（不要显示）
             'attendance_days', 'absence_days',
             'holiday_work_days', 'paid_leave_days',
             'overtime_hours', 'night_hours', 'holiday_hours',
-            'total_working_hours', 'late_minutes', 'early_minutes'
+            'total_working_hours'
         ],
         'payment': [
             'basic_pay', 'overtime_allowance', 'night_allowance',
@@ -860,10 +858,34 @@ def driver_salary(request, driver_id):
             if formset.is_valid():
                 formset.save()
 
-                # 保存后把分段控除强制写回当月记录（触发模型合计）
+                # 保存后把分段控除 + 出勤日数 强制写回当月记录（触发模型合计）
                 try:
+                    # —— 出勤日数：当月“有至少一条日报明细”的日期数 —— 
+                    attendance_days_count = (
+                        DriverDailyReportItem.objects
+                        .filter(
+                            report__driver=driver,
+                            report__date__gte=start,   # 当月起
+                            report__date__lt=end       # 次月起（半开区间）
+                        )
+                        .values('report__date').distinct().count()
+                    )
+
+                    # —— 固定天数（默认=当月工作日 Mon–Fri；若你有公司“固定天数”字段，替换这里即可）——
+                    from datetime import timedelta
+                    base_days = sum(
+                        1 for i in range((end - start).days)
+                        if (start + timedelta(days=i)).weekday() < 5
+                    )
+
                     for rec in DriverPayrollRecord.objects.filter(driver=driver, month__gte=start, month__lt=end):
-                        rec.progressive_fee = Decimal(str(progressive_fee_value))
+                        rec.progressive_fee  = Decimal(str(progressive_fee_value))
+                        rec.attendance_days  = attendance_days_count
+
+                        # 缺勤日 = 固定天数 − 出勤 − 有給（不足取 0）
+                        paid = rec.paid_leave_days or 0
+                        rec.absence_days = max(base_days - attendance_days_count - paid, 0)
+
                         rec.save()
                 except Exception as e:
                     print(f"[WARN] progressive_fee auto-save failed: {e}")
@@ -873,8 +895,6 @@ def driver_salary(request, driver_id):
                     f"{reverse('staffbook:driver_salary', args=[driver.id])}"
                     f"?sub={sub_tab}&month={month_str}&mode=view"
                 )
-            else:
-                messages.error(request, "入力内容にエラーがあります。")
 
         context = {'formset': formset}
 
@@ -905,12 +925,16 @@ def driver_salary(request, driver_id):
             report__driver=driver, report__date__gte=start, report__date__lt=end
         )
 
-        # 出勤日数：优先用头表的“有记录的日期数”，没有头表就退回明细的“report__date 去重”
-        attendance_days = header_qs.values('date').distinct().count()
-        if attendance_days == 0:
-            attendance_days = items_qs.values('report__date').distinct().count()
-        # 模板里你用的是 attendance_days_from_reports 这个变量名，我们保持一致：
+        # 出勤日数（来自日报明细）
+        attendance_days = items_qs.values('report__date').distinct().count()
         attendance_days_from_reports = attendance_days
+
+        # —— 固定天数（默认=当月工作日 Mon–Fri；如有公司固定天数字段，可替换这里）——
+        from datetime import timedelta
+        base_days = sum(
+            1 for i in range((end - start).days)
+            if (start + timedelta(days=i)).weekday() < 5
+        )
 
         # —— 工具函数：把各种“时间/时长表示”转成十进制小时（不依赖 datetime 类型判断，避免再次报错）——
         def hours_value(v: object) -> Decimal:
@@ -1055,7 +1079,7 @@ def driver_salary(request, driver_id):
         sum_ot     = sum_ot.quantize(Decimal('0.00'))
         # === 勤怠集計（替换块结束） ===
 
-        # 把结果写入每条记录（同时覆盖 view_* 与同名原字段，模板无论取哪个都行）
+        # 把结果写入每条记录（同时覆盖 view_* 与同名原字段）
         for r in records:
             r.view_attendance_days     = attendance_days
             r.view_total_working_hours = sum_actual
@@ -1063,6 +1087,11 @@ def driver_salary(request, driver_id):
             r.attendance_days          = attendance_days
             r.total_working_hours      = sum_actual
             r.overtime_hours           = sum_ot
+
+            # —— 缺勤日（显示/存储口径一致）——
+            paid = getattr(r, 'paid_leave_days', 0) or 0
+            r.view_absence_days = max(base_days - attendance_days - paid, 0)
+            r.absence_days      = r.view_absence_days
 
             # 残業手当（显示用）
             r.view_overtime_allowance = overtime_calc_sum

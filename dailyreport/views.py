@@ -1562,7 +1562,13 @@ def export_vehicle_csv(request, year, month):
         total_fee = float(r.total_meter_fee or 0)
         boarding_count = r.items.count()
 
-        data[key]['出勤日数'] += 1
+        # --- 出勤计数（替换开始：原先是无条件 +1） ---
+        if r.items.filter(start_time__isnull=False, end_time__isnull=False).exists():
+            # 如果有实际出勤时间，则计数 +1
+            data[key]['出勤日数'] += 1 
+        # --- 出勤计数（替换结束） ---
+
+        # 累加各项数据
         data[key]['走行距離'] += mileage
         data[key]['実車距離'] += mileage * 0.75
         data[key]['乗車回数'] += boarding_count
