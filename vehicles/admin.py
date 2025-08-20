@@ -58,7 +58,9 @@ class VehicleImageInline(admin.TabularInline):
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
     list_display = (
-        'vehicle', 'driver', 'date', 'start_time', 'end_time',
+        'vehicle', 'driver', 'date',
+        'start_time', 'col_actual_out_time',   # ← 新增列（只看实际）
+        'end_time',   'col_actual_in_time',    # ← 新增列（只看实际）
         'status', 'approved', 'approved_by_system', 'approval_time'
     )
     list_filter = (
@@ -75,7 +77,32 @@ class ReservationAdmin(admin.ModelAdmin):
         'vehicle__license_plate',
     )
     actions = ['approve_reservations']
-    list_per_page = 20 # ✅ 新增：每页显示20条数据（你可以改成30、50都可以） 
+    list_per_page = 20
+
+    @staticmethod
+    def _fmt(v):
+        return v.strftime('%H:%M') if hasattr(v, 'strftime') and v else '—'
+
+    @admin.display(description='实际出库时间')
+    def col_actual_out_time(self, obj):
+        # 只取“实际出库”的字段；没有就显示 —；不回退计划时间
+        # 按你实际字段名修改下面候选名即可
+        v = (
+            getattr(obj, 'actual_out_time', None) or
+            getattr(obj, 'real_out_time', None) or
+            getattr(obj, 'departed_at', None)      # 若你是 DateTimeField
+        )
+        return self._fmt(v)
+
+    @admin.display(description='实际入库时间')
+    def col_actual_in_time(self, obj):
+        # 只取“实际入库”的字段；没有就 —；不回退计划时间
+        v = (
+            getattr(obj, 'actual_in_time', None) or
+            getattr(obj, 'real_in_time', None) or
+            getattr(obj, 'returned_at', None)      # 若你是 DateTimeField
+        )
+        return self._fmt(v)
 
     @admin.action(description="✅ 通过选中预约")
     def approve_reservations(self, request, queryset):
