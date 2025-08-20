@@ -26,8 +26,6 @@
   <button type="submit" class="btn btn-outline-secondary btn-sm">查询</button>
 </form>
 
-
-
 <table class="table table-bordered mb-4">
   <thead class="table-light">
     <tr>
@@ -54,7 +52,9 @@
 </table>
 
 <div class="fw-bold fs-5">
-  本期メータ料金合計：{{ total_raw|floatformat:0 }}（{{ total_split|floatformat:0 }}） 円
+  本月メータ料金合計：{{ total_raw|floatformat:0 }}（{{ total_split|floatformat:0 }}） 円
+  <span class="ms-3">｜ 出勤日数：{{ attendance_days }} 日</span>
+  <div class="small text-muted">※ 有日报明细的日期计 1 天</div>
 </div>
 
 <p class="mt-4"><a href="{% url 'profile' %}">← 返回我的资料</a></p>

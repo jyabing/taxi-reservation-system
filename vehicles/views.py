@@ -1573,11 +1573,9 @@ def my_dailyreports(request):
         month = today.month
 
     # 只筛选该年月
-    qs = DriverDailyReport.objects.filter(
-        driver=driver,
-        date__year=year,
-        date__month=month
-    ).order_by('-date')
+    qs = (DriverDailyReport.objects
+          .filter(driver=driver, date__year=year, date__month=month)
+          .order_by('-date'))
 
     # 3. 汇总聚合原始里程费
     agg = (
@@ -1607,34 +1605,51 @@ def my_dailyreports(request):
 
     total_split = (total_raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
+    # ✅ 新增：本月出勤日数 = “有明细”的日报日期数（按天去重）
+    attendance_days = (
+        qs.filter(items__isnull=False)    # 只统计有明细的日报
+          .values('date').distinct().count()
+    )
+
     return render(request, 'vehicles/my_dailyreports.html', {
         'reports_data':      reports_data,
         'total_raw':         total_raw,
         'total_split':       total_split,
         'selected_date':     selected_date,
-        'selected_year':     year,     # ✅ 添加
-        'selected_month':    month,    # ✅ 添加
+        'selected_year':     year,
+        'selected_month':    month,
         'current_month':     today.strftime("%Y年%-m月"),
+        'attendance_days':   attendance_days,   # ← 现在已定义
     })
 
 @login_required
 def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
 
-    # ✅ 找出实际出库记录
-    reservation = Reservation.objects.filter(
-        driver=request.user,
-        actual_departure__lte=make_aware(datetime.combine(report.date, time(12, 0)))
-    ).order_by('-actual_departure').first()
+    # ✅ 定义“日报工作窗口”：前一日 12:00 ~ 次日 12:00
+    window_start = make_aware(datetime.combine(report.date - timedelta(days=1), time(12, 0)))
+    window_end   = make_aware(datetime.combine(report.date + timedelta(days=1), time(12, 0)))
+
+    # ✅ 只有【日报选了车辆】才去找预约；否则显示 --:--
+    reservation = None
+    if getattr(report, 'vehicle_id', None):
+        reservation = (
+            Reservation.objects.filter(
+                driver=request.user,
+                vehicle_id=report.vehicle_id,        # 限定同一车辆
+                actual_departure__isnull=False,      # 必须已出库
+                actual_departure__gte=window_start,
+                actual_departure__lt=window_end,
+            )
+            .order_by('actual_departure')
+            .first()
+        )
 
     start_time = reservation.actual_departure if reservation else None
-    end_time = reservation.actual_return if reservation else None
+    end_time   = reservation.actual_return if reservation else None
+    duration   = (end_time - start_time) if (start_time and end_time) else None
 
-    duration = None
-    if start_time and end_time:
-        duration = end_time - start_time
-
-    # ✅ 排序函数
+    # ✅ 排序函数（无 start_time 时，不做跨日+1）
     def parse_ride_datetime(item):
         try:
             ride_time = datetime.strptime(item.ride_time, "%H:%M").time()
@@ -1648,58 +1663,33 @@ def my_daily_report_detail(request, report_id):
     # 原始所有项
     items_all = report.items.all().order_by('combined_group', 'id')
 
-    # ✅ 合算组去重逻辑：只保留每个 group 的第一项（或无 group 的单项）
-    items_raw = []
-    seen_groups = set()
+    # ✅ 合算组去重：同组仅保留第一条
+    items_raw, seen_groups = [], set()
     for item in items_all:
-        group = item.combined_group
-        if group:
-            if group not in seen_groups:
-                items_raw.append(item)
-                seen_groups.add(group)
-        else:
+        g = item.combined_group
+        if not g or g not in seen_groups:
             items_raw.append(item)
+            if g:
+                seen_groups.add(g)
 
     # ✅ 排序
     items = sorted(items_raw, key=parse_ride_datetime)
 
-    # ✅ 打印参与统计的记录
-    print("===== ⬇ 加入 total_sales 的记录列表 ⬇ =====")
-    for item in items:
-        if item.meter_fee and item.payment_method:
-            print(f"{item.ride_time} | {item.meter_fee} 円 | 支払方法: {item.payment_method}")
-    print("===== ⬆ END total_sales records ⬆ =====")
+    # ✅ 金额统计
+    total_sales = sum(Decimal(item.meter_fee) for item in items if item.meter_fee and item.payment_method)
+    total_cash  = sum(Decimal(item.meter_fee or 0) for item in items if item.payment_method and "cash" in item.payment_method.lower())
 
-    # ✅ 计算“本日売上”金额（不含空值/无支付方式）
-    total_sales = sum(
-        Decimal(item.meter_fee)
-        for item in items
-        if item.meter_fee and item.payment_method
-    )
-
-    # ✅ 仅现金收入（total_cash）
-    total_cash = sum(
-        Decimal(item.meter_fee or 0)
-        for item in items
-        if item.payment_method and "cash" in item.payment_method.lower()
-    )
-
-    # ✅ 入金比较
     deposit = report.deposit_amount or Decimal("0")
     deposit_diff = deposit - total_cash
     is_deposit_exact = (deposit_diff == 0)
 
-    # ✅ 新增：本月出勤日数 = 本月内“有明细”的日报日期数
+    # ✅ 本月出勤日数 = 本月“有明细”的日报天数（按天去重）
     month_start = report.date.replace(day=1)
-    month_end = month_start + relativedelta(months=1)
+    month_end   = month_start + relativedelta(months=1)
     attendance_days = (
         DriverDailyReport.objects
-        .filter(
-            driver=report.driver,
-            date__gte=month_start, date__lt=month_end,
-            items__isnull=False,               # 仅统计有明细的日报
-        )
-        .values('date').distinct().count()     # 去重按“日期”
+        .filter(driver=report.driver, date__gte=month_start, date__lt=month_end, items__isnull=False)
+        .values('date').distinct().count()
     )
 
     return render(request, 'vehicles/my_daily_report_detail.html', {
@@ -1713,7 +1703,7 @@ def my_daily_report_detail(request, report_id):
         'deposit': deposit,
         'deposit_diff': deposit_diff,
         'is_deposit_exact': is_deposit_exact,
-        'attendance_days': attendance_days,    # ✅ 传到模板
+        'attendance_days': attendance_days,
     })
 
 # 函数：生成到期提醒文案（提前5天～当天～延后5天）
