@@ -105,9 +105,9 @@ def get_status_text(vehicle, status_info):
 
     if status == 'available':
         return '🟥 可预约（点击预约）'
-    elif status == 'reserved':
+    elif status == ReservationStatus.BOOKED:
         return '🟦 有预约（未出库）'
-    elif status == 'out':
+    elif status == ReservationStatus.DEPARTED:
         return '🟩 出库中'
     elif status == 'overdue':
         return '⏰ 超时未归还'
@@ -159,7 +159,7 @@ def vehicle_status_view(request):
             date__lte=selected_date,
             end_date__gte=selected_date,
             actual_return__isnull=True,
-            status__in=['reserved', 'out']
+            status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
         ).order_by('start_datetime').first()
         if today_reservation:
             driver_today_vehicle_id = today_reservation.vehicle_id
@@ -186,12 +186,12 @@ def vehicle_status_view(request):
         else:
             status = 'available'
 
-        if res_list.filter(status='out', actual_departure__isnull=False, actual_return__isnull=True).exists():
+        if res_list.filter(status=ReservationStatus.DEPARTED, actual_departure__isnull=False, actual_return__isnull=True).exists():
             status = 'out'
-        elif res_list.filter(status='out', end_datetime__lt=now_dt, actual_return__isnull=True).exists():
+        elif res_list.filter(status=ReservationStatus.DEPARTED, end_datetime__lt=now_dt, actual_return__isnull=True).exists():
             status = 'overdue'
         else:
-            future_reserved = res_list.filter(status='reserved', actual_departure__isnull=True)
+            future_reserved = res_list.filter(status=ReservationStatus.BOOKED, actual_departure__isnull=True)
             for r in future_reserved:
                 start_dt = r.start_datetime
                 expire_dt = start_dt + timedelta(hours=1)
@@ -239,12 +239,12 @@ def vehicle_status_view(request):
 
         current_reservation = None
         for r in res_list_deduped:
-            if r.date == selected_date and r.status == 'out':
+            if r.date == selected_date and r.status == ReservationStatus.DEPARTED:
                 current_reservation = r
                 break
         if not current_reservation:
             for r in res_list_deduped:
-                if r.date == selected_date and r.status == 'reserved':
+                if r.date == selected_date and r.status == ReservationStatus.BOOKED:
                     current_reservation = r
                     break
 
@@ -357,7 +357,7 @@ def reserve_vehicle_view(request, car_id):
                         driver=request.user,
                         date__lte=end_dt.date(),
                         end_date__gte=start_dt.date(),
-                        status__in=['pending', 'reserved', 'out'],  # ✅ 只检查有效状态
+                        status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED, ReservationStatus.DEPARTED],  # ✅ 只检查有效状态
                     ).filter(
                         Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
                     ).exists()
@@ -390,7 +390,7 @@ def reserve_vehicle_view(request, car_id):
                         vehicle=car,
                         date__lte=end_dt.date(),
                         end_date__gte=start_dt.date(),
-                        status__in=['reserved', 'out'],
+                        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED],
                     ).filter(
                         Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
                     ).exclude(driver=request.user).exists()
@@ -409,7 +409,7 @@ def reserve_vehicle_view(request, car_id):
                         start_time=start_time,
                         end_time=end_time,
                         purpose=purpose,
-                        status='pending',
+                        status=ReservationStatus.APPLYING,
                     )
 
                     created_count += 1
@@ -542,7 +542,7 @@ def weekly_overview_view(request):
 
     # ✅ 自动取消超时未出库预约
     canceled = []
-    for r in reservations.filter(status='reserved', actual_departure__isnull=True):
+    for r in reservations.filter(status=ReservationStatus.BOOKED, actual_departure__isnull=True):
         start_dt = make_aware(datetime.combine(r.date, r.start_time))
         if timezone.now() > start_dt + timedelta(hours=1):
             r.status = 'canceled'
@@ -557,7 +557,7 @@ def weekly_overview_view(request):
     user_res_today = reservations.filter(
         driver=request.user,
         date=today,
-        status__in=['reserved', 'out']
+        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
     )
     cooldown_end = None
     if user_res_today.exists():
@@ -721,7 +721,7 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
             vehicle=vehicle,
             date__lte=d,
             end_date__gte=d,
-            status__in=['pending', 'reserved', 'out']
+            status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
         ).order_by('start_time')
 
         segments = []
@@ -831,7 +831,7 @@ def my_reservations_view(request):
     # ✅ 自动取消超时未出库的预约（仅处理当前页）
     canceled_any = False
     for r in page_obj.object_list:
-        if r.status == 'reserved' and not r.actual_departure:
+        if r.status == ReservationStatus.BOOKED and not r.actual_departure:
             try:
                 start_dt = make_aware(datetime.combine(r.date, r.start_time))
                 expire_dt = start_dt + timedelta(hours=1)
@@ -884,7 +884,7 @@ def my_reservations_view(request):
         # ✅ 暂时保留原始“下次预约”逻辑（下一步优化）
         next_res = Reservation.objects.filter(
             driver=r.driver,
-            status__in=['pending', 'reserved'],
+            status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED],
             date__gt=r.end_date
         ).order_by('date', 'start_time').first()
 
@@ -921,7 +921,7 @@ def my_reservations_view(request):
 
 @staff_member_required
 def reservation_approval_list(request):
-    pending_reservations = Reservation.objects.filter(status='pending').order_by('date', 'start_time')
+    pending_reservations = Reservation.objects.filter(status=ReservationStatus.APPLYING).order_by('date', 'start_time')
     return render(request, 'vehicles/reservation_approval_list.html', {
         'pending_reservations': pending_reservations
     })
@@ -975,7 +975,7 @@ def check_out(request, reservation_id):
             .select_for_update()
             .filter(
                 driver=request.user,
-                status='out',
+                status=ReservationStatus.DEPARTED,
                 actual_return__isnull=True,
             )
             .exclude(id=reservation.id)
@@ -1097,7 +1097,7 @@ def confirm_check_io(request):
                 .select_for_update()
                 .filter(
                     driver=request.user,
-                    status='out',
+                    status=ReservationStatus.DEPARTED,
                     actual_return__isnull=True,
                 )
                 .exclude(id=reservation.id)
@@ -1136,7 +1136,7 @@ def confirm_check_io(request):
         next_res = Reservation.objects.filter(
             driver=request.user,
             date__gte=reservation.date,
-            status__in=['pending', 'reserved']
+            status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED]
         ).exclude(id=reservation.id).order_by("date", "start_time").first()
 
         if next_res:
@@ -1264,7 +1264,7 @@ def my_stats_view(request):
         driver=request.user,
         actual_departure__date__gte=first_day,
         actual_departure__date__lte=last_day,
-        status__in=['out', 'completed'],
+        status__in=[ReservationStatus.DEPARTED, ReservationStatus.COMPLETED],
     )
 
     total_checkouts = qs.count()
@@ -1334,7 +1334,7 @@ def admin_stats_view(request):
             driver=driver,
             date__gte=month_start.date(),
             end_date__lte=month_end.date(),
-            status__in=['reserved', 'out', 'completed']
+            status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED, ReservationStatus.COMPLETED]
         )
 
         # 出入库总次数
@@ -1761,7 +1761,7 @@ def edit_vehicle_notes(request, car_id):
         driver=request.user,
         date__lte=selected_date,
         end_date__gte=selected_date,
-        status__in=["reserved", "out"]
+        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
     ).first()
 
     if not user_reservation:
@@ -1832,7 +1832,7 @@ def check_reservation_conflict(request):
         vehicle_id=car_id,
         start_datetime__lt=end_dt,
         end_datetime__gt=start_dt,
-        status__in=['reserved', 'out']
+        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
     ).exclude(driver=request.user).exists()
 
     if conflict_exists:

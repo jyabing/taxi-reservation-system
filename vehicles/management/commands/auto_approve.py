@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from vehicles.models import Reservation
+from vehicles.models import Reservation, ReservationStatus
 from django.utils.timezone import now, timedelta
 
 class Command(BaseCommand):
@@ -8,14 +8,14 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         threshold = now() - timedelta(hours=1)
         pending = Reservation.objects.filter(
-            status='pending',
+            status=ReservationStatus.APPLYING,
             approved=False,
             created_at__lt=threshold
         )
 
         count = 0
         for reservation in pending:
-            reservation.status = 'reserved'
+            reservation.status = ReservationStatus.BOOKED
             reservation.approved = True
             reservation.approved_by_system = True  # ✅ 系统通过标记为 True
             reservation.approval_time = now()

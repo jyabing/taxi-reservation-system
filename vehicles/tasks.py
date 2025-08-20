@@ -10,14 +10,14 @@ def auto_update_reservations():
     # 1. 自动取消：开始时间已过1小时还未出库的
     cancel_threshold = now - timedelta(hours=1)
     to_cancel = Reservation.objects.filter(
-        status='reserved',
+        status=ReservationStatus.BOOKED,
         actual_departure__isnull=True,
         date__lte=cancel_threshold.date(),
         start_time__lte=cancel_threshold.time()
     )
 
     for r in to_cancel:
-        r.status = 'canceled'
+        r.status = ReservationStatus.CANCELED
         r.vehicle.status = 'available'
         r.vehicle.save()
         r.save()
@@ -26,7 +26,7 @@ def auto_update_reservations():
     # 2. 自动延长：结束时间已过30分钟仍未入库的
     extend_threshold = now - timedelta(minutes=30)
     to_extend = Reservation.objects.filter(
-        status='out',
+        status=ReservationStatus.DEPARTED,
         actual_return__isnull=True,
         end_date__lte=extend_threshold.date(),
         end_time__lte=extend_threshold.time()
@@ -42,7 +42,7 @@ def auto_update_reservations():
         # 顺延下一个预约（如果有）
         next_res = Reservation.objects.filter(
             vehicle=r.vehicle,
-            status='reserved',
+            status=ReservationStatus.BOOKED,
             date__gte=r.date,
             start_time__gte=r.end_time
         ).order_by('date', 'start_time').first()

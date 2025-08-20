@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from vehicles.models import Reservation
+from vehicles.models import Reservation, ReservationStatus
 from datetime import datetime
 
 class Command(BaseCommand):
@@ -9,7 +9,7 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         now = timezone.now()
         count = 0
-        for r in Reservation.objects.filter(status='reserved', actual_departure__isnull=True):
+        for r in Reservation.objects.filter(status=ReservationStatus.BOOKED, actual_departure__isnull=True):
             end_time = datetime.combine(r.date, r.end_time)
             end_time = timezone.make_aware(end_time)
             if end_time < now:

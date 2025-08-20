@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.utils.html import format_html
 from django import forms
 from django.utils.safestring import mark_safe
-from .models import Reservation, VehicleImage, Tip, SystemNotice
+from .models import Reservation, ReservationStatus, VehicleImage, Tip, SystemNotice
 from rangefilter.filters import DateRangeFilter
 from . import admin_driver
 
@@ -106,7 +106,7 @@ class ReservationAdmin(admin.ModelAdmin):
 
     @admin.action(description="✅ 通过选中预约")
     def approve_reservations(self, request, queryset):
-        updated = queryset.filter(status='pending').update(status='reserved')
+        updated = queryset.filter(status=ReservationStatus.APPLYING).update(status=ReservationStatus.BOOKED)
         self.message_user(request, f"{updated} 条预约已成功通过。")
 
 # ✅ 注册 SystemNotice 模型

@@ -8,7 +8,7 @@ def run_scheduled_tasks():
     # 1️⃣ 自动取消未出库预约：预约已开始 1 小时内未出库，则取消
     one_hour_ago = now - datetime.timedelta(hours=1)
     stale = Reservation.objects.filter(
-        status='reserved',
+        status=ReservationStatus.BOOKED,
         actual_departure__isnull=True,
         date__lte=one_hour_ago.date(),
         start_time__lte=one_hour_ago.time()
@@ -21,12 +21,12 @@ def run_scheduled_tasks():
     # 2️⃣ 自动延长未还车预约：预约结束已过 30 分钟，但仍未还车，延后 30 分钟
     thirty_mins_ago = now - datetime.timedelta(minutes=30)
     active = Reservation.objects.filter(
-        status__in=['reserved', 'out'],
+        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED],
         actual_departure__isnull=False,
         actual_return__isnull=True,
         end_date__lt=now.date()
     ) | Reservation.objects.filter(
-        status__in=['reserved', 'out'],
+        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED],
         actual_departure__isnull=False,
         actual_return__isnull=True,
         end_date=now.date(),

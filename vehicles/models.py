@@ -159,6 +159,15 @@ class ReservationManager(models.Manager.from_queryset(CompatQuerySet)):
 # ========= 兼容适配层（END） =========
 
 
+class ReservationStatus(models.TextChoices):
+    # 状态常量
+    APPLYING   = "applying",   "申请中"
+    BOOKED     = "booked",     "已预约"
+    DEPARTED   = "departed",   "已出库"
+    COMPLETED  = "completed",  "已完成"
+    CANCELED   = "canceled",   "决定不出库"
+    INCOMPLETE = "incomplete", "未完成出入库手续"
+
 class Reservation(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")
     
@@ -168,18 +177,14 @@ class Reservation(models.Model):
     end_date = models.DateField(verbose_name="结束日期")
     start_time = models.TimeField(verbose_name="开始时间")
     end_time = models.TimeField(verbose_name="结束时间")
+
     purpose = models.CharField(max_length=200, blank=True, verbose_name="用途说明")
     status = models.CharField(
-        max_length=10,
-        choices=[
-            ('pending', '申请中'),
-            ('reserved', '已预约'),
-            ('out', '已出库'),
-            ('canceled', '已取消'),
-            ('completed', '已完成'),
-        ],
-        default='pending',
-        verbose_name="状态"
+        max_length=20,
+        choices=ReservationStatus.choices,       # 使用 TextChoices
+        default=ReservationStatus.APPLYING,      # 默认：申请中
+        verbose_name="状态",
+        db_index=True,                           # 便于筛选/统计
     )
     actual_departure = models.DateTimeField(null=True, blank=True, verbose_name="实际出库时间")
     actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际入库时间")
