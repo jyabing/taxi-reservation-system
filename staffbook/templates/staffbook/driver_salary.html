@@ -30,7 +30,7 @@
         <ul class="nav nav-pills mb-3">
           <li class="nav-item">
             <a class="nav-link {% if sub_tab == 'attendance' %}active{% endif %}"
-               href="?sub=attendance&month={{ month }}{% if mode == 'edit' %}&mode=edit{% endif %}">勤怠</a>
+               href="?sub=attendance&month={{ month }}">勤怠</a>
           </li>
           <li class="nav-item">
             <a class="nav-link {% if sub_tab == 'payment' %}active{% endif %}"
@@ -130,9 +130,11 @@
             </tbody>
           </table>
           <!-- ▼ 只读模式：表格正下方只放「編集」 -->
-          <div class="mt-3 text-end">
-            <a class="btn btn-primary" href="?sub=attendance&month={{ month }}&mode=edit">編集</a>
-          </div>
+          {% if sub_tab != 'attendance' %}
+            <div class="mt-3 text-end">
+              <a class="btn btn-primary" href="?sub={{ sub_tab }}&month={{ month }}&mode=edit">編集</a>
+            </div>
+          {% endif %}
           <!-- ▲ 只读模式按钮结束 -->
           {% if sub_tab == 'deduction' and mode == 'view' %}
             <div class="mt-2">
@@ -275,7 +277,7 @@
             <!-- ▼ 编辑模式：表格正下方显示 保存 / キャンセル -->
             <div class="d-flex justify-content-end gap-2 mt-3 flex-wrap">
               <button type="submit" class="btn btn-success" form="attendance-form">保存</button>
-              <a class="btn btn-secondary" href="?sub=attendance&month={{ month }}&mode=view">キャンセル</a>
+              <a class="btn btn-secondary" href="?sub={{ sub_tab }}&month={{ month }}&mode=view">キャンセル</a>
             </div>
             <!-- ▲ 编辑模式按钮结束 -->
 

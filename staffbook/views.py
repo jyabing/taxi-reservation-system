@@ -761,6 +761,10 @@ def driver_salary(request, driver_id):
     mode      = request.GET.get('mode', 'view')        # view / edit
     month_str = request.GET.get('month')               # YYYY-MM
 
+    # 勤怠タブは常に只読（URLで mode=edit を指定されても無効化）
+    if sub_tab == 'attendance':
+        mode = 'view'
+
     # -------- 給与月の期間 --------
     if not month_str:
         today = datetime.date.today()
