@@ -1,34 +1,41 @@
-function showDepartureModal(button) {
-  const id = button.getAttribute('data-id');
-  const lastReturn = button.getAttribute('data-last-return');
-
-  let suggestTime;
-  if (lastReturn) {
-    const baseTime = new Date(lastReturn);
-    baseTime.setHours(baseTime.getHours() + 10);
-    suggestTime = baseTime.toISOString().slice(0, 16);
-  } else {
-    const now = new Date();
-    suggestTime = now.toISOString().slice(0, 16);
+<script>
+(function () {
+  function toLocalInputValue(d){
+    const tz = d.getTimezoneOffset()*60000;
+    const local = new Date(d.getTime() - tz);
+    return local.toISOString().slice(0,16); // YYYY-MM-DDTHH:MM
   }
 
-  document.getElementById('reservationIdInput').value = id;
-  document.getElementById('actualDepartureInput').value = suggestTime;
-  new bootstrap.Modal(document.getElementById('departureModal')).show();
-}
-
-function showReturnModal(reservationId) {
-  const modal = document.getElementById('returnModal');
-  if (!modal) {
-    console.error("入庫モーダルが見つかりません。");
-    return;
+  // 出库
+  const depModal = document.getElementById('departureModal');
+  const depForm  = document.getElementById('departureForm');
+  const depBaseAction = depForm ? depForm.getAttribute('action') : '';
+  if (depModal && depForm) {
+    depModal.addEventListener('show.bs.modal', function (ev) {
+      const btn = ev.relatedTarget;   // 触发按钮
+      const id  = btn && (btn.dataset.reservationId || btn.getAttribute('data-id'));
+      const inputId  = document.getElementById('reservationIdInput');
+      const inputTime= document.getElementById('actualDepartureInput');
+      inputId.value   = id || '';
+      inputTime.value = toLocalInputValue(new Date());
+      if (id) depForm.setAttribute('action', depBaseAction + '?rid=' + encodeURIComponent(id));
+    });
   }
 
-  const now = new Date();
-  const suggestTime = now.toISOString().slice(0, 16);
-
-  document.getElementById('returnReservationIdInput').value = reservationId;
-  document.getElementById('actualReturnInput').value = suggestTime;
-
-  new bootstrap.Modal(modal).show();
-}
+  // 入库
+  const retModal = document.getElementById('returnModal');
+  const retForm  = document.getElementById('returnForm');
+  const retBaseAction = retForm ? retForm.getAttribute('action') : '';
+  if (retModal && retForm) {
+    retModal.addEventListener('show.bs.modal', function (ev) {
+      const btn = ev.relatedTarget;
+      const id  = btn && (btn.dataset.reservationId || btn.getAttribute('data-id'));
+      const inputId  = document.getElementById('returnReservationIdInput');
+      const inputTime= document.getElementById('actualReturnInput');
+      inputId.value   = id || '';
+      inputTime.value = toLocalInputValue(new Date());
+      if (id) retForm.setAttribute('action', retBaseAction + '?rid=' + encodeURIComponent(id));
+    });
+  }
+})();
+</script>
