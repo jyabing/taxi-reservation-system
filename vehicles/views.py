@@ -23,6 +23,7 @@ from django.contrib import messages
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.core.mail import send_mail
+from dateutil.relativedelta import relativedelta
 
 from carinfo.services.car_access import (
     get_all_active_cars,
@@ -1688,6 +1689,19 @@ def my_daily_report_detail(request, report_id):
     deposit_diff = deposit - total_cash
     is_deposit_exact = (deposit_diff == 0)
 
+    # ✅ 新增：本月出勤日数 = 本月内“有明细”的日报日期数
+    month_start = report.date.replace(day=1)
+    month_end = month_start + relativedelta(months=1)
+    attendance_days = (
+        DriverDailyReport.objects
+        .filter(
+            driver=report.driver,
+            date__gte=month_start, date__lt=month_end,
+            items__isnull=False,               # 仅统计有明细的日报
+        )
+        .values('date').distinct().count()     # 去重按“日期”
+    )
+
     return render(request, 'vehicles/my_daily_report_detail.html', {
         'report': report,
         'items': items,
@@ -1699,6 +1713,7 @@ def my_daily_report_detail(request, report_id):
         'deposit': deposit,
         'deposit_diff': deposit_diff,
         'is_deposit_exact': is_deposit_exact,
+        'attendance_days': attendance_days,    # ✅ 传到模板
     })
 
 # 函数：生成到期提醒文案（提前5天～当天～延后5天）
