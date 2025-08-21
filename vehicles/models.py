@@ -1,11 +1,15 @@
-from django.db import models
-from django.utils.html import format_html
-from django.conf import settings
-from django.utils.translation import gettext_lazy as _
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-from carinfo.models import Car
 from datetime import datetime
+
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models import Q
+from django.utils import timezone
+from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
+
+from carinfo.models import Car
+
 
 class VehicleImage(models.Model):
     vehicle = models.ForeignKey(
@@ -29,6 +33,7 @@ class VehicleImage(models.Model):
     preview.short_description = "预览图"
     preview.allow_tags = True
 
+
 # ✅ 系统通知模型
 class SystemNotice(models.Model):
     message = models.CharField("通知内容", max_length=255)
@@ -42,10 +47,8 @@ class SystemNotice(models.Model):
         verbose_name = "系统通知"
         verbose_name_plural = "系统通知"
 
-# ========= 兼容适配层（BEGIN） =========
-from django.db import models
-from django.db.models import Q
 
+# ========= 兼容适配层（BEGIN） =========
 def _rewrite_key(k: str) -> str:
     """
     支持：
@@ -70,8 +73,10 @@ def _rewrite_key(k: str) -> str:
 
     return neg + k
 
+
 def _rewrite_kwargs(kwargs: dict) -> dict:
     return {_rewrite_key(k): v for k, v in kwargs.items()}
+
 
 def _rewrite_q(obj: Q) -> Q:
     """递归改写 Q(children=[('car__x', 1), Q(...), ...])"""
@@ -90,6 +95,7 @@ def _rewrite_q(obj: Q) -> Q:
     q.children = new_children
     return q
 
+
 def _rewrite_args(args):
     out = []
     for a in args:
@@ -99,9 +105,11 @@ def _rewrite_args(args):
             out.append(a)
     return tuple(out)
 
+
 def _rewrite_fieldnames(*names):
     # 用于 select_related / prefetch_related / order_by / values / only / defer
     return tuple(_rewrite_key(n) for n in names)
+
 
 class CompatQuerySet(models.QuerySet):
     # 过滤类
@@ -152,6 +160,7 @@ class CompatQuerySet(models.QuerySet):
     def prefetch_related(self, *lookups):
         return super().prefetch_related(*_rewrite_fieldnames(*lookups))
 
+
 class ReservationManager(models.Manager.from_queryset(CompatQuerySet)):
     def create(self, **kwargs):
         kwargs = _rewrite_kwargs(kwargs)
@@ -160,18 +169,27 @@ class ReservationManager(models.Manager.from_queryset(CompatQuerySet)):
 
 
 class ReservationStatus(models.TextChoices):
-    # 状态常量
-    APPLYING   = "applying",   "申请中"
+    # —— 按你原始定义恢复 —— #
+    PENDING    = "pending",    "申请中"
     BOOKED     = "booked",     "已预约"
-    DEPARTED   = "departed",   "已出库"
-    COMPLETED  = "completed",  "已完成"
-    CANCELED   = "canceled",   "决定不出库"
+    OUT        = "out",        "已出库"
+    DONE       = "done",       "已完成"
+    CANCEL     = "cancel",     "已取消"
     INCOMPLETE = "incomplete", "未完成出入库手续"
 
+
 class Reservation(models.Model):
-    driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="司机")
-    
-    vehicle = models.ForeignKey(Car, on_delete=models.CASCADE, verbose_name="车辆")
+    driver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name="司机"
+    )
+
+    vehicle = models.ForeignKey(
+        Car,
+        on_delete=models.CASCADE,
+        verbose_name="车辆"
+    )
 
     date = models.DateField(verbose_name="预约日期")
     end_date = models.DateField(verbose_name="结束日期")
@@ -179,24 +197,25 @@ class Reservation(models.Model):
     end_time = models.TimeField(verbose_name="结束时间")
 
     purpose = models.CharField(max_length=200, blank=True, verbose_name="用途说明")
+
     status = models.CharField(
         max_length=20,
-        choices=ReservationStatus.choices,       # 使用 TextChoices
-        default=ReservationStatus.APPLYING,      # 默认：申请中
+        choices=ReservationStatus.choices,
+        default=ReservationStatus.PENDING,   # 恢复默认 PENDING
         verbose_name="状态",
-        db_index=True,                           # 便于筛选/统计
+        db_index=True,
     )
+
     actual_departure = models.DateTimeField(null=True, blank=True, verbose_name="实际出库时间")
     actual_return = models.DateTimeField(null=True, blank=True, verbose_name="实际入库时间")
-    
+
     start_datetime = models.DateTimeField(null=True, blank=True, verbose_name="开始时间（完整）")
     end_datetime = models.DateTimeField(null=True, blank=True, verbose_name="结束时间（完整）")
 
-    # === 新增：绑定兼容 Manager（BEGIN） ===
+    # 绑定兼容 Manager
     objects = ReservationManager()
-    # === 新增：绑定兼容 Manager（END） ===
 
-    # === 新增：car / car_id 别名属性（BEGIN） ===
+    # —— car / car_id 别名属性（兼容历史代码）——
     @property
     def car(self):
         return self.vehicle
@@ -212,21 +231,29 @@ class Reservation(models.Model):
     @car_id.setter
     def car_id(self, value):
         self.vehicle_id = value
-    # === 新增：car / car_id 别名属性（END） ===
 
-    # === 新增：__init__ 参数兼容（BEGIN） ===
+    # —— __init__ 参数兼容 —— #
     def __init__(self, *args, **kwargs):
         if 'car' in kwargs and 'vehicle' not in kwargs:
             kwargs['vehicle'] = kwargs.pop('car')
         if 'car_id' in kwargs and 'vehicle_id' not in kwargs:
             kwargs['vehicle_id'] = kwargs.pop('car_id')
         super().__init__(*args, **kwargs)
-    # === 新增：__init__ 参数兼容（END） ===
 
     def save(self, *args, **kwargs):
-        # 自动拼接完整开始/结束时间
-        self.start_datetime = timezone.make_aware(datetime.combine(self.date, self.start_time))
-        self.end_datetime = timezone.make_aware(datetime.combine(self.end_date, self.end_time))
+        # 自动拼接完整开始/结束时间（兼容 USE_TZ 开/关）
+        dt_start = datetime.combine(self.date, self.start_time)
+        dt_end = datetime.combine(self.end_date, self.end_time)
+
+        if getattr(settings, "USE_TZ", False):
+            if timezone.is_naive(dt_start):
+                dt_start = timezone.make_aware(dt_start)
+            if timezone.is_naive(dt_end):
+                dt_end = timezone.make_aware(dt_end)
+
+        self.start_datetime = dt_start
+        self.end_datetime = dt_end
+
         super().save(*args, **kwargs)
 
     # 自动审批相关字段
@@ -237,10 +264,11 @@ class Reservation(models.Model):
 
     def __str__(self):
         return f"{self.vehicle} {self.date} ~ {self.end_date} {self.start_time}-{self.end_time}"
-    
+
     class Meta:
         verbose_name = "预约记录"
         verbose_name_plural = "预约记录"
+
 
 class Tip(models.Model):
     content = models.TextField("提示内容")

@@ -35,7 +35,19 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = True   # 仅用于开发环境
 #DEBUG = False 
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'taxi-reservation-system.onrender.com','.onrender.com']
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "taxi-reservation-system.onrender.com",  # 保留 Render
+    ".onrender.com",                         # 保留 Render 子域
+    "tms-japan.com",                         # 你的独立域名
+    "www.tms-japan.com",                     # 带 www 的域名
+    # 未来公司域名，等你启用时再加：
+    "hikarikoutsu.com",
+    "www.hikarikoutsu.com",
+    #"honntenn.com",
+    #"www.honntenn.com",
+]
 
 
 # Application definition

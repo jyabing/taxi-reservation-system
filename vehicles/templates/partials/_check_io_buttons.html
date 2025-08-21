@@ -1,35 +1,57 @@
-{# 出库 / 入库 / 删除 / 修正按钮统一模板 #}
+{# templates/partials/_check_io_buttons.html #}
+{# 传入：r = Reservation #}
 
-{% if r.status == 'pending' %}
+{# 申请中：修正/删除 #}
+{% if r.status == 'pending' or r.status == 'applying' %}
   <a href="{% url 'vehicles:edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
   <form method="post" action="{% url 'vehicles:delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
     {% csrf_token %}
-    <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
+    <button type="submit" class="btn btn-sm btn-outline-danger">❌ 删除</button>
   </form>
 
-{% elif r.status == 'reserved' and not r.actual_departure %}
-  <a href="{% url 'vehicles:edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
-  <form method="post" action="{% url 'vehicles:delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-sm btn-outline-danger">❌ 削除</button>
-  </form>
-  <button type="button" class="btn btn-sm btn-success"
-          onclick="openTimePopup({{ r.id }}, 'departure')">🚗 出庫</button>
+{# 已预约：未出库→出库按钮；（极端）已出库未入库→入库按钮 #}
+{% elif r.status == 'booked' or r.status == 'reserved' %}
+  {% if not r.actual_departure %}
+    <a href="{% url 'vehicles:edit_reservation' r.id %}" class="btn btn-sm btn-outline-primary">✏️ 修正</a>
+    <form method="post" action="{% url 'vehicles:delete_reservation' r.id %}" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-outline-danger">❌ 删除</button>
+    </form>
+    <button type="button"
+            class="btn btn-sm btn-success"
+            data-bs-toggle="modal"
+            data-bs-target="#departureModal"
+            data-reservation-id="{{ r.id }}"
+            onclick="primeDeparture(this)">🚗 出库</button>
+  {% elif r.actual_departure and not r.actual_return %}
+    <button type="button"
+            class="btn btn-sm btn-warning"
+            data-bs-toggle="modal"
+            data-bs-target="#returnModal"
+            data-reservation-id="{{ r.id }}"
+            onclick="primeReturn(this)">🅿️ 入库</button>
+  {% else %}
+    <span class="text-muted">—</span>
+  {% endif %}
 
-{% elif r.status == 'reserved' and r.actual_departure and not r.actual_return %}
-  <button type="button" class="btn btn-sm btn-warning"
-          onclick="openTimePopup({{ r.id }}, 'return')">🅿️ 入庫</button>
+{# 已出库：显示入库按钮 #}
+{% elif r.status == 'out' or r.status == 'departed' %}
+  {% if r.actual_departure and not r.actual_return %}
+    <button type="button"
+            class="btn btn-sm btn-warning"
+            data-bs-toggle="modal"
+            data-bs-target="#returnModal"
+            data-reservation-id="{{ r.id }}"
+            onclick="primeReturn(this)">🅿️ 入库</button>
+  {% else %}
+    <span class="text-muted">—</span>
+  {% endif %}
 
-{% elif r.status == 'out' and r.actual_departure and not r.actual_return %}
-  <button type="button" class="btn btn-sm btn-warning"
-          onclick="openTimePopup({{ r.id }}, 'return')">🅿️ 入庫</button>
-
-{% elif r.status == 'completed' %}
-  <span style="color:gray;">✅ 完了</span>
-
-{% elif r.status == 'canceled' %}
-  <span style="color:gray;">❌ キャンセル</span>
-
+{# 已完成 / 已取消 #}
+{% elif r.status == 'done' or r.status == 'completed' %}
+  <span class="text-muted">✅ 完了</span>
+{% elif r.status == 'cancel' or r.status == 'canceled' %}
+  <span class="text-muted">❌ キャンセル</span>
 {% else %}
-  <span style="color:#aaa;">—</span>
+  <span class="text-muted">—</span>
 {% endif %}

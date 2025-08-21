@@ -98,7 +98,7 @@ def get_status_text(vehicle, status_info):
     """
     print(f"🚨 调试输出：{vehicle.license_plate} 的 vehicle.status = {vehicle.status}")
 
-    # ✅ 优先判断车辆数据库状态字段
+    # 车辆自身状态优先
     if vehicle.status == 'repair':
         return '🔧 维修中'
     elif vehicle.status == 'retired':
@@ -106,14 +106,14 @@ def get_status_text(vehicle, status_info):
     elif vehicle.status not in ['usable', 'repair', 'retired']:
         return f'❓ 未知状态（值为 {vehicle.status}）'
 
-    # ✅ usable 状态下再判断预约情况
+    # 预约状态（status_info['status'] 用的是字符串）
     status = status_info.get('status', '')
 
     if status == 'available':
         return '🟥 可预约（点击预约）'
-    elif status == ReservationStatus.BOOKED:
+    elif status == 'booked':
         return '🟦 有预约（未出库）'
-    elif status == ReservationStatus.DEPARTED:
+    elif status == 'out':
         return '🟩 出库中'
     elif status == 'overdue':
         return '⏰ 超时未归还'
@@ -148,16 +148,13 @@ def vehicle_status_view(request):
     now = timezone.localtime()
     now_dt = now
 
-    # ✅ 获取当前用户关联的 Driver 实例
     current_driver = Driver.objects.filter(user=request.user).first()
 
-    # ✅ 获取所有预约记录
     reservations = Reservation.objects.filter(
         date__lte=selected_date,
         end_date__gte=selected_date
     ).select_related('driver', 'vehicle')
 
-    # ✅ 找出“当前司机今天预约的车”的 vehicle_id，用于备注编辑按钮显示
     driver_today_vehicle_id = None
     if current_driver:
         today_reservation = reservations.filter(
@@ -165,12 +162,11 @@ def vehicle_status_view(request):
             date__lte=selected_date,
             end_date__gte=selected_date,
             actual_return__isnull=True,
-            status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
+            status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT]
         ).order_by('start_datetime').first()
         if today_reservation:
             driver_today_vehicle_id = today_reservation.vehicle_id
 
-    # ✅ 获取所有活跃车辆
     vehicles = get_all_active_cars()
     status_map = {}
 
@@ -187,35 +183,39 @@ def vehicle_status_view(request):
             seen_reservation_ids.add(r.id)
             res_list_deduped.append(r)
 
+        # 默认状态
         if selected_date < localdate():
             status = 'expired'
         else:
             status = 'available'
 
-        if res_list.filter(status=ReservationStatus.DEPARTED, actual_departure__isnull=False, actual_return__isnull=True).exists():
+        # 有出库中的记录
+        if res_list.filter(status=ReservationStatus.OUT, actual_departure__isnull=False, actual_return__isnull=True).exists():
             status = 'out'
-        elif res_list.filter(status=ReservationStatus.DEPARTED, end_datetime__lt=now_dt, actual_return__isnull=True).exists():
+        # 超时未归还
+        elif res_list.filter(status=ReservationStatus.OUT, end_datetime__lt=now_dt, actual_return__isnull=True).exists():
             status = 'overdue'
         else:
-            future_reserved = res_list.filter(status=ReservationStatus.BOOKED, actual_departure__isnull=True)
-            for r in future_reserved:
+            # 未出库但已预约
+            future_booked = res_list.filter(status=ReservationStatus.BOOKED, actual_departure__isnull=True)
+            for r in future_booked:
                 start_dt = r.start_datetime
                 expire_dt = start_dt + timedelta(hours=1)
                 if now_dt > expire_dt:
-                    r.status = 'canceled'
+                    r.status = 'cancel'
                     r.save()
                     if current_driver and r.driver_id == current_driver.id:
                         messages.warning(request, f"你对 {vehicle.license_plate} 的预约因超时未出库已被自动取消，请重新预约。")
                 else:
-                    status = 'reserved'
+                    status = 'booked'
                     break
 
-        # ✅ 当前用户对该车的预约（用于出入库按钮）
+        # 当前用户在该车的可操作预约（用于出入库按钮）
         user_reservation = None
         for r in res_list:
             if not current_driver or r.driver_id != current_driver.id:
                 continue
-            if r.status not in ['reserved', 'out']:
+            if r.status not in ['booked', 'out']:
                 continue
             if r.actual_return:
                 continue
@@ -224,10 +224,11 @@ def vehicle_status_view(request):
             user_reservation = r
             break
 
+        # 标签
         reserver_labels = []
         seen_res_ids = set()
         for r in res_list_deduped:
-            if r.status not in ['reserved', 'out'] or not r.driver:
+            if r.status not in ['booked', 'out'] or not r.driver:
                 continue
             if r.id in seen_res_ids or r.date != selected_date:
                 continue
@@ -243,9 +244,10 @@ def vehicle_status_view(request):
         is_repair = vehicle.status == 'repair'
         reservable = is_car_reservable(vehicle)
 
+        # 今天的当前预约（优先 out，其次 booked）
         current_reservation = None
         for r in res_list_deduped:
-            if r.date == selected_date and r.status == ReservationStatus.DEPARTED:
+            if r.date == selected_date and r.status == ReservationStatus.OUT:
                 current_reservation = r
                 break
         if not current_reservation:
@@ -255,7 +257,7 @@ def vehicle_status_view(request):
                     break
 
         status_info = {
-            'status': status,
+            'status': status,                      # 'available'/'booked'/'out'/...
             'reservation': current_reservation,
             'user_reservation': user_reservation,
             'reserver_name': reserver_name,
@@ -286,7 +288,7 @@ def vehicle_status_view(request):
         'vehicle_forms': vehicle_forms,
         'note_forms': note_forms,
         'request_driver_id': current_driver.id if current_driver else None,
-        'driver_today_vehicle_id': driver_today_vehicle_id,  # ✅ 提供给模板判断是否显示备注编辑按钮
+        'driver_today_vehicle_id': driver_today_vehicle_id,
     })
 
 @login_required
@@ -294,7 +296,7 @@ def reserve_vehicle_view(request, car_id):
     car = get_car_by_id(car_id)
     min_time = (timezone.now() + timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M')
 
-    # ✅ ⛔ 禁止不可预约车辆（使用统一判断）
+    # 禁止不可预约车辆
     if not is_car_reservable(car):
         messages.error(request, "该车辆当前状态不可预约。")
         return redirect('vehicles:vehicle_status')
@@ -303,14 +305,13 @@ def reserve_vehicle_view(request, car_id):
         messages.error(request, "该车辆为调配用车，仅限管理员预约。")
         return redirect('vehicles:vehicle_status')
 
-
     if request.method == 'POST':
         form = ReservationForm(request.POST)
         form.instance.driver = request.user
         selected_dates_raw = request.POST.get('selected_dates', '')
         selected_dates = json.loads(selected_dates_raw) if selected_dates_raw else []
 
-        # ✅ 修正 Flatpickr 日期偏移（强制向后 +1 天）
+        # Flatpickr 日期偏移修正
         selected_dates = [
             (datetime.strptime(d, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
             for d in selected_dates
@@ -326,87 +327,72 @@ def reserve_vehicle_view(request, car_id):
 
             for date_str in selected_dates:
                 try:
-                    # ✅ 用户在前端选择的日期，即预约开始日
                     start_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-
-                    # ✅ 构造 start_dt 在前
                     start_dt = datetime.combine(start_date, start_time)
 
-                    # ✅ 判断是否跨日
+                    # 跨日判断
                     if end_time <= start_time:
                         end_date = start_date + timedelta(days=1)
                     else:
                         end_date = start_date
-
                     end_dt = datetime.combine(end_date, end_time)
 
-                    # ✅ 限制跨两天
-                    if (end_dt.date() - start_dt.date()).days >= 2:
-                        messages.error(request, f"⚠️ 预约 {start_date} ~ {end_date} 跨了两天，系统不允许，请分开预约。")
-                        continue
-
-                    # ✅ 限制最长 13 小时
+                    # 限制：最长 13 小时
                     duration_hours = (end_dt - start_dt).total_seconds() / 3600
                     if duration_hours > 13:
                         messages.error(request, f"⚠️ {start_date} 的预约时间为 {duration_hours:.1f} 小时，超过限制。")
                         continue
 
-                    # ✅ 夜班限制（可选）
+                    # 夜班限制（可选）
                     if end_date > start_date:
                         if start_time < time(12, 0) or end_time > time(12, 0):
                             messages.error(request, f"⚠️ {start_date} 的跨日预约时间段非法。夜班必须 12:00 后开始，次日 12:00 前结束。")
                             continue
 
-                    # ✅ 检查是否重复预约（当前用户）
+                    # 重复预约（当前用户，同车，同时间段，检查有效状态）
                     duplicate_by_same_user = Reservation.objects.filter(
                         vehicle=car,
                         driver=request.user,
                         date__lte=end_dt.date(),
                         end_date__gte=start_dt.date(),
-                        status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED, ReservationStatus.DEPARTED],  # ✅ 只检查有效状态
+                        status__in=[ReservationStatus.PENDING, ReservationStatus.BOOKED, ReservationStatus.OUT],
                     ).filter(
                         Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
                     ).exists()
-
-
                     if duplicate_by_same_user:
                         messages.warning(request, f"{start_date} 你已预约该车，已跳过。")
                         continue
 
-                    # ✅ 检查是否违反10小时间隔（当前用户）
+                    # 10 小时间隔（同车、同用户）
                     recent_same_vehicle_reservations = Reservation.objects.filter(
                         vehicle=car,
                         driver=request.user,
-                    ).only('date', 'start_time').order_by('-date', '-start_time')# 优化性能
+                    ).only('date', 'start_time').order_by('-date', '-start_time')
 
                     too_close = False
                     for prev in recent_same_vehicle_reservations:
                         prev_start_dt = datetime.combine(prev.date, prev.start_time)
-                        delta_sec = abs((start_dt - prev_start_dt).total_seconds())
-                        if delta_sec < 36000:  # 10小时 = 36000秒
+                        if abs((start_dt - prev_start_dt).total_seconds()) < 36000:
                             too_close = True
                             break
-
                     if too_close:
                         messages.warning(request, f"⚠️ {start_date} 的预约时间与之前预约相隔不足10小时，已跳过。")
                         continue
 
-                    # ✅ 检查是否与其他人预约冲突
+                    # 与其他人冲突
                     conflict_exists = Reservation.objects.filter(
                         vehicle=car,
                         date__lte=end_dt.date(),
                         end_date__gte=start_dt.date(),
-                        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED],
+                        status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT],
                     ).filter(
                         Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
                     ).exclude(driver=request.user).exists()
-
-
                     if conflict_exists:
                         messages.warning(request, f"{start_date} 存在预约冲突，已跳过。")
                         continue
 
-                    # ✅ 创建预约记录
+                    # 创建预约（默认 PENDING）
                     new_res = Reservation.objects.create(
                         driver=request.user,
                         vehicle=car,
@@ -415,12 +401,12 @@ def reserve_vehicle_view(request, car_id):
                         start_time=start_time,
                         end_time=end_time,
                         purpose=purpose,
-                        status=ReservationStatus.APPLYING,
+                        status=ReservationStatus.PENDING,
                     )
 
                     created_count += 1
 
-                    # ✅ 邮件通知（可选）
+                    # 通知（略）
                     subject = "【新预约通知】车辆预约提交"
                     plain_message = (
                         f"预约人：{request.user.get_full_name() or request.user.username}\n"
@@ -470,6 +456,7 @@ def reserve_vehicle_view(request, car_id):
         'min_time': min_time,
     })
 
+
 @login_required
 def vehicle_timeline_view(request, vehicle_id):
     date_str = request.GET.get('date')
@@ -500,7 +487,6 @@ def weekly_overview_view(request):
     now_dt = timezone.localtime()
     now_time = now_dt.time()
 
-    # 获取目标日期与周偏移
     date_str = request.GET.get('date')
     offset = int(request.GET.get('offset', 0))
 
@@ -512,19 +498,13 @@ def weekly_overview_view(request):
     else:
         base_date = today
 
-    # ✅ 当前周的7天
     start_date = base_date + timedelta(days=offset * 7)
     week_dates = [start_date + timedelta(days=i) for i in range(7)]
 
     vehicles = get_all_active_cars()
-
-    # ★ 给每辆车打“维修中”布尔标记（兼容多种写法）
     for v in vehicles:
         status_val = getattr(v, "status", None)
-        # 如果你 carinfo.services 里已经有 is_under_repair，用它兜底
-        v.is_maintenance = (
-            status_val in ("repair", "maintenance", "under_maintenance")
-        ) or is_under_repair(v)
+        v.is_maintenance = (status_val in ("repair", "maintenance", "under_maintenance")) or is_under_repair(v)
 
     global_reminders = []
     for car in vehicles:
@@ -541,17 +521,16 @@ def weekly_overview_view(request):
                 if reminder_text:
                     global_reminders.append((car, reminder_text))
 
-    # ✅ 只抓取当前周内的相关预约
     reservations = Reservation.objects.filter(
         Q(date__in=week_dates)
     ).select_related('vehicle', 'driver')
 
-    # ✅ 自动取消超时未出库预约
+    # 自动取消超时未出库（BOOKED→过期 1h → CANCEL）
     canceled = []
     for r in reservations.filter(status=ReservationStatus.BOOKED, actual_departure__isnull=True):
         start_dt = make_aware(datetime.combine(r.date, r.start_time))
         if timezone.now() > start_dt + timedelta(hours=1):
-            r.status = 'canceled'
+            r.status = 'cancel'
             r.save()
             if r.driver == request.user:
                 canceled.append(r)
@@ -559,11 +538,10 @@ def weekly_overview_view(request):
     if canceled:
         messages.warning(request, f"你有 {len(canceled)} 条预约因超过1小时未出库已被自动取消，请重新预约。")
 
-    # ✅ 冷却期逻辑
     user_res_today = reservations.filter(
         driver=request.user,
         date=today,
-        status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
+        status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT]
     )
     cooldown_end = None
     if user_res_today.exists():
@@ -571,17 +549,13 @@ def weekly_overview_view(request):
         end_dt = datetime.combine(last.end_date, last.end_time)
         cooldown_end = end_dt + timedelta(hours=10)
 
-    # ✅ 按车 + 日期分类（仅按 start_date 显示，避免跨日重复）
     vehicle_date_map = defaultdict(lambda: defaultdict(list))
     for res in reservations:
         if res.date in week_dates:
             vehicle_date_map[res.vehicle][res.date].append(res)
 
-    # ✅ 构建每辆车每一天的数据行
     data = []
     for vehicle in vehicles:
-
-        # ✅ 构建该车的每日提醒字典（供模板中按日期查找）
         vehicle.daily_reminders = {}
 
         for d in week_dates:
@@ -603,15 +577,10 @@ def weekly_overview_view(request):
                             msg = f"今天{label}到期，请协助事务完成{label}更新"
                         else:
                             msg = f"{label}到期延迟{delta}天，请协助事务完成{label}更新"
-                        daily_reminders.append({
-                            'type': rtype,
-                            'message': msg,
-                            'is_today': (delta == 0)
-                        })
+                        daily_reminders.append({'type': rtype, 'message': msg, 'is_today': (delta == 0)})
             if daily_reminders:
                 vehicle.daily_reminders[d] = daily_reminders
 
-        # ✅ 构造该车每一天的预约信息
         row = {'vehicle': vehicle, 'days': []}
         for d in week_dates:
             day_reservations = sorted(vehicle_date_map[vehicle][d], key=lambda r: r.start_time)
@@ -630,28 +599,18 @@ def weekly_overview_view(request):
                 'date': d,
                 'reservations': day_reservations,
                 'is_past': is_past,
-                'is_maintenance': vehicle.is_maintenance,   # ★ 新增
+                'is_maintenance': vehicle.is_maintenance,
             })
 
-        # ✅ 添加提醒结构到 row（避免再次使用 reminders = []）
         vehicle_reminders = []
         if vehicle.inspection_date:
             delta = (vehicle.inspection_date - today).days
             if -5 <= delta <= 5:
-                vehicle_reminders.append({
-                    'type': 'inspection',
-                    'message': f"车检日 {vehicle.inspection_date} 距今 {delta} 天",
-                    'is_today': delta == 0
-                })
-
-        if vehicle.insurance_end_date:
+                vehicle_reminders.append({'type': 'inspection', 'message': f"车检日 {vehicle.inspection_date} 距今 {delta} 天", 'is_today': delta == 0})
+        if getattr(vehicle, 'insurance_end_date', None):
             delta = (vehicle.insurance_end_date - today).days
             if -5 <= delta <= 5:
-                vehicle_reminders.append({
-                    'type': 'insurance',
-                    'message': f"保险到期日 {vehicle.insurance_end_date} 距今 {delta} 天",
-                    'is_today': delta == 0
-                })
+                vehicle_reminders.append({'type': 'insurance', 'message': f"保险到期日 {vehicle.insurance_end_date} 距今 {delta} 天", 'is_today': delta == 0})
 
         row['reminders'] = vehicle_reminders
         data.append(row)
@@ -665,7 +624,7 @@ def weekly_overview_view(request):
         'cooldown_end': cooldown_end,
         'today': base_date,
         'selected_date': date_str if date_str else today.strftime("%Y-%m-%d"),
-        'reminders': global_reminders, 
+        'reminders': global_reminders,
     })
     
 @login_required
@@ -727,7 +686,7 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
             vehicle=vehicle,
             date__lte=d,
             end_date__gte=d,
-            status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED, ReservationStatus.DEPARTED]
+            status__in=[ReservationStatus.PENDING, ReservationStatus.BOOKED, ReservationStatus.OUT]
         ).order_by('start_time')
 
         segments = []
@@ -890,7 +849,7 @@ def my_reservations_view(request):
         # ✅ 暂时保留原始“下次预约”逻辑（下一步优化）
         next_res = Reservation.objects.filter(
             driver=r.driver,
-            status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED],
+            status__in=[ReservationStatus.PENDING, ReservationStatus.BOOKED],
             date__gt=r.end_date
         ).order_by('date', 'start_time').first()
 
@@ -927,7 +886,7 @@ def my_reservations_view(request):
 
 @staff_member_required
 def reservation_approval_list(request):
-    pending_reservations = Reservation.objects.filter(status=ReservationStatus.APPLYING).order_by('date', 'start_time')
+    pending_reservations = Reservation.objects.filter(status=ReservationStatus.PENDING).order_by('date', 'start_time')
     return render(request, 'vehicles/reservation_approval_list.html', {
         'pending_reservations': pending_reservations
     })
@@ -935,21 +894,13 @@ def reservation_approval_list(request):
 @staff_member_required
 def approve_reservation(request, pk):
     reservation = get_object_or_404(Reservation, pk=pk)
-
-    # ✅ 设置状态为“已预约”
-    reservation.status = 'reserved'
-
-    # ✅ 可选：记录审批人和时间（前提是模型中有这些字段）
+    reservation.status = 'booked'   # ← 不要再用 'reserved'
     if hasattr(reservation, 'approved_by'):
         reservation.approved_by = request.user
     if hasattr(reservation, 'approved_at'):
         reservation.approved_at = timezone.now()
-
     reservation.save()
-
-    # ✅ 新增：通知司机预约已通过
     notify_driver_reservation_approved(reservation)
-
     messages.success(request, f"✅ 预约 ID {pk} 已成功审批，并已通知司机。")
     return redirect('vehicles:reservation_approval_list')
 
@@ -1018,7 +969,7 @@ def edit_reservation_view(request, reservation_id):
     reservation = get_object_or_404(Reservation, id=reservation_id)
 
     # ✅ 权限判断：仅本人或管理员可访问
-    if reservation.status not in ['pending', 'reserved']:
+    if reservation.status not in ['pending', 'booked']:
         return HttpResponseForbidden("⛔️ 当前状态不可修改。")
 
     if request.method == 'POST':
@@ -1083,82 +1034,86 @@ def vehicle_detail_view(request, vehicle_id):
 @require_POST
 @login_required
 def confirm_check_io(request):
-    reservation_id = request.POST.get("reservation_id")
-    action_type = request.POST.get("action_type")
-    actual_time_str = request.POST.get("actual_time")
+    # ① 取预约ID：POST 优先，URL ?rid= 兜底
+    reservation_id = (request.POST.get("reservation_id", "").strip()
+                      or request.GET.get("rid", "").strip())
+    action_type = (request.POST.get("action_type") or "").strip()
+    actual_time_str = (request.POST.get("actual_time") or "").strip()
 
-    # ✅ 显式转换为 aware datetime（带时区）
-    actual_time = datetime.strptime(actual_time_str, "%Y-%m-%dT%H:%M")
-    if timezone.is_naive(actual_time):
-        actual_time = timezone.make_aware(actual_time)
+    if not reservation_id.isdigit():
+        messages.error(request, "无效的预约编号，请刷新页面后重试。")
+        return redirect("vehicles:my_reservations")
 
-    reservation = get_object_or_404(Reservation, id=reservation_id, driver=request.user)
+    # ② 解析为 aware datetime（表单是 datetime-local，无时区）
+    try:
+        actual_time = datetime.strptime(actual_time_str, "%Y-%m-%dT%H:%M")
+        if timezone.is_naive(actual_time):
+            actual_time = timezone.make_aware(actual_time)
+    except Exception:
+        messages.error(request, "时间格式不正确。")
+        return redirect("vehicles:my_reservations")
+
+    reservation = get_object_or_404(Reservation, id=int(reservation_id), driver=request.user)
 
     if action_type == "departure":
-        from django.db import transaction
         with transaction.atomic():
-            # 🚫 拦截：同一用户是否还有“出库未入库”的其他记录
-            unfinished_qs = (
+            # A. 拦截：是否还有“出库未入库”的其他记录
+            unfinished_exists = (
                 Reservation.objects
                 .select_for_update()
-                .filter(
-                    driver=request.user,
-                    status=ReservationStatus.DEPARTED,
-                    actual_return__isnull=True,
-                )
+                .filter(driver=request.user, status="out", actual_return__isnull=True)
                 .exclude(id=reservation.id)
+                .exists()
             )
-            if unfinished_qs.exists():
-                messages.error(request, "因有未完成入库操作的记录，请完成上一次入库操作后再进行本次出库。")
+            if unfinished_exists:
+                messages.error(request, "因有未完成入库操作的记录，请先完成上一次入库。")
                 return redirect("vehicles:my_reservations")
 
-            # ✅（可放事务内）查找上次入库并做 10 小时冷却校验
+            # B. 10 小时冷却
             last_return = (
                 Reservation.objects
                 .filter(driver=request.user, actual_return__isnull=False, actual_return__lt=actual_time)
                 .order_by("-actual_return")
                 .first()
             )
-            if last_return:
-                diff = actual_time - last_return.actual_return
-                if diff < timedelta(hours=10):
-                    next_allowed = last_return.actual_return + timedelta(hours=10)
-                    messages.error(request, f"距上次入库还未满10小时，请于 {next_allowed.strftime('%H:%M')} 后再试出库。")
-                    return redirect("vehicles:my_reservations")
+            if last_return and (actual_time - last_return.actual_return) < timedelta(hours=10):
+                next_allowed = last_return.actual_return + timedelta(hours=10)
+                messages.error(request, f"距上次入库未满 10 小时，请于 {timezone.localtime(next_allowed).strftime('%Y-%m-%d %H:%M')} 后再试。")
+                return redirect("vehicles:my_reservations")
 
-            # ✅ 更新状态（与检查同一事务，避免并发窗口）
+            # C. 更新为“出库中”
             reservation.actual_departure = actual_time
             reservation.status = "out"
-            reservation.save()
+            reservation.save(update_fields=["actual_departure", "status"])
 
         messages.success(request, "✅ 出库记录已保存。")
         return redirect("vehicles:my_reservations")
 
-
     elif action_type == "return":
+        # A. 入库
         reservation.actual_return = actual_time
+        reservation.status = "done"
+        reservation.save(update_fields=["actual_return", "status"])
 
-        # ✅ 检查后续预约是否不足 10 小时，自动延后
-        next_res = Reservation.objects.filter(
-            driver=request.user,
-            date__gte=reservation.date,
-            status__in=[ReservationStatus.APPLYING, ReservationStatus.BOOKED]
-        ).exclude(id=reservation.id).order_by("date", "start_time").first()
-
+        # B. 如有后续预约且不足 10 小时，则自动顺延
+        next_res = (
+            Reservation.objects
+            .filter(driver=request.user,
+                    date__gte=reservation.date,
+                    status__in=["pending", "booked"])
+            .exclude(id=reservation.id)
+            .order_by("date", "start_time")
+            .first()
+        )
         if next_res:
             next_start = timezone.make_aware(datetime.combine(next_res.date, next_res.start_time))
-            if timezone.is_naive(next_start):
-                next_start = timezone.make_aware(next_start)
-
-            if next_start - actual_time < timedelta(hours=10):
+            if (next_start - actual_time) < timedelta(hours=10):
                 new_start = actual_time + timedelta(hours=10)
                 next_res.date = new_start.date()
                 next_res.start_time = new_start.time()
-                next_res.save()
-                messages.warning(request, f"⚠️ 下次预约时间已自动顺延至 {new_start.strftime('%Y-%m-%d %H:%M')}")
+                next_res.save(update_fields=["date", "start_time"])
+                messages.warning(request, f"⚠️ 下次预约已顺延至 {timezone.localtime(new_start).strftime('%Y-%m-%d %H:%M')}")
 
-        reservation.status = "completed"
-        reservation.save()
         messages.success(request, "✅ 入库记录已保存。")
         return redirect("vehicles:my_reservations")
 
@@ -1340,7 +1295,7 @@ def admin_stats_view(request):
             driver=driver,
             date__gte=month_start.date(),
             end_date__lte=month_end.date(),
-            status__in=[ReservationStatus.BOOKED, ReservationStatus.DEPARTED, ReservationStatus.COMPLETED]
+            status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT, ReservationStatus.DONE]
         )
 
         # 出入库总次数
@@ -1464,7 +1419,7 @@ def admin_reset_departure(request, reservation_id):
     reservation = get_object_or_404(Reservation, id=reservation_id)
     if reservation.actual_departure:
         reservation.actual_departure = None
-        reservation.status = 'reserved'
+        reservation.status = 'booked'
         reservation.vehicle.status = 'available'
         reservation.vehicle.save()
         reservation.save()

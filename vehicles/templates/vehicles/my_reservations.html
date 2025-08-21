@@ -38,21 +38,24 @@
     font-weight: 500;
     position: relative;
   }
-
   .marquee-content {
     display: inline-block;
     padding-left: 100%;
     animation: scroll-left 40s linear infinite;
   }
-
   @keyframes scroll-left {
-    0% {
-      transform: translateX(0%);
-    }
-    100% {
-      transform: translateX(-100%);
-    }
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-100%); }
   }
+
+  /* ✅ 新增：状态徽章样式 */
+  .status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:13px}
+  .badge-pending{background:#fff3cd;color:#856404}      /* 申请中 */
+  .badge-booked{background:#e7f1ff;color:#0b5ed7}       /* 已预约 */
+  .badge-out{background:#e2f0d9;color:#0f5132}          /* 已出库 */
+  .badge-done{background:#e6ffed;color:#1f7a1f}         /* 已完成 */
+  .badge-cancel{background:#fdecea;color:#b02a37}       /* 已取消 */
+  .badge-incomplete{background:#eee;color:#666}         /* 未完成 */
 </style>
 
 <!-- ✅ 滚动通知条 -->
@@ -64,12 +67,11 @@
   </div>
 {% endif %}
 
-
 <h2>📋 私の予約履歴</h2>
 {% include 'partials/_messages.html' %}
 
 <table class="japanese-style-table">
- <thead>
+  <thead>
     <tr>
       <th>🚘 車輌</th>
       <th>📅 利用時間</th>
@@ -85,33 +87,22 @@
           {{ r.date|date:"Y/m/d" }} {{ r.start_time|time:"H:i" }} ~
           {{ r.end_date|default:r.date|date:"Y/m/d" }} {{ r.end_time|time:"H:i" }}
         </td>
+
+        <!-- ✅ 状态列：改为自动显示中文 + 动态徽章样式 -->
         <td>
-          {% if r.status == 'pending' %}
-            <span class="status-badge badge-pending">申請中</span>
-          {% elif r.status == 'reserved' %}
-            <span class="status-badge badge-reserved">予約済</span>
-          {% elif r.status == 'out' %}
-            <span class="status-badge badge-out">出庫中</span>
-          {% elif r.status == 'completed' %}
-            <span class="status-badge badge-completed">完了</span>
-          {% elif r.status == 'canceled' %}
-            <span class="status-badge badge-canceled">キャンセル</span>
-          {% else %}
-            <span class="status-badge" style="background-color:#eee; color:#999;">不明</span>
-          {% endif %}
+          <span class="status-badge badge-{{ r.status }}">{{ r.get_status_display }}</span>
         </td>
+
         <td>{% include 'partials/_check_io_buttons.html' with r=r %}</td>
       </tr>
 
+      <thead>
+        <tr>
+          <th colspan="4" class="text-center">导航中点击车辆状态，在备注中可以修改今日使用车辆的设备情况，请协助！</th>
+        </tr>
+      </thead>
 
-        <thead>
-    <tr>
-      <th colspan="4" class="text-center">导航中点击车辆状态，在备注中可以修改今日使用车辆的设备情况，请协助！</th>
-    </tr>
-  </thead>
-
-
-      <!-- ✅ 插入新的提示行 -->
+      <!-- ✅ 插入新的提示行（保持你原样） -->
       <tr>
         <td colspan="4" style="font-size: 13px; color: #666; background-color: #f9f9f9;">
           {% with info=reservation_infos.r.id %}
@@ -133,7 +124,6 @@
           {% endwith %}
         </td>
       </tr>
-
 
     {% empty %}
       <tr>
@@ -163,7 +153,9 @@
 <!-- 出库弹窗 -->
 <div class="modal fade" id="departureModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
-    <form id="departureForm" method="post" action="{% url 'vehicles:confirm_check_io' %}">
+    <form id="departureForm" method="post" 
+          action="{% url 'vehicles:confirm_check_io' %}"
+          data-base-action="{% url 'vehicles:confirm_check_io' %}">
       {% csrf_token %}
       <input type="hidden" name="reservation_id" id="reservationIdInput">
       <input type="hidden" name="action_type" value="departure">
@@ -183,10 +175,13 @@
     </form>
   </div>
 </div>
+
 <!-- 入库弹窗 -->
 <div class="modal fade" id="returnModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
-    <form id="returnForm" method="post" action="{% url 'vehicles:confirm_check_io' %}">
+    <form id="returnForm" method="post" 
+          action="{% url 'vehicles:confirm_check_io' %}"
+          data-base-action="{% url 'vehicles:confirm_check_io' %}">
       {% csrf_token %}
       <input type="hidden" name="reservation_id" id="returnReservationIdInput">
       <input type="hidden" name="action_type" value="return">
@@ -208,8 +203,36 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function toLocalInputValue(d){
+  const tz = d.getTimezoneOffset() * 60000;
+  const local = new Date(d.getTime() - tz);
+  return local.toISOString().slice(0,16); // YYYY-MM-DDTHH:MM
+}
 
-{% include 'partials/_check_io_popup.html' %}
+// 点击“出库”按钮时：写入隐藏字段 & 建议时间 & 给 action 附 ?rid=ID
+function primeDeparture(btn){
+  const id = btn.dataset.reservationId || btn.getAttribute('data-id');
+  if(!id){ console.warn('no reservation id'); return; }
+  const form = document.getElementById('departureForm');
+  const base = form?.dataset?.baseAction || form?.getAttribute('action') || '';
+  document.getElementById('reservationIdInput').value = id;
+  document.getElementById('actualDepartureInput').value = toLocalInputValue(new Date());
+  if(form) form.setAttribute('action', base + '?rid=' + encodeURIComponent(id));
+}
+
+// 点击“入库”按钮时：写入隐藏字段 & 当前本地时间 & 给 action 附 ?rid=ID
+function primeReturn(btn){
+  const id = btn.dataset.reservationId || btn.getAttribute('data-id');
+  if(!id){ console.warn('no reservation id'); return; }
+  const form = document.getElementById('returnForm');
+  const base = form?.dataset?.baseAction || form?.getAttribute('action') || '';
+  document.getElementById('returnReservationIdInput').value = id;
+  document.getElementById('actualReturnInput').value = toLocalInputValue(new Date());
+  if(form) form.setAttribute('action', base + '?rid=' + encodeURIComponent(id));
+}
+</script>
+
 <script src="{% static 'vehicles/js/check_io.js' %}"></script>
 
 {% endblock %}
