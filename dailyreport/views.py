@@ -20,6 +20,7 @@ from dateutil.relativedelta import relativedelta
 
 from django.db.models.functions import Lower, Trim, ExtractHour, ExtractMinute
 from dailyreport.constants import PAYMENT_RATES
+from vehicles.utils import mark_linked_reservation_incomplete
 
 
 from dailyreport.models import DriverDailyReport, DriverDailyReportItem
@@ -1717,6 +1718,13 @@ def dailyreport_create_for_driver(request, driver_id):
             dailyreport.save()
             formset.instance = dailyreport
             formset.save()
+
+            # === mark_linked_reservation_incomplete call: START ===
+            # 仅当管理员勾选了“未完成出入庫”时，将同车且覆盖该日报日期的预约标记为 INCOMPLETE。
+            # 非管理员即使传值也不会生效（工具函数内部会检查 is_staff）。
+            mark_flag = request.POST.get('mark_incomplete') in ('1', 'on', 'true', 'True')
+            mark_linked_reservation_incomplete(dailyreport, request.user, mark_flag)
+            # === mark_linked_reservation_incomplete call: END ===
 
             messages.success(request, '新增日报成功')
             return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)

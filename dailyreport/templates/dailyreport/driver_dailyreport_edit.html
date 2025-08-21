@@ -144,6 +144,8 @@ input[type=number] {
           <th style="white-space: nowrap;"><strong>使用車両</strong></th>
           <th style="white-space: nowrap;">出勤</th>
           <th style="white-space: nowrap;">退勤</th>
+          <th style="white-space: nowrap;">未入库</th>
+
           <th style="white-space: nowrap;">勤務時間</th>
           <th style="white-space: nowrap;">休憩時間</th>
           <th style="white-space: nowrap;"><span class="text-info">実働時間</span></th>
@@ -172,6 +174,24 @@ input[type=number] {
           <td style="max-width:110px;" >
             <input type="text" name="clock_out" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_out|default_if_none:'' }}">
           </td>
+
+          {# === admin-only checkbox: START === #}
+          {% if request.user.is_staff %}
+          <td class="text-center">
+            <div class="form-check">
+              <input type="checkbox"
+                    class="form-check-input"
+                    id="mark-incomplete"
+                    name="mark_incomplete"
+                    value="1">
+              <label class="form-check-label small text-danger" for="mark-incomplete">
+                未完成出入庫
+              </label>
+            </div>
+          </td>
+          {% endif %}
+          {# === admin-only checkbox: END === #}
+
           <td id="work-duration">--:--</td> <!--勤務時間-->
 
           <!-- ✅ 休憩時間输入 -->
