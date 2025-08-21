@@ -91,6 +91,16 @@
         <!-- ✅ 状态列：改为自动显示中文 + 动态徽章样式 -->
         <td>
           <span class="status-badge badge-{{ r.status }}">{{ r.get_status_display }}</span>
+          {% if r.status == 'incomplete' %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary ms-2"
+                    data-reservation-id="{{ r.id }}"
+                    data-bs-toggle="modal"
+                    data-bs-target="#returnModal"
+                    onclick="primeReturn(this)">
+              🅿️ 入库
+            </button>
+          {% endif %}
         </td>
 
         <td>{% include 'partials/_check_io_buttons.html' with r=r %}</td>
