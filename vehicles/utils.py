@@ -2,6 +2,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
 from accounts.models import DriverUser
+from vehicles.models import Reservation, ReservationStatus
 
 def send_notification(subject, message, to_emails=None, html_message=None, fail_silently=False):
     """
@@ -105,3 +106,32 @@ def notify_driver_reservation_approved(reservation):
         html_message=html_message
     )
 
+def mark_linked_reservation_incomplete(report, acting_user, mark_flag: bool):
+    """
+    仅当 mark_flag=True 且操作者为管理员时，
+    将与日报同车、覆盖当日的预约标记为 INCOMPLETE（未完成出入库手续）。
+    不填写 actual_return；司机在“入库”动作发生时，系统会改成 DONE。
+    """
+    if not mark_flag:
+        return
+    if not getattr(acting_user, "is_staff", False):
+        return
+
+    # report.driver 可能是 Driver 模型，取其 user；如本身就是 User，则原样返回
+    driver_user = getattr(report.driver, "user", report.driver)
+
+    linked = (
+        Reservation.objects
+        .filter(
+            driver=driver_user,
+            vehicle=report.vehicle,
+            date__lte=report.date,
+            end_date__gte=report.date,
+        )
+        .order_by("-date", "-start_time")
+        .first()
+    )
+    if linked:
+        linked.status = ReservationStatus.INCOMPLETE
+        linked.save(update_fields=["status"])
+# === mark_linked_reservation_incomplete: END ===
