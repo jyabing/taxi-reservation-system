@@ -48,8 +48,14 @@ class Driver(models.Model):
     driver_code = models.CharField('従業員番号', max_length=20, unique=True)
     name = models.CharField('氏名', max_length=32)
     kana = models.CharField('フリガナ', max_length=32)
-    company = models.CharField('事業者名', max_length=64)
-    workplace = models.CharField('営業所名', max_length=64)
+
+    # ✅ 新增：别名/别名カタカナ（如不需要可删除）
+    alt_name = models.CharField('別名', max_length=32, blank=True, default="")
+    alt_kana = models.CharField('別名フリガナ', max_length=32, blank=True, default="")
+
+    # ✅ 改造：由 CharField → ForeignKey
+    company   = models.ForeignKey(Company,   on_delete=models.PROTECT, related_name='drivers', verbose_name='事業者名')
+    workplace = models.ForeignKey(Workplace, on_delete=models.PROTECT, related_name='drivers', verbose_name='営業所名')
     department = models.CharField('部門', max_length=32, blank=True)
     position = models.CharField('職種', max_length=32, choices=[
         ('1', '常時選任運転者'),
