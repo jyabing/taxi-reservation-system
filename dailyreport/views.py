@@ -125,31 +125,21 @@ def get_active_drivers(month_obj=None, keyword=None):
     if month_obj is None:
         month_obj = date.today()
 
-    year, month = month_obj.year, month_obj.month
-    from calendar import monthrange
-    first_day = date(year, month, 1)
-    last_day = date(year, month, monthrange(year, month)[1])
+    first_day = date(month_obj.year, month_obj.month, 1)
+    last_day = date(month_obj.year, month_obj.month, monthrange(month_obj.year, month_obj.month)[1])
 
     qs = qs.filter(
-        hire_date__lte=last_day
-    ).filter(
-        Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day)
+        Q(hire_date__lte=last_day) &
+        (Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day))
     )
 
-    if hasattr(Driver, 'is_active'):
-        qs = qs.filter(is_active=True)
-
     if keyword:
-        k = keyword.strip()
         qs = qs.filter(
-            Q(name__icontains=k) |
-            Q(kana__icontains=k) |
-            Q(driver_code__icontains=k) |     # ✅ 别再用 code
-            Q(company__name__icontains=k) |   # ✅ 通过外键名查公司
-            Q(workplace__name__icontains=k)
+            Q(name__icontains=keyword) |
+            Q(kana__icontains=keyword) |
+            Q(driver_code__icontains=keyword)
         )
 
-    # 返回完整模型对象，后续可 select_related/annotate
     return qs.order_by('name')
 
 # ✅ 新增日报
@@ -1721,31 +1711,47 @@ def dailyreport_overview(request):
     prev_month = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month = (month + relativedelta(months=1)).strftime('%Y-%m')
 
-    keyword = request.GET.get('keyword', '').strip()
+    keyword = (request.GET.get('keyword') or '').strip()
 
-    # ✅ 关键：不再让任何 queryset 里出现 'company' 这个列名
-    drivers = get_active_drivers(month, keyword).annotate(
-        company_name=F('company__name'),
-        workplace_name=F('workplace__name'),
+    # 司机 queryset：只通过 workplace -> company 取名，不触表中不存在的 'company' 列
+    drivers_qs = (
+        get_active_drivers(month, keyword)
+        .select_related('workplace__company')
+        .annotate(
+            company_name=F('workplace__company__name'),
+            workplace_name=F('workplace__name'),
+        )
+        .only('id', 'driver_code', 'name', 'kana', 'workplace')
+    )
+    # 后面排序要用到对象本身，先 materialize
+    drivers = list(drivers_qs)
+
+    # 当月所有日报
+    reports_all = DriverDailyReport.objects.filter(
+        date__year=month.year, date__month=month.month
+    )
+    # 仅司机范围内的日报 —— 关键：用 driver_id__in 避开任何 'driver.company' 的 SQL
+    reports = reports_all.filter(
+        driver_id__in=drivers_qs.values_list('id', flat=True)
     )
 
-    # 当月日报
-    first_day = date(month.year, month.month, 1)
-    last_day  = date(month.year, month.month, monthrange(month.year, month.month)[1])
+    # 明细标准化
+    items_norm = (
+        DriverDailyReportItem.objects.filter(report__in=reports_all)
+        .annotate(
+            pm=Lower(Trim('payment_method')),
+            cpm=Lower(Trim('charter_payment_method'))
+        )
+    )
 
-    reports_all = DriverDailyReport.objects.filter(date__range=(first_day, last_day))
-    reports = reports_all.filter(driver_id__in=driver_ids)
+    totals = defaultdict(Decimal)
+    counts = defaultdict(int)
 
-    # …——下面你的统计逻辑保持不变即可——…
-    items_norm = (DriverDailyReportItem.objects.filter(report__in=reports_all)
-                  .annotate(pm=Lower(Trim('payment_method')),
-                            cpm=Lower(Trim('charter_payment_method'))))
-
-    totals = defaultdict(Decimal); counts = defaultdict(int)
-
+    # メータのみ（非貸切）
     totals['meter_only_total'] = items_norm.filter(is_charter=False)\
         .aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
 
+    # 各方式（现金不叠加貸切）
     MAP = {
         'cash':   (['cash'],                 []),
         'credit': (['credit','credit_card'], ['credit','credit_card']),
@@ -1786,6 +1792,7 @@ def dailyreport_overview(request):
     totals['meter_pre_tax'] = (totals['total_meter'] / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
+    # 每司机“売上合計”
     per_driver = DriverDailyReportItem.objects.filter(report__in=reports).values('report__driver').annotate(
         meter_only=Sum('meter_fee', filter=Q(is_charter=False)),
         charter_cash=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['jpy_cash'])),
