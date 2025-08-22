@@ -34,6 +34,22 @@ PAYMENT_METHOD_CHOICES = [
     ('qr', '扫码(PayPay/AuPay/支付宝/微信Pay等)'),
 ]
 
+# ✅ 新增：事業者/営業所 主数据模型
+class Company(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    def __str__(self):
+        return self.name
+
+class Workplace(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="workplaces")
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        unique_together = ("company", "name")
+
+    def __str__(self):
+        return f"{self.company.name} / {self.name}"
+
 # 司机基本信息 + 台账扩展字段
 class Driver(models.Model):
     # user 字段一定指向 AUTH_USER_MODEL
@@ -48,8 +64,15 @@ class Driver(models.Model):
     driver_code = models.CharField('従業員番号', max_length=20, unique=True)
     name = models.CharField('氏名', max_length=32)
     kana = models.CharField('フリガナ', max_length=32)
-    company = models.CharField('事業者名', max_length=64)
-    workplace = models.CharField('営業所名', max_length=64)
+
+    # ✅ 新增：别名/别名カタカナ（如不需要可删除）
+    alt_name = models.CharField('別名', max_length=32, blank=True, default="")
+    alt_kana = models.CharField('別名フリガナ', max_length=32, blank=True, default="")
+
+    # ✅ 改造：由 CharField → ForeignKey
+    company   = models.ForeignKey(Company,   on_delete=models.PROTECT, related_name='drivers', verbose_name='事業者名')
+    workplace = models.ForeignKey(Workplace, on_delete=models.PROTECT, related_name='drivers', verbose_name='営業所名')
+
     department = models.CharField('部門', max_length=32, blank=True)
     position = models.CharField('職種', max_length=32, choices=[
         ('1', '常時選任運転者'),
@@ -60,12 +83,12 @@ class Driver(models.Model):
     employ_type = models.CharField("在職類型", max_length=20, choices=[
         ('1', '正式運転者'),
         ('2', '非常勤運転者'),
-        ('3', '退職者')  # ✅ 正确的方式是列表
+        ('3', '退職者')
     ])
     appointment_date = models.DateField(blank=True, null=True, verbose_name="選任年月日")
     #hire_date = models.DateField(blank=True, null=True, verbose_name="入社年月日")
     hire_date = models.DateField(verbose_name="入社年月日")
-    resigned_date = models.DateField(blank=True, null=True, verbose_name="退職日")  # ✅ 新增
+    resigned_date = models.DateField(blank=True, null=True, verbose_name="退職日")
     create_date = models.DateField(blank=True, null=True, verbose_name="作成年月日")
     birth_date = models.DateField(blank=True, null=True, verbose_name="生年月日")
     gender = models.CharField(max_length=8, choices=[
@@ -96,7 +119,7 @@ class Driver(models.Model):
         max_length=64,
         blank=True,
         null=True,
-        choices=RESIDENCE_STATUS_CHOICES,  # ✅ 选择项绑定
+        choices=RESIDENCE_STATUS_CHOICES,
         verbose_name="在留資格"
     )
     residence_expiry = models.DateField(blank=True, null=True, verbose_name="在留期限")
@@ -109,13 +132,8 @@ class Driver(models.Model):
     has_tax_form = models.BooleanField(default=False, verbose_name="扶養控除等申告書提出済")
     has_license_copy = models.BooleanField(default=False, verbose_name="免許証コピー提出済")
 
-
-
     # 其它
     remark = models.CharField(max_length=256, blank=True, null=True, verbose_name="特記事項")
-
-
-    # 可根据需要继续添加其他字段（如身份证号、入职日期、状态等）
 
     class Meta:
         verbose_name = "员工资料"
@@ -307,8 +325,6 @@ class DriverPayrollRecord(models.Model):
     other_deductions = models.DecimalField('其他扣除', max_digits=10, decimal_places=2, default=0)
     total_deductions = models.DecimalField('総控除額', max_digits=10, decimal_places=2, default=0)
     # --- 最终金额 ---
-    # 差引支給額 = 总支给额 - 总控除额
-    # 这里默认总支给额和总控除额都已计算好
     net_pay = models.DecimalField('差引支給額', max_digits=10, decimal_places=2, default=0)
 
     note = models.TextField('备注', blank=True)
@@ -324,7 +340,6 @@ class DriverPayrollRecord(models.Model):
 
     def recompute_totals(self):
         """総控除額・差引支給額を自動再計算"""
-        # 総控除額 ＝ 法定控除合計 + その他控除 + 売上分段控除
         total_deds = (
             self._as_dec(self.health_insurance_deduction) +
             self._as_dec(self.health_care_insurance_deduction) +
@@ -337,22 +352,17 @@ class DriverPayrollRecord(models.Model):
             self._as_dec(self.progressive_fee)
         )
         self.total_deductions = total_deds
-
-        # 差引支給額 ＝ 総支給額 − 総控除額
         self.net_pay = self._as_dec(self.total_pay) - self._as_dec(self.total_deductions)
 
     def save(self, *args, **kwargs):
         try:
             self.recompute_totals()
         except Exception:
-            pass  # 防御：合計失敗でも保存は継続
+            pass
         super().save(*args, **kwargs)
-    # ===== INSERT-M: 自動合計ロジック END =====
 
     def __str__(self):
         return f"{self.driver} - {self.month.strftime('%Y-%m')} 工资"
-
-
 
 # ✅【新增 Staff 模型】
 class Staff(models.Model):

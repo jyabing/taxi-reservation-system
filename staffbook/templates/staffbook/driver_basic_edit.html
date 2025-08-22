@@ -1,153 +1,197 @@
 {% extends "staffbook/base_staffbook.html" %}
-{% load driver_extras %}
-
 {% block content %}
 <div class="container mt-4">
-  <div class="card shadow" style="max-width: 950px; margin:0 auto;">
-    <div class="card-header bg-white d-flex align-items-center">
-      <i class="fa fa-user me-2"></i>
-      <b>基本情報編集</b>
+  <div class="card shadow" style="width:90vw;max-width:1200px;margin:0 auto;">
+    <div class="card-header bg-white d-flex align-items-center" style="font-size:1.2em;">
+      <i class="fa fa-edit me-2"></i> 基本データ編集
       <span class="badge bg-primary ms-2">No.{{ driver.driver_code }}</span>
-      <span class="ms-auto small">
-        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
-      </span>
+      <span class="ms-auto text-muted">事業者名/営業所名・国籍・別名は必須</span>
     </div>
 
-    {% include "staffbook/driver_tab_nav.html" with main_tab="basic" tab="basic" driver=driver %}
-
-    <div class="card-body pt-4">
-      <form method="post" enctype="multipart/form-data" novalidate>
+    <div class="card-body">
+      <form method="post" action="{% url 'staffbook:driver_basic_edit' driver.id %}">
         {% csrf_token %}
-        {% if form.non_field_errors %}
-          <div class="alert alert-danger">{{ form.non_field_errors }}</div>
-        {% endif %}
+
         <div class="row">
-          <!-- 左侧 2列布局 -->
-          <div class="col-md-8">
-            <div class="row g-2">
-              <div class="col-md-6">
-                <label class="form-label">従業員番号 <span class="badge bg-danger">必須</span></label>
-                {{ form.driver_code }}
-                {% if form.driver_code.errors %}<div class="text-danger small">{{ form.driver_code.errors }}</div>{% endif %}
+          <!-- 左列 -->
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label class="form-label">氏名（首選）</label>
+              <input type="text" name="name" value="{{ driver.name }}" class="form-control" required>
+              <div class="form-text">画面显示时将按「氏名（国籍）」显示。</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">フリガナ（首選）</label>
+              <input type="text" name="kana" value="{{ driver.kana }}" class="form-control" required>
+            </div>
+
+            <!-- 别名（新增：必填） -->
+            <div class="mb-3">
+              <label class="form-label">別名（可选）</label>
+              <input type="text" name="alt_name" value="{{ driver.alt_name }}" class="form-control">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">別名フリガナ（可选）</label>
+              <input type="text" name="alt_kana" value="{{ driver.alt_kana }}" class="form-control">
+            </div>
+
+            <!-- 国籍（新增：必填，下拉） -->
+            <div class="mb-3">
+              <label class="form-label">国籍（必須）</label>
+              <select name="nationality" class="form-select" required>
+                <option value="">--選択してください--</option>
+                {% for n in nationality_choices %}
+                  <option value="{{ n }}" {% if driver.nationality == n %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label">性別</label>
+                <select name="gender" class="form-select" required>
+                  <option value="">--選択--</option>
+                  {% for val,label in gender_choices %}
+                    <option value="{{ val }}" {% if driver.gender == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
               </div>
-              <div class="col-md-6">
-                <label class="form-label">事業者名 <span class="badge bg-danger">必須</span></label>
-                {{ form.company }}
-                {% if form.company.errors %}<div class="text-danger small">{{ form.company.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">氏名 <span class="badge bg-danger">必須</span></label>
-                {{ form.name }}
-                {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">フリガナ <span class="badge bg-danger">必須</span></label>
-                {{ form.kana }}
-                {% if form.kana.errors %}<div class="text-danger small">{{ form.kana.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">営業所 <span class="badge bg-danger">必須</span></label>
-                {{ form.workplace }}
-                {% if form.workplace.errors %}<div class="text-danger small">{{ form.workplace.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">部門</label>
-                {{ form.department }}
-                {% if form.department.errors %}<div class="text-danger small">{{ form.department.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">職種 <span class="badge bg-danger">必須</span></label>
-                {{ form.position }}
-                {% if form.position.errors %}<div class="text-danger small">{{ form.position.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">在职类型 <span class="badge bg-danger">必須</span></label>
-                {{ form.employ_type }}
-                {% if form.employ_type.errors %}<div class="text-danger small">{{ form.employ_type.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">性別 <span class="badge bg-danger">必須</span></label>
-                {{ form.gender }}
-                {% if form.gender.errors %}<div class="text-danger small">{{ form.gender.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
+
+              <div class="col-md-6 mb-3">
                 <label class="form-label">血液型</label>
-                {{ form.blood_type }}
-                {% if form.blood_type.errors %}<div class="text-danger small">{{ form.blood_type.errors }}</div>{% endif %}
+                <select name="blood_type" class="form-select">
+                  <option value="">--選択--</option>
+                  {% for val,label in blood_choices %}
+                    <option value="{{ val }}" {% if driver.blood_type == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
               </div>
-              <div class="col-md-6">
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
                 <label class="form-label">生年月日</label>
-                {{ form.birth_date }}
-                {% if form.birth_date.errors %}<div class="text-danger small">{{ form.birth_date.errors }}</div>{% endif %}
+                <input type="date" name="birth_date" value="{{ driver.birth_date|date:'Y-m-d' }}" class="form-control" required>
               </div>
-              <div class="col-md-6">
-                <label class="form-label">年齢</label>
-                <div class="form-control-plaintext">{% if form.birth_date.value %}{{ form.birth_date.value|age }}歳{% endif %}</div>
-              </div>
-              <div class="col-md-6">
+              <div class="col-md-6 mb-3">
                 <label class="form-label">入社年月日</label>
-                {{ form.hire_date }}
-                {% if form.hire_date.errors %}<div class="text-danger small">{{ form.hire_date.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">選任年月日</label>
-                {{ form.appointment_date }}
-                {% if form.appointment_date.errors %}<div class="text-danger small">{{ form.appointment_date.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">作成年月日</label>
-                {{ form.create_date }}
-                {% if form.create_date.errors %}<div class="text-danger small">{{ form.create_date.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">邮便番号</label>
-                {{ form.postal_code }}
-                {% if form.postal_code.errors %}<div class="text-danger small">{{ form.postal_code.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">住所</label>
-                {{ form.address }}
-                {% if form.address.errors %}<div class="text-danger small">{{ form.address.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">電話番号</label>
-                {{ form.phone_number }}
-                {% if form.phone_number.errors %}<div class="text-danger small">{{ form.phone_number.errors }}</div>{% endif %}
+                <input type="date" name="hire_date" value="{{ driver.hire_date|date:'Y-m-d' }}" class="form-control">
               </div>
             </div>
           </div>
-          <!-- 右侧照片与特記事項 -->
-          <div class="col-md-4">
-            <div class="mb-3 text-center">
-              <label class="form-label">写真</label><br>
-              {% if driver.photo %}
-                <img src="{{ driver.photo.url }}" alt="写真" class="rounded-circle mb-2" style="width:110px;height:110px;object-fit:cover;">
-              {% else %}
-                <img src="/static/default_avatar.png" alt="写真" class="rounded-circle mb-2" style="width:110px;height:110px;object-fit:cover;">
-              {% endif %}
-              {{ form.photo }}
-              {% if form.photo.errors %}<div class="text-danger small">{{ form.photo.errors }}</div>{% endif %}
-            </div>
+
+          <!-- 事业者 -->
+          <div class="mb-3">
+            <label class="form-label">事業者名（必須）</label>
+            <select name="company" class="form-select" required id="companySelect">
+              <option value="">--選択してください--</option>
+              {% for c in companies %}
+                <option value="{{ c.id }}"
+                  {% if selected_company_id == c.id|stringformat:"s" %}selected{% endif %}>
+                  {{ c.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- 营业所（前端按公司过滤） -->
+          <div class="mb-3">
+            <label class="form-label">営業所名（必須）</label>
+            <select name="workplace" class="form-select" required id="workplaceSelect">
+              <option value="">--選択してください--</option>
+              {% for w in workplaces %}
+                <option value="{{ w.id }}" data-company="{{ w.company_id }}"
+                  {% if selected_workplace_id == w.id|stringformat:"s" %}selected{% endif %}>
+                  {{ w.name }}
+                </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">事業者選択で営業所を絞り込みます。</div>
+          </div>
+
             <div class="mb-3">
-              <label class="form-label">写真撮影日</label>
-              {{ form.photo_date }}
-              {% if form.photo_date.errors %}<div class="text-danger small">{{ form.photo_date.errors }}</div>{% endif %}
+              <label class="form-label">部門</label>
+              <input type="text" name="department" value="{{ driver.department }}" class="form-control">
             </div>
+
+            <div class="mb-3">
+              <label class="form-label">職種</label>
+              <select name="position" class="form-select" required>
+                {% for val,label in driver_position_choices %}
+                  <option value="{{ val }}" {% if driver.position == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">在職類型（必須）</label>
+              <select name="employ_type" class="form-select" required>
+                <option value="">--選択してください--</option>
+                {% for val, label in employ_type_choices %}
+                  {# 某些情况下 choices 里会有 ('', '---------')，过滤掉空值 #}
+                  {% if val %}
+                    <option value="{{ val }}"
+                      {% if selected_employ_type|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>
+                      {{ label }}
+                    </option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </div>
+
             <div class="mb-3">
               <label class="form-label">特記事項</label>
-              {{ form.remark }}
-              {% if form.remark.errors %}<div class="text-danger small">{{ form.remark.errors }}</div>{% endif %}
+              <textarea name="remark" rows="4" class="form-control">{{ driver.remark }}</textarea>
             </div>
           </div>
         </div>
-        <div class="text-end mt-4">
-          <button type="submit" class="btn btn-success btn-lg px-5 me-2">
+
+        <div class="d-flex justify-content-between">
+          <a href="{% url 'staffbook:driver_basic_info' driver.id %}" class="btn btn-outline-secondary">
+            <i class="fa fa-arrow-left"></i> 戻る
+          </a>
+          <button type="submit" class="btn btn-primary">
             <i class="fa fa-save"></i> 保存
           </button>
-          <a href="{% url 'staffbook:driver_basic_info' driver.id %}" class="btn btn-secondary btn-lg">キャンセル</a>
         </div>
       </form>
     </div>
   </div>
 </div>
+
+<!-- …你的表单与下拉结束 -->
+<script>
+(function(){
+  const companySel   = document.getElementById('companySelect');
+  const workplaceSel = document.getElementById('workplaceSelect');
+  if (!companySel || !workplaceSel) return;
+
+  function filterWorkplaces() {
+    const cid = companySel.value;
+    let found = false;
+
+    // 保留第一项占位，其他按 data-company 过滤
+    for (let i = 0; i < workplaceSel.options.length; i++) {
+      const opt = workplaceSel.options[i];
+      if (!opt.value) continue; // 跳过占位 "--選択してください--"
+      const match = (opt.dataset.company === cid);
+      opt.hidden = !match;
+      if (!match && opt.selected) opt.selected = false;
+      if (match) found = true;
+    }
+
+    // 没有选中项且存在可见项时，默认选第一个可见项；否则保持为空
+    if (!workplaceSel.value) {
+      const first = Array.from(workplaceSel.options).find(o => !o.hidden && o.value);
+      workplaceSel.value = first ? first.value : '';
+    }
+  }
+
+  // 进入页面先过滤一次（按当前公司或回显的 POST 值）
+  document.addEventListener('DOMContentLoaded', filterWorkplaces);
+  // 用户切换公司时再过滤
+  companySel.addEventListener('change', filterWorkplaces);
+})();
+</script>
 {% endblock %}

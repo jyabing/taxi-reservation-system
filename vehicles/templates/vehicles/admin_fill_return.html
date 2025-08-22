@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h3>补填退勤时间并标记未完成出入库手续</h3>
+<p>预约：{{ reservation.vehicle }}　{{ reservation.date }} {{ reservation.start_time }} - {{ reservation.end_time }}（司机：{{ reservation.driver }}）</p>
+
+<form method="post">
+  {% csrf_token %}
+  <label for="actual_time">退勤时间：</label>
+  <input id="actual_time" name="actual_time" type="datetime-local" value="{{ default_time }}" class="form-control" required>
+  <div class="mt-3">
+    <button type="submit" class="btn btn-primary">保存</button>
+    <a href="{% url 'vehicles:reservation_detail' reservation.id %}" class="btn btn-secondary">返回</a>
+  </div>
+</form>
+{% endblock %}

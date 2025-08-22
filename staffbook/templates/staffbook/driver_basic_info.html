@@ -1,11 +1,22 @@
 {% extends "staffbook/base_staffbook.html" %}
+{% if messages %}
+  <div class="container mt-3">
+    {% for m in messages %}
+      <div class="alert alert-{{ m.tags|default:'info' }} alert-dismissible fade show" role="alert">
+        {{ m }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
 {% block content %}
 {% load driver_extras %}
 <div class="container mt-4">
   <div class="card shadow {% if driver.employ_type == '3' %} bg-light text-muted {% endif %}" style="width:90vw;max-width:1400px;margin:0 auto;">
     <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
       <i class="fa fa-user me-2"></i>
-      <b>{{ driver.name }}</b>
+      <!-- ⬇️ 姓名后括号显示国籍 -->
+      <b>{{ driver.name }}{% if driver.nationality %}（{{ driver.nationality }}）{% endif %}</b>
       <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
 
       {% if driver.employ_type == '3' %}
@@ -50,71 +61,62 @@
         </div>
       {% endif %}
 
-      <!-- 基本信息表 -->
-      <form>
-      <div class="row">
-        <!-- 左列 -->
-        <div class="col-md-7">
-          <div class="row mb-2">
-            <div class="col-md-6">
-              <label class="form-label">従業員番号：{{ driver.driver_code }}</label>
+      <!-- 基本情報（只读） -->
+      <div>
+        <div class="row">
+          <!-- 左列 -->
+          <div class="col-md-7">
+            <div class="row mb-2">
+              <div class="col-md-6"><label class="form-label">従業員番号：{{ driver.driver_code }}</label></div>
+              <div class="col-md-6"><label class="form-label">氏名：{{ driver.name }}{% if driver.nationality %}（{{ driver.nationality }}）{% endif %}</label></div>
+
+              <div class="col-md-6"><label class="form-label">フリガナ：{{ driver.kana }}</label></div>
+              <!-- ⬇️ 备选姓名（只读展示） -->
+              <div class="col-md-6"><label class="form-label">別名：{{ driver.alt_name|default:"-" }}{% if driver.alt_kana %}（{{ driver.alt_kana }}）{% endif %}</label></div>
+
+              <div class="col-md-6"><label class="form-label">事業者名：{{ driver.company.name|default_if_none:""|default:"-" }}</label></div>
+              <div class="col-md-6"><label class="form-label">営業所名：{{ driver.workplace.name|default_if_none:""|default:"-" }}</label></div>
+
+              <div class="col-md-6"><label class="form-label">部門：{{ driver.department }}</label></div>
+              <div class="col-md-6"><label class="form-label">職種：{{ driver.get_position_display }}</label></div>
+              <div class="col-md-6"><label class="form-label">在職類型：{{ driver.get_employ_type_display }}</label></div>
+
+              <div class="col-md-6"><label class="form-label">性別：{{ driver.get_gender_display }}</label></div>
+              <div class="col-md-6"><label class="form-label">血液型：{{ driver.blood_type }}</label></div>
+
+              <div class="col-md-6"><label class="form-label">生年月日：{{ driver.birth_date|date:"Y/m/d" }}</label></div>
+              <div class="col-md-6"><label class="form-label">年齢：{% if driver.birth_date %}{{ driver.birth_date|age }}歳{% endif %}</label></div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label">氏名：{{ driver.name }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">フリガナ：{{ driver.kana }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">営業所：{{ driver.workplace }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">部門：{{ driver.department }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">職種：{{ driver.get_position_display }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">性別：{{ driver.get_gender_display }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">血液型：{{ driver.blood_type }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">生年月日：{{ driver.birth_date|date:"Y/m/d" }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">年齢：{% if driver.birth_date %}{{ driver.birth_date|age }}歳{% endif %}</label>
+
+            <div class="row mb-2">
+              <div class="col-md-6">
+                <label class="form-label">入社年月日</label>
+                <div>{{ driver.hire_date|date:"Y/m/d" }}</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">選任年月日：{{ driver.appointment_date|date:"Y/m/d" }}</label>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">作成年月日：{{ driver.create_date|date:"Y/m/d" }}</label>
+              </div>
             </div>
           </div>
-          <div class="row mb-2">
-            <div class="col-md-6">
-              <label class="form-label">入社年月日</label>
-              <div>{{ driver.hire_date|date:"Y/m/d" }}</div>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">選任年月日：{{ driver.appointment_date|date:"Y/m/d" }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">作成年月日：{{ driver.create_date|date:"Y/m/d" }}</label>
+
+          <!-- 右列 -->
+          <div class="col-md-5">
+            <div class="mb-3">
+              <label class="form-label">特記事項</label>
+              <div class="border p-2 rounded bg-light">{{ driver.remark|default:"-" }}</div>
             </div>
           </div>
         </div>
-        <!-- 右列 -->
-        <div class="col-md-5">
-          <div class="mb-3">
-            <label class="form-label">特記事項</label>
-            <div class="border p-2 rounded bg-light">{{ driver.remark|default:"-" }}</div>
-          </div>
-          <!-- 可继续加入“履歴”相关字段/专用说明等 -->
+
+        <div class="text-end">
+          <a href="{% url 'staffbook:driver_basic_edit' driver.id %}" class="btn btn-outline-primary">
+            <i class="fa fa-edit"></i> 編集
+          </a>
         </div>
       </div>
-      <div class="text-end">
-        <a href="{% url 'staffbook:driver_basic_edit' driver.id %}" class="btn btn-outline-primary">
-          <i class="fa fa-edit"></i> 編集
-        </a>
-      </div>
-      </form>
     </div>
   </div>
 </div>

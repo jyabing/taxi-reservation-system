@@ -20,6 +20,7 @@ urlpatterns = [
     # 👉 基本资料页分组（主页、证件、紧急联系人等）
     path('drivers/<int:driver_id>/basic/', views.driver_basic_info, name='driver_basic_info'),
     path('drivers/<int:driver_id>/basic/edit/', views.driver_basic_edit, name='driver_basic_edit'),
+    #path('drivers/<int:driver_id>/basic/update/', views.driver_basic_update, name='driver_basic_update'),
     path('drivers/<int:driver_id>/personal/', views.driver_personal_info, name='driver_personal_info'),
     path('drivers/<int:driver_id>/personal/edit/', views.driver_personal_edit, name='driver_personal_edit'),
     path('drivers/<int:driver_id>/certificate/', views.driver_certificate_info, name='driver_certificate_info'),

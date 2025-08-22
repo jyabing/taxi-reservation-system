@@ -44,7 +44,7 @@ class DriverDailyReport(models.Model):
     STATUS_CHOICES = [
         (STATUS_PENDING,   '待处理'),
         (STATUS_COMPLETED, '已完成'),
-        (STATUS_CANCELLED, '已取消'),
+        (STATUS_CANCELLED, '取消预约'),
     ]
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='daily_reports', verbose_name="司机")
     vehicle = models.ForeignKey(Car, on_delete=models.SET_NULL, null=True, blank=True, related_name='daily_reports', verbose_name='本日使用车辆')

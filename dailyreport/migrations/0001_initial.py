@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ('date', models.DateField(verbose_name='日期')),
                 ('note', models.TextField(blank=True, verbose_name='备注')),
                 ('has_issue', models.BooleanField(default=False, verbose_name='包含异常记录')),
-                ('status', models.CharField(choices=[('pending', '待处理'), ('completed', '已完成'), ('cancelled', '已取消')], default='pending', max_length=20, verbose_name='状态')),
+                ('status', models.CharField(choices=[('pending', '待处理'), ('completed', '已完成'), ('cancelled', '取消预约')], default='pending', max_length=20, verbose_name='状态')),
                 ('clock_in', models.TimeField(blank=True, null=True, verbose_name='出勤时间')),
                 ('clock_out', models.TimeField(blank=True, null=True, verbose_name='退勤时间')),
                 ('勤務時間', models.DurationField(blank=True, null=True, verbose_name='勤務時間')),

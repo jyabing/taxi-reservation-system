@@ -3,6 +3,29 @@ from .models import (
 )
 from django import forms
 from staffbook.models import Accident, Reward, DriverInsurance, DriverPayrollRecord # ✅ 保险、事故、奖励等模型
+from .models import (
+    Driver, DriverLicense,
+    Company, Workplace,           # ← 必须：用于 FK 下拉 queryset
+    Accident, Reward, DriverInsurance, DriverPayrollRecord
+)
+
+NATIONALITY_CHOICES = [
+    ("日本", "日本"), ("中国", "中国"), ("韓国", "韓国"),
+    ("ベトナム", "ベトナム"), ("その他", "その他"),
+]
+POSITION_CHOICES = [
+    ("1", "常時選任運転者"),
+    ("2", "運転者"),
+    ("3", "職員"),
+    ("4", "整備士"),
+]
+EMPLOY_TYPE_CHOICES = [
+    ("1", "正式運転者"),
+    ("2", "非常勤運転者"),
+    ("3", "退職者"),
+]
+GENDER_CHOICES = [("男性", "男性"), ("女性", "女性"), ("未設定", "未設定")]
+BLOOD_CHOICES  = [("A","A"),("B","B"),("AB","AB"),("O","O")]
 
 # ✅ 通用样式自动添加工具函数
 def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
@@ -82,15 +105,83 @@ class AccidentForm(forms.ModelForm):
 
 # ✅ 简版基础信息表单
 class DriverBasicForm(forms.ModelForm):
+    # —— 下拉：主数据 ——
+    company = forms.ModelChoiceField(
+        label="事業者名", required=True,
+        queryset=Company.objects.order_by("name"),
+        empty_label="--選択してください--",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    workplace = forms.ModelChoiceField(
+        label="営業所名", required=True,
+        queryset=Workplace.objects.none(),       # __init__ 里联动
+        empty_label="--選択してください--",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    # —— 下拉：枚举 ——
+    nationality = forms.ChoiceField(
+        label="国籍", required=True,
+        choices=[("", "--選択してください--")] + NATIONALITY_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    position = forms.ChoiceField(
+        label="職種", required=True,
+        choices=[("", "--選択してください--")] + POSITION_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    employ_type = forms.ChoiceField(
+        label="在職類型", required=True,
+        choices=[("", "--選択してください--")] + EMPLOY_TYPE_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    gender = forms.ChoiceField(
+        label="性別", required=False,
+        choices=[("", "--選択--")] + GENDER_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    blood_type = forms.ChoiceField(
+        label="血液型", required=False,
+        choices=[("", "--選択--")] + BLOOD_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
     class Meta:
         model = Driver
         fields = [
-            'driver_code', 'name', 'kana', 'company', 'workplace', 'department',
-            'position', 'employ_type',
-            'appointment_date', 'hire_date', 'create_date',
-            'birth_date', 'gender', 'blood_type', 'postal_code', 'address',
-            'phone_number', 'photo', 'photo_date', 'remark'
+            "driver_code", "name", "kana",
+            "alt_name", "alt_kana",
+            "nationality",
+            "company", "workplace",
+            "department", "position", "employ_type",
+            "appointment_date", "hire_date", "create_date",
+            "birth_date", "gender", "blood_type",
+            "postal_code", "address", "phone_number",
+            "photo", "photo_date", "remark",
         ]
+        widgets = {
+            "birth_date":       forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "hire_date":        forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "appointment_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "create_date":      forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "photo_date":       forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "remark":           forms.Textarea(attrs={"rows": 2, "class": "form-control"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # 营业所：按公司联动
+        if "company" in self.data:
+            try:
+                cid = int(self.data.get("company"))
+                self.fields["workplace"].queryset = Workplace.objects.filter(company_id=cid).order_by("name")
+            except (TypeError, ValueError):
+                self.fields["workplace"].queryset = Workplace.objects.none()
+        elif self.instance.pk and self.instance.company_id:
+            self.fields["workplace"].queryset = Workplace.objects.filter(company=self.instance.company).order_by("name")
+        else:
+            self.fields["workplace"].queryset = Workplace.objects.order_by("company__name","name")
 
 # ✅ 司机个人信息编辑
 class DriverPersonalInfoForm(forms.ModelForm):
