@@ -1,3 +1,6 @@
+from types import SimpleNamespace as NS
+from django.forms import inlineformset_factory
+
 import csv, os, sys, logging
 from io import BytesIO
 logger = logging.getLogger(__name__)
@@ -145,7 +148,6 @@ def get_active_drivers(month_obj=None, keyword=None):
 # ✅ 新增日报
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_create(request):
-    print("🧪 formset is valid?", formset.is_valid())
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST)
         if form.is_valid():
@@ -1333,32 +1335,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     }
     return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
 
-@user_passes_test(is_dailyreport_admin)
-def driver_dailyreport_add_unassigned(request):
-    driver = get_driver_info(driver_id)
-    if not driver or driver.user:
-        messages.warning(request, "未找到未分配账号的员工")
-        return redirect("dailyreport:dailyreport_overview")
-
-    driver = get_object_or_404(Driver, id=driver_id, user__isnull=True)
-
-    today = date.today()
-    report, created = DriverDailyReport.objects.get_or_create(
-        driver=driver,
-        date=today,
-        defaults={"status": "草稿"}
-    )
-
-    # ✅ 加在这里：命令行中会输出 driver 和 report 的主键
-    print("🚗 创建日报：", driver.id, report.id, "是否新建：", created)
-
-    if created:
-        messages.success(request, f"已为 {driver.name} 创建 {today} 的日报。")
-    else:
-        messages.info(request, f"{driver.name} 今天的日报已存在，跳转到编辑页面。")
-
-    return redirect("dailyreport:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
-
 
 # ✅ 司机查看自己日报
 @login_required
@@ -1391,7 +1367,7 @@ def bind_missing_users(request):
                 user = User.objects.create_user(username=username, password='12345678')
                 driver.user = user
                 driver.save()
-        return redirect('sdailyreport:bind_missing_users')
+        return redirect('dailyreport:bind_missing_users')
 
     return render(request, 'dailyreport/bind_missing_users.html', {
         'drivers': drivers_without_user,
@@ -1665,7 +1641,7 @@ def dailyreport_create_for_driver(request, driver_id):
     })
 
 @user_passes_test(is_dailyreport_admin)
-def driver_dailyreport_add_unassigned(request):
+def driver_dailyreport_add_unassigned(request, driver_id):
     driver = get_driver_info(driver_id)
     if not driver or driver.user:
         messages.warning(request, "未找到未分配账号的员工")
@@ -1690,13 +1666,6 @@ def driver_dailyreport_add_unassigned(request):
 
     return redirect("dailyreport:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
 
-
-# ✅ 司机查看自己日报
-@login_required
-def my_dailyreports(request):
-    reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
-    return render(request, 'dailyreport/my_dailyreports.html', {'reports': reports})
-
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_overview(request):
     today = now().date()
@@ -1710,40 +1679,40 @@ def dailyreport_overview(request):
     month_label = f"{month.year}年{month.month:02d}月"
     prev_month = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month = (month + relativedelta(months=1)).strftime('%Y-%m')
-
     keyword = (request.GET.get('keyword') or '').strip()
 
-    # 司机 queryset：只通过 workplace -> company 取名，不触表中不存在的 'company' 列
-    drivers_qs = (
+    # 仅取需要的字段，预先把公司/营业所名字拍扁为字符串；不再碰已删除的 driver.company 列
+    raw = (
         get_active_drivers(month, keyword)
         .select_related('workplace__company')
-        .annotate(
-            company_name=F('workplace__company__name'),
-            workplace_name=F('workplace__name'),
-        )
-        .only('id', 'driver_code', 'name', 'kana', 'workplace')
+        .values('id', 'driver_code', 'name', 'kana',
+                'workplace__name', 'workplace__company__name')
     )
-    # 后面排序要用到对象本身，先 materialize
-    drivers = list(drivers_qs)
+    drivers = [
+        NS(id=r['id'],
+           driver_code=r['driver_code'],
+           name=r['name'],
+           kana=r['kana'],
+           company=NS(name=r['workplace__company__name']),
+           workplace=NS(name=r['workplace__name']))
+        for r in raw
+    ]
+    driver_ids = [r['id'] for r in raw]
 
-    # 当月所有日报
-    reports_all = DriverDailyReport.objects.filter(
-        date__year=month.year, date__month=month.month
-    )
-    # 仅司机范围内的日报 —— 关键：用 driver_id__in 避开任何 'driver.company' 的 SQL
-    reports = reports_all.filter(
-        driver_id__in=drivers_qs.values_list('id', flat=True)
+    # 仅当月且仅这些司机
+    reports = DriverDailyReport.objects.filter(
+        date__year=month.year, date__month=month.month,
+        driver_id__in=driver_ids
     )
 
-    # 明细标准化
+    # 明细（同样只算这些司机的）
     items_norm = (
-        DriverDailyReportItem.objects.filter(report__in=reports_all)
-        .annotate(
-            pm=Lower(Trim('payment_method')),
-            cpm=Lower(Trim('charter_payment_method'))
-        )
+        DriverDailyReportItem.objects.filter(report__in=reports)
+        .annotate(pm=Lower(Trim('payment_method')),
+                  cpm=Lower(Trim('charter_payment_method')))
     )
 
+    from collections import defaultdict
     totals = defaultdict(Decimal)
     counts = defaultdict(int)
 
@@ -1793,11 +1762,12 @@ def dailyreport_overview(request):
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
     # 每司机“売上合計”
-    per_driver = DriverDailyReportItem.objects.filter(report__in=reports).values('report__driver').annotate(
-        meter_only=Sum('meter_fee', filter=Q(is_charter=False)),
-        charter_cash=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['jpy_cash'])),
-        charter_uncol=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['to_company','invoice','uncollected','未収','請求'])),
-    )
+    per_driver = DriverDailyReportItem.objects.filter(report__in=reports)\
+        .values('report__driver').annotate(
+            meter_only=Sum('meter_fee', filter=Q(is_charter=False)),
+            charter_cash=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['jpy_cash'])),
+            charter_uncol=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['to_company','invoice','uncollected','未収','請求'])),
+        )
     fee_map = {r['report__driver']: (r['meter_only'] or 0)+(r['charter_cash'] or 0)+(r['charter_uncol'] or 0)
                for r in per_driver}
 
@@ -1818,7 +1788,7 @@ def dailyreport_overview(request):
     rows = []
     for d in ordered:
         total = fee_map.get(d.id, Decimal('0'))
-        has_issue = reports.filter(driver=d, has_issue=True).exists()
+        has_issue = reports.filter(driver_id=d.id, has_issue=True).exists()  # ← 用 driver_id
         rows.append({'driver': d, 'total_fee': total,
                      'note': "⚠️ 異常あり" if has_issue else ("（未報告）" if d.id not in fee_map else ""),
                      'month_str': month_str})

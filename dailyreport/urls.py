@@ -50,7 +50,7 @@ urlpatterns = [
     path('drivers/<int:driver_id>/dailyreport/<int:pk>/delete/', views.dailyreport_delete_for_driver, name='driver_dailyreport_delete'),
 
     # 未分配司机账号的日报
-    path('dailyreport/add/unassigned/', views.driver_dailyreport_add_unassigned, name='driver_dailyreport_add_unassigned'), #无账号员工日报
+    path('drivers/<int:driver_id>/dailyreports/add-unassigned/', views.driver_dailyreport_add_unassigned, name='driver_dailyreport_add_unassigned'), #无账号员工日报
 
 
     
