@@ -1687,6 +1687,7 @@ def dailyreport_overview(request):
         .select_related('workplace__company')
         .values('id', 'driver_code', 'name', 'kana',
                 'workplace__name', 'workplace__company__name')
+        .order_by('driver_code', 'id')     # ← 加这一行，强制不用默认ordering
     )
     drivers = [
         NS(id=r['id'],
