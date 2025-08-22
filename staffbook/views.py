@@ -13,10 +13,10 @@ from dailyreport.models import DriverDailyReport, DriverDailyReportItem
 
 from .permissions import is_staffbook_admin
 from django.contrib import messages
-from .forms import (
-    DriverForm, DriverPersonalInfoForm, DriverLicenseForm, 
-    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm, DriverBasicEditForm
-    )
+#from .forms import (
+#    DriverForm, DriverPersonalInfoForm, DriverLicenseForm, 
+#    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm, DriverBasicEditForm
+#   )
 
 from dailyreport.forms import (
     DriverDailyReportForm, DriverDailyReportItemForm, DriverReportImageForm,
@@ -161,6 +161,7 @@ def driver_documents_status(request):
 # ✅ 新增员工
 @user_passes_test(is_staffbook_admin)
 def driver_create(request):
+    from .forms import DriverForm
     if request.method == 'POST':
         form = DriverForm(request.POST)
         if form.is_valid():
@@ -173,6 +174,7 @@ def driver_create(request):
 # ✅ 编辑员工
 @user_passes_test(is_staffbook_admin)
 def driver_edit(request, driver_id):
+    from .forms import DriverBasicEditForm
     driver = get_object_or_404(Driver, pk=driver_id)
     DrivingExpFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
     DriverInsuranceFormSet = inlineformset_factory(Driver, DriverInsurance, fields="__all__", extra=1, can_delete=True)
@@ -207,6 +209,7 @@ def driver_edit(request, driver_id):
 # 个人主页+台账
 @user_passes_test(is_staffbook_admin)
 def driver_basic_info(request, driver_id):
+    from .forms import DriverBasicEditForm
     driver = get_object_or_404(Driver, pk=driver_id)
 
     # ✅ 新增：检查缺失项
@@ -234,6 +237,7 @@ def driver_basic_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_basic_edit(request, driver_id):
+    from .forms import DriverBasicEditForm
     driver = get_object_or_404(Driver, pk=driver_id)
 
     # 用不含 driver_code 的表单
@@ -297,6 +301,7 @@ def driver_experience_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_experience_edit(request, driver_id):
+    from .forms import DriverBasicEditForm
     driver = get_object_or_404(Driver, pk=driver_id)
     ExperienceFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
     if request.method == 'POST':
@@ -316,6 +321,7 @@ def driver_experience_edit(request, driver_id):
 #個人情報
 @user_passes_test(is_staffbook_admin)
 def driver_personal_info(request, driver_id):
+    from .forms import DriverBasicEditForm
     driver = get_object_or_404(Driver, pk=driver_id)
     insurance_fields = [
         ('健康保险', driver.health_insurance_no),
@@ -336,6 +342,7 @@ def driver_personal_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_personal_edit(request, driver_id):
+    from .forms import DriverBasicEditForm
     driver = get_object_or_404(Driver, pk=driver_id)
     if request.method == 'POST':
         form = DriverPersonalInfoForm(request.POST, request.FILES, instance=driver)
@@ -466,6 +473,7 @@ def driver_license_info(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_license_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
+    from .forms import DriverLicenseForm
     # get_or_create: 没有就创建一个
     license, created = DriverLicense.objects.get_or_create(driver=driver)
     if request.method == 'POST':
@@ -524,6 +532,7 @@ def driver_qualification_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_qualification_edit(request, driver_id):
+    from .forms import QualificationForm
     driver = get_object_or_404(Driver, pk=driver_id)
     qualification, _ = Qualification.objects.get_or_create(driver=driver)
     if request.method == 'POST':
@@ -554,6 +563,7 @@ def driver_aptitude_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_aptitude_edit(request, driver_id):
+    from .forms import AptitudeForm
     driver = get_object_or_404(Driver, pk=driver_id)
     aptitude, created = Aptitude.objects.get_or_create(driver=driver)
     if request.method == 'POST':
@@ -585,6 +595,7 @@ def driver_rewards_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_rewards_edit(request, driver_id):
+    from .forms import RewardForm
     driver = get_object_or_404(Driver, pk=driver_id)
     rewards, created = Reward.objects.get_or_create(driver=driver)
     if request.method == 'POST':
@@ -620,6 +631,7 @@ def driver_accident_info(request, driver_id):
 
 @user_passes_test(is_staffbook_admin)
 def driver_accident_edit(request, driver_id):
+    from .forms import AccidentForm
     driver = get_object_or_404(Driver, pk=driver_id)
     AccidentFormSet = inlineformset_factory(Driver, Accident, form=AccidentForm, extra=1, can_delete=True)
     if request.method == 'POST':
