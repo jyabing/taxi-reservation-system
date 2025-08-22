@@ -8,8 +8,8 @@
   <tr><th>税号</th><td>{{ driver.tax_id }}</td></tr>
   <tr><th>住址</th><td>{{ driver.address }}</td></tr>
   <tr><th>聘用日期</th><td>{{ driver.hire_date }}</td></tr>
-  <tr><th>公司</th><td>{{ driver.company }}</td></tr>
-  <tr><th>营业所</th><td>{{ driver.workplace }}</td></tr>
+  <tr><th>公司</th><td>{{ driver.company.name|default_if_none:""|default:"-" }}</td></tr>
+  <tr><th>营业所</th><td>{{ driver.workplace.name|default_if_none:""|default:"-" }}</td></tr>
   <tr><th>备注</th><td>{{ driver.note }}</td></tr>
 </table>
 

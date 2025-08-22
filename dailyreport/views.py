@@ -118,43 +118,38 @@ dailyreport_admin_required = user_passes_test(is_dailyreport_admin)
 
 def get_active_drivers(month_obj=None, keyword=None):
     """
-    兼容旧代码：month_obj 不传则默认今天所在月份。
-    staffbook.utils 里原函数签名需要 month_obj；这里包装一下以便无参调用。
+    返回完整的 Driver QuerySet（不使用 values），
+    只筛当月在职，支持关键词。
     """
-    # 基本“在职当月”过滤（根据你 models 的字段名适当调整）
     qs = Driver.objects.all()
     if month_obj is None:
         month_obj = date.today()
 
-    year = month_obj.year
-    month = month_obj.month
-    # 当月起止
-    from datetime import date as _date
-    from calendar import monthrange as _monthrange
-    first_day = _date(year, month, 1)
-    last_day = _date(year, month, _monthrange(year, month)[1])
+    year, month = month_obj.year, month_obj.month
+    from calendar import monthrange
+    first_day = date(year, month, 1)
+    last_day = date(year, month, monthrange(year, month)[1])
 
-    try:
-        qs = qs.filter(
-            Q(hire_date__lte=last_day)
-            & (Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day))
-        )
-    except Exception:
-        # 若字段不匹配，退化为不过滤
-        pass
+    qs = qs.filter(
+        hire_date__lte=last_day
+    ).filter(
+        Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day)
+    )
 
     if hasattr(Driver, 'is_active'):
-        try:
-            qs = qs.filter(is_active=True)
-        except Exception:
-            pass
+        qs = qs.filter(is_active=True)
 
     if keyword:
-        try:
-            qs = qs.filter(Q(name__icontains=keyword) | Q(code__icontains=keyword))
-        except Exception:
-            pass
+        k = keyword.strip()
+        qs = qs.filter(
+            Q(name__icontains=k) |
+            Q(kana__icontains=k) |
+            Q(driver_code__icontains=k) |     # ✅ 别再用 code
+            Q(company__name__icontains=k) |   # ✅ 通过外键名查公司
+            Q(workplace__name__icontains=k)
+        )
 
+    # 返回完整模型对象，后续可 select_related/annotate
     return qs.order_by('name')
 
 # ✅ 新增日报
@@ -1714,244 +1709,127 @@ def my_dailyreports(request):
 
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_overview(request):
-    # 1. 基本参数
     today = now().date()
-    keyword = request.GET.get('keyword', '').strip()
-    month_str = request.GET.get('month', '')
-
-    # 2. 解析月份
+    month_str = request.GET.get('month') or today.strftime('%Y-%m')
     try:
-        month = datetime.strptime(month_str, "%Y-%m")
+        month = datetime.strptime(month_str, '%Y-%m')
     except ValueError:
         month = today.replace(day=1)
         month_str = month.strftime('%Y-%m')
 
-    # ✅ 供模板导航
     month_label = f"{month.year}年{month.month:02d}月"
     prev_month = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month = (month + relativedelta(months=1)).strftime('%Y-%m')
 
-    # 3. 导出按钮
-    export_year = month.year
-    export_month = month.month
+    keyword = request.GET.get('keyword', '').strip()
 
-    # 4. 所有当月日报（含离职者），及用于展示/计算的在职司机
-    reports_all = DriverDailyReport.objects.filter(
-        date__year=month.year,
-        date__month=month.month,
+    # ✅ 关键：不再让任何 queryset 里出现 'company' 这个列名
+    drivers = get_active_drivers(month, keyword).annotate(
+        company_name=F('company__name'),
+        workplace_name=F('workplace__name'),
     )
 
-    drivers = get_active_drivers(month, keyword)
+    # 当月日报
+    first_day = date(month.year, month.month, 1)
+    last_day  = date(month.year, month.month, monthrange(month.year, month.month)[1])
 
-    # —— 视图层兜底关键字过滤（name/kana/driver_code）
-    if keyword:
-        drivers = drivers.filter(
-            Q(name__icontains=keyword) |
-            Q(kana__icontains=keyword) |
-            Q(driver_code__icontains=keyword)
-        )
+    reports_all = DriverDailyReport.objects.filter(date__range=(first_day, last_day))
+    reports = reports_all.filter(driver_id__in=driver_ids)
 
-    reports = reports_all.filter(driver__in=drivers)
+    # …——下面你的统计逻辑保持不变即可——…
+    items_norm = (DriverDailyReportItem.objects.filter(report__in=reports_all)
+                  .annotate(pm=Lower(Trim('payment_method')),
+                            cpm=Lower(Trim('charter_payment_method'))))
 
-    # 5. 取本月所有明细并归一化字段
-    items_all = DriverDailyReportItem.objects.filter(report__in=reports_all)
-    items_norm = items_all.annotate(
-        pm=Lower(Trim('payment_method')),
-        cpm=Lower(Trim('charter_payment_method')),
-    )
+    totals = defaultdict(Decimal); counts = defaultdict(int)
 
-    totals = defaultdict(Decimal)
-    counts = defaultdict(int)
-
-    # 6. メーター(水揚) —— 仅统计非貸切的 meter_fee
-    meter_sum_non_charter = items_norm.filter(is_charter=False)\
+    totals['meter_only_total'] = items_norm.filter(is_charter=False)\
         .aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
-    totals['total_meter'] = meter_sum_non_charter
-    totals['meter_only_total'] = meter_sum_non_charter  # 给模板的“メータのみ”
 
-    # 7. 各支付方式口径
-    #    规则：
-    #    - 普通部分：meter_fee 且 is_charter=False
-    #    - 貸切部分：charter_amount_jpy 且 is_charter=True（仅在需要将貸切计入该方式时）
-    ALIASES = {
-        'cash':      {'normal': ['cash'],                 'charter': ['jpy_cash']},  # 注意：这里不会叠加 charter 到 cash
-        'credit':    {'normal': ['credit', 'credit_card'],'charter': ['credit','credit_card']},
-        'uber':      {'normal': ['uber'],                 'charter': ['uber']},
-        'didi':      {'normal': ['didi'],                 'charter': ['didi']},
-        'kyokushin': {'normal': ['kyokushin'],            'charter': ['kyokushin']},
-        'omron':     {'normal': ['omron'],                'charter': ['omron']},
-        'kyotoshi':  {'normal': ['kyotoshi'],             'charter': ['kyotoshi']},
-        'qr':        {'normal': ['qr', 'scanpay'],        'charter': ['qr', 'scanpay']},
+    MAP = {
+        'cash':   (['cash'],                 []),
+        'credit': (['credit','credit_card'], ['credit','credit_card']),
+        'uber':   (['uber'],                 ['uber']),
+        'didi':   (['didi'],                 ['didi']),
+        'kyokushin': (['kyokushin'],        ['kyokushin']),
+        'omron':     (['omron'],            ['omron']),
+        'kyotoshi':  (['kyotoshi'],         ['kyotoshi']),
+        'qr':        (['qr','scanpay'],     ['qr','scanpay']),
     }
-    # 现金卡片不叠加貸切
-    EXCLUDE_CHARTER_IN_METHODS = {'cash'}
+    for key, (nlist, clist) in MAP.items():
+        n = items_norm.filter(is_charter=False, pm__in=nlist)\
+              .aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
+        c = (items_norm.filter(is_charter=True, cpm__in=clist)
+                    .aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')) if clist else Decimal('0')
+        totals[f'total_{key}'] = n + c
+        counts[key] = (items_norm.filter(is_charter=False, pm__in=nlist).count() +
+                       (items_norm.filter(is_charter=True, cpm__in=clist).count() if clist else 0))
 
-    for key, alias in ALIASES.items():
-        # 普通：排除貸切
-        normal_qs = items_norm.filter(is_charter=False, pm__in=alias['normal'])
-        normal_amt = normal_qs.aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
-        normal_cnt = normal_qs.count()
-
-        # 貸切：需要时才叠加（除 cash 外）
-        charter_amt = Decimal('0')
-        charter_cnt = 0
-        if key not in EXCLUDE_CHARTER_IN_METHODS:
-            charter_qs = items_norm.filter(is_charter=True, cpm__in=alias['charter'])
-            charter_amt = charter_qs.aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
-            charter_cnt = charter_qs.count()
-
-        totals[f'total_{key}'] = normal_amt + charter_amt
-        counts[key] = normal_cnt + charter_cnt
-
-    # 8. 貸切現金 / 貸切未収（独立卡片）
-    #    ✅ 修正拼写：'jpy_cash'（之前写成了 'jp_cash' 导致 0）
-    totals['charter_cash_total'] = items_norm.filter(
-        is_charter=True, cpm__in=['jpy_cash']
-    ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
-
+    totals['charter_cash_total'] = items_norm.filter(is_charter=True, cpm__in=['jpy_cash'])\
+        .aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
     totals['charter_uncollected_total'] = items_norm.filter(
-        is_charter=True, cpm__in=['to_company', 'invoice', 'uncollected', '未収', '請求']
+        is_charter=True, cpm__in=['to_company','invoice','uncollected','未収','請求']
     ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
 
-    # ✅ 水揚合計(= 売上合計) を “total_meter” に反映
-    totals['total_meter'] = (
-        (totals.get('meter_only_total') or Decimal('0')) +
-        (totals.get('charter_cash_total') or Decimal('0')) +
-        (totals.get('charter_uncollected_total') or Decimal('0'))
-    )
+    totals['total_meter'] = (totals['meter_only_total'] +
+                             totals['charter_cash_total'] +
+                             totals['charter_uncollected_total'])
 
-    # 9. 分成费率（ETC 不参与）
-    rates = {
-        'meter':     Decimal('0.9091'),
-        'cash':      Decimal('0'),
-        'uber':      Decimal('0.05'),
-        'didi':      Decimal('0.05'),
-        'credit':    Decimal('0.05'),
-        'kyokushin': Decimal('0.05'),
-        'omron':     Decimal('0.05'),
-        'kyotoshi':  Decimal('0.05'),
-        'qr':        Decimal('0.05'),
-    }
+    rates = {'meter':Decimal('0.9091'),'cash':Decimal('0'),
+             'uber':Decimal('0.05'),'didi':Decimal('0.05'),
+             'credit':Decimal('0.05'),'kyokushin':Decimal('0.05'),
+             'omron':Decimal('0.05'),'kyotoshi':Decimal('0.05'),'qr':Decimal('0.05')}
+    split = lambda k: ((totals.get(f'total_{k}') or 0) * rates[k]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    totals_all = {k:{'total': totals.get(f'total_{k}', Decimal('0')), 'bonus': split(k)} for k in rates}
+    totals_all['meter_only_total'] = totals['meter_only_total']
 
-    def split(key):
-        amt = totals.get(f"total_{key}") or Decimal('0')
-        return (amt * rates[key]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-
-    totals_all = {
-        k: {"total": totals.get(f"total_{k}", Decimal("0")), "bonus": split(k)}
-        for k in rates
-    }
-    totals_all["meter_only_total"] = totals.get("meter_only_total", Decimal("0"))
-
-    # 10. 税前合计（基于非貸切 meter）
-    gross = totals.get('total_meter') or Decimal('0')
-    totals['meter_pre_tax'] = (gross / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-
-    # 11. ETC 不足合计（来自日报主表）
+    totals['meter_pre_tax'] = (totals['total_meter'] / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
-    # 12. 每位司机当月「売上合計」
-    #     口径：メータのみ(非貸切) + 貸切現金 + 貸切未収
-    items = DriverDailyReportItem.objects.filter(report__in=reports)
-
-    per_driver = items.values('report__driver').annotate(
+    per_driver = DriverDailyReportItem.objects.filter(report__in=reports).values('report__driver').annotate(
         meter_only=Sum('meter_fee', filter=Q(is_charter=False)),
-        charter_cash=Sum(
-            'charter_amount_jpy',
-            filter=Q(is_charter=True, charter_payment_method__in=['jpy_cash', 'jp_cash', 'cash'])
-        ),
-        charter_uncol=Sum(
-            'charter_amount_jpy',
-            filter=Q(is_charter=True, charter_payment_method__in=['to_company', 'invoice', 'uncollected', '未収', '請求'])
-        ),
+        charter_cash=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['jpy_cash'])),
+        charter_uncol=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['to_company','invoice','uncollected','未収','請求'])),
     )
+    fee_map = {r['report__driver']: (r['meter_only'] or 0)+(r['charter_cash'] or 0)+(r['charter_uncol'] or 0)
+               for r in per_driver}
 
-    # 売上合計 = メータのみ + 貸切現金 + 貸切未収
-    fee_map = {
-        r['report__driver']: (r['meter_only'] or 0)
-                            + (r['charter_cash'] or 0)
-                            + (r['charter_uncol'] or 0)
-        for r in per_driver
-    }
-
-    # —— 读取排序参数（默认金额降序）
-    sort = request.GET.get("sort", "amount_desc")
-
-    # 供排序用：社員番号 -> (是否非数字, 数字或字符串)
+    sort = request.GET.get('sort', 'amount_desc')
     def code_key(d):
-        code = (getattr(d, "driver_code", "") or "").strip()
-        if code.isdigit():
-            return (0, int(code))
-        return (1, code)  # 非数字的排在数字后面
+        code = (getattr(d, 'driver_code', '') or '').strip()
+        return (0, int(code)) if code.isdigit() else (1, code)
 
-    # —— 计算“売上合計”（你上面已经算了 fee_map）
-    # fee_map: driver_id -> 金额(Decimal)
+    if sort == 'code_asc':
+        ordered = sorted(drivers, key=code_key)
+    elif sort == 'code_desc':
+        ordered = sorted(drivers, key=code_key, reverse=True)
+    elif sort == 'amount_asc':
+        ordered = sorted(drivers, key=lambda d: (fee_map.get(d.id, Decimal('0')), code_key(d)))
+    else:
+        ordered = sorted(drivers, key=lambda d: (fee_map.get(d.id, Decimal('0')), code_key(d)), reverse=True)
 
-    # —— 排序驱动顺序
-    if sort == "code_asc":
-        ordered_drivers = sorted(drivers, key=code_key)
-    elif sort == "code_desc":
-        ordered_drivers = sorted(drivers, key=code_key, reverse=True)
-    elif sort == "amount_asc":
-        ordered_drivers = sorted(
-            drivers,
-            key=lambda d: (fee_map.get(d.id, Decimal("0")), code_key(d))
-        )
-    else:  # "amount_desc" 默认
-        ordered_drivers = sorted(
-            drivers,
-            key=lambda d: (fee_map.get(d.id, Decimal("0")), code_key(d)),
-            reverse=True
-        )
-
-    # —— 生成列表数据：按 ordered_drivers 的顺序
-    driver_data = []
-    for d in ordered_drivers:
-        total = fee_map.get(d.id, Decimal("0"))
-        has_any = d.id in fee_map
+    rows = []
+    for d in ordered:
+        total = fee_map.get(d.id, Decimal('0'))
         has_issue = reports.filter(driver=d, has_issue=True).exists()
-        note = "⚠️ 異常あり" if has_issue else ("（未報告）" if not has_any else "")
-        driver_data.append({
-            'driver': d,
-            'total_fee': total,
-            'note': note,
-            'month_str': month_str,
-        })
+        rows.append({'driver': d, 'total_fee': total,
+                     'note': "⚠️ 異常あり" if has_issue else ("（未報告）" if d.id not in fee_map else ""),
+                     'month_str': month_str})
 
-    # 13. 分页
-    page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
+    page_obj = Paginator(rows, 10).get_page(request.GET.get('page'))
 
     summary_keys = [
-        ('meter', 'メーター(水揚)'),
-        ('cash', '現金'),
-        ('uber', 'Uber'),
-        ('didi', 'Didi'),
-        ('credit', 'クレジットカード'),
-        ('kyokushin', '京交信'),
-        ('omron', 'オムロン'),
-        ('kyotoshi', '京都市他'),
-        ('qr', '扫码'),
+        ('meter','メーター(水揚)'),('cash','現金'),('uber','Uber'),
+        ('didi','Didi'),('credit','クレジットカード'),
+        ('kyokushin','京交信'),('omron','オムロン'),
+        ('kyotoshi','京都市他'),('qr','扫码'),
     ]
 
     return render(request, 'dailyreport/dailyreport_overview.html', {
-        'totals': totals,
-        'totals_all': totals_all,
-        'etc_shortage_total': etc_shortage_total,
-        'drivers': drivers,
-        'page_obj': page_obj,
-
-        'counts': counts,
-        'current_sort': sort,   # ✅ 让模板里的隐藏字段/切换按钮/分页保留排序
-        'keyword': keyword,     # ✅ 搜索框回填与链接需要
-
-        'month_str': month_str,
-        'current_year': export_year,
-        'current_month': export_month,
-        'summary_keys': summary_keys,
-        'month_label': month_label,
-        'prev_month': prev_month,
-        'next_month': next_month,
-        'counts': counts,
-        
-        'sort': sort,                      # ✅ 新增
+        'totals': totals, 'totals_all': totals_all, 'etc_shortage_total': etc_shortage_total,
+        'drivers': drivers, 'page_obj': page_obj, 'counts': counts,
+        'current_sort': sort, 'keyword': keyword,
+        'month_str': month_str, 'current_year': month.year, 'current_month': month.month,
+        'summary_keys': summary_keys, 'month_label': month_label,
+        'prev_month': prev_month, 'next_month': next_month, 'sort': sort,
     })

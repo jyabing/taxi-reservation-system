@@ -25,7 +25,7 @@
 
       <span class="ms-auto d-flex align-items-center" style="font-size:0.95em;">
         <span>
-          事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+          事業者名: {{ driver.company.name|default_if_none:""|default:"-" }}　営業所名: {{ driver.workplace.name|default_if_none:""|default:"-" }}
         </span>
 
         {% if missing_items %}
