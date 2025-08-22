@@ -1,3 +1,4 @@
+BUILD_STAMP = "DR_OVERVIEW_FIX-2025-08-23-06:45"
 from types import SimpleNamespace as NS
 from django.forms import inlineformset_factory
 
@@ -1687,7 +1688,7 @@ def dailyreport_overview(request):
         .select_related('workplace__company')
         .values('id', 'driver_code', 'name', 'kana',
                 'workplace__name', 'workplace__company__name')
-        .order_by('driver_code', 'id')     # ← 加这一行，强制不用默认ordering
+        .order_by()     # ← 加这一行，强制不用默认ordering
     )
 
     print("drivers SQL =>", str(raw.query))
@@ -1814,3 +1815,6 @@ def dailyreport_overview(request):
         'summary_keys': summary_keys, 'month_label': month_label,
         'prev_month': prev_month, 'next_month': next_month, 'sort': sort,
     })
+
+def build_stamp(request):
+    return HttpResponse(f"BUILD {BUILD_STAMP}")
