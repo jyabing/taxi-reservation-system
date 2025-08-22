@@ -17,20 +17,9 @@ OCR_API_KEY = 'K85459002688957'
 
 User = get_user_model()
 
-@login_required(login_url='/accounts/login/')
+login_required(login_url='/accounts/login/')
 def home_view(request):
-    user = request.user
-
-    if user.is_superuser:
-        return render(request, 'home.html')
-    elif hasattr(user, 'staff_profile'):
-        return redirect('staff_dashboard')  # ✅ 事务员跳转目标
-    elif hasattr(user, 'driver_profile'):
-        return redirect('driver_dashboard')  # ✅ 司机跳转
-    elif user.is_staff:
-        return redirect('admin_dashboard')  # 一般后台账号
-    else:
-        return render(request, 'home.html')  # 默认展示页
+    return HttpResponse("OK")   # 临时短路，定位用
 
 
 def login_view(request):
