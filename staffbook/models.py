@@ -69,21 +69,8 @@ class Driver(models.Model):
     alt_name = models.CharField('別名', max_length=32, blank=True, default="")
     alt_kana = models.CharField('別名フリガナ', max_length=32, blank=True, default="")
 
-    # ✅ 改造：由 CharField → ForeignKey
-    company = models.ForeignKey(
-        'staffbook.Company',
-        on_delete=models.PROTECT,
-        related_name='drivers',
-        db_column='company_id',
-        verbose_name='事業者名',
-    )
-    workplace = models.ForeignKey(
-        'staffbook.Workplace',
-        on_delete=models.PROTECT,
-        related_name='drivers',
-        db_column='workplace_id',
-        verbose_name='営業所名',
-    )
+    company   = models.CharField('事業者名', max_length=64)
+    workplace = models.CharField('営業所名', max_length=64)
 
     department = models.CharField('部門', max_length=32, blank=True)
     position = models.CharField('職種', max_length=32, choices=[
