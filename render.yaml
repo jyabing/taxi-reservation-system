@@ -1,12 +1,12 @@
 services:
   - type: web
     name: taxi-reservation
-    runtime: python          # ✅ 建议用 runtime，env 仍兼容但不推荐
+    runtime: python
     plan: free
     buildCommand: |
       ./build.sh
       python manage.py collectstatic --noinput
-    preDeployCommand: |      # ✅ 部署前自动迁移，避免线上字段不同步
+    preDeployCommand: |
       python manage.py migrate
     startCommand: gunicorn fleet_project.wsgi:application
 
@@ -29,14 +29,13 @@ services:
       - key: DB_PORT
         sync: false
 
-  # ✅ 定时任务需要作为一个独立的 cron 服务
   - type: cron
     name: auto-approve-reservations
     runtime: python
-    plan: starter            # ⚠️ cron 不支持 free 规格
+    plan: starter         # cron 不支持 free
     buildCommand: |
       ./build.sh
-    schedule: "*/10 * * * *" # 分钟 粒度调度
+    schedule: "*/10 * * * *"
     command: python manage.py auto_approve
     envVars:
       - key: SECRET_KEY
