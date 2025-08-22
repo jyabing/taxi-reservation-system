@@ -12,6 +12,20 @@
       <form method="post" action="{% url 'staffbook:driver_basic_edit' driver.id %}">
         {% csrf_token %}
 
+        {# ---- 错误提示块：把具体错误列出来 ---- #}
+        {% if form.errors or form.non_field_errors %}
+          <div class="alert alert-danger mb-3">
+            {{ form.non_field_errors }}
+            <ul class="mb-0">
+              {% for f in form %}
+                {% for e in f.errors %}
+                  <li><b>{{ f.label }}：</b>{{ e }}</li>
+                {% endfor %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
         <div class="row">
           <!-- 左列 -->
           <div class="col-md-6">
@@ -26,7 +40,7 @@
               <input type="text" name="kana" value="{{ driver.kana }}" class="form-control" required>
             </div>
 
-            <!-- 别名（新增：必填） -->
+            <!-- 别名（可选） -->
             <div class="mb-3">
               <label class="form-label">別名（可选）</label>
               <input type="text" name="alt_name" value="{{ driver.alt_name }}" class="form-control">
@@ -36,7 +50,7 @@
               <input type="text" name="alt_kana" value="{{ driver.alt_kana }}" class="form-control">
             </div>
 
-            <!-- 国籍（新增：必填，下拉） -->
+            <!-- 国籍 -->
             <div class="mb-3">
               <label class="form-label">国籍（必須）</label>
               <select name="nationality" class="form-select" required>
@@ -81,34 +95,36 @@
             </div>
           </div>
 
-          <!-- 事业者 -->
-          <div class="mb-3">
-            <label class="form-label">事業者名（必須）</label>
-            <select name="company" class="form-select" required id="companySelect">
-              <option value="">--選択してください--</option>
-              {% for c in companies %}
-                <option value="{{ c.id }}"
-                  {% if selected_company_id == c.id|stringformat:"s" %}selected{% endif %}>
-                  {{ c.name }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
+          <!-- 右列 -->
+          <div class="col-md-6">
+            <!-- 事业者 -->
+            <div class="mb-3">
+              <label class="form-label">事業者名（必須）</label>
+              <select name="company" class="form-select" required id="companySelect">
+                <option value="">--選択してください--</option>
+                {% for c in companies %}
+                  <option value="{{ c.id }}"
+                          {% if selected_company_id == c.id|stringformat:"s" %}selected{% endif %}>
+                    {{ c.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
 
-          <!-- 营业所（前端按公司过滤） -->
-          <div class="mb-3">
-            <label class="form-label">営業所名（必須）</label>
-            <select name="workplace" class="form-select" required id="workplaceSelect">
-              <option value="">--選択してください--</option>
-              {% for w in workplaces %}
-                <option value="{{ w.id }}" data-company="{{ w.company_id }}"
-                  {% if selected_workplace_id == w.id|stringformat:"s" %}selected{% endif %}>
-                  {{ w.name }}
-                </option>
-              {% endfor %}
-            </select>
-            <div class="form-text">事業者選択で営業所を絞り込みます。</div>
-          </div>
+            <!-- 营业所（按公司过滤） -->
+            <div class="mb-3">
+              <label class="form-label">営業所名（必須）</label>
+              <select name="workplace" class="form-select" required id="workplaceSelect">
+                <option value="">--選択してください--</option>
+                {% for w in workplaces %}
+                  <option value="{{ w.id }}" data-company="{{ w.company_id }}"
+                          {% if selected_workplace_id == w.id|stringformat:"s" %}selected{% endif %}>
+                    {{ w.name }}
+                  </option>
+                {% endfor %}
+              </select>
+              <div class="form-text">事業者選択で営業所を絞り込みます。</div>
+            </div>
 
             <div class="mb-3">
               <label class="form-label">部門</label>
@@ -118,8 +134,11 @@
             <div class="mb-3">
               <label class="form-label">職種</label>
               <select name="position" class="form-select" required>
+                <option value="">--選択してください--</option>
                 {% for val,label in driver_position_choices %}
-                  <option value="{{ val }}" {% if driver.position == val %}selected{% endif %}>{{ label }}</option>
+                  {% if val %}
+                    <option value="{{ val }}" {% if driver.position == val %}selected{% endif %}>{{ label }}</option>
+                  {% endif %}
                 {% endfor %}
               </select>
             </div>
@@ -129,7 +148,6 @@
               <select name="employ_type" class="form-select" required>
                 <option value="">--選択してください--</option>
                 {% for val, label in employ_type_choices %}
-                  {# 某些情况下 choices 里会有 ('', '---------')，过滤掉空值 #}
                   {% if val %}
                     <option value="{{ val }}"
                       {% if selected_employ_type|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>
@@ -160,7 +178,6 @@
   </div>
 </div>
 
-<!-- …你的表单与下拉结束 -->
 <script>
 (function(){
   const companySel   = document.getElementById('companySelect');
@@ -169,28 +186,20 @@
 
   function filterWorkplaces() {
     const cid = companySel.value;
-    let found = false;
-
-    // 保留第一项占位，其他按 data-company 过滤
     for (let i = 0; i < workplaceSel.options.length; i++) {
       const opt = workplaceSel.options[i];
-      if (!opt.value) continue; // 跳过占位 "--選択してください--"
+      if (!opt.value) continue;               // 占位项
       const match = (opt.dataset.company === cid);
       opt.hidden = !match;
       if (!match && opt.selected) opt.selected = false;
-      if (match) found = true;
     }
-
-    // 没有选中项且存在可见项时，默认选第一个可见项；否则保持为空
     if (!workplaceSel.value) {
       const first = Array.from(workplaceSel.options).find(o => !o.hidden && o.value);
       workplaceSel.value = first ? first.value : '';
     }
   }
 
-  // 进入页面先过滤一次（按当前公司或回显的 POST 值）
   document.addEventListener('DOMContentLoaded', filterWorkplaces);
-  // 用户切换公司时再过滤
   companySel.addEventListener('change', filterWorkplaces);
 })();
 </script>

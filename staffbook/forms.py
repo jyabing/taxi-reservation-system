@@ -27,6 +27,21 @@ EMPLOY_TYPE_CHOICES = [
 GENDER_CHOICES = [("男性", "男性"), ("女性", "女性"), ("未設定", "未設定")]
 BLOOD_CHOICES  = [("A","A"),("B","B"),("AB","AB"),("O","O")]
 
+class DriverBasicEditForm(forms.ModelForm):
+    """
+    用于“基本データ編集”页的表单。
+    注意：不包含 driver_code（従業員番号），避免必填校验。
+    """
+    class Meta:
+        model = Driver
+        fields = [
+            'name', 'kana', 'alt_name', 'alt_kana',
+            'nationality', 'gender', 'blood_type',
+            'birth_date', 'hire_date',
+            'company', 'workplace', 'department',
+            'position', 'employ_type', 'remark',
+        ]
+
 # ✅ 通用样式自动添加工具函数
 def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
     for field in fields:

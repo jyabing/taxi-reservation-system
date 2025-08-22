@@ -15,7 +15,7 @@ from .permissions import is_staffbook_admin
 from django.contrib import messages
 from .forms import (
     DriverForm, DriverPersonalInfoForm, DriverLicenseForm, 
-    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm
+    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm, DriverBasicEditForm
     )
 
 from dailyreport.forms import (
@@ -235,46 +235,49 @@ def driver_basic_info(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_basic_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    form = DriverBasicForm(request.POST or None, request.FILES or None, instance=driver)
+
+    # 用不含 driver_code 的表单
+    form = DriverBasicEditForm(request.POST or None, request.FILES or None, instance=driver)
 
     companies   = Company.objects.order_by("name")
     workplaces  = Workplace.objects.order_by("company__name", "name")
 
-    selected_company_id   = (request.POST.get("company")   or driver.company_id or "")
-    selected_workplace_id = (request.POST.get("workplace") or driver.workplace_id or "")
-    selected_employ_type = request.POST.get('employ_type') or (driver.employ_type or '')
+    # 选中值（POST 优先 → 实例值兜底），字符串化便于模板比较
+    selected_company_id   = str(request.POST.get("company")   or driver.company_id or "")
+    selected_workplace_id = str(request.POST.get("workplace") or driver.workplace_id or "")
+    selected_employ_type  = str(request.POST.get("employ_type") or driver.employ_type or "")
 
+    # 固定下拉（你之前页面在用）
     NATIONALITY_CHOICES = ["日本", "中国", "韓国", "ベトナム", "その他"]
-    DRIVER_POSITION_CHOICES = [("1","常時選任運転者"),("2","運転者"),("3","職員"),("4","整備士")]
-    GENDER_CHOICES = [("男性","男性"),("女性","女性"),("未設定","未設定")]
-    BLOOD_CHOICES  = [("A","A"),("B","B"),("AB","AB"),("O","O")]
-    #EMPLOY_TYPE_CHOICES = [("1","正式運転者"),("2","非常勤運転者"),("3","退職者")]
-    employ_type_choices = list(form.fields['employ_type'].choices)
+    GENDER_CHOICES      = [("男性","男性"), ("女性","女性"), ("未設定","未設定")]
+    BLOOD_CHOICES       = [("A","A"), ("B","B"), ("AB","AB"), ("O","O")]
 
-    if request.method == "POST":
-        if form.is_valid():
-            form.save()
-            messages.success(request, "基本データを保存しました。")
-            return redirect('staffbook:driver_basic_info', driver_id=driver.id)
-        else:
-            messages.error(request, "入力内容をご確認ください。")
+    # 这些从模型 choices 读取，防止写死
+    employ_type_choices   = list(form.fields['employ_type'].choices)   # 在職類型
+    driver_position_choices = list(form.fields['position'].choices)    # 職種
+
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "基本データを保存しました。")
+        return redirect('staffbook:driver_basic_info', driver_id=driver.id)
 
     return render(request, 'staffbook/driver_basic_edit.html', {
         'form': form,
         'driver': driver,
+
         'companies': companies,
         'workplaces': workplaces,
-        'selected_company_id': str(selected_company_id),
-        'selected_workplace_id': str(selected_workplace_id),
-
-        # ▼ 在職類型
-        'selected_employ_type': str(selected_employ_type),
-        'employ_type_choices': employ_type_choices,
+        'selected_company_id': selected_company_id,
+        'selected_workplace_id': selected_workplace_id,
 
         'nationality_choices': NATIONALITY_CHOICES,
-        'driver_position_choices': DRIVER_POSITION_CHOICES,
         'gender_choices': GENDER_CHOICES,
         'blood_choices': BLOOD_CHOICES,
+
+        'employ_type_choices': employ_type_choices,
+        'driver_position_choices': driver_position_choices,
+        'selected_employ_type': selected_employ_type,
+
         'main_tab': 'basic',
         'tab': 'basic',
     })
