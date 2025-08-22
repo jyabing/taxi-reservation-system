@@ -18,9 +18,21 @@
     <div class="card-body pt-4">
       <form method="post" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
-        {% if form.non_field_errors %}
-          <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+
+        {# ---- 错误提示块：把具体错误列出来 ---- #}
+        {% if form.errors or form.non_field_errors %}
+          <div class="alert alert-danger mb-3">
+            {{ form.non_field_errors }}
+            <ul class="mb-0">
+              {% for f in form %}
+                {% for e in f.errors %}
+                  <li><b>{{ f.label }}：</b>{{ e }}</li>
+                {% endfor %}
+              {% endfor %}
+            </ul>
+          </div>
         {% endif %}
+
         <div class="row">
           <!-- 左侧布局 -->
           <div class="col-md-8">
@@ -130,6 +142,7 @@
               </div>
             </div>
           </div>
+
           <!-- 右侧：照片和备注 -->
           <div class="col-md-4">
             <div class="mb-3 text-center">

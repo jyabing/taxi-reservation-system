@@ -15,7 +15,7 @@ from .permissions import is_staffbook_admin
 from django.contrib import messages
 from .forms import (
     DriverForm, DriverPersonalInfoForm, DriverLicenseForm, 
-    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm
+    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm, DriverBasicEditForm
     )
 
 from dailyreport.forms import (
@@ -234,13 +234,16 @@ def driver_basic_info(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def driver_basic_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
+
     if request.method == 'POST':
         form = DriverBasicForm(request.POST, request.FILES, instance=driver)
         if form.is_valid():
             form.save()
+            messages.success(request, "基本データを保存しました。")
             return redirect('staffbook:driver_basic_info', driver_id=driver.id)
         else:
-            print("[DEBUG] 表单验证失败，错误如下：", form.errors)
+            # 便于排错
+            print("[DEBUG] DriverBasicForm errors:", form.errors)
             messages.error(request, "入力内容をご確認ください。")
     else:
         form = DriverBasicForm(instance=driver)
@@ -249,7 +252,7 @@ def driver_basic_edit(request, driver_id):
         'form': form,
         'driver': driver,
         'main_tab': 'basic',
-        'tab': 'basic'
+        'tab': 'basic',
     })
 
 #運転経験
