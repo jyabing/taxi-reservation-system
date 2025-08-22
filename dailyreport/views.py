@@ -1689,6 +1689,9 @@ def dailyreport_overview(request):
                 'workplace__name', 'workplace__company__name')
         .order_by('driver_code', 'id')     # ← 加这一行，强制不用默认ordering
     )
+
+    print("drivers SQL =>", str(raw.query))
+
     drivers = [
         NS(id=r['id'],
            driver_code=r['driver_code'],
