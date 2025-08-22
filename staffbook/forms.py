@@ -3,6 +3,8 @@ from .models import (
 )
 from django import forms
 from staffbook.models import Accident, Reward, DriverInsurance, DriverPayrollRecord # ✅ 保险、事故、奖励等模型
+
+# ✅ 只从本 app 导入一次；不要再 from staffbook.models 导入自己
 from .models import (
     Driver, DriverLicense,
     Company, Workplace,           # ← 必须：用于 FK 下拉 queryset
