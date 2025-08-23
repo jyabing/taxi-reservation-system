@@ -120,31 +120,63 @@ def is_dailyreport_admin(user):
 # 若需要装饰器名，也提供一个等价别名：
 dailyreport_admin_required = user_passes_test(is_dailyreport_admin)
 
-def get_active_drivers(month_obj=None, keyword=None):
+
+def get_active_drivers(month_obj: date | None = None, keyword: str | None = None):
     """
-    返回完整的 Driver QuerySet（不使用 values），
-    只筛当月在职，支持关键词。
+    只按入/离职过滤；关键字在 name/kana/driver_code 里必查；
+    对 company/workplace 采用“能查就加、出错就跳过”的并集策略，避免 DB/模型不一致时崩溃。
     """
-    qs = Driver.objects.all()
+    from staffbook.models import Driver
     if month_obj is None:
         month_obj = date.today()
 
     first_day = date(month_obj.year, month_obj.month, 1)
-    last_day = date(month_obj.year, month_obj.month, monthrange(month_obj.year, month_obj.month)[1])
+    last_day  = date(month_obj.year, month_obj.month, monthrange(month_obj.year, month_obj.month)[1])
 
-    qs = qs.filter(
+    base = Driver.objects.filter(
         Q(hire_date__lte=last_day) &
         (Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day))
     )
 
-    if keyword:
-        qs = qs.filter(
-            Q(name__icontains=keyword) |
-            Q(kana__icontains=keyword) |
-            Q(driver_code__icontains=keyword)
-        )
+    if not (keyword and keyword.strip()):
+        return base.order_by("name")
 
-    return qs.order_by('name')
+    kw = keyword.strip()
+    # 1) 必查（稳定字段）
+    qs = base.filter(
+        Q(name__icontains=kw) |
+        Q(kana__icontains=kw) |
+        Q(driver_code__icontains=kw)
+    )
+
+    # 2) 试加 company / workplace（逐条尝试，失败就忽略）
+    def _safe_union(qobj):
+        nonlocal qs
+        try:
+            qs = qs.union(base.filter(qobj))
+        except Exception:
+            pass
+
+    # 根据模型类型尽量猜路径；即便猜错也有 try/except 兜底
+    try:
+        f = Driver._meta.get_field("company")
+        if isinstance(f, CharField):
+            _safe_union(Q(company__icontains=kw))
+        elif isinstance(f, ForeignKey):
+            _safe_union(Q(company__name__icontains=kw))
+    except Exception:
+        pass
+
+    try:
+        f = Driver._meta.get_field("workplace")
+        if isinstance(f, CharField):
+            _safe_union(Q(workplace__icontains=kw))
+        elif isinstance(f, ForeignKey):
+            _safe_union(Q(workplace__name__icontains=kw))
+    except Exception:
+        pass
+
+    return qs.order_by("name").distinct()
 
 # ✅ 新增日报
 @user_passes_test(is_dailyreport_admin)
@@ -1681,84 +1713,101 @@ def dailyreport_overview(request):
     prev_month = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month = (month + relativedelta(months=1)).strftime('%Y-%m')
     keyword = (request.GET.get('keyword') or '').strip()
+    sort = request.GET.get('sort', 'amount_desc')
 
-    # 仅取需要的字段，预先把公司/营业所名字拍扁为字符串；不再碰已删除的 driver.company 列
-    raw = (
-        get_active_drivers(month, keyword)
-        .select_related('workplace__company')
-        .values('id', 'driver_code', 'name', 'kana',
-                'workplace__name', 'workplace__company__name')
-        .order_by()     # ← 加这一行，强制不用默认ordering
-    )
+    # 先拿人（内部已容错）
+    qs0 = get_active_drivers(month, keyword)
+    from staffbook.models import Driver
 
-    print("drivers SQL =>", str(raw.query))
+    # 探测类型
+    def _kind(field_name):
+        try:
+            f = Driver._meta.get_field(field_name)
+            if isinstance(f, ForeignKey): return "fk"
+            if isinstance(f, CharField):  return "char"
+        except Exception:
+            pass
+        return None
 
-    drivers = [
-        NS(id=r['id'],
-           driver_code=r['driver_code'],
-           name=r['name'],
-           kana=r['kana'],
-           company=NS(name=r['workplace__company__name']),
-           workplace=NS(name=r['workplace__name']))
-        for r in raw
-    ]
-    driver_ids = [r['id'] for r in raw]
+    kind_workplace = _kind("workplace")
 
-    # 仅当月且仅这些司机
+    # 只取“安全字段” + 尝试从 workplace 链路拿公司名；绝不 SELECT driver.company
+    values_fields = ['id', 'driver_code', 'name', 'kana']
+    select_related_fields = []
+    company_name_key = None
+
+    if kind_workplace == "fk":
+        select_related_fields += ['workplace', 'workplace__company']
+        values_fields += ['workplace__name', 'workplace__company__name']
+        company_name_key = 'workplace__company__name'
+    else:
+        # workplace 是 CharField：只能显示 workplace，company 置空
+        values_fields += ['workplace']
+
+    qs = qs0
+    if select_related_fields:
+        qs = qs.select_related(*select_related_fields)
+
+    rows = list(qs.values(*values_fields).order_by())  # 不用默认 ordering，避免额外 join
+
+    drivers, driver_ids = [], []
+    for r in rows:
+        drivers.append(NS(
+            id=r['id'],
+            driver_code=r.get('driver_code') or '',
+            name=r.get('name') or '',
+            kana=r.get('kana') or '',
+            company=NS(name=(r.get(company_name_key) or '')),  # 取不到就空串
+            workplace=NS(name=(r.get('workplace__name') or r.get('workplace') or '')),
+        ))
+        driver_ids.append(r['id'])
+
+    # 仅这些司机、仅当月
     reports = DriverDailyReport.objects.filter(
         date__year=month.year, date__month=month.month,
         driver_id__in=driver_ids
     )
 
-    # 明细（同样只算这些司机的）
-    items_norm = (
-        DriverDailyReportItem.objects.filter(report__in=reports)
-        .annotate(pm=Lower(Trim('payment_method')),
-                  cpm=Lower(Trim('charter_payment_method')))
-    )
+    # 明细汇总
+    items_norm = (DriverDailyReportItem.objects.filter(report__in=reports)
+                  .annotate(pm=Lower(Trim('payment_method')),
+                            cpm=Lower(Trim('charter_payment_method'))))
 
-    from collections import defaultdict
-    totals = defaultdict(Decimal)
-    counts = defaultdict(int)
-
-    # メータのみ（非貸切）
+    totals = defaultdict(Decimal); counts = defaultdict(int)
     totals['meter_only_total'] = items_norm.filter(is_charter=False)\
         .aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
 
-    # 各方式（现金不叠加貸切）
     MAP = {
-        'cash':   (['cash'],                 []),
-        'credit': (['credit','credit_card'], ['credit','credit_card']),
-        'uber':   (['uber'],                 ['uber']),
-        'didi':   (['didi'],                 ['didi']),
-        'kyokushin': (['kyokushin'],        ['kyokushin']),
-        'omron':     (['omron'],            ['omron']),
-        'kyotoshi':  (['kyotoshi'],         ['kyotoshi']),
-        'qr':        (['qr','scanpay'],     ['qr','scanpay']),
+        'cash':     (['cash'],                 []),
+        'credit':   (['credit','credit_card'], ['credit','credit_card']),
+        'uber':     (['uber'],                 ['uber']),
+        'didi':     (['didi'],                 ['didi']),
+        'kyokushin':(['kyokushin'],            ['kyokushin']),
+        'omron':    (['omron'],                ['omron']),
+        'kyotoshi': (['kyotoshi'],             ['kyotoshi']),
+        'qr':       (['qr','scanpay'],         ['qr','scanpay']),
     }
     for key, (nlist, clist) in MAP.items():
-        n = items_norm.filter(is_charter=False, pm__in=nlist)\
-              .aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
+        n = items_norm.filter(is_charter=False, pm__in=nlist).aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
         c = (items_norm.filter(is_charter=True, cpm__in=clist)
-                    .aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')) if clist else Decimal('0')
+             .aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')) if clist else Decimal('0')
         totals[f'total_{key}'] = n + c
-        counts[key] = (items_norm.filter(is_charter=False, pm__in=nlist).count() +
-                       (items_norm.filter(is_charter=True, cpm__in=clist).count() if clist else 0))
+        counts[key] = (items_norm.filter(is_charter=False, pm__in=nlist).count()
+                       + (items_norm.filter(is_charter=True, cpm__in=clist).count() if clist else 0))
 
-    totals['charter_cash_total'] = items_norm.filter(is_charter=True, cpm__in=['jpy_cash'])\
-        .aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
-    totals['charter_uncollected_total'] = items_norm.filter(
-        is_charter=True, cpm__in=['to_company','invoice','uncollected','未収','請求']
+    totals['charter_cash_total'] = items_norm.filter(
+        is_charter=True, cpm__in=['jpy_cash','jp_cash','cash']
     ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
 
-    totals['total_meter'] = (totals['meter_only_total'] +
-                             totals['charter_cash_total'] +
-                             totals['charter_uncollected_total'])
+    totals['charter_uncollected_total'] = items_norm.filter(
+        is_charter=True, cpm__in=['to_company','invoice','uncollected','未収','請求','bank_transfer']
+    ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
 
-    rates = {'meter':Decimal('0.9091'),'cash':Decimal('0'),
-             'uber':Decimal('0.05'),'didi':Decimal('0.05'),
-             'credit':Decimal('0.05'),'kyokushin':Decimal('0.05'),
-             'omron':Decimal('0.05'),'kyotoshi':Decimal('0.05'),'qr':Decimal('0.05')}
+    totals['total_meter'] = totals['meter_only_total'] + totals['charter_cash_total'] + totals['charter_uncollected_total']
+
+    rates = {'meter':Decimal('0.9091'),'cash':Decimal('0'),'uber':Decimal('0.05'),'didi':Decimal('0.05'),
+             'credit':Decimal('0.05'),'kyokushin':Decimal('0.05'),'omron':Decimal('0.05'),
+             'kyotoshi':Decimal('0.05'),'qr':Decimal('0.05')}
     split = lambda k: ((totals.get(f'total_{k}') or 0) * rates[k]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     totals_all = {k:{'total': totals.get(f'total_{k}', Decimal('0')), 'bonus': split(k)} for k in rates}
     totals_all['meter_only_total'] = totals['meter_only_total']
@@ -1766,34 +1815,28 @@ def dailyreport_overview(request):
     totals['meter_pre_tax'] = (totals['total_meter'] / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
-    # 每司机“売上合計”
-    per_driver = DriverDailyReportItem.objects.filter(report__in=reports)\
-        .values('report__driver').annotate(
-            meter_only=Sum('meter_fee', filter=Q(is_charter=False)),
-            charter_cash=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['jpy_cash'])),
-            charter_uncol=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['to_company','invoice','uncollected','未収','請求'])),
-        )
+    per_driver = (DriverDailyReportItem.objects.filter(report__in=reports)
+                  .values('report__driver').annotate(
+                      meter_only=Sum('meter_fee', filter=Q(is_charter=False)),
+                      charter_cash=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['jpy_cash','jp_cash','cash'])),
+                      charter_uncol=Sum('charter_amount_jpy', filter=Q(is_charter=True, charter_payment_method__in=['to_company','invoice','uncollected','未収','請求','bank_transfer'])),
+                  ))
     fee_map = {r['report__driver']: (r['meter_only'] or 0)+(r['charter_cash'] or 0)+(r['charter_uncol'] or 0)
                for r in per_driver}
 
-    sort = request.GET.get('sort', 'amount_desc')
     def code_key(d):
         code = (getattr(d, 'driver_code', '') or '').strip()
         return (0, int(code)) if code.isdigit() else (1, code)
 
-    if sort == 'code_asc':
-        ordered = sorted(drivers, key=code_key)
-    elif sort == 'code_desc':
-        ordered = sorted(drivers, key=code_key, reverse=True)
-    elif sort == 'amount_asc':
-        ordered = sorted(drivers, key=lambda d: (fee_map.get(d.id, Decimal('0')), code_key(d)))
-    else:
-        ordered = sorted(drivers, key=lambda d: (fee_map.get(d.id, Decimal('0')), code_key(d)), reverse=True)
+    ordered = (sorted(drivers, key=code_key) if sort=='code_asc' else
+               sorted(drivers, key=code_key, reverse=True) if sort=='code_desc' else
+               sorted(drivers, key=lambda d: (fee_map.get(d.id, Decimal('0')), code_key(d)),
+                      reverse=(sort!='amount_asc')))
 
     rows = []
     for d in ordered:
         total = fee_map.get(d.id, Decimal('0'))
-        has_issue = reports.filter(driver_id=d.id, has_issue=True).exists()  # ← 用 driver_id
+        has_issue = reports.filter(driver_id=d.id, has_issue=True).exists()
         rows.append({'driver': d, 'total_fee': total,
                      'note': "⚠️ 異常あり" if has_issue else ("（未報告）" if d.id not in fee_map else ""),
                      'month_str': month_str})

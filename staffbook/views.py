@@ -1,89 +1,82 @@
+# views.py 头部（替换你文件开头到第一个 def 之前的所有内容）
+
 import csv, re, datetime
+from decimal import Decimal, ROUND_HALF_UP
+from collections import defaultdict
+from calendar import monthrange
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib import messages
 from django.http import HttpResponse
-from datetime import datetime as DatetimeClass
-from django.utils.timezone import make_aware, is_naive
-from collections import defaultdict
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.timezone import now, make_aware, is_naive
+from django.db.models import Q, Sum, Case, When, F, DecimalField
+from django.forms import inlineformset_factory, modelformset_factory
+
 from carinfo.models import Car
 from vehicles.models import Reservation
-from django.forms import inlineformset_factory
 from dailyreport.models import DriverDailyReport, DriverDailyReportItem
 
 from .permissions import is_staffbook_admin
-from django.contrib import messages
-#from .forms import (
-#    DriverForm, DriverPersonalInfoForm, DriverLicenseForm, 
-#    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm, DriverBasicEditForm
-#   )
 
-from dailyreport.forms import (
-    DriverDailyReportForm, DriverDailyReportItemForm, DriverReportImageForm,
+# ---------- 只引入“工厂”而不是直接引入表单类 ----------
+# 这一步是关键：避免 app 加载时循环依赖，解决
+# “Cannot create form field for 'company' … related model 'staffbook.Company' has not been loaded yet”
+from .forms import (
+    DriverFormFactory,
+    DriverPersonalInfoFormFactory,
+    DriverLicenseFormFactory,
+    DriverBasicEditFormFactory,
+    RewardFormFactory,
+    DriverPayrollRecordFormFactory,
+    DriverCertificateFormFactory,
+    AccidentFormFactory,
 )
 
+# ---------- 在 app 全部加载完成后，统一实例化一次 ----------
+# 用原来的名字导出，后面的视图完全不用改
+DriverForm              = DriverFormFactory()
+DriverPersonalInfoForm  = DriverPersonalInfoFormFactory()
+DriverLicenseForm       = DriverLicenseFormFactory()
+DriverBasicEditForm     = DriverBasicEditFormFactory()
+RewardForm              = RewardFormFactory()
+DriverPayrollRecordForm = DriverPayrollRecordFormFactory()
+DriverCertificateForm   = DriverCertificateFormFactory()
+AccidentForm            = AccidentFormFactory()
+
+# ---------- 模型 ----------
 from .models import (
     Driver, DrivingExperience,
-    DriverInsurance, FamilyMember, DriverLicense, LicenseType, Qualification, Aptitude,
-    Reward, Accident, Education, Pension, DriverPayrollRecord,
-    Company, Workplace,   # ← 新增
-)
-
-from django.db.models import Q, Sum, Case, When, F, DecimalField
-from django.forms import inlineformset_factory, modelformset_factory
-from django.utils import timezone
-from django import forms
-
-from calendar import monthrange
-from django.utils.timezone import now
-from django.core.paginator import Paginator
-from django.urls import reverse
-from decimal import Decimal, ROUND_HALF_UP
-
-
-
-from accounts.utils import check_module_permission
-from dailyreport.services.summary import (
-    calculate_totals_from_queryset,
-    calculate_totals_from_formset,  # 👈 加上这一行
+    DriverInsurance, FamilyMember, DriverLicense, LicenseType,
+    Qualification, Aptitude, Reward, Accident, Education,
+    Pension, DriverPayrollRecord
 )
 
 # ===== 売上に基づく分段控除（給与側の規則）BEGIN =====
 def calc_progressive_fee_by_table(amount_jpy: int | Decimal) -> int:
     """
-    基于你提供的分段表计算扣款。
-    入参：不含税売上（円）
-    返回：円（整数）
-
-    表规则（单位换算）：
-      - 黄色列为「万円」：22.5 → 225,000 円，…，77 → 770,000 円
-      - 超过 125,000 円部分，每增加 10,000 円，加 7 万円（= 70,000 円）
+    基于分段表计算扣款。入参：不含税売上（円） -> 返回：円（整数）
     """
-    # 阈值单位应为「万円」→ 换算为 円（×10,000）
     THRESHOLDS = [450_000, 550_000, 650_000, 750_000, 850_000, 950_000, 1_050_000, 1_150_000, 1_250_000]
-    # 对应累计值（黄色列：万円）
     CUM_VALUES_MAN = [22.5, 28.5, 35, 42, 49, 56, 63, 70, 77]  # 万円
-    # 超出 125,000 円后，每 10,000 円的增量：7 万円
     STEP_AFTER_LAST_MAN = 7.0  # 万円 / 1万
-    # 单位换算
-    MAN_TO_YEN = 10_000        # 万円 → 円
-    STEP_SIZE = 10_000         # 每一段宽度（1万）
+    MAN_TO_YEN = 10_000
+    STEP_SIZE = 10_000
 
     amt = int(Decimal(amount_jpy))
     if amt <= 0:
         return 0
-
-    # 阈值内：直接按段取累计值（本表以 1 万为步进，不做更细插值）
     for i, limit in enumerate(THRESHOLDS):
         if amt <= limit:
             return int(round(CUM_VALUES_MAN[i] * MAN_TO_YEN))
-
-    # 超出部分：基数 + 追加段数 * 每段增量
     base_man = CUM_VALUES_MAN[-1]
     extra_steps = (amt - THRESHOLDS[-1]) // STEP_SIZE
     total_man = base_man + extra_steps * STEP_AFTER_LAST_MAN
     return int(round(total_man * MAN_TO_YEN))
-# ===== 売上に基づく分段控除（黄色列：万円）END =====
+# ===== 売上に基づく分段控除 END =====
+
 
 def driver_card(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
@@ -244,11 +237,11 @@ def driver_basic_edit(request, driver_id):
     form = DriverBasicEditForm(request.POST or None, request.FILES or None, instance=driver)
 
     companies   = Company.objects.order_by("name")
-    workplaces  = Workplace.objects.order_by("company__name", "name")
+    workplaces  = Workplace.objects.order_by("company", "name")
 
     # 选中值（POST 优先 → 实例值兜底），字符串化便于模板比较
-    selected_company_id   = str(request.POST.get("company")   or driver.company_id or "")
-    selected_workplace_id = str(request.POST.get("workplace") or driver.workplace_id or "")
+    selected_company_id   = str(request.POST.get("company")   or driver.company or "")
+    selected_workplace_id = str(request.POST.get("workplace") or driver.workplace or "")
     selected_employ_type  = str(request.POST.get("employ_type") or driver.employ_type or "")
 
     # 固定下拉（你之前页面在用）
