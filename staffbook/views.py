@@ -255,37 +255,6 @@ def driver_basic_edit(request, driver_id):
         'tab': 'basic',
     })
 
-#運転経験
-@user_passes_test(is_staffbook_admin)
-def driver_experience_info(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    # 查询经验对象，可以多条
-    experiences = DrivingExperience.objects.filter(driver=driver)
-    return render(request, 'staffbook/driver_experience_info.html', {
-        'driver': driver,
-        'experiences': experiences,
-        'main_tab': 'driving',
-        'tab': 'experience',
-    })
-
-@user_passes_test(is_staffbook_admin)
-def driver_experience_edit(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    ExperienceFormSet = inlineformset_factory(Driver, DrivingExperience, fields="__all__", extra=1, can_delete=True)
-    if request.method == 'POST':
-        formset = ExperienceFormSet(request.POST, instance=driver)
-        if formset.is_valid():
-            formset.save()
-            return redirect('staffbook:driver_experience_info', driver_id=driver.id)
-    else:
-        formset = ExperienceFormSet(instance=driver)
-    return render(request, 'staffbook/driver_experience_edit.html', {
-        'formset': formset,
-        'driver': driver,
-        'main_tab': 'driving',
-        'tab': 'experience',
-    })
-
 #個人情報
 @user_passes_test(is_staffbook_admin)
 def driver_personal_info(request, driver_id):
