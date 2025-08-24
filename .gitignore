@@ -10,3 +10,9 @@ __pycache__/
 .DS_Store
 # Django 上传文件目录
 /media/
+# .gitignore 文件追加以下内容
+*.bak
+*.pyc
+__pycache__/
+*/migrations/*.py
+!*/migrations/__init__.py

@@ -12,19 +12,39 @@ def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSel
 
 # ✅ 司机基础信息表单
 class DriverForm(forms.ModelForm):
+    COMPANY_CHOICES = [
+        ('京成タクシー', '京成タクシー'),
+        ('東都タクシー', '東都タクシー'),
+        ('東京無線', '東京無線'),
+        # 可继续追加你需要的公司名
+    ]
+    WORKPLACE_CHOICES = [
+        ('本社営業所', '本社営業所'),
+        ('新宿営業所', '新宿営業所'),
+        ('足立営業所', '足立営業所'),
+        # 同样追加需要的营业所名
+    ]
+
+    company = forms.ChoiceField(choices=COMPANY_CHOICES, label="事業者名", widget=forms.Select(attrs={'class': 'form-select'}))
+    workplace = forms.ChoiceField(choices=WORKPLACE_CHOICES, label="営業所名", widget=forms.Select(attrs={'class': 'form-select'}))
+
+    
     class Meta:
         model = Driver
         fields = [
-            'driver_code', 'name', 'kana', 'department',
-            'position', 'birth_date', 'gender', 'blood_type', 'resigned_date',
-            'hire_date', 'appointment_date', 'create_date', 'remark'
+            'driver_code', 'name', 'kana',
+            'company', 'workplace',  # ✅ 加上这两个字段
+            'department', 'position',
+            'birth_date', 'gender', 'blood_type',
+            'resigned_date', 'hire_date', 'appointment_date',
+            'create_date', 'remark'
         ]
         widgets = {
             'gender': forms.Select(attrs={'class': 'form-select'}),
             'blood_type': forms.Select(attrs={'class': 'form-select'}),
             'birth_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'hire_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'resigned_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),  # ✅ 新增
+            'resigned_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'appointment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'create_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),

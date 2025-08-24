@@ -3,21 +3,41 @@ from django import forms
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
 from django.core.exceptions import ValidationError
-from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage
+from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage, DriverDailyReportSegment
 from vehicles.models import Reservation as VehicleReservation
 from dailyreport.utils.debug import apply_form_control_style
 from carinfo.models import Car  # 保持你项目里的实际路径
 
 
+
+
 # ✅ 1. 自定义 FormSet（放在 ReportItemFormSet 之前！）
 class RequiredReportItemFormSet(BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 仅允许选择当前日报(report)下的分段
+        report = getattr(self, "instance", None)
+        qs = (DriverDailyReportSegment.objects.filter(report=report)
+            if report and report.pk else DriverDailyReportSegment.objects.none())
+        for f in self.forms:
+            if "segment" in f.fields:
+                f.fields["segment"].queryset = qs
+                f.fields["segment"].empty_label = "— 所属車両を選択 —"
+
+
     def clean(self):
         super().clean()
+
+        report = getattr(self, "instance", None)
 
         for form in self.forms:
             # 已经主动删除的行跳过
             if form.cleaned_data.get('DELETE'):
                 continue
+
+            seg = form.cleaned_data.get("segment")
+            if seg and report and seg.report_id != report.id:
+                form.add_error("segment", "所選分段不屬於本日報。")
 
             meter_fee   = form.cleaned_data.get('meter_fee')
             pay_method  = form.cleaned_data.get('payment_method')
@@ -213,6 +233,9 @@ class DriverDailyReportItemForm(forms.ModelForm):
                 'inputmode': 'numeric',
                 'pattern': '[0-9]*',
             }),
+            # === [PATCH-B1 START]：新增“所属车辆分段”下拉样式（顶层键，与 payment_method 同级） ===
+            'segment': forms.Select(attrs={'class': 'form-select form-select-sm segment-select'}),
+            # === [PATCH-B1 END] ===
             'payment_method': forms.Select(attrs={'class': 'payment-method-select'}),
             'note': forms.TextInput(attrs={'class': 'note-input auto-width-input'}),
             'is_flagged': forms.CheckboxInput(attrs={'class': 'mark-checkbox'}),
@@ -229,7 +252,6 @@ class DriverDailyReportItemForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # ✅ 这些你原来就有
         self.fields['num_male'].required = False
         self.fields['num_female'].required = False
         self.fields['charter_amount_jpy'].required = False
@@ -240,6 +262,25 @@ class DriverDailyReportItemForm(forms.ModelForm):
             cls = self.fields['is_charter'].widget.attrs.get('class', '')
             self.fields['is_charter'].widget.attrs['class'] = (cls + ' charter-checkbox').strip()
 
+        # === 只显示“本日报”的分段 ===
+        if 'segment' in self.fields:
+            report = getattr(self.instance, "report", None)
+            qs = (DriverDailyReportSegment.objects
+                    .filter(report=report)) if report and report.pk else DriverDailyReportSegment.objects.none()
+            self.fields['segment'].queryset = qs
+            self.fields['segment'].required = False
+            self.fields['segment'].label = "所属车辆（分段）"
+
+    # === 守门：若选择了 segment，必须属于本日报 ===
+    def clean_segment(self):
+        seg = self.cleaned_data.get('segment')
+        if not seg:
+            return seg
+        report = getattr(self.instance, "report", None)
+        if report and seg.report_id != report.id:
+            raise forms.ValidationError("所選分段不屬於本日報。")
+        return seg
+
 # 4. 明细 FormSet（必须最后）
 ReportItemFormSet = inlineformset_factory(
     DriverDailyReport,
@@ -249,7 +290,17 @@ ReportItemFormSet = inlineformset_factory(
     extra=0,
     can_delete=True,
     max_num=40
+)  # ← 这一行右括号必须有
+
+# === [PATCH-B3 START]：车辆分段 FormSet（紧跟在上面之后） ===
+DriverDailyReportSegmentFormSet = inlineformset_factory(
+    DriverDailyReport,
+    DriverDailyReportSegment,
+    fields=['vehicle', 'reason', 'start_time', 'end_time'],
+    extra=1,
+    can_delete=True
 )
+# === [PATCH-B3 END] ===
 
 # ✅ 日报上传图片
 class DriverReportImageForm(forms.ModelForm):
