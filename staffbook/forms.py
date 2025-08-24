@@ -15,7 +15,7 @@ class DriverForm(forms.ModelForm):
     class Meta:
         model = Driver
         fields = [
-            'driver_code', 'name', 'kana', 'company', 'workplace', 'department',
+            'driver_code', 'name', 'kana', 'department',
             'position', 'birth_date', 'gender', 'blood_type', 'resigned_date',
             'hire_date', 'appointment_date', 'create_date', 'remark'
         ]
@@ -85,7 +85,7 @@ class DriverBasicForm(forms.ModelForm):
     class Meta:
         model = Driver
         fields = [
-            'driver_code', 'name', 'kana', 'company', 'workplace', 'department',
+            'driver_code', 'name', 'kana', 'department',
             'position', 'employ_type',
             'appointment_date', 'hire_date', 'create_date',
             'birth_date', 'gender', 'blood_type', 'postal_code', 'address',

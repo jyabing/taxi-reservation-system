@@ -8,8 +8,8 @@
       <i class="fa fa-user me-2"></i>
       <b>基本情報編集</b>
       <span class="badge bg-primary ms-2">No.{{ driver.driver_code }}</span>
-      <span class="ms-auto small">
-        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+      <span class="ms-auto small text-muted">
+        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}／国籍は必須
       </span>
     </div>
 
@@ -22,19 +22,13 @@
           <div class="alert alert-danger">{{ form.non_field_errors }}</div>
         {% endif %}
         <div class="row">
-          <!-- 左侧 2列布局 -->
+          <!-- 左侧布局 -->
           <div class="col-md-8">
             <div class="row g-2">
-              <div class="col-md-6">
-                <label class="form-label">従業員番号 <span class="badge bg-danger">必須</span></label>
-                {{ form.driver_code }}
-                {% if form.driver_code.errors %}<div class="text-danger small">{{ form.driver_code.errors }}</div>{% endif %}
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">事業者名 <span class="badge bg-danger">必須</span></label>
-                {{ form.company }}
-                {% if form.company.errors %}<div class="text-danger small">{{ form.company.errors }}</div>{% endif %}
-              </div>
+
+              <!-- 従業員番号隐藏字段 -->
+              <input type="hidden" name="driver_code" value="{{ driver.driver_code }}">
+
               <div class="col-md-6">
                 <label class="form-label">氏名 <span class="badge bg-danger">必須</span></label>
                 {{ form.name }}
@@ -46,9 +40,29 @@
                 {% if form.kana.errors %}<div class="text-danger small">{{ form.kana.errors }}</div>{% endif %}
               </div>
               <div class="col-md-6">
+                <label class="form-label">別名</label>
+                {{ form.alt_name }}
+                {% if form.alt_name.errors %}<div class="text-danger small">{{ form.alt_name.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">別名フリガナ</label>
+                {{ form.alt_kana }}
+                {% if form.alt_kana.errors %}<div class="text-danger small">{{ form.alt_kana.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">事業者名 <span class="badge bg-danger">必須</span></label>
+                {{ form.company }}
+                {% if form.company.errors %}<div class="text-danger small">{{ form.company.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
                 <label class="form-label">営業所 <span class="badge bg-danger">必須</span></label>
                 {{ form.workplace }}
                 {% if form.workplace.errors %}<div class="text-danger small">{{ form.workplace.errors }}</div>{% endif %}
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">国籍 <span class="badge bg-danger">必須</span></label>
+                {{ form.nationality }}
+                {% if form.nationality.errors %}<div class="text-danger small">{{ form.nationality.errors }}</div>{% endif %}
               </div>
               <div class="col-md-6">
                 <label class="form-label">部門</label>
@@ -61,7 +75,7 @@
                 {% if form.position.errors %}<div class="text-danger small">{{ form.position.errors }}</div>{% endif %}
               </div>
               <div class="col-md-6">
-                <label class="form-label">在职类型 <span class="badge bg-danger">必須</span></label>
+                <label class="form-label">在職類型 <span class="badge bg-danger">必須</span></label>
                 {{ form.employ_type }}
                 {% if form.employ_type.errors %}<div class="text-danger small">{{ form.employ_type.errors }}</div>{% endif %}
               </div>
@@ -100,7 +114,7 @@
                 {% if form.create_date.errors %}<div class="text-danger small">{{ form.create_date.errors }}</div>{% endif %}
               </div>
               <div class="col-md-6">
-                <label class="form-label">邮便番号</label>
+                <label class="form-label">郵便番号</label>
                 {{ form.postal_code }}
                 {% if form.postal_code.errors %}<div class="text-danger small">{{ form.postal_code.errors }}</div>{% endif %}
               </div>
@@ -116,7 +130,7 @@
               </div>
             </div>
           </div>
-          <!-- 右侧照片与特記事項 -->
+          <!-- 右侧：照片和备注 -->
           <div class="col-md-4">
             <div class="mb-3 text-center">
               <label class="form-label">写真</label><br>
@@ -140,6 +154,7 @@
             </div>
           </div>
         </div>
+
         <div class="text-end mt-4">
           <button type="submit" class="btn btn-success btn-lg px-5 me-2">
             <i class="fa fa-save"></i> 保存

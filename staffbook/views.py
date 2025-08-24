@@ -239,8 +239,12 @@ def driver_basic_edit(request, driver_id):
         if form.is_valid():
             form.save()
             return redirect('staffbook:driver_basic_info', driver_id=driver.id)
+        else:
+            print("[DEBUG] 表单验证失败，错误如下：", form.errors)
+            messages.error(request, "入力内容をご確認ください。")
     else:
         form = DriverBasicForm(instance=driver)
+
     return render(request, 'staffbook/driver_basic_edit.html', {
         'form': form,
         'driver': driver,

@@ -7,6 +7,7 @@ from carinfo.models import Car
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+
 # 📌 插入在 import 之后，模型定义之前
 RESIDENCE_STATUS_CHOICES = [
     ('日本人の配偶者等', '日本人の配偶者等'),
@@ -50,6 +51,18 @@ class Driver(models.Model):
     kana = models.CharField('フリガナ', max_length=32)
     company = models.CharField('事業者名', max_length=64)
     workplace = models.CharField('営業所名', max_length=64)
+
+
+    # ✅ 新增：别名/别名カタカナ（如不需要可删除）
+    alt_name = models.CharField('別名', max_length=32, blank=True, default="")
+    alt_kana = models.CharField('別名フリガナ', max_length=32, blank=True, default="")
+
+    #company   = models.ForeignKey(Company,   on_delete=models.PROTECT, related_name='drivers', verbose_name='事業者名')
+    #workplace = models.ForeignKey(Workplace, on_delete=models.PROTECT, related_name='drivers', verbose_name='営業所名')
+
+    company   = None
+    workplace = None
+    
     department = models.CharField('部門', max_length=32, blank=True)
     position = models.CharField('職種', max_length=32, choices=[
         ('1', '常時選任運転者'),
