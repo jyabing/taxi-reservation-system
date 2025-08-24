@@ -1,19 +1,40 @@
-# 虚拟环境
+# ---- Python 基础 ----
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ---- Django 特有 ----
+*.log
+*.pot
+*.pyc
+
+# 不要忽略迁移文件！只忽略缓存目录
+*/migrations/__pycache__/
+*/migrations/*.pyc
+
+# ---- 数据库 / 媒体 ----
+db.sqlite3
+media/
+*.sqlite3
+
+# ---- 虚拟环境 ----
 venv/
 env/
-taxi_env/
-# Python artifacts
-*.pyc
-__pycache__/
-# SQLite 数据库
-*.sqlite3
+*.egg-info/
+.eggs/
+*.pyo
+
+# ---- IDE / 编辑器 ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- 系统文件 ----
 .DS_Store
-# Django 上传文件目录
-/media/
-# .gitignore 文件追加以下内容
+Thumbs.db
+
+# ---- 临时文件 ----
 *.bak
-*.pyc
-__pycache__/
-*/migrations/*.py
-!*/migrations/__init__.py
-*.bak
+*.tmp
+*.orig

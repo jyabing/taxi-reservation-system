@@ -4,20 +4,6 @@ from .models import (
 from django import forms
 from staffbook.models import Accident, Reward, DriverInsurance, DriverPayrollRecord # ✅ 保险、事故、奖励等模型
 
-class DriverBasicEditForm(forms.ModelForm):
-    """
-    用于“基本データ編集”页的表单。
-    注意：不包含 driver_code（従業員番号），避免必填校验。
-    """
-    class Meta:
-        model = Driver
-        fields = [
-            'name', 'kana', 'alt_name', 'alt_kana',
-            'nationality', 'gender', 'blood_type',
-            'birth_date', 'hire_date',
-            'company', 'workplace', 'department',
-            'position', 'employ_type', 'remark',
-        ]
 
 # ✅ 通用样式自动添加工具函数
 def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
@@ -29,14 +15,11 @@ def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSel
 class DriverForm(forms.ModelForm):
     COMPANY_CHOICES = [
         ('京成タクシー', '京成タクシー'),
-        ('東都タクシー', '東都タクシー'),
-        ('東京無線', '東京無線'),
         # 可继续追加你需要的公司名
     ]
     WORKPLACE_CHOICES = [
         ('本社営業所', '本社営業所'),
         ('新宿営業所', '新宿営業所'),
-        ('足立営業所', '足立営業所'),
         # 同样追加需要的营业所名
     ]
 
@@ -48,7 +31,7 @@ class DriverForm(forms.ModelForm):
         model = Driver
         fields = [
             'driver_code', 'name', 'kana',
-            'company', 'workplace',  # ✅ 加上这两个字段
+            
             'department', 'position',
             'birth_date', 'gender', 'blood_type',
             'resigned_date', 'hire_date', 'appointment_date',
@@ -199,3 +182,7 @@ class DriverCertificateForm(forms.ModelForm):
             self.fields,
             exclude_types=(forms.CheckboxInput, forms.ClearableFileInput)
         )
+
+class DriverBasicEditForm(DriverBasicForm):
+    """compat alias to avoid import errors"""
+    pass

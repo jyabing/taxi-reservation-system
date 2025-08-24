@@ -15,7 +15,7 @@ from .permissions import is_staffbook_admin
 from django.contrib import messages
 from .forms import (
     DriverForm, DriverPersonalInfoForm, DriverLicenseForm, 
-    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm, DriverBasicEditForm
+    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm
     )
 
 from dailyreport.forms import (
