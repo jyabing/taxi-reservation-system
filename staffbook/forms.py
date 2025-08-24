@@ -31,7 +31,6 @@ class DriverForm(forms.ModelForm):
         model = Driver
         fields = [
             'driver_code', 'name', 'kana',
-            
             'department', 'position',
             'birth_date', 'gender', 'blood_type',
             'resigned_date', 'hire_date', 'appointment_date',
@@ -53,12 +52,12 @@ class DriverForm(forms.ModelForm):
         apply_form_control_style(self.fields)
 
     def clean(self):
-        cleaned_data = super().clean()
-        employ_type = cleaned_data.get('employ_type')
-        resigned_date = cleaned_data.get('resigned_date')
-
+        cleaned = super().clean()
+        employ_type = cleaned.get('employ_type') or getattr(self.instance, 'employ_type', None)
+        resigned_date = cleaned.get('resigned_date') or getattr(self.instance, 'resigned_date', None)
         if employ_type == '3' and not resigned_date:
             self.add_error('resigned_date', '退職者は退職日を入力してください。')
+        return cleaned
 
 # ✅ 驾照信息表单
 class DriverLicenseForm(forms.ModelForm):

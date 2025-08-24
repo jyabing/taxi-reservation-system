@@ -1010,7 +1010,7 @@ def delete_reservation_view(request, reservation_id):
         messages.error(request, "この予約は存在しないか、既に削除されました。")
         return redirect('vehicles:my_reservations')
 
-    if reservation.status not in ['pending', 'reserved']:
+    if reservation.status not in ['pending', 'booked']:
         return HttpResponseForbidden("已确认预约不能删除。")
 
     if request.method == 'POST':
