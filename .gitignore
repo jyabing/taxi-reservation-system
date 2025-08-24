@@ -18,8 +18,11 @@ media/
 *.sqlite3
 
 # ---- 虚拟环境 ----
+taxi_env/
 venv/
+.venv/
 env/
+.tox/
 *.egg-info/
 .eggs/
 *.pyo
