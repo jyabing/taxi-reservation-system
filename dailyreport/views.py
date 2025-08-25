@@ -1,15 +1,18 @@
 import csv, os, sys, logging
 from io import BytesIO
 logger = logging.getLogger(__name__)
-from datetime import datetime, date, timedelta, time
+from datetime import datetime, date, timedelta, time as dtime
 from tempfile import NamedTemporaryFile
+
 
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib import messages
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
+from datetime import datetime, timedelta, time as dtime
 from django.utils import timezone
+from django.db import models
 from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q, Count
 from django.db.models.functions import Substr, Cast, Coalesce, NullIf  # ←【在这行里确保包含 Coalesce, NullIf】
 from django.http import HttpResponse, FileResponse
@@ -21,11 +24,6 @@ from dateutil.relativedelta import relativedelta
 
 from django.db.models.functions import Lower, Trim, ExtractHour, ExtractMinute
 from dailyreport.constants import PAYMENT_RATES
-
-# === [PATCH C-IMPORT START] ===
-from dailyreport.forms import DriverDailyReportSegmentFormSet
-from dailyreport.models import DriverDailyReportSegment
-# === [PATCH C-IMPORT END] ===
 
 from dailyreport.models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet, RequiredReportItemFormSet
@@ -51,6 +49,23 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from dailyreport.utils.debug import debug_print
+
+# 固定加算の休憩(分)
+BASE_BREAK_MINUTES = 20  
+
+def _hm_from_minutes(total_min: int):
+    """把分钟数转成 (小时, 分钟)"""
+    total_min = max(0, int(total_min or 0))
+    return total_min // 60, total_min % 60
+
+def _minutes_from_timedelta(td):
+    """把 timedelta 转成整数分钟"""
+    if not td:
+        return 0
+    try:
+        return int(td.total_seconds() // 60)
+    except Exception:
+        return 0
 
 DEBUG_PRINT_ENABLED = True
 #import builtins
@@ -101,6 +116,82 @@ def _sorted_items_qs(report):
         .order_by('_minutes_for_sort', 'id')
     )
 # --- end 明细时间排序 ---
+
+def _to_aware_dt(val, base_date, *, base_clock_in=None, tz=None):
+    """
+    把 str('HH:MM' 或 'HH:MM:SS') / time / datetime 统一转成有时区的 datetime。
+    接受第二个位置参数 base_date，以兼容旧调用：_to_aware_dt(xxx, self.instance.date, ...)
+    """
+    if val in (None, ''):
+        return None
+
+    # 统一得到 naive datetime
+    if isinstance(val, datetime):
+        dt = val
+    elif isinstance(val, dtime):
+        dt = datetime.combine(base_date, val)
+    elif isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        parts = s.split(':')
+        if 2 <= len(parts) <= 3 and all(p.isdigit() for p in parts):
+            h = int(parts[0]); m = int(parts[1]); sec = int(parts[2]) if len(parts) == 3 else 0
+            dt = datetime.combine(base_date, dtime(hour=h, minute=m, second=sec))
+        else:
+            return None
+    else:
+        return None
+
+    # 跨日：给了出勤时间且当前时间 < 出勤 → +1 天
+    if base_clock_in:
+        ci = base_clock_in.time() if isinstance(base_clock_in, datetime) else base_clock_in
+        if isinstance(ci, dtime) and dt.time() < ci:
+            dt += timedelta(days=1)
+
+    tz = tz or timezone.get_current_timezone()
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, tz)
+    return dt
+
+def to_aware_dt(base_date, value, *, base_clock_in=None, tz=None):
+    """
+    把 value 统一变成“有时区的 datetime”或 None。
+    支持：datetime / time / 'HH:MM' 字符串 / None
+    不再使用 parse_datetime/parse_time。
+    若提供 base_clock_in（出勤），且 value 早于出勤，则视为跨日 +1 天。
+    """
+    if value in (None, ""):
+        return None
+
+    # 先构造 naive datetime
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, dtime):
+        dt = datetime.combine(base_date, value)
+    elif isinstance(value, str):
+        s = value.strip()
+        if not s or ":" not in s:
+            return None
+        try:
+            h, m = map(int, s.split(":", 1))
+        except Exception:
+            return None
+        dt = datetime.combine(base_date, dtime(hour=h, minute=m))
+    else:
+        return None
+
+    # 跨日判断（可选）
+    if base_clock_in:
+        ci = base_clock_in.time() if isinstance(base_clock_in, datetime) else base_clock_in
+        if isinstance(ci, dtime) and dt.time() < ci:
+            dt += timedelta(days=1)
+
+    # 加时区
+    tz = tz or timezone.get_current_timezone()
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, tz)
+    return dt
 
 def check_module_permission(user, perm_key: str) -> bool:
     """
@@ -236,149 +327,182 @@ def dailyreport_edit(request, pk):
         formset=RequiredReportItemFormSet,
         extra=0,
         can_delete=True,
-        max_num=40
+        max_num=40,
     )
 
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
         formset = ReportItemFormSet(request.POST, instance=report)
-        # === [PATCH C1-POST START]：POST 分段 formset ===
-        seg_formset = DriverDailyReportSegmentFormSet(request.POST, instance=report, prefix='seg')
-        # === [PATCH C1-POST END] ===
 
-        # === [PATCH C2 START]：把分段 formset 一并校验 ===
-        if form.is_valid() and formset.is_valid() and seg_formset.is_valid():
-        # === [PATCH C2 END] ===
-            # === [PATCH C3 START]：保存分段 formset ===
-            seg_formset.save()
-            # === [PATCH C3 END] ===
+        if form.is_valid() and formset.is_valid():
+            # 先不立即保存，先把主表字段兜底规范一下
+            inst = form.save(commit=False)
+
             cd = form.cleaned_data
-            report = form.save(commit=False)
 
-            # ✅ 小工具：None/'' -> 0
-            def _to_int(v):
-                try:
-                    return int(v or 0)
-                except (TypeError, ValueError):
-                    return 0
+            # —— ETC 相关安全取值（全都转 int，空值=0）
+            inst.etc_collected_cash = _to_int(cd.get('etc_collected_cash') or request.POST.get('etc_collected_cash'))
+            inst.etc_collected_app  = _to_int(cd.get('etc_collected_app')  or request.POST.get('etc_collected_app'))
 
-            # ⚠️ etc_expected 是 @property，只读，不能赋值
-            # report.etc_expected = _to_int(cd.get('etc_expected'))  # ← 删除
-
-            # 明细
-            report.etc_collected_cash = _to_int(cd.get('etc_collected_cash') or request.POST.get('etc_collected_cash'))
-            report.etc_collected_app  = _to_int(cd.get('etc_collected_app')  or request.POST.get('etc_collected_app'))
-
-            # 汇总（若为空，用 cash+app 兜底）
             etc_collected_val = cd.get('etc_collected')
-            report.etc_collected = _to_int(
+            inst.etc_collected = _to_int(
                 etc_collected_val if etc_collected_val not in [None, '']
-                else (report.etc_collected_cash or 0) + (report.etc_collected_app or 0)
+                else (inst.etc_collected_cash or 0) + (inst.etc_collected_app or 0)
             )
 
-            # 空车ETC金额（兼容旧字段名 etc_empty_amount）
-            report.etc_uncollected = _to_int(
+            inst.etc_uncollected = _to_int(
                 cd.get('etc_uncollected') or request.POST.get('etc_uncollected') or request.POST.get('etc_empty_amount')
             )
 
-            # 收取方式（可为空）
-            report.etc_payment_method = cd.get('etc_payment_method') or None
+            inst.etc_payment_method = cd.get('etc_payment_method') or None
 
-            # 不足额：若表单提供则用表单；否则用只读 etc_expected 回算
+            # 不足额：如果表单里没有字段，就按 “应收-实收” 计算
             if 'etc_shortage' in form.fields:
-                report.etc_shortage = _to_int(cd.get('etc_shortage'))
+                inst.etc_shortage = _to_int(cd.get('etc_shortage'))
             else:
-                expected_val = _to_int(getattr(report, 'etc_expected', 0))
-                report.etc_shortage = max(0, expected_val - _to_int(report.etc_collected))
+                expected_val = _to_int(getattr(inst, 'etc_expected', 0))
+                inst.etc_shortage = max(0, expected_val - _to_int(inst.etc_collected))
 
-            report.save()
+            # 休憩时间（允许空）
+            break_input = (request.POST.get("break_time_input") or "").strip()
+            break_minutes = 0
+            try:
+                if ":" in break_input:
+                    h, m = map(int, break_input.split(":", 1))
+                elif break_input:
+                    h, m = 0, int(break_input)
+                else:
+                    h, m = 0, 0
+                break_minutes = h * 60 + m
+            except Exception:
+                break_minutes = 0
+            try:
+                inst.休憩時間 = timedelta(minutes=break_minutes)
+            except Exception:
+                pass
+
+            # 工作时长（若模型里有该方法）
+            try:
+                inst.calculate_work_times()
+            except Exception:
+                pass
+
+            inst.edited_by = request.user
+
+            # 入金差額 = 入金 - 现现金 - 貸切現金
+            cash_total = sum(
+                (it.cleaned_data.get('meter_fee') or 0)
+                for it in formset.forms
+                if it.cleaned_data.get('payment_method') == 'cash'
+                and not it.cleaned_data.get('DELETE', False)
+            )
+            charter_cash_total = sum(
+                (it.cleaned_data.get('charter_amount_jpy') or 0)
+                for it in formset.forms
+                if it.cleaned_data.get('is_charter')
+                and (it.cleaned_data.get('charter_payment_method') in ['jpy_cash', 'jp_cash', 'cash', 'rmb_cash', 'self_wechat', 'boss_wechat'])
+                and not it.cleaned_data.get('DELETE', False)
+            )
+            deposit = inst.deposit_amount or 0
+            inst.deposit_difference = deposit - cash_total - charter_cash_total
+
+            inst.save()
+            formset.instance = inst
             formset.save()
 
+            # 汇总 has_issue
+            try:
+                inst.has_issue = inst.items.filter(has_issue=True).exists()
+                inst.save(update_fields=["has_issue"])
+            except Exception:
+                pass
+
             messages.success(request, "保存成功！")
-            return redirect('dailyreport:dailyreport_edit', pk=report.pk)
+            return redirect('dailyreport:dailyreport_edit', pk=inst.pk)
         else:
-            
             messages.error(request, "保存失败，请检查输入内容")
     else:
         form = DriverDailyReportForm(instance=report)
         formset = ReportItemFormSet(instance=report)
-        # === [PATCH D4-GET START]：GET 分段 formset ===
-        seg_formset = DriverDailyReportSegmentFormSet(instance=report, prefix='seg')
-        # === [PATCH D4-GET END] ===
 
-    # === [PATCH C5 START]：限制明细行“所属车辆（分段）”下拉，仅显示当前日报的分段 ===
+    # 排序明细（夜跨 05:00 后移）
     try:
-        for f in formset.forms:
-            if 'segment' in f.fields:
-                f.fields['segment'].queryset = DriverDailyReportSegment.objects.filter(report=report)
+        formset.queryset = _sorted_items_qs(report)
     except Exception:
         pass
-    # === [PATCH C5 END] ===
 
-    # === [PATCH D-SEG TOTALS START]：计算“按车分段小计 + 合计” ===
-    def _amt_from_row(is_charter, meter_fee, charter_jpy):
-        return int(charter_jpy or 0) if is_charter else int(meter_fee or 0)
-
-    def _label_from_seg(seg):
-        if not seg or not getattr(seg, 'vehicle', None):
-            return '未指定'
-        v = seg.vehicle
-        # 任选可用字段作为展示（按你模型情况自行 fallback）
-        return getattr(v, 'license_plate', None) or getattr(v, 'name', None) or str(v)
-
-    segment_totals_map = {}  # seg.id -> {'vehicle_label': xxx, 'subtotal': int}
-
-    # 情况1：POST 且三者都通过校验/保存后，用数据库里的“真值”
-    if request.method == 'POST' and 'seg_formset' in locals() \
-            and form.is_valid() and formset.is_valid() and seg_formset.is_valid():
-        for it in report.items.select_related('segment__vehicle').all():
-            seg = getattr(it, 'segment', None)
-            if not seg:
-                continue
-            sid = seg.id
-            row = segment_totals_map.setdefault(sid, {
-                'vehicle_label': _label_from_seg(seg),
-                'subtotal': 0
+    # 统计（模板合计栏用）
+    data_iter = []
+    for f in formset.forms:
+        if f.is_bound and f.is_valid():
+            cleaned = f.cleaned_data
+            if not cleaned.get("DELETE", False):
+                data_iter.append({
+                    'meter_fee': _to_int0(cleaned.get('meter_fee')),
+                    'payment_method': cleaned.get('payment_method') or '',
+                    'note': cleaned.get('note') or '',
+                    'DELETE': False,
+                })
+        elif f.instance and not getattr(f.instance, 'DELETE', False):
+            data_iter.append({
+                'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
+                'payment_method': getattr(f.instance, 'payment_method', '') or '',
+                'note': getattr(f.instance, 'note', '') or '',
+                'DELETE': False,
             })
-            row['subtotal'] += _amt_from_row(
-                getattr(it, 'is_charter', False),
-                getattr(it, 'meter_fee', 0),
-                getattr(it, 'charter_amount_jpy', 0),
-            )
-    # 情况2：GET 或者 POST 校验失败时，用 formset 的 cleaned_data（能反映未保存的输入）
-    else:
-        for f in formset.forms:
-            cd = getattr(f, 'cleaned_data', None) or {}
-            if not cd or cd.get('DELETE'):
-                continue
-            seg = cd.get('segment') or getattr(f.instance, 'segment', None)
-            if not seg:
-                continue
-            sid = getattr(seg, 'id', None)
-            if sid is None:
-                continue
-            row = segment_totals_map.setdefault(sid, {
-                'vehicle_label': _label_from_seg(seg),
-                'subtotal': 0
-            })
-            row['subtotal'] += _amt_from_row(
-                cd.get('is_charter'),
-                cd.get('meter_fee'),
-                cd.get('charter_amount_jpy'),
-            )
+    totals_raw = calculate_totals_from_formset(data_iter)
+    totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
+    totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
+    totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
 
-    segment_totals = list(segment_totals_map.values())
-    segments_grand_total = sum(x['subtotal'] for x in segment_totals)
-    # === [PATCH D-SEG TOTALS END] ===
-    
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', {
+    summary_keys = [
+        ('meter', 'メーター(水揚)'),
+        ('cash', '現金(ながし)'),
+        ('uber', 'Uber'),
+        ('didi', 'Didi'),
+        ('credit', 'クレジ'),
+        ('kyokushin', '京交信'),
+        ('omron', 'オムロン'),
+        ('kyotoshi', '京都市他'),
+        ('qr', '扫码'),
+    ]
+    summary_panel_data = [
+        {
+            'key': key,
+            'label': label,
+            'raw': totals.get(f'{key}_raw', 0),
+            'split': totals.get(f'{key}_split', 0),
+            'meter_only': totals.get(f'{key}_meter_only', 0),
+        }
+        for key, label in summary_keys
+    ]
+
+    cash = totals.get("cash_raw", 0)
+    etc = report.etc_collected or 0
+    deposit_amt = int(form.cleaned_data.get("deposit_amount") if form.is_bound else (report.deposit_amount or 0))
+    total_sales = totals.get("meter_raw", 0)
+    meter_only_total = totals.get("meter_only_total", 0)
+    deposit_diff = getattr(report, "deposit_difference", deposit_amt - cash)
+
+    payment_rates = {k: float(v) for k, v in PAYMENT_RATES.items()}
+
+    context = {
         'form': form,
         'formset': formset,
-        'seg_formset': seg_formset,
-        'segment_totals': segment_totals,            # ← 新增
-        'segments_grand_total': segments_grand_total,# ← 新增
-        'report': report
-    })
+        'report': report,
+        'duration': timedelta(),  # 需要的话你再补
+        'summary_keys': summary_keys,
+        'summary_panel_data': summary_panel_data,
+        'cash_total': cash,
+        'etc_collected': etc,
+        'deposit_amt': deposit_amt,
+        'total_collected': cash,
+        'total_sales': total_sales,
+        'meter_only_total': meter_only_total,
+        'deposit_diff': deposit_diff,
+        'payment_rates': payment_rates,
+    }
+    return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
 
 
 @login_required
@@ -1242,19 +1366,12 @@ def dailyreport_create_for_driver(request, driver_id):
 # ✅ 編集日報（従業員）
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
-    with open("/tmp/django_debug.log", "a", encoding="utf-8") as f:
-        f.write("✅ 进入视图 dailyreport_edit_for_driver\n")
-
     driver = get_driver_info(driver_id)
     if not driver:
         return render(request, "dailyreport/not_found.html", status=404)
 
     report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
-    duration = timedelta()
-    user_h = 0
-    user_m = 0
 
-    # ========== GET / POST 共同需要的 formset 工厂 ==========
     ReportItemFormSet = inlineformset_factory(
         DriverDailyReport,
         DriverDailyReportItem,
@@ -1262,14 +1379,17 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         formset=RequiredReportItemFormSet,
         extra=0,
         can_delete=True,
-        max_num=40
+        max_num=40,
     )
 
     if request.method == 'POST':
-        # ① 拷贝 POST
         post = request.POST.copy()
 
-        # ② 明细行 payment_method 归一化（保持你原有映射）
+        # 🚩 保底：如果没传 vehicle，就用 report 原值
+        if not post.get("vehicle") and report.vehicle_id:
+            post["vehicle"] = str(report.vehicle_id)
+
+        # 支付方式归一化
         PM_ALIASES = {
             'company card': 'credit', 'Company Card': 'credit', '会社カード': 'credit',
             'company_card': 'credit', 'credit card': 'credit',
@@ -1281,249 +1401,136 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             if k.endswith('-payment_method'):
                 post[k] = PM_ALIASES.get(v, v)
 
-        # ③ 先把 etc_payment_method 取出来 → 计算“安全值”
-        raw_etc = (post.get('etc_payment_method') or '').strip().lower()
-        if raw_etc in ('会社カード', 'company card', 'credit', 'credit card', '公司卡'):
-            safe_etc = 'company_card'
-        elif raw_etc in ('個人カード', 'personal card', 'personal_card'):
-            # 业务禁止：一律回落公司卡
-            safe_etc = 'company_card'
-        elif raw_etc in ('現金', '现金', 'cash', 'cash(現金)'):
-            safe_etc = 'company_card'
-        else:
-            safe_etc = 'company_card'
-        # ④ 关键：提交给表单时清空该字段，绕开 Choice 校验
-        post['etc_payment_method'] = ''
+        # 出退勤时间规范化
+        def _norm_hhmm(v):
+            if not v:
+                return ''
+            if isinstance(v, dtime):
+                return v.strftime('%H:%M')
+            if isinstance(v, datetime):
+                return v.strftime('%H:%M')
+            s = str(v).strip()
+            if ':' in s:
+                try:
+                    h, m = map(int, s.split(':'))
+                    return f'{h:02d}:{m:02d}'
+                except Exception:
+                    return ''
+            return ''
+        post['clock_in'] = _norm_hhmm(post.get('clock_in'))
+        post['clock_out'] = _norm_hhmm(post.get('clock_out'))
 
-        # ⑤ 绑定主表 + 明细 formset（注意用 post）
         form = DriverDailyReportForm(post, instance=report)
         formset = ReportItemFormSet(post, instance=report)
-        formset.queryset = _sorted_items_qs(report)
 
-        # ✅ 车辆分段 formset（POST）
-        seg_formset = DriverDailyReportSegmentFormSet(post, instance=report, prefix='seg')
-
-        # ⑥ 标记未改动的明细行为 DELETE（你的旧逻辑保留）
-        for form_item in formset.forms:
-            if not form_item.has_changed():
-                form_item.fields['DELETE'].initial = True
-
-        # ⑦ 一起校验：主表、明细、分段
-        if form.is_valid() and formset.is_valid() and seg_formset.is_valid():
+        if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
-            # === 休憩入力 → timedelta
-            break_input = request.POST.get("break_time_input", "").strip()
-            break_minutes = 0
+            # 🚩 保底：如果实例里没有 vehicle，写回旧值
+            if not inst.vehicle_id and report.vehicle_id:
+                inst.vehicle_id = report.vehicle_id
+
+            # === 休憩（用户输入 +20 分钟）===
+            break_input = (post.get("break_time_input") or "").strip()
+            user_minutes = 0
             try:
                 if ":" in break_input:
-                    h, m = map(int, break_input.split(":"))
-                else:
-                    h, m = 0, int(break_input)
-                break_minutes = h * 60 + m
+                    h, m = map(int, break_input.split(":", 1))
+                    user_minutes = max(0, h * 60 + m)
+                elif break_input:
+                    user_minutes = max(0, int(break_input))
             except Exception:
-                break_minutes = 0
-            inst.休憩時間 = timedelta(minutes=break_minutes)
+                user_minutes = 0
+            total_minutes = user_minutes + BASE_BREAK_MINUTES
+            inst.休憩時間 = timedelta(minutes=total_minutes)
 
-            # === 工作时长计算 + 编辑人
-            inst.calculate_work_times()
+            # === 出退勤回填 ===
+            ci = form.cleaned_data.get("clock_in")
+            co = form.cleaned_data.get("clock_out")
+            if ci is not None:
+                inst.clock_in = ci
+            if co is not None:
+                inst.clock_out = co
+
+            # === 重新计算工时 ===
+            try:
+                inst.calculate_work_times()
+            except Exception:
+                pass
+
             inst.edited_by = request.user
 
-            # === 入金差額（入金 − ながし現金 − 貸切現金）
+            # === 入金差額 ===
             cash_total = sum(
-                item.cleaned_data.get('meter_fee') or 0
-                for item in formset.forms
-                if item.cleaned_data.get('payment_method') == 'cash'
-                and not item.cleaned_data.get('DELETE', False)
+                (it.cleaned_data.get('meter_fee') or 0)
+                for it in formset.forms
+                if it.cleaned_data.get('payment_method') == 'cash'
+                and not it.cleaned_data.get('DELETE', False)
             )
             charter_cash_total = sum(
-                (item.cleaned_data.get('charter_amount_jpy') or 0)
-                for item in formset.forms
-                if item.cleaned_data.get('is_charter')
-                   and (item.cleaned_data.get('charter_payment_method') in ['jpy_cash', 'jp_cash', 'cash'])
-                   and not item.cleaned_data.get('DELETE', False)
+                (it.cleaned_data.get('charter_amount_jpy') or 0)
+                for it in formset.forms
+                if it.cleaned_data.get('is_charter')
+                and (it.cleaned_data.get('charter_payment_method') in [
+                    'jpy_cash', 'jp_cash', 'cash', 'rmb_cash',
+                    'self_wechat', 'boss_wechat'
+                ])
+                and not it.cleaned_data.get('DELETE', False)
             )
             deposit = inst.deposit_amount or 0
             inst.deposit_difference = deposit - cash_total - charter_cash_total
 
-            # === ETC 字段：统一保存 + 兜底 + 兼容旧字段名
-            cd = form.cleaned_data
-
-            def _to_int(v):
-                try:
-                    return int(v or 0)
-                except (TypeError, ValueError):
-                    return 0
-
-            inst.etc_collected_cash = _to_int(cd.get('etc_collected_cash') or request.POST.get('etc_collected_cash'))
-            inst.etc_collected_app  = _to_int(cd.get('etc_collected_app')  or request.POST.get('etc_collected_app'))
-
-            etc_collected_val = cd.get('etc_collected')
-            inst.etc_collected = _to_int(
-                etc_collected_val if etc_collected_val not in [None, '']
-                else (inst.etc_collected_cash or 0) + (inst.etc_collected_app or 0)
-            )
-
-            inst.etc_uncollected = _to_int(
-                cd.get('etc_uncollected') or request.POST.get('etc_uncollected') or request.POST.get('etc_empty_amount')
-            )
-
-            inst.etc_payment_method = cd.get('etc_payment_method') or None
-
-            if 'etc_shortage' in form.fields:
-                inst.etc_shortage = _to_int(cd.get('etc_shortage'))
-            else:
-                expected_val = _to_int(getattr(inst, 'etc_expected', 0))
-                inst.etc_shortage = max(0, expected_val - _to_int(inst.etc_collected))
-
-            # === 状态 / 异常标记
-            if inst.status in [DriverDailyReport.STATUS_PENDING, DriverDailyReport.STATUS_CANCELLED] and inst.clock_in and inst.clock_out:
-                inst.status = DriverDailyReport.STATUS_COMPLETED
-            if inst.clock_in and inst.clock_out:
-                inst.has_issue = False
-
-            # === 保存主表
+            # === 保存主表 + 明细 ===
             inst.save()
-
-            # === 先保存分段，再保存明细（关键顺序）
-            seg_formset.instance = inst
-            seg_formset.save()
-
             formset.instance = inst
             formset.save()
 
-            # === 回写预约的出入库时间
-            driver_user = inst.driver.user
-            if driver_user and inst.clock_in:
-                res = Reservation.objects.filter(driver=driver_user, date=inst.date).order_by('start_time').first()
-                if res:
-                    tz = timezone.get_current_timezone()
-                    res.actual_departure = timezone.make_aware(datetime.combine(inst.date, inst.clock_in), tz)
-                    if inst.clock_out:
-                        ret_date = inst.date
-                        if inst.clock_out < inst.clock_in:
-                            ret_date += timedelta(days=1)
-                        res.actual_return = timezone.make_aware(datetime.combine(ret_date, inst.clock_out), tz)
-                    res.save()
+            # === has_issue 更新 ===
+            try:
+                inst.has_issue = inst.items.filter(has_issue=True).exists()
+                inst.save(update_fields=["has_issue"])
+            except Exception:
+                pass
 
-            # === 汇总 has_issue
-            inst.has_issue = inst.items.filter(has_issue=True).exists()
-            inst.save(update_fields=["has_issue"])
-
-            messages.success(request, "✅ 保存成功")
-            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver_id)
-
-        # ======= 校验失败：构造 totals 兜底，沿用你原来的做法 =======
-        messages.error(request, "❌ 保存失败，请检查输入内容")
-        data_iter = []
-        for f in formset.forms:
-            if f.is_bound and f.is_valid():
-                cleaned = f.cleaned_data
-                if not cleaned.get("DELETE", False):
-                    data_iter.append({
-                        'meter_fee': _to_int0(cleaned.get('meter_fee')),
-                        'payment_method': cleaned.get('payment_method') or '',
-                        'note': cleaned.get('note') or '',
-                        'DELETE': False,
-                    })
-            elif f.instance and not getattr(f.instance, 'DELETE', False):
-                data_iter.append({
-                    'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
-                    'payment_method': getattr(f.instance, 'payment_method', '') or '',
-                    'note': getattr(f.instance, 'note', '') or '',
-                    'DELETE': False,
-                })
-
-        totals_raw = calculate_totals_from_formset(data_iter)
-        totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
-        totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
-        totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
-
-        # === GET 分段表单也要准备（因为这里要回到页面）
-        seg_formset = DriverDailyReportSegmentFormSet(instance=report, prefix='seg')
-
-    else:
-        # ========== GET ==========
-        initial = {'status': report.status}
-        clock_in = None
-        clock_out = None
-        driver_user = report.driver.user
-
-        if driver_user:
-            res = Reservation.objects.filter(driver=driver_user, date=report.date).order_by('start_time').first()
-            if res:
-                if res.actual_departure:
-                    clock_in = timezone.localtime(res.actual_departure).time()
-                    initial['clock_in'] = clock_in
-                if res.actual_return:
-                    clock_out = timezone.localtime(res.actual_return).time()
-                    initial['clock_out'] = clock_out
-                if res.vehicle:
-                    initial['vehicle'] = res.vehicle
-                if not report.vehicle:
-                    report.vehicle = res.vehicle
-                    report.save()
-                if clock_in and clock_out:
-                    dt_in = datetime.combine(report.date, clock_in)
-                    dt_out = datetime.combine(report.date, clock_out)
-                    if dt_out <= dt_in:
-                        dt_out += timedelta(days=1)
-                    duration = dt_out - dt_in
-
-        if report.休憩時間:
-            user_break_min = int(report.休憩時間.total_seconds() / 60) - 20
-            user_h = user_break_min // 60
-            user_m = user_break_min % 60
-            initial['break_time_input'] = f"{user_h}:{str(user_m).zfill(2)}"
+            messages.success(request, "保存しました。")
+            return redirect("dailyreport:driver_dailyreport_edit",
+                            driver_id=driver.id, report_id=inst.id)
         else:
-            initial['break_time_input'] = "0:00"
-
-        form = DriverDailyReportForm(instance=report, initial=initial)
+            messages.error(request, "❌ 保存失败，请检查输入内容")
+    else:
+        form = DriverDailyReportForm(instance=report)
         formset = ReportItemFormSet(instance=report)
-        formset.queryset = _sorted_items_qs(report)
 
-        # === GET：车辆分段 formset
-        seg_formset = DriverDailyReportSegmentFormSet(instance=report, prefix='seg')
-
-        # === 以下保持你原有合计/上下文逻辑 ===
-        data_iter = []
-        for f in formset.forms:
-            if f.is_bound and f.is_valid():
-                cleaned = f.cleaned_data
-                if not cleaned.get("DELETE", False):
-                    data_iter.append({
-                        'meter_fee': _to_int0(cleaned.get('meter_fee')),
-                        'payment_method': cleaned.get('payment_method') or '',
-                        'note': cleaned.get('note') or '',
-                        'DELETE': False,
-                    })
-            elif f.instance and not getattr(f.instance, 'DELETE', False):
-                data_iter.append({
-                    'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
-                    'payment_method': getattr(f.instance, 'payment_method', '') or '',
-                    'note': getattr(f.instance, 'note', '') or '',
-                    'DELETE': False,
-                })
-
-        print("📦 data_iter 内容如下：")
-        for item in data_iter:
-            print(item)
-
-        totals_raw = calculate_totals_from_formset(data_iter)
-        totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
-        totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
-        totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
-
-    # === 限制明细中 segment 仅显示本日报的分段（再保险）
+    # 排序明细
     try:
-        for f in formset.forms:
-            if 'segment' in f.fields:
-                f.fields['segment'].queryset = DriverDailyReportSegment.objects.filter(report=report)
-                f.fields['segment'].empty_label = "— 所属車両を選択 —"
+        formset.queryset = _sorted_items_qs(report)
     except Exception:
         pass
 
-    # === 汇总栏/上下文 ===
+    # 统计 totals
+    data_iter = []
+    for f in formset.forms:
+        if f.is_bound and f.is_valid():
+            cleaned = f.cleaned_data
+            if not cleaned.get("DELETE", False):
+                data_iter.append({
+                    'meter_fee': _to_int0(cleaned.get('meter_fee')),
+                    'payment_method': cleaned.get('payment_method') or '',
+                    'note': cleaned.get('note') or '',
+                    'DELETE': False,
+                })
+        elif f.instance and not getattr(f.instance, 'DELETE', False):
+            data_iter.append({
+                'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
+                'payment_method': getattr(f.instance, 'payment_method', '') or '',
+                'note': getattr(f.instance, 'note') or '',
+                'DELETE': False,
+            })
+    totals_raw = calculate_totals_from_formset(data_iter)
+    totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
+    totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
+    totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
+
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金(ながし)'),
@@ -1535,50 +1542,26 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         ('kyotoshi', '京都市他'),
         ('qr', '扫码'),
     ]
-    summary_panel_data = [
-        {
-            'key': key,
-            'label': label,
-            'raw': totals.get(f'{key}_raw', 0),
-            'split': totals.get(f'{key}_split', 0),
-            'meter_only': totals.get(f'{key}_meter_only', 0),
-        }
-        for key, label in summary_keys
-    ]
 
-    cash = totals.get("cash_raw", 0)
-    etc = report.etc_collected or 0  # 仅用于显示
-    raw_deposit_amt = form.cleaned_data.get("deposit_amount") if form.is_bound else report.deposit_amount
-    deposit_amt = int(raw_deposit_amt) if raw_deposit_amt not in [None, ''] else 0
-    total_sales = totals.get("meter_raw", 0)
-    meter_only_total = totals.get("meter_only_total", 0)
-    deposit_diff = getattr(report, "deposit_difference", deposit_amt - cash)
+    # === 回显休憩时间（输入值=已存-20，実休憩=已存）===
+    actual_break_min = _minutes_from_timedelta(getattr(report, "休憩時間", None))
+    input_break_min  = max(0, actual_break_min - BASE_BREAK_MINUTES)
+    break_time_h, break_time_m = divmod(input_break_min, 60)
+    break_time_m = f"{break_time_m:02d}"
+    actual_break_value = f"{actual_break_min // 60}:{actual_break_min % 60:02d}"
 
-    # 把费率给到前端
-    payment_rates = {k: float(v) for k, v in PAYMENT_RATES.items()}
-
-    context = {
+    return render(request, 'dailyreport/driver_dailyreport_edit.html', {
         'form': form,
         'formset': formset,
-        'seg_formset': seg_formset,   # ← 提供给模板渲染「车辆分段」卡片
-        'totals': totals,
-        'driver_id': driver_id,
+        'driver': driver,
         'report': report,
-        'duration': duration,
+        'is_edit': True,
         'summary_keys': summary_keys,
-        'summary_panel_data': summary_panel_data,
-        'break_time_h': user_h,
-        'break_time_m': f"{user_m:02}",
-        'cash_total': cash,
-        'etc_collected': etc,
-        'deposit_amt': deposit_amt,
-        'total_collected': cash,
-        'total_sales': total_sales,
-        'meter_only_total': meter_only_total,
-        'deposit_diff': deposit_diff,
-        'payment_rates': payment_rates,
-    }
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
+        'totals': totals,
+        'break_time_h': break_time_h,
+        'break_time_m': break_time_m,
+        'actual_break_value': actual_break_value,
+    })
 
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_add_unassigned(request, driver_id):

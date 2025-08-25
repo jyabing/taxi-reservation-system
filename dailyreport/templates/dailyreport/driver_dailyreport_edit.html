@@ -86,7 +86,7 @@ input[type=number] {
   {% endif %}
 
   <h4>{% if report %}{{ report.driver.name }}{% else %}{{ driver.name }}{% endif %}- 乗務日報の編集</h4>
-  
+  {{ form.meter_fee|add_class:"form-control" }}
   <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
 
   {% if report.pk %}
@@ -155,13 +155,16 @@ input[type=number] {
       <tbody>
         <tr>
           <td>
-            {% if form.instance.vehicle %}
-              <span class="form-control-plaintext">{{ form.instance.vehicle }}</span>
-            {% else %}
-              <span class="text-muted">未選択</span>
+            <span class="form-control-plaintext">
+              {{ report.vehicle|default:"未選択" }}
+            </span>
+
+            {# 关键：把当前 vehicle 的 id 一起提交 #}
+            {% if report.vehicle_id %}
+              <input type="hidden" name="vehicle" value="{{ report.vehicle_id }}">
             {% endif %}
-            {{ form.vehicle }}
           </td>
+
 
           <!-- 出勤 -->
           <td style="max-width:110px;">
@@ -180,7 +183,7 @@ input[type=number] {
                 class="form-control form-control-sm text-center"
                 maxlength="5" pattern="^\d{1,2}:\d{2}$"
                 style="max-width:90px;" placeholder="0:00"
-                value="{{ break_time_h }}:{{ break_time_m }}">
+                value="{{ break_time_h|default:'0' }}:{{ break_time_m|default:'00' }}">
 
             <!-- ✅ 显示「実休憩 +20分」 -->
             <div class="form-text mt-1 text-muted">
@@ -208,37 +211,6 @@ input[type=number] {
         </tr>
       </tbody>
     </table>
-
-    {# === [PATCH T1 START]：车辆分段（中途换车时先在此新增 6614/6571） === #}
-    {% if seg_formset %}
-      {{ seg_formset.management_form }}
-      <div class="card mb-3">
-        <div class="card-header">🚗 车辆分段</div>
-        <div class="card-body">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>车辆</th><th>开始</th><th>结束</th><th>理由</th><th>删除</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for f in seg_formset.forms %}
-                <tr>
-                  <td>{{ f.vehicle }}</td>
-                  <td>{{ f.start_time }}</td>
-                  <td>{{ f.end_time }}</td>
-                  <td>{{ f.reason }}</td>
-                  <td class="text-center">{{ f.DELETE }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-          <div class="form-text">提示：先保存出 <b>6614</b> 与 <b>6571</b> 两行，下方明细才能选择归属。</div>
-        </div>
-      </div>
-    {% endif %}
-    {# === [PATCH T1 END] === #}
-
 
     <div id="payment-summary-panel" class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
       {% for key, label in summary_keys %}
@@ -318,7 +290,7 @@ input[type=number] {
         </div>
 
         <!-- 放这里！ -->
-        <div id="etc-included-warning-box" class="alert alert-info small py-1 px-2 mt-1">
+        <div id="etc-included-warning" class="alert alert-info small py-1 px-2 mt-1">
           ETC 收款状态判断中…
         </div>
       </div>
@@ -449,7 +421,6 @@ input[type=number] {
           <th style="white-space: nowrap;">乗車地</th>
           <th style="white-space: nowrap;">料金</th>
           <th style="white-space: nowrap;">支付</th>
-          <th style="white-space: nowrap;">所属車両</th>   <!-- [PATCH T2-HEAD] -->
           <th style="white-space: nowrap;">強調</th>
           <th style="white-space: nowrap;">貸切</th>
           
@@ -494,11 +465,6 @@ input[type=number] {
                 <div class="text-danger small">{{ form.payment_method.errors.0 }}</div>
               {% endif %}
               {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
-            </td>
-
-            <!-- [PATCH T2]：所属车両 -->
-            <td style="min-width: 120px;">  {# [PATCH T2-CELL] 所属车辆下拉 #}
-              {{ form.segment|add_class:"form-select form-select-sm segment-select" }}
             </td>
 
             <td class="text-center">
@@ -557,7 +523,6 @@ input[type=number] {
           <td>{{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}</td>
           <td>{{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}</td>
           <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}</td>
-          <td>{{ formset.empty_form.segment|add_class:"form-select form-select-sm segment-select" }}</td>  {# [PATCH T2-EMPTY] #}
           <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
 
           <td class="text-center">{{ formset.empty_form.is_charter }}</td>
@@ -574,26 +539,6 @@ input[type=number] {
       <!-- ✅ 新增结束 -->
 
     </table>
-
-    {# === [PATCH T3 START]：按车分段小计 === #}
-    {% if segment_totals %}
-      <div class="card mt-3">
-        <div class="card-header">按車両分段 小計</div>
-        <div class="card-body">
-          <ul class="mb-2">
-            {% for row in segment_totals %}
-              <li>車号：<strong>{{ row.vehicle_label }}</strong>　
-                  小計：<strong>¥{{ row.subtotal|floatformat:0 }}</strong></li>
-            {% endfor %}
-          </ul>
-          <div class="text-end">
-            <strong>車号合計：</strong>
-            <span id="segments-grand-total">¥{{ segments_grand_total|floatformat:0 }}</span>
-          </div>
-        </div>
-      </div>
-    {% endif %}
-    {# === [PATCH T3 END] === #}
 
     <button type="submit" class="btn btn-primary">💾 保存する</button>
   </form>
@@ -723,6 +668,46 @@ document.addEventListener('click', function (e) {
   }
 });
 </script>
+<script>
+(function() {
+  const input = document.getElementById('break-time-input');
+  const display = document.getElementById('break-time-display');
+  const hidden = document.getElementById('break-time-plus20');
 
+  function parseHM(s) {
+    if (!s) return 0;
+    s = s.trim();
+    if (!s) return 0;
+    const parts = s.split(':');
+    let h = 0, m = 0;
+    if (parts.length >= 2) {
+      h = parseInt(parts[0], 10) || 0;
+      m = parseInt(parts[1], 10) || 0;
+    } else {
+      // 允许只填分钟（比如 "15"）
+      m = parseInt(parts[0], 10) || 0;
+    }
+    return Math.max(0, h * 60 + m);
+  }
+
+  function formatHM(mins) {
+    mins = Math.max(0, parseInt(mins, 10) || 0);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}:${String(m).padStart(2,'0')}`;
+  }
+
+  function update() {
+    const base = parseHM(input.value);
+    const plus20 = base + 20;
+    display.textContent = formatHM(plus20);
+    if (hidden) hidden.value = plus20; // 以“总分钟数”提交（可选）
+  }
+
+  // 初始与监听
+  update();
+  input.addEventListener('input', update);
+})();
+</script>
 
 {% endblock %}

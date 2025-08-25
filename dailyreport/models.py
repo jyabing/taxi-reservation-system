@@ -199,47 +199,11 @@ class DriverDailyReport(models.Model):
         self.実働時間 = actual_duration
         self.残業時間 = overtime
 
-
-# === [SEGMENT MODEL START]：新增“车辆分段”模型（只新增，不改现有流程） ===
-# 若本文件已 `from django.db import models`，则无需重复导入
-
-class DriverDailyReportSegment(models.Model):
-    """
-    同一份日报内的‘车辆分段’，用于记录中途换车等场景（例如：6614 → 6571）。
-    - 只是新增一张表；不改变旧数据与旧流程。
-    """
-    report  = models.ForeignKey('dailyreport.DriverDailyReport',
-                                related_name='segments',
-                                on_delete=models.CASCADE)
-    vehicle = models.ForeignKey('carinfo.Car', on_delete=models.PROTECT)
-
-    # 可选：以后若要按时间/里程核对，可逐步启用；目前不参与任何现有统计
-    start_time = models.DateTimeField(null=True, blank=True)
-    end_time   = models.DateTimeField(null=True, blank=True)
-    reason     = models.CharField(max_length=100, blank=True, default='')  # 例：车辆故障改换
-
-    def __str__(self):
-        # 不在 UI 用，仅便于调试
-        return f"Report#{self.report_id} • Vehicle#{self.vehicle_id}"
-# === [SEGMENT MODEL END] ===
-
-
 # 乘务日报明细，一天可有多条，归属于DriverDailyReport
 class DriverDailyReportItem(models.Model):
     report = models.ForeignKey(
         DriverDailyReport, on_delete=models.CASCADE, related_name='items', verbose_name="所属日报"
     )
-
-    # === [ADD FIELD A1 START]：把明细可选地归属到某个“车辆分段”（6614/6571 等） ===
-    segment = models.ForeignKey(
-        'dailyreport.DriverDailyReportSegment',
-        related_name='items',
-        on_delete=models.PROTECT,
-        null=True, blank=True,
-        verbose_name="所属车辆分段"
-    )
-    # === [ADD FIELD A1 END] ===
-
     ride_time = models.CharField("乘车时间", max_length=30, blank=True)
     ride_from = models.CharField("乘车地", max_length=100, blank=True)
     via = models.CharField("経由", max_length=100, blank=True)
