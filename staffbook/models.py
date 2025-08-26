@@ -57,9 +57,6 @@ class Driver(models.Model):
     alt_name = models.CharField('別名', max_length=32, blank=True, default="")
     alt_kana = models.CharField('別名フリガナ', max_length=32, blank=True, default="")
 
-    #company   = models.ForeignKey(Company,   on_delete=models.PROTECT, related_name='drivers', verbose_name='事業者名')
-    #workplace = models.ForeignKey(Workplace, on_delete=models.PROTECT, related_name='drivers', verbose_name='営業所名')
-
     company   = None
     workplace = None
     
@@ -127,6 +124,8 @@ class Driver(models.Model):
     # 其它
     remark = models.CharField(max_length=256, blank=True, null=True, verbose_name="特記事項")
 
+    history_data = models.JSONField(default=dict, blank=True)  # 学歴/職歴 JSON 存储
+
 
     # 可根据需要继续添加其他字段（如身份证号、入职日期、状态等）
 
@@ -136,6 +135,24 @@ class Driver(models.Model):
     
     def __str__(self):
         return f"{self.driver_code} - {self.name}"
+
+class HistoryEntry(models.Model):
+    CATEGORY_CHOICES = [
+        ("edu", "学歴"),
+        ("job", "職歴"),
+    ]
+    category = models.CharField(max_length=3, choices=CATEGORY_CHOICES)
+
+    driver_code = models.CharField(max_length=20)  # 手动存 No.171 这样的编号
+    driver_name = models.CharField(max_length=50)  # 可冗余存姓名
+
+    start_year  = models.PositiveIntegerField()
+    start_month = models.PositiveIntegerField()
+    end_year    = models.PositiveIntegerField(null=True, blank=True)
+    end_month   = models.PositiveIntegerField(null=True, blank=True)
+
+    place = models.CharField(max_length=255)  # 学校 / 公司
+    note = models.CharField(max_length=255, blank=True, default="")
 
 # 驾驶经验（可多条）
 class DrivingExperience(models.Model):

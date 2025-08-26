@@ -2,8 +2,11 @@ from .models import (
     Driver, DriverLicense,
 )
 from django import forms
-from staffbook.models import Accident, Reward, DriverInsurance, DriverPayrollRecord # ✅ 保险、事故、奖励等模型
+from django.forms import inlineformset_factory
+from .models import Accident, Reward, DriverInsurance, DriverPayrollRecord, Driver # ✅ 保险、事故、奖励等模型
 
+
+MONTH_CHOICES = [(m, f"{m}月") for m in range(1, 13)]
 
 # ✅ 通用样式自动添加工具函数
 def apply_form_control_style(fields, exclude_types=(forms.Select, forms.RadioSelect, forms.CheckboxInput, forms.Textarea)):
@@ -58,6 +61,33 @@ class DriverForm(forms.ModelForm):
         if employ_type == '3' and not resigned_date:
             self.add_error('resigned_date', '退職者は退職日を入力してください。')
         return cleaned
+
+
+class HistoryEntryForm(forms.Form):
+    # 用于校验单条履歴（学歴/職歴），不依赖任何模型
+    start_year  = forms.IntegerField(min_value=1900, max_value=2100, label="始(年)", required=True)
+    start_month = forms.ChoiceField(choices=MONTH_CHOICES, label="始(月)", required=True)
+    end_year    = forms.IntegerField(min_value=1900, max_value=2100, required=False, label="終(年)")
+    end_month   = forms.ChoiceField(choices=MONTH_CHOICES, required=False, label="終(月)")
+    place       = forms.CharField(max_length=255, label="場所 / 会社・職場", required=True)
+    note        = forms.CharField(max_length=255, label="備考", required=False)
+
+    def clean(self):
+        cleaned = super().clean()
+        sy = cleaned.get("start_year")
+        sm = int(cleaned.get("start_month") or 0)
+        ey = cleaned.get("end_year")
+        em = int(cleaned.get("end_month") or 0)
+
+        if ey and not em:
+            self.add_error("end_month", "請選擇終(月)")
+        if em and not ey:
+            self.add_error("end_year", "請填寫終(年)")
+        if sy and sm and ey and em and (ey, em) < (sy, sm):
+            raise forms.ValidationError("終（年/月）不能早於 始（年/月）")
+        return cleaned
+# === 替换结束 ===
+
 
 # ✅ 驾照信息表单
 class DriverLicenseForm(forms.ModelForm):

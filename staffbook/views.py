@@ -1,4 +1,5 @@
 import csv, re, datetime
+import re
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -15,7 +16,8 @@ from .permissions import is_staffbook_admin
 from django.contrib import messages
 from .forms import (
     DriverForm, DriverPersonalInfoForm, DriverLicenseForm, 
-    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm
+    DriverBasicForm, RewardForm, DriverPayrollRecordForm, DriverCertificateForm,
+    HistoryEntryForm
     )
 
 from dailyreport.forms import (
@@ -333,33 +335,108 @@ def driver_certificate_edit(request, driver_id):
     })
 
 
-#履歴変更記録
 @user_passes_test(is_staffbook_admin)
 def driver_history_info(request, driver_id):
+    """
+    履歴查看页：从 Driver.history_data(JSONField) 读取并只读展示
+    """
     driver = get_object_or_404(Driver, pk=driver_id)
-    return render(request, 'staffbook/driver_history_info.html', {
-        'driver': driver,
-        'main_tab': 'basic',
-        'tab': 'history',
+    data = driver.history_data or {}
+    education = data.get("education", [])
+    jobs = data.get("jobs", [])
+    return render(request, "staffbook/driver_history_info.html", {
+        "driver": driver,
+        "education": education,
+        "jobs": jobs,
+        "tab": "history",   # 二级tab高亮
     })
 
+#履歴変更記録
 @user_passes_test(is_staffbook_admin)
 def driver_history_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
-    history, created = History.objects.get_or_create(driver=driver)
-    if request.method == 'POST':
-        form = historyForm(request.POST, instance=health)
-        if form.is_valid():
-            form.save()
-            return redirect('staffbook:driver_history_info', driver_id=driver.id)
-    else:
-        form = HistoryForm(instance=history)
-    return render(request, 'staffbook/driver_history_edit.html', {
-        'form': form,
-        'driver': driver,
-        'main_tab': 'driving',
-        'tab': 'history',
+
+    def _load_lists():
+        data = driver.history_data or {}
+        return data.get("education", []), data.get("jobs", [])
+
+    education, jobs = _load_lists()
+
+    if request.method == "POST":
+        errors = []
+
+        def collect(prefix):
+            """
+            收集前端提交的某一类行（edu 或 job）
+            - 兼容中间索引被删除的“空洞”（不再用 while 连续自增）
+            - 后端强制补充 category，避免前端缺失导致表单校验失败
+            """
+            # 找到本类行里所有 index（根据 -place 键）
+            indices = sorted({
+                int(k.split("-")[1])
+                for k in request.POST.keys()
+                if k.startswith(f"{prefix}-") and k.endswith("-place")
+            })
+
+            rows = []
+            for idx in indices:
+                data = {
+                    "category": "edu" if prefix == "edu" else "job",  # ✅ 关键：后端补上
+                    "start_year":  request.POST.get(f"{prefix}-{idx}-start_year"),
+                    "start_month": request.POST.get(f"{prefix}-{idx}-start_month"),
+                    "end_year":    request.POST.get(f"{prefix}-{idx}-end_year"),
+                    "end_month":   request.POST.get(f"{prefix}-{idx}-end_month"),
+                    "place":       request.POST.get(f"{prefix}-{idx}-place") or "",
+                    "note":        request.POST.get(f"{prefix}-{idx}-note") or "",
+                }
+
+                form = HistoryEntryForm(data)
+                if form.is_valid():
+                    c = form.cleaned_data
+
+                    def ym(y, m):
+                        if not y or not m:
+                            return ""
+                        return f"{int(y):04d}-{int(m):02d}"
+
+                    rows.append({
+                        "start": ym(c["start_year"], c["start_month"]),
+                        "end":   ym(c.get("end_year"), c.get("end_month")),
+                        "place": c["place"],
+                        "note":  c.get("note", ""),
+                    })
+                else:
+                    # 记录错误，最后统一提示
+                    errors.append((prefix, idx, form.errors))
+            return rows
+
+        education = collect("edu")
+        jobs      = collect("job")
+
+        if errors:
+            messages.error(request, "请检查输入项。")
+            # 带回成功解析的行（有错的行因为无效，不再带回）
+            return render(request, "staffbook/driver_history_edit.html", {
+                "driver": driver,
+                "education": education,
+                "jobs": jobs,
+                "post_errors": errors,
+            })
+
+        # ✅ 全部合法：写回 JSONField
+        driver.history_data = {"education": education, "jobs": jobs}
+        driver.save()
+        messages.success(request, "履歴書已保存。")
+        return redirect("staffbook:driver_history_info", driver_id=driver.id)
+
+    # GET：渲染
+    return render(request, "staffbook/driver_history_edit.html", {
+        "driver": driver,
+        "education": education,
+        "jobs": jobs,
     })
+# === 替换结束 ===
+
 
 # 緊急連絡先
 @user_passes_test(is_staffbook_admin)

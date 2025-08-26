@@ -1,22 +1,90 @@
 {% extends "staffbook/base_staffbook.html" %}
+{% load static %}
 {% block content %}
 
 <div class="container mt-4">
   <div class="card shadow" style="width:90vw;max-width:1400px;margin:0 auto;">
     <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
-        <i class="fa fa-user me-2"></i>
-        <b>{{ driver.name }}</b>
-        <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
-        <span class="ms-auto" style="font-size:0.95em;">
-            事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
-        </span>
+      <i class="fa fa-user me-2"></i>
+      <b>{{ driver.name }}</b>
+      <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
+      <span class="ms-auto" style="font-size:0.95em;">
+        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+      </span>
     </div>
+
     <div class="card-body">
-        {% include "staffbook/driver_tab_nav.html" %}
-        <form>
-            <div class="mt-4 text-center text-muted">签证在留页尚未建设</div>
-        </form>
-        </div>
+      {% include "staffbook/driver_tab_nav.html" %}
+
+      <!-- 学歴 -->
+      <h5 class="mt-3">学歴</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:10%">始(年)</th>
+              <th style="width:10%">始(月)</th>
+              <th style="width:10%">終(年)</th>
+              <th style="width:10%">終(月)</th>
+              <th>場所（学校名）</th>
+              <th style="width:20%">備考</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in education %}
+              <tr>
+                <td>{{ row.start|default_if_none:""|slice:":4" }}</td>
+                <td>{{ row.start|default_if_none:""|slice:"5:" }}</td>
+                <td>{{ row.end|default_if_none:""|slice:":4" }}</td>
+                <td>{{ row.end|default_if_none:""|slice:"5:" }}</td>
+                <td>{{ row.place }}</td>
+                <td>{{ row.note }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="text-muted">暂无学歴记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <hr class="my-4">
+
+      <!-- 職歴 -->
+      <h5 class="mt-3">職歴</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:10%">始(年)</th>
+              <th style="width:10%">始(月)</th>
+              <th style="width:10%">終(年)</th>
+              <th style="width:10%">終(月)</th>
+              <th>会社・職場</th>
+              <th style="width:20%">備考</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in jobs %}
+              <tr>
+                <td>{{ row.start|default_if_none:""|slice:":4" }}</td>
+                <td>{{ row.start|default_if_none:""|slice:"5:" }}</td>
+                <td>{{ row.end|default_if_none:""|slice:":4" }}</td>
+                <td>{{ row.end|default_if_none:""|slice:"5:" }}</td>
+                <td>{{ row.place }}</td>
+                <td>{{ row.note }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="text-muted">暂无職歴记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-4 text-end">
+        <a class="btn btn-primary" href="{% url 'staffbook:driver_history_edit' driver.id %}">編集</a>
+      </div>
+    </div>
   </div>
 </div>
+
 {% endblock %}

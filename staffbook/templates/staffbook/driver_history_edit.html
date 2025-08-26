@@ -1,0 +1,198 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% load static %}
+{% block content %}
+
+<div class="container mt-4">
+  <div class="card shadow" style="width:90vw;max-width:1400px;margin:0 auto;">
+    <div class="card-header bg-white d-flex align-items-center" style="font-size:1.3em;">
+      <i class="fa fa-user me-2"></i>
+      <b>{{ driver.name }}</b>
+      <span class="badge bg-primary ms-2" style="font-size:0.9em;">No.{{ driver.driver_code }}</span>
+      <span class="ms-auto" style="font-size:0.95em;">
+        事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+      </span>
+    </div>
+
+    <div class="card-body">
+      {% include "staffbook/driver_tab_nav.html" %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <!-- 学歴 -->
+        <h5 class="mt-3">学歴</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width:10%">始(年)</th>
+                <th style="width:10%">始(月)</th>
+                <th style="width:10%">終(年)</th>
+                <th style="width:10%">終(月)</th>
+                <th>場所（学校名）</th>
+                <th style="width:20%">備考</th>
+                <th style="width:8%">删除</th>
+              </tr>
+            </thead>
+            <tbody id="edu-rows">
+              {% for form in edu_formset %}
+                <tr class="edu-row">
+                  <td>{{ form.category }}{{ form.start_year }}</td>
+                  <td>{{ form.start_month }}</td>
+                  <td>{{ form.end_year }}</td>
+                  <td>{{ form.end_month }}</td>
+                  <td>{{ form.place }}</td>
+                  <td>{{ form.note }}</td>
+                  <td>
+                    {% if form.instance.pk %}
+                      <div class="form-check">{{ form.DELETE }}</div>
+                    {% else %}
+                      <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeTempRow(this)">×</button>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% if form.non_field_errors %}
+                  <tr><td colspan="7" class="text-danger small">{{ form.non_field_errors }}</td></tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" id="btn-add-edu" class="btn btn-outline-primary btn-sm">＋ 添加学歴</button>
+        <hr class="my-4">
+
+        <!-- 職歴 -->
+        <h5 class="mt-3">職歴</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width:10%">始(年)</th>
+                <th style="width:10%">始(月)</th>
+                <th style="width:10%">終(年)</th>
+                <th style="width:10%">終(月)</th>
+                <th>会社・職場</th>
+                <th style="width:20%">備考</th>
+                <th style="width:8%">删除</th>
+              </tr>
+            </thead>
+            <tbody id="job-rows">
+              {% for form in job_formset %}
+                <tr class="job-row">
+                  <td>{{ form.category }}{{ form.start_year }}</td>
+                  <td>{{ form.start_month }}</td>
+                  <td>{{ form.end_year }}</td>
+                  <td>{{ form.end_month }}</td>
+                  <td>{{ form.place }}</td>
+                  <td>{{ form.note }}</td>
+                  <td>
+                    {% if form.instance.pk %}
+                      <div class="form-check">{{ form.DELETE }}</div>
+                    {% else %}
+                      <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeTempRow(this)">×</button>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% if form.non_field_errors %}
+                  <tr><td colspan="7" class="text-danger small">{{ form.non_field_errors }}</td></tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button type="button" id="btn-add-job" class="btn btn-outline-primary btn-sm">＋ 添加職歴</button>
+
+        <div class="mt-4 text-end">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a href="{% url 'staffbook:driver_history_info' driver.id %}" class="btn btn-outline-secondary ms-2">取消</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// 生成月份选项
+function monthOptions(includeBlank){
+  var opts = includeBlank ? '<option value=""></option>' : '';
+  for (var i = 1; i <= 12; i++){
+    opts += '<option value="'+i+'">'+i+'月</option>';
+  }
+  return opts;
+}
+
+(function(){
+  // 防重复初始化
+  if (window.__historyEditBooted) {
+    console.log('history-edit already booted, skip');
+    return;
+  }
+  window.__historyEditBooted = true;
+
+  // 新增一行（仅在点击时调用）
+  function addRow(prefix){
+    var tbody = document.getElementById(prefix + '-rows');
+    if (!tbody) { console.error(prefix + '-rows not found'); return; }
+
+    var index = tbody.querySelectorAll('tr').length;
+    var label = (prefix === 'edu') ? '学校名' : '会社・職場';
+
+    var html =
+        '<tr>' +
+            // 年：数字控件（1900~2100）
+            '<td><input type="number" name="'+prefix+'-'+index+'-start_year"  class="form-control" min="1900" max="2100" step="1" inputmode="numeric" placeholder="YYYY" required></td>' +
+            // 月：下拉 1~12（必填）
+            '<td><select name="'+prefix+'-'+index+'-start_month" class="form-select" required>' +
+                monthOptions(false) +
+            '</select></td>' +
+            // 结束年：数字控件（可空）
+            '<td><input type="number" name="'+prefix+'-'+index+'-end_year"    class="form-control" min="1900" max="2100" step="1" inputmode="numeric" placeholder="YYYY"></td>' +
+            // 结束月：下拉 1~12（可空，首项留空）
+            '<td><select name="'+prefix+'-'+index+'-end_month"   class="form-select">' +
+                monthOptions(true) +
+            '</select></td>' +
+            // 地点 / 备注 / 删除
+            '<td><input name="'+prefix+'-'+index+'-place" class="form-control" placeholder="'+label+'" required></td>' +
+            '<td><input name="'+prefix+'-'+index+'-note"  class="form-control"></td>' +
+            '<td><button type="button" class="btn btn-outline-danger btn-sm js-remove-row">×</button></td>' +
+        '</tr>';
+
+    tbody.insertAdjacentHTML('beforeend', html);
+    console.log('row added:', prefix, index);
+  }
+  // 控制台兜底：window.addFormRow('edu'|'job')
+  window.__historyAddRow = addRow;
+
+  // 初始化：只做事件绑定，不再自动加行
+  function init(){
+    console.log('history-edit init');
+
+    var btnEdu = document.getElementById('btn-add-edu');
+    var btnJob = document.getElementById('btn-add-job');
+    if (btnEdu) btnEdu.addEventListener('click', function(){ addRow('edu'); });
+    if (btnJob) btnJob.addEventListener('click', function(){ addRow('job'); });
+
+    // 删除按钮事件委托
+    ['edu','job'].forEach(function(p){
+      var tbody = document.getElementById(p + '-rows');
+      if (!tbody) return;
+      tbody.addEventListener('click', function(e){
+        var t = e.target;
+        if (t && t.classList && t.classList.contains('js-remove-row')) {
+          var tr = t.closest('tr');
+          if (tr) tr.remove();
+          console.log('row removed:', p);
+        }
+      });
+    });
+  }
+
+  // DOM 就绪即执行（避免错过事件）
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+})();
+</script>
+{% endblock %}
