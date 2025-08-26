@@ -50,6 +50,95 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from dailyreport.utils.debug import debug_print
 
+# >>> SOFT_PREFILL (no-FK) START
+# 目的：仅在日報字段为空时，尝试从 Reservation 软关联预填 vehicle / clock_in / clock_out（不保存 DB）
+# 依赖：vehicles.models.Reservation（driver=User, date, start_time, end_time, actual_return, vehicle）
+def _safe_as_time(val):
+    """将 datetime/time/字符串 中的时间部分取出为 time；失败返回 None。"""
+    try:
+        if val is None:
+            return None
+        # datetime-like
+        if hasattr(val, "time") and callable(getattr(val, "time")):
+            return val.time()
+        # time-like（有 hour/minute，无 date）
+        if hasattr(val, "hour") and hasattr(val, "minute") and not hasattr(val, "date"):
+            return val
+        # 字符串 "HH:MM"
+        s = str(val).strip()
+        if ":" in s:
+            h, m = s.split(":", 1)
+            h = int(h); m = int(m)
+            if 0 <= h < 24 and 0 <= m < 60:
+                from datetime import time as _t
+                return _t(h, m)
+    except Exception:
+        pass
+    return None
+
+
+def _prefill_report_without_fk(report):
+    """
+    仅在 report 的相关字段为空时，从 Reservation 做“软关联”预填：
+      - vehicle：优先取当天任一预约里的 vehicle
+      - clock_in：当天预约的最早 start_time
+      - clock_out：当天预约里最晚 actual_return；如无实际返回则取最晚 end_time
+    注意：不保存数据库；仅用于 GET 渲染阶段作为初始值。
+    """
+    try:
+        # 司机在日報里是 staffbook.Driver；Reservation 中是 User（AUTH_USER）
+        user = getattr(getattr(report, "driver", None), "user", None)
+        the_date = getattr(report, "date", None)
+        if not user or not the_date:
+            return
+
+        try:
+            from vehicles.models import Reservation
+        except Exception as e:
+            debug_print("SOFT_PREFILL import Reservation failed:", e)
+            return
+
+        qs = (Reservation.objects
+              .filter(driver=user, date=the_date)
+              .select_related("vehicle")
+              .order_by("start_time"))
+        if not qs.exists():
+            return
+
+        # 预填 vehicle（仅在 report.vehicle 为空时）
+        if not getattr(report, "vehicle_id", None):
+            for r in qs:
+                v = getattr(r, "vehicle", None)
+                if v:
+                    report.vehicle = v
+                    break
+
+        # 预填 clock_in（仅在为空时）：取最早 start_time
+        if getattr(report, "clock_in", None) in (None, ""):
+            first = qs.first()
+            st = _safe_as_time(getattr(first, "start_time", None))
+            if st:
+                report.clock_in = st
+
+        # 预填 clock_out（仅在为空时）：优先当天预约中“最晚 actual_return”，否则“最晚 end_time”
+        if getattr(report, "clock_out", None) in (None, ""):
+            actual_returns = []
+            for r in qs:
+                ar = _safe_as_time(getattr(r, "actual_return", None))
+                if ar:
+                    actual_returns.append(ar)
+            if actual_returns:
+                report.clock_out = sorted(actual_returns)[-1]
+            else:
+                last = qs.order_by("-end_time").first()
+                et = _safe_as_time(getattr(last, "end_time", None))
+                if et:
+                    report.clock_out = et
+    except Exception as e:
+        # 静默失败，不阻断编辑流程
+        debug_print("SOFT_PREFILL error:", e)
+# <<< SOFT_PREFILL (no-FK) END
+
 # 固定加算の休憩(分)
 BASE_BREAK_MINUTES = 20  
 
@@ -1498,6 +1587,11 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         else:
             messages.error(request, "❌ 保存失败，请检查输入内容")
     else:
+
+        # >>> SOFT_PREFILL CALL START
+        _prefill_report_without_fk(report)  # 仅填空白：vehicle / clock_in / clock_out（不保存 DB）
+        # <<< SOFT_PREFILL CALL END
+
         form = DriverDailyReportForm(instance=report)
         formset = ReportItemFormSet(instance=report)
 
