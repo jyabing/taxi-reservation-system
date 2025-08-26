@@ -109,10 +109,8 @@
           <!-- 可继续加入“履歴”相关字段/专用说明等 -->
         </div>
       </div>
-      <div class="text-end">
-        <a href="{% url 'staffbook:driver_basic_edit' driver.id %}" class="btn btn-outline-primary">
-          <i class="fa fa-edit"></i> 編集
-        </a>
+      <div class="mt-4 text-end">
+        <a class="btn btn-primary" href="{% url 'staffbook:driver_basic_edit' driver.id %}">編集</a>
       </div>
       </form>
     </div>

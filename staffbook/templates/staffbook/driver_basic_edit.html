@@ -168,11 +168,9 @@
           </div>
         </div>
 
-        <div class="text-end mt-4">
-          <button type="submit" class="btn btn-success btn-lg px-5 me-2">
-            <i class="fa fa-save"></i> 保存
-          </button>
-          <a href="{% url 'staffbook:driver_basic_info' driver.id %}" class="btn btn-secondary btn-lg">キャンセル</a>
+        <div class="mt-4 text-end">
+          <button type="submit" class="btn btn-success">保存</button>
+          <a class="btn btn-secondary ms-2" href="{% url 'staffbook:driver_basic_info' driver.id %}">取消</a>
         </div>
       </form>
     </div>

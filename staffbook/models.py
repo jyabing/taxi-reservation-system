@@ -56,9 +56,6 @@ class Driver(models.Model):
     # ✅ 新增：别名/别名カタカナ（如不需要可删除）
     alt_name = models.CharField('別名', max_length=32, blank=True, default="")
     alt_kana = models.CharField('別名フリガナ', max_length=32, blank=True, default="")
-
-    company   = None
-    workplace = None
     
     department = models.CharField('部門', max_length=32, blank=True)
     position = models.CharField('職種', max_length=32, choices=[

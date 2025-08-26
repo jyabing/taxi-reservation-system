@@ -26,28 +26,51 @@ class DriverForm(forms.ModelForm):
         # 同样追加需要的营业所名
     ]
 
-    company = forms.ChoiceField(choices=COMPANY_CHOICES, label="事業者名", widget=forms.Select(attrs={'class': 'form-select'}))
-    workplace = forms.ChoiceField(choices=WORKPLACE_CHOICES, label="営業所名", widget=forms.Select(attrs={'class': 'form-select'}))
+    NATIONALITY_CHOICES = [
+    ('日本', '日本'),
+    ('中国', '中国'),
+    ('韓国', '韓国'),
+    ('ベトナム', 'ベトナム'),
+    ('ネパール', 'ネパール'),
+    ('フィリピン', 'フィリピン'),
+    ('ミャンマー', 'ミャンマー'),
+    ('インド', 'インド'),
+    ('その他', 'その他'),
+]
+
+    company   = forms.ChoiceField(choices=COMPANY_CHOICES,   label="事業者名",
+                                  widget=forms.Select(attrs={'class': 'form-select'}))
+    workplace = forms.ChoiceField(choices=WORKPLACE_CHOICES, label="営業所名",
+                                  widget=forms.Select(attrs={'class': 'form-select'}))
+    
+    # ⬇⬇⬇ 新增：国籍下拉
+    nationality = forms.ChoiceField(choices=NATIONALITY_CHOICES, label="国籍",
+                                    widget=forms.Select(attrs={'class': 'form-select'}))
 
     
     class Meta:
         model = Driver
         fields = [
             'driver_code', 'name', 'kana',
-            'department', 'position',
+            'alt_name', 'alt_kana',          # ⬅ 确保包含别名/别名フリガナ
+            'company', 'workplace',          # ⬅ 下拉
+            'department', 'position', 'employ_type',
+            'appointment_date', 'hire_date', 'create_date',
             'birth_date', 'gender', 'blood_type',
-            'resigned_date', 'hire_date', 'appointment_date',
-            'create_date', 'remark'
+            'postal_code', 'address', 'phone_number',
+            'is_foreign', 'nationality', 'residence_status', 'residence_expiry',
+            'photo', 'photo_date', 'remark',
         ]
         widgets = {
             'gender': forms.Select(attrs={'class': 'form-select'}),
             'blood_type': forms.Select(attrs={'class': 'form-select'}),
             'birth_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'hire_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'resigned_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'residence_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'appointment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'create_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            # ⚠️ 不要再给 nationality 设 TextInput 了，这一行删掉/不要保留
         }
 
     def __init__(self, *args, **kwargs):
@@ -127,17 +150,91 @@ class AccidentForm(forms.ModelForm):
             'note': forms.Textarea(attrs={'rows': 2}),
         }
 
-# ✅ 简版基础信息表单
+# ✅ 简版基础信息表单（编辑页用）
 class DriverBasicForm(forms.ModelForm):
+    # --- 这三个下拉专用于【编辑页】 ---
+    # 若模块顶部已定义了同名 *_CHOICES，请删除/忽略这三段并直接引用已有常量
+    NATIONALITY_CHOICES = [
+        ('日本', '日本'), ('中国', '中国'), ('韓国', '韓国'),
+        ('ベトナム', 'ベトナム'), ('ネパール', 'ネパール'),
+        ('その他', 'その他'),
+    ]
+    COMPANY_CHOICES = [
+        ('光交通株式会社', '光交通株式会社'),
+    ]
+    WORKPLACE_CHOICES = [
+        ('京都営業所', '京都営業所'),
+
+    ]
+
+    # 下拉：显式指定 ChoiceField + Select（带 Bootstrap 样式）
+    nationality = forms.ChoiceField(
+        choices=NATIONALITY_CHOICES, label="国籍",
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    company = forms.ChoiceField(
+        choices=COMPANY_CHOICES, label="事業者名",
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    workplace = forms.ChoiceField(
+        choices=WORKPLACE_CHOICES, label="営業所名",
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+
     class Meta:
         model = Driver
         fields = [
-            'driver_code', 'name', 'kana', 'department',
-            'position', 'employ_type',
+            # 基本
+            'driver_code', 'name', 'kana', 'alt_name', 'alt_kana',
+            # 公司/营业所
+            'company', 'workplace', 'department', 'position', 'employ_type',
+            # 外国籍/在留
+            'is_foreign', 'nationality', 'residence_status', 'residence_expiry',
+            # 其它日期/个人信息
             'appointment_date', 'hire_date', 'create_date',
             'birth_date', 'gender', 'blood_type', 'postal_code', 'address',
             'phone_number', 'photo', 'photo_date', 'remark'
         ]
+        widgets = {
+            # 日期类：原生 date 选择器
+            'appointment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'hire_date':        forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'create_date':      forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'birth_date':       forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'residence_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'photo_date':       forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+
+            # 下拉类（这里不要再给 company/workplace/nationality 设 widget，已在上面定义）
+            'gender':      forms.Select(attrs={'class': 'form-select'}),
+            'blood_type':  forms.Select(attrs={'class': 'form-select'}),
+            'position':    forms.Select(attrs={'class': 'form-select'}),
+            'employ_type': forms.Select(attrs={'class': 'form-select'}),
+            'residence_status': forms.Select(attrs={'class': 'form-select'}),
+
+            # 文本类
+            'driver_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '従業員番号'}),
+            'name':        forms.TextInput(attrs={'class': 'form-control', 'placeholder': '氏名'}),
+            'kana':        forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'フリガナ'}),
+            'alt_name':    forms.TextInput(attrs={'class': 'form-control', 'placeholder': '別名'}),
+            'alt_kana':    forms.TextInput(attrs={'class': 'form-control', 'placeholder': '別名フリガナ'}),
+            'department':  forms.TextInput(attrs={'class': 'form-control', 'placeholder': '部門'}),
+            'postal_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '郵便番号'}),
+            'address':     forms.TextInput(attrs={'class': 'form-control', 'placeholder': '住所'}),
+            'phone_number':forms.TextInput(attrs={'class': 'form-control', 'placeholder': '電話番号'}),
+
+            # 备注多行
+            'remark':      forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': '特記事項'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from django import forms as _f
+        for name, field in self.fields.items():
+            # 已是 select/textarea/file/checkbox/radio 的就别再加 form-control
+            if isinstance(field.widget, (_f.Select, _f.Textarea, _f.FileInput, _f.CheckboxInput, _f.RadioSelect)):
+                continue
+            cls = field.widget.attrs.get('class', '')
+            field.widget.attrs['class'] = (cls + ' form-control').strip()
 
 # ✅ 司机个人信息编辑
 class DriverPersonalInfoForm(forms.ModelForm):
@@ -200,7 +297,6 @@ class DriverCertificateForm(forms.ModelForm):
         ]
         widgets = {
             'residence_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'nationality': forms.TextInput(attrs={'class': 'form-control'}),
             'residence_status': forms.Select(attrs={'class': 'form-select'}),
             'residence_card_image': forms.ClearableFileInput(attrs={'class': 'form-control'}),
         }
