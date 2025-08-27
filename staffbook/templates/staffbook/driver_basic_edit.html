@@ -86,11 +86,19 @@
                 {{ form.position }}
                 {% if form.position.errors %}<div class="text-danger small">{{ form.position.errors }}</div>{% endif %}
               </div>
+              {# ▼▼ 在職類型 + 退職日（并排） ▼▼ #}
               <div class="col-md-6">
                 <label class="form-label">在職類型 <span class="badge bg-danger">必須</span></label>
                 {{ form.employ_type }}
                 {% if form.employ_type.errors %}<div class="text-danger small">{{ form.employ_type.errors }}</div>{% endif %}
               </div>
+
+              <div class="col-md-6 resigned-date-group d-none">
+                <label class="form-label">退職日 <span class="badge bg-danger">必須</span></label>
+                {{ form.resigned_date }}
+                {% if form.resigned_date.errors %}<div class="text-danger small">{{ form.resigned_date.errors }}</div>{% endif %}
+              </div>
+              {# ▲▲ 在職類型 + 退職日（并排） ▲▲ #}
               <div class="col-md-6">
                 <label class="form-label">性別 <span class="badge bg-danger">必須</span></label>
                 {{ form.gender }}
@@ -176,4 +184,34 @@
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  function isRetired(val, text) {
+    val = String(val || '');
+    text = String(text || '');
+    return val === '3' || text.indexOf('退職') !== -1;  // employ_type=3 是退職者
+  }
+  function toggleResignedDate() {
+    const sel = document.querySelector('select[name="employ_type"]');
+    const grp = document.querySelector('.resigned-date-group');
+    const input = document.querySelector('#id_resigned_date');
+    if (!sel || !grp) return;
+    const txt = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+    if (isRetired(sel.value, txt)) {
+      grp.classList.remove('d-none');
+      if (input) input.required = true;
+    } else {
+      grp.classList.add('d-none');
+      if (input) input.required = false;
+      // 不清空 input.value，避免误判时把已选日期抹掉
+    }
+  }
+  document.addEventListener('change', function(e){
+    if (e.target && e.target.matches('select[name="employ_type"]')) toggleResignedDate();
+  });
+  document.addEventListener('DOMContentLoaded', toggleResignedDate);
+})();
+</script>
+
 {% endblock %}

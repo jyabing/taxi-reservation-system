@@ -4,7 +4,7 @@ from .models import (
 from django import forms
 from django.forms import inlineformset_factory
 from .models import Accident, Reward, DriverInsurance, DriverPayrollRecord, Driver # ✅ 保险、事故、奖励等模型
-from datetime import date
+
 
 MONTH_CHOICES = [(m, f"{m}月") for m in range(1, 13)]
 
@@ -67,11 +67,7 @@ class DriverForm(forms.ModelForm):
             'birth_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'hire_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'residence_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'resigned_date': forms.DateInput(attrs={
-                'type': 'date',
-                'class': 'form-control',
-                'max': date.today().isoformat(),   # 禁未来日
-            }),
+            'resigned_date': forms.DateInput(attrs={'type': 'date','class':'form-control'}),
             'appointment_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'create_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
@@ -84,19 +80,15 @@ class DriverForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        employ_type   = cleaned.get('employ_type') or getattr(self.instance, 'employ_type', None)
+        employ_type = cleaned.get('employ_type') or getattr(self.instance, 'employ_type', None)
         resigned_date = cleaned.get('resigned_date') or getattr(self.instance, 'resigned_date', None)
 
         et = str(employ_type or '')
-        # models.py 确认 '3' 是 退職者
-        is_retired = (et == '3') or ('退職' in et)
+        RETIRED_VALUE = '3'  # models.py の choices: ('3', '退職者')
+        is_retired = (et == RETIRED_VALUE) or ('退職' in et)
 
         if is_retired and not resigned_date:
-            self.add_error('resigned_date', '退職者を選択した場合、退職日は必須です。')
-
-        # 非退職者时，防止误留退職日（可选）
-        if not is_retired and resigned_date:
-            cleaned['resigned_date'] = None
+            self.add_error('resigned_date', '退職日は必須です。')
 
         return cleaned
 
@@ -202,7 +194,7 @@ class DriverBasicForm(forms.ModelForm):
             # 基本
             'driver_code', 'name', 'kana', 'alt_name', 'alt_kana',
             # 公司/营业所
-            'company', 'workplace', 'department', 'position', 'employ_type', 'resigned_date',
+            'company', 'workplace', 'department', 'position', 'employ_type',
             # 外国籍/在留
             'is_foreign', 'nationality', 'residence_status', 'residence_expiry',
             # 其它日期/个人信息
@@ -217,7 +209,6 @@ class DriverBasicForm(forms.ModelForm):
             'create_date':      forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'birth_date':       forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'residence_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'resigned_date':    forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),  # ← 新增
             'photo_date':       forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
 
             # 下拉类（这里不要再给 company/workplace/nationality 设 widget，已在上面定义）

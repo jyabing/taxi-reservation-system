@@ -14,7 +14,7 @@
 
       <span class="ms-auto d-flex align-items-center" style="font-size:0.95em;">
         <span>
-          事業者名: {{ driver.company }}　営業所名: {{ driver.workplace }}
+          事業者名: {{ driver.company|default:"-" }}　営業所名: {{ driver.workplace|default:"-" }}
         </span>
 
         {% if missing_items %}
@@ -39,81 +39,77 @@
         </div>
       {% endif %}
 
-      {% if driver.employ_type == '3' %}
-        <div class="alert alert-warning mt-3">
-          <b>⚠ この従業員は退職済みです。</b><br>
-          {% if driver.resigned_date %}
-            退職日：<strong>{{ driver.resigned_date|date:"Y/m/d" }}</strong>
-          {% else %}
-            退職日未入力
-          {% endif %}
+      {% if driver.get_employ_type_display == '退職者' and not driver.resigned_date %}
+        <div class="alert alert-warning py-2 mb-3">
+          この従業員は退職済みです。<br>退職日未入力
         </div>
       {% endif %}
 
-      <!-- 基本信息表 -->
-      <form>
-      <div class="row">
-        <!-- 左列 -->
-        <div class="col-md-7">
-          <div class="row mb-2">
-            <div class="col-md-6">
-              <label class="form-label">従業員番号：{{ driver.driver_code }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">氏名：{{ driver.name }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">フリガナ：{{ driver.kana }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">営業所：{{ driver.workplace }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">部門：{{ driver.department }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">職種：{{ driver.get_position_display }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">性別：{{ driver.get_gender_display }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">血液型：{{ driver.blood_type }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">生年月日：{{ driver.birth_date|date:"Y/m/d" }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">年齢：{% if driver.birth_date %}{{ driver.birth_date|age }}歳{% endif %}</label>
-            </div>
-          </div>
-          <div class="row mb-2">
-            <div class="col-md-6">
-              <label class="form-label">入社年月日</label>
-              <div>{{ driver.hire_date|date:"Y/m/d" }}</div>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">選任年月日：{{ driver.appointment_date|date:"Y/m/d" }}</label>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">作成年月日：{{ driver.create_date|date:"Y/m/d" }}</label>
-            </div>
-          </div>
-        </div>
-        <!-- 右列 -->
-        <div class="col-md-5">
-          <div class="mb-3">
-            <label class="form-label">特記事項</label>
-            <div class="border p-2 rounded bg-light">{{ driver.remark|default:"-" }}</div>
-          </div>
-          <!-- 可继续加入“履歴”相关字段/专用说明等 -->
+    <div class="row">
+
+  {# ==== 基本情報（カード表示） ==== #}
+  <div class="row g-3">
+
+    <!-- 左：基本情報カード -->
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-header bg-light fw-bold">基本情報</div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-bordered align-middle mb-0 bg-white">
+            <tbody>
+              <tr><th class="text-nowrap" style="width: 22%;">氏名</th><td>{{ driver.name|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">フリガナ</th><td>{{ driver.kana|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">国籍</th><td>{{ driver.nationality|default:"-" }}</td></tr>
+
+              <tr><th class="text-nowrap">事業者名</th><td>{{ driver.company|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">営業所</th><td>{{ driver.workplace|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">部門</th><td>{{ driver.department|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">職種</th><td>{{ driver.get_position_display|default:"-" }}</td></tr>
+
+              <tr><th class="text-nowrap">性別</th><td>{{ driver.get_gender_display|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">電話番号</th><td>{{ driver.phone_number|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">血液型</th><td>{{ driver.get_blood_type_display|default:driver.blood_type|default:"-" }}</td></tr>
+
+              <tr><th class="text-nowrap">生年月日</th><td>{{ driver.birth_date|date:"Y/m/d"|default:"-" }}</td></tr>
+              <tr>
+                <th class="text-nowrap">年齢</th>
+                <td>{% if driver.birth_date %}{{ driver.birth_date|age }}歳{% else %}-{% endif %}</td>
+              </tr>
+
+              <tr><th class="text-nowrap">入社年月日</th><td>{{ driver.hire_date|date:"Y/m/d"|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">選任年月日</th><td>{{ driver.appointment_date|date:"Y/m/d"|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">退職日</th><td>{{ driver.resigned_date|date:"Y/m/d"|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">作成年月日</th><td>{{ driver.create_date|date:"Y/m/d"|default:"-" }}</td></tr>
+
+              <tr><th class="text-nowrap">郵便番号</th><td>{{ driver.postal_code|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">住所</th><td>{{ driver.address|default:"-" }}</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
-      <div class="mt-4 text-end">
-        <a class="btn btn-primary" href="{% url 'staffbook:driver_basic_edit' driver.id %}">編集</a>
-      </div>
-      </form>
     </div>
+
+    <!-- 右：特記事項カード -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-light fw-bold">特記事項</div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-bordered align-middle mb-0 bg-white">
+            <tbody>
+              <tr>
+                <th class="text-nowrap" style="width: 30%;">備考</th>
+                <td>{{ driver.remark|default:"-" }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div>
+  {# ==== /基本情報（カード表示） ==== #}
+
+<div class="mt-4 text-end">
+  <a class="btn btn-primary" href="{% url 'staffbook:driver_basic_edit' driver.id %}">編集</a>
 </div>
 {% endblock %}

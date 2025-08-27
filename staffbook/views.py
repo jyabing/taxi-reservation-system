@@ -238,13 +238,15 @@ def driver_basic_edit(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
 
     if request.method == 'POST':
+        print('DEBUG POST employ_type =', request.POST.get('employ_type'))
+        print('DEBUG POST resigned_date =', request.POST.get('resigned_date'))
         form = DriverBasicForm(request.POST, request.FILES, instance=driver)
         if form.is_valid():
-            form.save()
+            obj = form.save()
+            print('DEBUG SAVED resigned_date =', obj.resigned_date)  # 保存后的模型值
             messages.success(request, "基本データを保存しました。")
             return redirect('staffbook:driver_basic_info', driver_id=driver.id)
         else:
-            # 便于排错
             print("[DEBUG] DriverBasicForm errors:", form.errors)
             messages.error(request, "入力内容をご確認ください。")
     else:
