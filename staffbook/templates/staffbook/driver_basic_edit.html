@@ -214,4 +214,77 @@
 })();
 </script>
 
+<script>
+/**
+ * 郵便番号 → 住所 自動補完（zipcloud）
+ * - 触发时机：邮编输入框 blur / Enter / 点击查找按钮（可选）
+ * - 允许输入全角数字与连字符，内部会自动规范化为半角7位数字
+ * - 若返回多结果，取第一条；无结果则不改动现有地址
+ */
+document.addEventListener("DOMContentLoaded", function () {
+  const postalInput  = document.getElementById("id_postal_code");
+  const addressInput = document.getElementById("id_address");
+
+  if (!postalInput || !addressInput) return;
+
+  // 将输入规范化为半角且仅数字
+  function normalizeZip(v) {
+    if (!v) return "";
+    // 全角转半角
+    v = v.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+    // 去除非数字
+    v = v.replace(/\D/g, "");
+    return v;
+  }
+
+  // 在输入框中显示为 123-4567 的格式（仅展示，不影响查询）
+  function prettyZip(v7) {
+    if (v7.length !== 7) return v7;
+    return v7.slice(0,3) + "-" + v7.slice(3);
+  }
+
+  async function fetchAddressByZip(zip7) {
+    try {
+      const url = `https://zipcloud.ibsnet.co.jp/api/search?zipcode=${zip7}`;
+      const resp = await fetch(url, { cache: "no-store" });
+      const data = await resp.json();
+      if (data && data.status === 200 && Array.isArray(data.results) && data.results[0]) {
+        const r = data.results[0];
+        // 拼接：都道府県 + 市区町村 + 町域
+        return (r.address1 || "") + (r.address2 || "") + (r.address3 || "");
+      }
+    } catch (e) {
+      console.warn("郵便番号APIエラー:", e);
+    }
+    return ""; // 无结果
+  }
+
+  async function handleZipBlur() {
+    // 1) 规范化并显示为 123-4567
+    let raw = postalInput.value || "";
+    const zip7 = normalizeZip(raw);
+    if (zip7.length === 7) {
+      postalInput.value = prettyZip(zip7);
+      // 2) 查询地址
+      const addr = await fetchAddressByZip(zip7);
+      if (addr) {
+        // 仅当当前地址为空或与新地址前缀一致时覆盖；否则不打扰用户
+        if (!addressInput.value || addressInput.value.trim() === "-" || addressInput.value.startsWith(addr.slice(0, 3))) {
+          addressInput.value = addr;
+        }
+      }
+    }
+  }
+
+  // 触发时机：离开输入框、按下 Enter
+  postalInput.addEventListener("blur", handleZipBlur);
+  postalInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleZipBlur();
+    }
+  });
+});
+</script>
+
 {% endblock %}

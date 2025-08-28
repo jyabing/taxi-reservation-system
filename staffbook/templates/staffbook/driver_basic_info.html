@@ -59,6 +59,11 @@
             <tbody>
               <tr><th class="text-nowrap" style="width: 22%;">氏名</th><td>{{ driver.name|default:"-" }}</td></tr>
               <tr><th class="text-nowrap">フリガナ</th><td>{{ driver.kana|default:"-" }}</td></tr>
+              <!-- ▼ 新增：別名 / 別名フリガナ -->
+              <tr><th class="text-nowrap">別名</th><td>{{ driver.alt_name|default:"-" }}</td></tr>
+              <tr><th class="text-nowrap">別名フリガナ</th><td>{{ driver.alt_kana|default:"-" }}</td></tr>
+              <!-- ▲ 新增结束 -->
+
               <tr><th class="text-nowrap">国籍</th><td>{{ driver.nationality|default:"-" }}</td></tr>
 
               <tr><th class="text-nowrap">事業者名</th><td>{{ driver.company|default:"-" }}</td></tr>
