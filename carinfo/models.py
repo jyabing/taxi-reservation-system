@@ -3,12 +3,18 @@ from datetime import date
 from django.core.exceptions import ValidationError
 from django.utils.timezone import localdate
 
+def car_main_photo_path(instance, filename):
+    # 存储到 R2：cars/<car_id>/<原文件名>
+    return f"cars/{instance.pk}/{filename}"
+
 class Car(models.Model):
     STATUS_CHOICES = [
         ('usable', '使用可'),
         ('repair', '维修中'),
         ('retired', '已报废'),
     ]
+    
+    main_photo = models.ImageField(upload_to=car_main_photo_path, blank=True, null=True, verbose_name="车辆照片")
 
     # --- 基本信息 ---
     name = models.CharField("车辆名称", max_length=100)

@@ -94,24 +94,62 @@
       </div>
     </div>
 
-    <!-- 右：特記事項カード -->
+    <!-- 右：入社資料（会社側｜社員側） -->
     <div class="col-lg-4">
       <div class="card shadow-sm h-100">
-        <div class="card-header bg-light fw-bold">特記事項</div>
+        <div class="card-header bg-light fw-bold">入社資料</div>
         <div class="card-body p-0">
           <table class="table table-sm table-bordered align-middle mb-0 bg-white">
-            <tbody>
+            <thead class="table-light">
               <tr>
-                <th class="text-nowrap" style="width: 30%;">備考</th>
-                <td>{{ driver.remark|default:"-" }}</td>
+                <th class="text-center" style="width:50%;">会社側</th>
+                <th class="text-center" style="width:50%;">社員側</th>
               </tr>
+            </thead>
+            <tbody>
+              {% for left, right in paired_rows %}
+                <tr>
+                  <td class="py-1">
+                    {% if left.name %}
+                      <div class="d-flex justify-content-between">
+                        <span class="small">{{ left.name }}</span>
+                        <span>
+                          {% if left.submitted is None %}
+                            <!-- 空 -->
+                          {% elif left.submitted %}
+                            <span class="fw-bold text-success">✅</span>
+                          {% else %}
+                            <a class="text-danger text-decoration-none fw-bold"
+                              href="{{ edit_url }}#{{ left.anchor }}">❌</a>
+                          {% endif %}
+                        </span>
+                      </div>
+                    {% endif %}
+                  </td>
+                  <td class="py-1">
+                    {% if right.name %}
+                      <div class="d-flex justify-content-between">
+                        <span class="small">{{ right.name }}</span>
+                        <span>
+                          {% if right.submitted is None %}
+                            <!-- 空 -->
+                          {% elif right.submitted %}
+                            <span class="fw-bold text-success">✅</span>
+                          {% else %}
+                            <a class="text-danger text-decoration-none fw-bold"
+                              href="{{ edit_url }}#{{ right.anchor }}">❌</a>
+                          {% endif %}
+                        </span>
+                      </div>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
             </tbody>
           </table>
         </div>
       </div>
     </div>
-
-  </div>
   {# ==== /基本情報（カード表示） ==== #}
 
 <div class="mt-4 text-end">

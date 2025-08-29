@@ -151,30 +151,90 @@
             </div>
           </div>
 
-          <!-- 右侧：照片和备注 -->
-          <div class="col-md-4">
-            <div class="mb-3 text-center">
-              <label class="form-label">写真</label><br>
-              {% if driver.photo %}
-                <img src="{{ driver.photo.url }}" alt="写真" class="rounded-circle mb-2" style="width:110px;height:110px;object-fit:cover;">
+          <!-- 右侧：照片 / 备注 / 入社資料 -->
+<div class="col-md-4">
+
+  <!-- 写真 -->
+  <div class="mb-3 text-center">
+    <label class="form-label">写真</label><br>
+    {% if driver.photo %}
+      <img src="{{ driver.photo.url }}" alt="写真" class="rounded-circle mb-2" style="width:110px;height:110px;object-fit:cover;">
+    {% else %}
+      <img src="/static/default_avatar.png" alt="写真" class="rounded-circle mb-2" style="width:110px;height:110px;object-fit:cover;">
+    {% endif %}
+    {{ form.photo }}
+    {% if form.photo.errors %}<div class="text-danger small">{{ form.photo.errors }}</div>{% endif %}
+  </div>
+
+  <!-- 写真撮影日 -->
+  <div class="mb-3">
+    <label class="form-label">写真撮影日</label>
+    {{ form.photo_date }}
+    {% if form.photo_date.errors %}<div class="text-danger small">{{ form.photo_date.errors }}</div>{% endif %}
+  </div>
+
+  <!-- 特記事項 -->
+  <div class="mb-3">
+    <label class="form-label">特記事項</label>
+    {{ form.remark }}
+    {% if form.remark.errors %}<div class="text-danger small">{{ form.remark.errors }}</div>{% endif %}
+  </div>
+
+  <!-- 入社資料（会社側｜社員側） -->
+  <div class="card shadow-sm">
+    <div class="card-header bg-light fw-bold d-flex align-items-center">
+      入社資料
+      <span class="ms-auto small">
+        <span class="badge bg-success">✔=提出済</span>
+        <span class="badge bg-danger ms-1">✖=未提出</span>
+      </span>
+    </div>
+    <div class="card-body p-2">
+
+      <!-- 会社側 -->
+      <div class="mb-2">
+        <div class="fw-semibold mb-1">会社側</div>
+        <ul class="list-unstyled mb-0">
+          {% for item in company_docs %}
+            <li id="company-{{ forloop.counter }}"
+                class="d-flex justify-content-between align-items-center py-1 border-bottom border-light">
+              <span class="small">{{ item.name }}</span>
+              {% if item.submitted %}
+                <span class="fw-bold text-success">✔</span>
               {% else %}
-                <img src="/static/default_avatar.png" alt="写真" class="rounded-circle mb-2" style="width:110px;height:110px;object-fit:cover;">
+                <span class="fw-bold text-danger">✖</span>
               {% endif %}
-              {{ form.photo }}
-              {% if form.photo.errors %}<div class="text-danger small">{{ form.photo.errors }}</div>{% endif %}
-            </div>
-            <div class="mb-3">
-              <label class="form-label">写真撮影日</label>
-              {{ form.photo_date }}
-              {% if form.photo_date.errors %}<div class="text-danger small">{{ form.photo_date.errors }}</div>{% endif %}
-            </div>
-            <div class="mb-3">
-              <label class="form-label">特記事項</label>
-              {{ form.remark }}
-              {% if form.remark.errors %}<div class="text-danger small">{{ form.remark.errors }}</div>{% endif %}
-            </div>
-          </div>
-        </div>
+            </li>
+          {% empty %}
+            <li class="text-muted small">項目なし</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- 社員側 -->
+      <div>
+        <div class="fw-semibold mb-1">社員側</div>
+        <ul class="list-unstyled mb-0">
+          {% for item in employee_docs %}
+            <li id="employee-{{ forloop.counter }}"
+                class="d-flex justify-content-between align-items-center py-1 border-bottom border-light">
+              <span class="small">{{ item.name }}</span>
+              {% if item.submitted %}
+                <span class="fw-bold text-success">✔</span>
+              {% else %}
+                <span class="fw-bold text-danger">✖</span>
+              {% endif %}
+            </li>
+          {% empty %}
+            <li class="text-muted small">項目なし</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+</div>
 
         <div class="mt-4 text-end">
           <button type="submit" class="btn btn-success">保存</button>
@@ -285,6 +345,25 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 });
+</script>
+
+<style>
+  .bg-warning-subtle { background-color: rgba(255, 193, 7, .25) !important; }
+</style>
+<script>
+  // 从详情页带 #anchor 跳过来时，自动滚动并高亮 3 秒
+  document.addEventListener("DOMContentLoaded", function(){
+    if (location.hash) {
+      var hash = decodeURIComponent(location.hash);
+      var t = document.querySelector(hash);
+      if (t) {
+        try { t.scrollIntoView({behavior:"smooth", block:"center"}); }
+        catch(e) { t.scrollIntoView(); }
+        t.classList.add("bg-warning-subtle");
+        setTimeout(function(){ t.classList.remove("bg-warning-subtle"); }, 3000);
+      }
+    }
+  });
 </script>
 
 {% endblock %}

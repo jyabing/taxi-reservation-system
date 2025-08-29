@@ -1,9 +1,11 @@
-import os
+# settings.py 头部
 from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv()  # 读取 .env
+import os
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+from dotenv import load_dotenv
+load_dotenv(BASE_DIR / ".env")  # 确保先加载 .env
+
 
 # =========================
 # 静态文件设置
@@ -152,23 +154,6 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 DEFAULT_NOTIFICATION_EMAIL = EMAIL_HOST_USER
 SITE_BASE_URL = 'https://taxi-reservation.onrender.com/'  # 请改为真实上线网址
 
-# =========================
-# Cloudflare R2 存储配置
-# =========================
-DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL")
-
-AWS_S3_REGION_NAME = "auto"              # R2 固定
-AWS_S3_SIGNATURE_VERSION = "s3v4"
-AWS_S3_ADDRESSING_STYLE = "virtual"
-AWS_DEFAULT_ACL = None
-AWS_S3_FILE_OVERWRITE = False
-AWS_QUERYSTRING_AUTH = True
-AWS_QUERYSTRING_EXPIRE = int(os.getenv("AWS_QUERYSTRING_EXPIRE", "3600"))
 
 # =========================
 # 其他
@@ -185,3 +170,8 @@ USE_L10N = False
 LEDGER_API_HOST = os.getenv('LEDGER_API_HOST', 'taxi-reservation.onrender.com')
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
+
+# =========================
+# Cloudflare R2 存储（稳定做法）
+# =========================
+from .settings_storage import *  # Cloudflare R2

@@ -1,6 +1,6 @@
 import csv, re, datetime
 import re
-
+from itertools import zip_longest
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse
@@ -210,27 +210,84 @@ def driver_edit(request, driver_id):
 def driver_basic_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
 
-    # ✅ 新增：检查缺失项
+    d = driver
+    is_foreign = getattr(d, "is_foreign", False)  # 外国籍の人は在留カード/就労資格を判定
+
     missing_items = []
+    edit_url = reverse('staffbook:driver_basic_edit', args=[driver.id])
 
     if driver.is_foreign:
         if not driver.residence_card_image:
-            missing_items.append(("在留カード未上传", f"/staffbook/drivers/{driver.id}/certificate/"))
+            missing_items.append(("在留カード未上传", f"{edit_url}#residence-card"))
         if not driver.work_permission_confirmed:
-            missing_items.append(("就労資格未確認", f"/staffbook/drivers/{driver.id}/certificate/"))
+            missing_items.append(("就労資格未確認", f"{edit_url}#work-permission"))
 
     if not driver.has_health_check:
-        missing_items.append(("健康診断書未提出", f"/staffbook/drivers/{driver.id}/certificate/"))
+        missing_items.append(("健康診断書未提出", f"{edit_url}#health-check"))
     if not driver.has_residence_certificate:
-        missing_items.append(("住民票未提出", f"/staffbook/drivers/{driver.id}/certificate/"))
+        missing_items.append(("住民票未提出", f"{edit_url}#juminhyo"))
     if not driver.has_license_copy:
-        missing_items.append(("免許証コピー未提出", f"/staffbook/drivers/{driver.id}/certificate/"))
+        missing_items.append(("免許証コピー未提出", f"{edit_url}#license-copy"))
+
+    # ====== 入社資料デフォルト清单（公司側）======
+    # ⛳ 请确认右侧 getattr(...) 中的布尔字段与你的 Driver 模型一致
+    company_docs = [
+        {"name": "雇用契約書の作成・署名",      "submitted": getattr(d, "signed_employment_contract", False),         "anchor": "company-1"},
+        {"name": "労働条件通知書の交付",        "submitted": getattr(d, "gave_labor_conditions", False),               "anchor": "company-2"},
+        {"name": "就業規則・安全衛生の説明",    "submitted": getattr(d, "explained_rules_safety", False),              "anchor": "company-3"},
+        {"name": "社会保険・厚生年金加入手続",  "submitted": getattr(d, "completed_social_insurance", False),          "anchor": "company-4"},
+        {"name": "雇用保険加入手続",            "submitted": getattr(d, "completed_employment_insurance", False),      "anchor": "company-5"},
+        {"name": "労災保険手続",                "submitted": getattr(d, "completed_worker_accident_insurance", False), "anchor": "company-6"},
+        {"name": "厚生年金基金手続",            "submitted": getattr(d, "completed_pension_fund", False),              "anchor": "company-7"},
+        {"name": "社内システムID発行",          "submitted": getattr(d, "created_system_account", False),              "anchor": "company-8"},
+        {"name": "研修・マニュアルの周知",       "submitted": getattr(d, "notified_training_manual", False),            "anchor": "company-9"},
+        {"name": "経費・交通費申請フロー説明",  "submitted": getattr(d, "explained_expense_flow", False),              "anchor": "company-10"},
+    ]
+
+    # ====== 入社資料デフォルト清单（社員側）======
+    employee_docs = [
+        {"name": "履歴書・職務経歴書",                          "submitted": getattr(d, "has_resume", False),               "anchor": "employee-1"},
+        {"name": "運転免許証コピー",                            "submitted": getattr(d, "has_license_copy", False),         "anchor": "employee-2"},
+        {"name": "住民票（本籍地記載・マイナンバーなし）",      "submitted": getattr(d, "has_residence_certificate", False), "anchor": "employee-3"},
+        {"name": "健康診断書",                                  "submitted": getattr(d, "has_health_check", False),         "anchor": "employee-4"},
+        {"name": "給与振込先口座情報",                          "submitted": getattr(d, "has_bank_info", False),            "anchor": "employee-5"},
+        {"name": "マイナンバー（番号は保存しない・提出のみ）",  "submitted": getattr(d, "has_my_number_submitted", False),  "anchor": "employee-6"},
+        {"name": "雇用保険被保険者証",                          "submitted": getattr(d, "has_koyo_hihokenshasho", False),   "anchor": "employee-7"},
+        {"name": "年金手帳／基礎年金番号届出（番号保存なし）",  "submitted": getattr(d, "has_pension_proof", False),        "anchor": "employee-8"},
+        # 外国籍のみ：対象外であれば “提出済み扱い” にして未提出に出さない
+        {"name": "就労資格確認（外国籍のみ）",                   "submitted": (not is_foreign) or getattr(d, "work_permission_confirmed", False), "anchor": "employee-9"},
+        {"name": "在留カード（外国籍のみ）",                     "submitted": (not is_foreign) or getattr(d, "has_zairyu_card", False),            "anchor": "employee-10"},
+        {"name": "在留カード画像のアップロード（外国籍のみ）",   "submitted": (not is_foreign) or bool(getattr(d, "residence_card_image", None)),  "anchor": "employee-11"},
+    ]
+
+    # —— 生成编辑页链接（用于 ❌ 跳转）——
+    edit_url = reverse('staffbook:driver_basic_edit', args=[driver.id])
+
+    # —— 左右两列对齐行（模板遍历 paired_rows 渲染）——
+    paired_rows = list(
+        zip_longest(
+            company_docs,
+            employee_docs,
+            fillvalue={"name": "", "submitted": None, "anchor": ""}
+        )
+    )
+
+    # —— 未提出清单（用于详情页上方的黄色提示框）——
+    missing_items = []
+    for item in company_docs:
+        if item["submitted"] is False:
+            missing_items.append((item["name"], f"{edit_url}#{item['anchor']}"))
+    for item in employee_docs:
+        if item["submitted"] is False:
+            missing_items.append((item["name"], f"{edit_url}#{item['anchor']}"))
 
     return render(request, 'staffbook/driver_basic_info.html', {
         'driver': driver,
+        'paired_rows': paired_rows,
+        'edit_url': edit_url,
         'main_tab': 'basic',
         'tab': 'basic',
-        'missing_items': missing_items,  # ✅ 新增 context
+        'missing_items': missing_items,
     })
 
 @user_passes_test(is_staffbook_admin)
@@ -243,7 +300,7 @@ def driver_basic_edit(request, driver_id):
         form = DriverBasicForm(request.POST, request.FILES, instance=driver)
         if form.is_valid():
             obj = form.save()
-            print('DEBUG SAVED resigned_date =', obj.resigned_date)  # 保存后的模型值
+            print('DEBUG SAVED resigned_date =', obj.resigned_date)
             messages.success(request, "基本データを保存しました。")
             return redirect('staffbook:driver_basic_info', driver_id=driver.id)
         else:
@@ -252,12 +309,48 @@ def driver_basic_edit(request, driver_id):
     else:
         form = DriverBasicForm(instance=driver)
 
+    # === 入社資料 清单（布尔字段快速版）========================
+    # 用 getattr 避免字段尚未创建时报 AttributeError
+    d = driver
+    employee_docs = [
+        {"name": "履歴書・職務経歴書", "submitted": getattr(d, "has_resume", False)},
+        {"name": "運転免許証コピー", "submitted": getattr(d, "has_license_copy", False)},
+        {"name": "住民票（本籍地記載・マイナンバーなし）", "submitted": getattr(d, "has_juminhyo", False)},
+        {"name": "健康診断書", "submitted": getattr(d, "has_health_check", False)},
+        {"name": "給与振込先口座情報", "submitted": getattr(d, "has_bank_info", False)},
+        {"name": "マイナンバー（番号は保存しない・提出のみ）", "submitted": getattr(d, "has_my_number_submitted", False)},
+        {"name": "雇用保険被保険者証", "submitted": getattr(d, "has_koyo_hihokenshasho", False)},
+        {"name": "年金手帳/基礎年金番号の届出（番号保存なし）", "submitted": getattr(d, "has_pension_proof", False)},
+        {"name": "在留カード（外国籍）", "submitted": getattr(d, "has_zairyu_card", False)},
+    ]
+    company_docs = [
+        {"name": "入社資料一式交付", "submitted": getattr(d, "gave_joining_pack", False)},
+        {"name": "社会保険・年金加入手続", "submitted": getattr(d, "completed_social_insurance", False)},
+        {"name": "雇用契約書 締結", "submitted": getattr(d, "signed_employment_contract", False)},
+        {"name": "就業規則・安全衛生 説明", "submitted": getattr(d, "explained_rules_safety", False)},
+        {"name": "社内システムID 発行", "submitted": getattr(d, "created_system_account", False)},
+        {"name": "研修/マニュアル 周知", "submitted": getattr(d, "notified_training_manual", False)},
+        {"name": "経費/交通費 申請説明", "submitted": getattr(d, "explained_expense_flow", False)},
+    ]
+    # （可选）业務用
+    ops_docs = [
+        {"name": "Uber アカウント", "submitted": getattr(d, "has_uber_account", False)},
+        {"name": "DiDi アカウント", "submitted": getattr(d, "has_didi_account", False)},
+        {"name": "社名章/名札 交付", "submitted": getattr(d, "has_company_name_tag", False)},
+        {"name": "配車システム アカウント", "submitted": getattr(d, "has_dispatch_account", False)},
+    ]
+    # ==========================================================
+
     return render(request, 'staffbook/driver_basic_edit.html', {
         'form': form,
         'driver': driver,
         'main_tab': 'basic',
         'tab': 'basic',
+        'employee_docs': employee_docs,
+        'company_docs': company_docs,
+        'ops_docs': ops_docs,      # 模板用了再显示；没用就无视
     })
+
 
 #個人情報
 @user_passes_test(is_staffbook_admin)

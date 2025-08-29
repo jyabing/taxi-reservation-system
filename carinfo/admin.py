@@ -62,17 +62,18 @@ class ReservableStatusFilter(SimpleListFilter):
         ]
 
     def queryset(self, request, queryset):
-        from carinfo.services.car_access import is_car_reservable
+        ids_yes = [obj.pk for obj in queryset if is_car_reservable(obj)]
         if self.value() == 'yes':
-            return [obj for obj in queryset if is_car_reservable(obj)]
+            return queryset.filter(pk__in=ids_yes)
         elif self.value() == 'no':
-            return [obj for obj in queryset if not is_car_reservable(obj)]
+            return queryset.exclude(pk__in=ids_yes)
         return queryset
 
 # ✅ 主注册类
 @admin.register(Car)
 class CarAdmin(admin.ModelAdmin):
     list_display = (
+        'thumb',  # ✅ 缩略图列（放在最前）
         'license_plate', 'name', 'brand', 'model', 'year',
         'colored_status', 'is_active',
         'insurance_status_colored',    # 高亮显示保险状态
@@ -104,6 +105,40 @@ class CarAdmin(admin.ModelAdmin):
     list_display_links = ('license_plate', 'name')
 
     actions = ['update_selected_insurance_status']  # ✅ 批量更新操作
+
+    # ✅ 轻量方式把“main_photo + preview”插入到表单最上方
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        # 确保 main_photo 在最前，并把 preview 紧随其后
+        if 'main_photo' in fields:
+            fields.remove('main_photo')
+        return ['main_photo', 'preview'] + fields
+
+    # ✅ 列表页缩略图
+    def thumb(self, obj):
+        if getattr(obj, "main_photo", None):
+            return format_html(
+                '<img src="{}" style="width:72px;height:48px;object-fit:cover;'
+                'border-radius:6px;box-shadow:0 0 2px rgba(0,0,0,.25);" />',
+                obj.main_photo.url
+            )
+        return "—"
+    thumb.short_description = "照片"
+    thumb.admin_order_field = "main_photo"
+
+    # ✅ 编辑页右侧预览
+    def preview(self, obj):
+        if getattr(obj, "main_photo", None):
+            return format_html(
+                '<img src="{}" style="max-width:280px;height:auto;border-radius:8px;'
+                'box-shadow:0 0 3px rgba(0,0,0,.2);" />',
+                obj.main_photo.url
+            )
+        return "（暂无图片）"
+    preview.short_description = "预览"
+
+    # ✅ 让“预览”成为只读字段（不用自定义 fieldsets）
+    readonly_fields = ('preview',)
 
     def update_selected_insurance_status(self, request, queryset):
         today = localdate()
