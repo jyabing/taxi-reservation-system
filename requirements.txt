@@ -70,3 +70,4 @@ websockets==14.2
 whitenoise==6.9.0
 xlsxwriter==3.2.5
 yarl==1.20.0
+django-storages==1.14.6
