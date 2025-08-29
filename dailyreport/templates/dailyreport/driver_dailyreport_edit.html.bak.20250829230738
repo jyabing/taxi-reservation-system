@@ -1,0 +1,619 @@
+{% extends "staffbook/base_staffbook.html" %}
+{% load widget_tweaks %}
+{% load time_filters %}
+{% load humanize %}
+{% load custom_totals %}
+{% load custom_tags %}
+
+
+{% load static %}
+{% load driver_extras %}
+
+{% block extra_css %}
+
+
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+
+<style>
+table.table tr.has-note,
+table.table tr.has-note td {
+  background-color: #fff3cd !important;
+}
+.auto-width-input {
+  width: 2ch;
+  min-width: 60px;
+  max-width: 100px;
+  box-sizing: content-box;
+  transition: width 0.2s;
+}
+.mirror-span {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+  font: inherit;
+}
+.mark-checkbox {
+  transform: scale(1.3);
+  margin-top: 3px;
+}
+.scrollable-input {
+  overflow-x: auto;
+  white-space: nowrap;
+  min-width: 50px;
+  width: 100%;
+  max-width: 100px;
+}
+#payment-summary-panel {
+  font-size: 0.95rem;
+}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+  /* 料金只读的外观（不影响提交） */
+  .meter-fee-input[readonly],
+  input[name$="-meter_fee"][readonly]{
+    background:#eee !important;
+    color:#666 !important;
+    cursor:not-allowed;
+  }
+  /* （可选）如果你上面给 select 加了 locked-select，就一起加灰样式 */
+  .locked-select{
+    background:#f5f5f5 !important;
+    color:#666 !important;
+    pointer-events:none; /* 阻止点击但值仍会提交 */
+  }
+  /* === 强制显示数据区行；仅隐藏模板区 === */
+  table.report-table tbody:not(#empty-form-template) tr {
+    display: table-row !important; visibility: visible !important; opacity: 1 !important;
+  }
+  #empty-form-template tr { display: none !important; visibility: hidden !important; }
+</style>
+
+{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <h4>{% if report %}{{ report.driver.name }}{% else %}{{ driver.name }}{% endif %}- 乗務日報の編集</h4>
+  {{ form.meter_fee|add_class:"form-control" }}
+  <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
+
+  {% if report.pk %}
+    {% if report.edited_by %}
+      <div class="alert alert-light small mb-3">
+        <strong>最終編集：</strong>
+        {{ report.edited_by.get_full_name|default:report.edited_by.username }}
+        {{ report.edited_at|date:"Y年n月j日 H:i" }} に保存
+      </div>
+    {% else %}
+      <div class="alert alert-secondary small mb-3">編集履歴なし</div>
+    {% endif %}
+  {% endif %}
+
+  {% if form.errors %}
+    <div class="alert alert-danger">
+      <strong>フォームエラー：</strong>
+      <ul>
+      {% for field, errs in form.errors.items %}
+        <li>{{ field }}: {{ errs|join:", " }}</li>
+      {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if formset.non_form_errors %}
+    <div class="alert alert-danger">
+      <strong>明細フォームのエラー：</strong>
+      {{ formset.non_form_errors }}
+    </div>
+  {% endif %}
+
+    <!--缩进无影响，也可以写成单行形式-->
+    <form method="post"
+      {% if is_edit %}
+        action="{% url 'dailyreport:driver_dailyreport_edit' driver_id=driver.id report_id=report.id %}"
+      {% elif driver and driver.id %}
+        action="{% url 'dailyreport:driver_dailyreport_direct_add' driver.id %}"
+      {% else %}
+        action="#"
+      {% endif %}
+      autocomplete="off">
+    {% csrf_token %}
+    {{ form.status.as_hidden }}
+    {{ form.date.as_hidden }}
+
+    <div class="mb-3">
+      <label class="form-label">備考：</label>
+      {{ form.note|add_class:"form-control form-control-sm"|attr:"rows:2"|attr:"style:width:100%; max-width:400px;" }}
+    </div>
+
+    <table class="table table-bordered table-sm">
+      <thead class="table-light">
+        <tr>
+          <th style="white-space: nowrap;"><strong>使用車両</strong></th>
+          <th style="white-space: nowrap;">出勤</th>
+          <th style="white-space: nowrap;">退勤</th>
+          <th style="white-space: nowrap;">勤務時間</th>
+          <th style="white-space: nowrap;">休憩時間</th>
+          <th style="white-space: nowrap;"><span class="text-info">実働時間</span></th>
+          <th class="text-danger" style="white-space: nowrap;">残業時間</th>
+          <th style="white-space: nowrap;">給油 (L)</th>
+          <th style="white-space: nowrap;">走行距離 (KM)</th>
+        </tr>
+      </thead>
+      <tbody id="data-rows">
+        <tr>
+          <td>
+            <span class="form-control-plaintext">
+              {{ report.vehicle|default:"未選択" }}
+            </span>
+
+            {# 关键：把当前 vehicle 的 id 一起提交 #}
+            {% if report.vehicle_id %}
+              <input type="hidden" name="vehicle" value="{{ report.vehicle_id }}">
+            {% endif %}
+          </td>
+
+
+          <!-- 出勤 -->
+          <td style="max-width:110px;">
+            <input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.clock_in.value|default_if_none:'' }}">
+          </td>
+
+          <!-- 退勤 -->
+          <td style="max-width:110px;" >
+            <input type="text" name="clock_out" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_out|default_if_none:'' }}">
+          </td>
+          <td id="work-duration">--:--</td> <!--勤務時間-->
+
+          <!-- ✅ 休憩時間输入 -->
+          <td id="break-time">
+            <input type="text" name="break_time_input" id="break-time-input"
+                class="form-control form-control-sm text-center"
+                maxlength="5" pattern="^\d{1,2}:\d{2}$"
+                style="max-width:90px;" placeholder="0:00"
+                value="{{ break_time_h|default:'0' }}:{{ break_time_m|default:'00' }}">
+
+            <!-- ✅ 显示「実休憩 +20分」 -->
+            <div class="form-text mt-1 text-muted">
+              実休憩: <span id="break-time-display">--:--</span>
+            </div>
+
+            <!-- ✅ 隐藏字段（自动填入 20分后时间） -->
+            <input type="hidden" name="break_time_plus20" id="break-time-plus20">
+          </td>
+
+          <!-- 実働時間 -->
+          <td class="text-center text-primary" id="actual-work-time">
+            {% if form.instance.実働時間 %}
+              {{ form.instance.実働時間 }}
+            {% else %}
+              --:--
+            {% endif %}
+          </td>
+
+          <!-- 残業時間 -->
+          <td class="text-danger text-center" id="overtime">{{ form.instance.残業時間|format_duration }}</td>
+          
+          <td style="max-width:90px;">{{ form.gas_volume|add_class:"form-control form-control-sm text-end" }}</td>
+          <td >{{ form.mileage|add_class:"form-control form-control-sm text-end" }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div id="payment-summary-panel" class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
+      {% for key, label in summary_keys %}
+        <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+          <div class="small text-muted">
+            {% if key == "meter" %}
+              <div class="small text-muted">売上合計</div>
+              <div>
+                <span id="total_meter">
+                  {{ totals.meter_total|default:0|intcomma }}  {# ← 应该显示收入合计，如 17,800 #}
+                </span>
+                <div class="small text-muted">
+                  <small>(メータのみ: <span id="total_meter_only">
+                    {{ totals.meter_only_total|default:0|intcomma }}
+                  </span>)</small>
+                </div>
+                <div class="small text-muted">
+                  ※ 売上合計には、支払方法付きのデータのみが含まれます。
+                </div>
+              </div>
+            {% else %}
+              <div class="small text-muted">{{ label }} 合計</div>
+              <div>
+                <span id="total_{{ key }}">
+                  {{ totals|get_item:key|get_item:"total"|default:0|floatformat:"0" }}
+                </span>
+                （<span id="bonus_{{ key }}">
+                  {{ totals|get_item:key|get_item:"bonus"|default:0|floatformat:"0" }}
+                </span>）
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <!-- ✅ 追加：貸切収入・売上合計・入金合計 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <div class="small text-muted">貸切現金</div>
+        <div>
+          <span id="charter-cash-total">
+            {{ totals.charter_cash_total|default:0|intcomma }}
+          </span> 円
+        </div>
+      </div>
+
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <div class="small text-muted">貸切未収</div>
+        <div>
+          <span id="charter-uncollected-total">
+            {{ totals.charter_uncollected_total|default:0|intcomma }}
+          </span> 円
+        </div>
+      </div>
+      
+      <!-- ✅ 入金 + ETC 综合区域 -->
+      <div class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
+      <!-- ✅ 新增区域开始 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 80px;">
+        <label class="small text-muted">入金額</label>
+        {{ form.deposit_amount|add_class:"form-control form-control-sm text-end"|attr:"id:deposit-input"|attr:"style:min-width:80px;"|attr:"placeholder:0" }}
+
+        <!-- ✅ ETC 包含判断提示（JS 动态修改） -->
+        <div id="etc-included-warning" class="small mt-1"></div>
+
+        <!-- ✅ ETC 包含判断提示 -->
+        {% if report.etc_collected and report.deposit_amount %}
+          {% if report.is_etc_included_in_deposit %}
+            <div class="small text-success mt-1">✔️ 含 ETC</div>
+          {% else %}
+            <div class="small text-danger mt-1">⚠️ 未含 ETC，请确认</div>
+          {% endif %}
+        {% endif %}
+
+        <label class="small text-muted mt-2 d-block">過不足（入金 - 現金(ながし)  - 貸切現金）</label>
+        <div id="difference-output" class="form-control-plaintext text-end small text-muted" style="min-height: 1.5em;">
+          {{ form.deposit_difference.value|default:"--" }}
+        </div>
+
+      </div>
+      <!-- ✅ 新增区域结束 -->
+
+      
+      <!-- ✅ ETC 现金收区域 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <label class="small text-muted">ETC 收取=乗車合計（円）</label>
+        {{ form.etc_collected|add_class:"form-control form-control-sm text-end" }}
+
+        <label class="small text-muted mt-2 d-block">支付方式</label>
+        {{ form.etc_payment_method|add_class:"form-select form-select-sm" }}
+
+        <label class="small text-muted mt-2 d-block">貸切の場合、お客様が乗って高速道路をご利用したので、</label>
+        <label class="small text-muted mt-2 d-block">日計で空車合計でも、乗車合計に記入ください</label>
+      </div>
+
+      <!-- 🔒 隐藏“ETC 未收=空車合計（円）”；仍参与提交（值由 JS 自动回填） -->
+      <div class="d-none">
+        {{ form.etc_uncollected }}
+      </div>
+
+
+      <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
+      <div class="border rounded px-3 py-2" style="min-width: 280px;">
+        <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
+  <div class="small text-muted">🧾 メータ小票 記載用：</div>
+
+  <div style="font-family:ui-monospace,Menlo,monospace;">空車ETC {{ report.etc_uncollected|default:0 }}円</div>
+        <div class="row g-2 align-items-end">
+          <!-- 空車ETC金额 -->
+          <div class="col-6">
+            <label for="id_etc_uncollected" class="form-label small">空車ETC 金額（円）</label>
+            <input type="number" class="form-control form-control-sm text-end"
+                   id="id_etc_uncollected" name="etc_uncollected" min="0" step="1" value="">
+          </div>
+          <!-- 回程费受领额 -->
+          <div class="col-6">
+            <label for="id_etc_return_fee_claimed" class="form-label small">回程費 受領額（円）</label>
+            <input type="number" class="form-control form-control-sm text-end"
+                   id="id_etc_return_fee_claimed" name="etc_return_fee_claimed" min="0" step="1" value="">
+          </div>
+          <!-- 回程费支付方式 -->
+          <div class="col-6">
+            <label for="id_etc_return_fee_method" class="form-label small">回程費 支払方法</label>
+            <select id="id_etc_return_fee_method" name="etc_return_fee_method" class="form-select form-select-sm">
+              <option value="none">— 個別（別払い/なし）—</option>
+              <option value="app_ticket">アプリ/チケット 一体結算</option>
+              <option value="cash_to_driver">現金（直接司机）</option>
+            </select>
+          </div>
+          <!-- 空車ETC 使用卡 -->
+          <div class="col-6">
+            <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
+            <select id="id_etc_empty_card" name="etc_empty_card" class="form-select form-select-sm">
+              <option value="company">会社カード</option>
+              <option value="own">自己カード</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-text mt-2">
+          <small>
+            覆盖规则：支払方法 = <strong>アプリ/チケット</strong> 时，回程費用于覆盖空車ETC；<br>
+            覆盖不足 → <strong>司机負担</strong>；覆盖过多 → 記為 <strong>未收ETC</strong>（展示/統計用）。
+          </small>
+        </div>
+      </div>
+      <!-- === 追加结束 === -->
+
+      <!-- ✅ ETC 应收合计（只读） -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <label class="small text-muted">ETC 应收合计（円）</label>
+        <input type="text" id="etc-expected-output" class="form-control form-control-sm text-end bg-light" readonly
+              value="{{ report.etc_expected|default_if_none:'0' }}">
+        <label class="small text-muted mt-2 d-block">乗車ETC合計＋空車ETC金额</label>
+      </div>
+      
+
+      <!-- ✅ ETC 不足额 -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <label for="{{ form.etc_shortage.id_for_label }}" class="small text-danger">ETC不足（円）</label>
+        {{ form.etc_shortage|add_class:"form-control form-control-sm text-end text-danger"|attr:"readonly" }}
+        <label class="small text-muted mt-2 d-block">应收合计 - 实收金额</label>
+        <label class="small text-muted mt-2 d-block">“ETC 实际收回”不是一个单独填写的字段，</label>
+        <label class="small text-muted mt-2 d-block">而是由日报明细的付款方式数据动态汇总出来的</label>
+      </div>
+
+      <!-- ETC 未收提醒区 -->
+      <div id="etc-diff-display" class="alert alert-info small py-1 px-2 mt-1">
+        未收 ETC：0 円（无需扣除）
+      </div>
+      
+      <!-- ✅ 智能提示区（推荐放在 payment-summary-panel 结尾） -->
+      <div id="smart-hint-panel" class="mt-2 w-100">
+        {% if deposit_amt %}
+          {% if deposit_amt < total_collected %}
+            <div class="alert alert-danger py-1 px-2 small mb-2">
+              ⚠️ 入金額が不足しています。請求額 (現金 + ETC) は <strong>{{ total_collected|floatformat:"0"|intcomma }}円</strong> ですが、入力された入金額は <strong>{{ deposit_amt|intcomma }}円</strong> です。
+            </div>
+          {% else %}
+            <div class="alert alert-success py-1 px-2 small mb-2">
+              ✔️ 入金額は現金 + ETC をカバーしています。
+            </div>
+          {% endif %}
+
+          {% if report.etc_uncollected %}
+            <div class="alert alert-info py-1 px-2 small mb-2">
+              🚧 ETC 未收：<strong>{{ report.etc_uncollected|intcomma }}円</strong>。请确认司机是否已补收。
+            </div>
+          {% endif %}
+
+          {% if deposit_amt < total_sales %}
+            <div class="alert alert-warning py-1 px-2 small mb-2">
+              ℹ️ 売上合計 <strong>{{ total_sales|intcomma }}円</strong> 大于入金 <strong>{{ deposit_amt|intcomma }}円</strong>，未收 ETC 或其他延迟结算项。
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+
+    </div>
+
+    <table class="table table-bordered table-sm report-table">
+      <thead class="table-light">
+        <tr>
+          <th class="row-number-header">#</th>
+          <th style="white-space: nowrap;">時間</th>
+          <th style="white-space: nowrap;">乗車地</th>
+          <th style="white-space: nowrap;">料金</th>
+          
+          <th style="white-space: nowrap;">支付</th>
+          <th style="white-space: nowrap;">待入</th>
+
+          <th style="white-space: nowrap;">強調</th>
+          <th style="white-space: nowrap;">貸切</th>
+          
+          <th style="white-space: nowrap;">貸切金額</th>
+          <th style="white-space: nowrap;">貸切支払</th>
+          <th>注釈</th>
+          <th style="white-space: nowrap;">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ formset.management_form }}
+        {% for form in formset.forms %}
+          <tr class="report-item-row {% if form.instance.is_flagged %}has-note{% endif %}">
+            {{ form.id }}
+            <td class="row-number">{{ forloop.counter }}</td>
+            <td style="min-width: 70px;">
+              {% if form.ride_time.errors %}
+                <div class="text-danger small">{{ form.ride_time.errors.0 }}</div>
+              {% endif %}
+              {{ form.ride_time|add_class:"form-control form-control-sm time-input" }}
+            </td>
+
+            <td style="min-width: 70px;">
+              {% if form.ride_from.errors %}
+                <div class="text-danger small">{{ form.ride_from.errors.0 }}</div>
+              {% endif %}
+              {{ form.ride_from|add_class:"form-control form-control-sm" }}
+            </td>
+
+            <td style="min-width: 70px;">
+              <input
+                type="text"
+                name="{{ form.meter_fee.html_name }}"
+                id="{{ form.meter_fee.id_for_label }}"
+                value="{{ form.meter_fee.value|floatformat:"-0" }}"
+                class="form-control form-control-sm text-end meter-fee-input"
+              >
+            </td>
+
+            <td style="min-width: 100px;">
+              {% if form.payment_method.errors %}
+                <div class="text-danger small">{{ form.payment_method.errors.0 }}</div>
+              {% endif %}
+              {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
+            </td>
+
+            <!-- ▼ 新增：待入列（is_pending），位于 支付 与 強調 之间 -->
+            <td class="text-center">
+              {% if form.is_pending.errors %}
+                <div class="text-danger small">{{ form.is_pending.errors.0 }}</div>
+              {% endif %}
+              {{ form.is_pending }}  <!-- forms.py 已加 pending-checkbox class 的 widget -->
+            </td>
+            <!-- ▲ 新增结束 -->
+
+            <td class="text-center">
+              {% if form.is_flagged.errors %}
+                <div class="text-danger small">{{ form.is_flagged.errors.0 }}</div>
+              {% endif %}
+              {{ form.is_flagged }}
+            </td>
+
+            <td class="text-center">
+              {% if form.is_charter.errors %}
+                <div class="text-danger small">{{ form.is_charter.errors.0 }}</div>
+              {% endif %}
+              {{ form.is_charter }}
+            </td>
+
+            <td>
+              {{ form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}
+            </td>
+            <td>
+              {{ form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
+            </td>
+
+            <td>
+              {% if form.note.value %}📝{% endif %}
+              {% if form.note.errors %}
+                <div class="text-danger small">{{ form.note.errors.0 }}</div>
+              {% endif %}
+              {{ form.note }}
+              
+            <!-- ▼ 勾选“待入”时显示的小提示（默认隐藏） -->
+            <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
+              這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+            </div>
+            <!-- ▲ 小提示结束 -->
+            
+            </td>
+
+            <!-- ✅ 删除按钮区域 -->
+            <td style="white-space: nowrap;">
+              <div class="d-flex flex-row gap-1">
+                {% if form.instance.pk %}
+                  {{ form.DELETE|add_class:"d-none delete-flag" }}
+                  <button type="button" class="btn btn-sm btn-danger delete-row">削除</button>
+                {% else %}
+                  <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+                {% endif %}
+                  <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕下に挿入</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+
+      <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
+      <tbody id="empty-form-template" class="d-none">
+        <tr class="report-item-row">
+          {{ formset.empty_form.id }}
+          {{ formset.empty_form.DELETE }}
+
+          <td class="row-number">__num__</td>
+          <td>{{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
+          <td>{{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}</td>
+          <td>{{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}</td>
+          <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}</td>
+          
+          <!-- ▼ 新增：待入（is_pending）列，位置：支付之后、強調之前 -->
+          <td class="text-center">
+            {{ formset.empty_form.is_pending|add_class:"pending-checkbox" }}
+          </td>
+          <!-- ▲ 新增结束 -->
+          
+          <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
+
+          <td class="text-center">{{ formset.empty_form.is_charter }}</td>
+
+          <!-- 先金额 -->
+          <td>{{ formset.empty_form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}</td>
+          
+          <!-- 再支払；注意用 form-select -->
+          <td>{{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}</td>
+
+          <td>{{ formset.empty_form.note|add_class:"form-control" }}
+
+              <!-- ▼ 与上面一致 -->
+              <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
+                些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+              </div>
+          </td>
+
+          
+          <td style="white-space:nowrap;">
+            <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+            <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
+          </td>
+        </tr>
+      </tbody>
+      <!-- ✅ 新增结束 -->
+
+    </table>
+
+    <button type="submit" class="btn btn-primary">💾 保存する</button>
+  </form>
+
+  <div class="text-center mt-2 d-flex justify-content-center gap-2">
+    <div class="input-group" style="max-width: 260px;">
+      <span class="input-group-text">行に挿入</span>
+      <input type="number" min="1" class="form-control" id="insert-index-input" placeholder="例: 10">
+      <button type="button" class="btn btn-outline-secondary" id="insert-at-btn" onclick="(function(){var v=parseInt(document.getElementById('insert-index-input').value,10)||1; if(window.__DR_cloneRowAfter__) window.__DR_cloneRowAfter__(v); else alert('挿入ロジックが見つかりません');})()">指定行に挿入</button>
+    </div>
+  </div>
+  
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+  <!-- 费率注入：给 dailyreport.js 计算分成用 -->
+  <script>
+    window.PAYMENT_RATES = {{ payment_rates|safe }};
+  </script>
+
+  <!-- 只保留这一处外链脚本。加个版本号防缓存 -->
+  <script src="{% static 'dailyreport/js/dailyreport.js' %}?v"></script>
+
+  <!-- 可留的高亮样式（CSS 不会冲突） -->
+  <style>
+    table.table tr.has-note td,
+    table.table tr.has-note {
+      background-color: #fff8b3 !important;
+    }
+  /* === 强制显示数据区行；仅隐藏模板区 === */
+  table.report-table tbody:not(#empty-form-template) tr {
+    display: table-row !important; visibility: visible !important; opacity: 1 !important;
+  }
+  #empty-form-template tr { display: none !important; visibility: hidden !important; }
+  </style>
+
+{% endblock %}

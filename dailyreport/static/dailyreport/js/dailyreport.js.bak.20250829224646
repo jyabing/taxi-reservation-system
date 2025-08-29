@@ -1,0 +1,971 @@
+
+// ===== Driver DailyReport only: 页面闸门（放在 dailyreport.js 最上面）=====
+(function () {
+  // 以日报表格或智能提示面板为“根”
+  const DR_ROOT =
+    document.querySelector("table.report-table") ||
+    document.querySelector("#smart-hint-panel")?.closest("form");
+
+  // 不是日报编辑页就直接退出
+  if (!DR_ROOT) {
+    console.debug("dailyreport.js: not driver dailyreport page, abort.");
+    return;
+  }
+
+  // 让后面的代码能拿到根节点
+  window.__DR_ROOT__ = DR_ROOT;
+})();
+
+// ============ 工具函数（全局可用） ============
+function getRow(el) { return el?.closest("tr.report-item-row"); }
+
+// ============ 主块：唯一的 DOMContentLoaded ============
+document.addEventListener('DOMContentLoaded', () => {
+  // —— 1) flatpickr 时间选择器 ——
+  flatpickr(".time-input", {
+    enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, locale: "ja"
+  });
+
+  // —— 2) 勤務 / 実働 / 残業时间 —— 
+  function updateDuration() {
+    const inEl = document.querySelector("input[name='clock_in']");
+    const outEl = document.querySelector("input[name='clock_out']");
+    const workDisplay = document.getElementById("work-duration");
+    const actualDisplay = document.getElementById("actual-work-time");
+    const overtimeDisplay = document.getElementById("overtime");
+    const breakTimeDisplay = document.getElementById("break-time-display");
+    const breakTimeHidden = document.getElementById("break-time-plus20");
+    if (!inEl || !outEl) return;
+
+    const [h1, m1] = (inEl.value || "00:00").split(":").map(Number);
+    const [h2, m2] = (outEl.value || "00:00").split(":").map(Number);
+    let d1 = new Date(0, 0, 0, h1, m1);
+    let d2 = new Date(0, 0, 0, h2, m2);
+    if (d2 <= d1) d2.setDate(d2.getDate() + 1);
+    const workMin = Math.floor((d2 - d1) / 60000);
+
+    let breakMin = 0;
+    const breakEl = document.getElementById("break-time-input");
+    if (breakEl && breakEl.value) {
+      const [bh, bm] = breakEl.value.split(":").map(Number);
+      breakMin = (bh || 0) * 60 + (bm || 0);
+    }
+
+    const realBreak = breakMin + 20;
+    const actualMin = workMin - realBreak;
+    const overtimeMin = actualMin - 480;
+
+    const toHM = m => `${String(Math.floor(m / 60)).padStart(2,'0')}:${String(m % 60).padStart(2,'0')}`;
+    workDisplay.textContent   = toHM(workMin);
+    actualDisplay.textContent = toHM(actualMin);
+    overtimeDisplay.textContent = (overtimeMin < 0 ? "-" : "") + toHM(Math.abs(overtimeMin));
+    overtimeDisplay.style.color = overtimeMin >= 0 ? "red" : "blue";
+    if (breakTimeDisplay) breakTimeDisplay.textContent = toHM(realBreak);
+    if (breakTimeHidden)  breakTimeHidden.value = toHM(realBreak);
+  }
+
+  // —— 3) 行号（仅显示，不改 name/index）——
+  function updateRowNumbersAndIndexes() {
+    const rows = Array.from(document.querySelectorAll("tr.report-item-row")).filter(r => r.style.display !== "none");
+    rows.forEach((row, i) => { row.querySelector(".row-number")?.replaceChildren(document.createTextNode(i + 1)); });
+  }
+
+  // —— 4) 单行绑定 —— 
+  function bindRowEvents(row) {
+    row.querySelectorAll(".time-input").forEach(el => {
+      flatpickr(el, { enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, locale: "ja" });
+    });
+
+    row.querySelectorAll(".delete-row").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (!confirm("确定删除此行？")) return;
+        const cb = row.querySelector("input[name$='-DELETE']");
+        if (cb) {
+          cb.checked = true;
+          row.style.display = "none";
+          updateRowNumbersAndIndexes();
+          updateTotals();
+        }
+      });
+    });
+
+    const checkbox = row.querySelector(".mark-checkbox");
+    if (checkbox) {
+      row.classList.toggle("has-note", checkbox.checked);
+      checkbox.addEventListener("change", () => row.classList.toggle("has-note", checkbox.checked));
+    }
+
+    // 合计与智能面板绑定
+    const amountInput = row.querySelector("input[name$='-meter_fee']");
+    const methodSelect = row.querySelector("select[name$='-payment_method']");
+    const pendingCb    = row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox");
+    const pendingHint  = row.querySelector(".pending-mini-hint");
+    const charterAmountInput = row.querySelector(".charter-amount-input");
+    const charterCheckbox    = row.querySelector("input[name$='-is_charter']");
+
+    if (amountInput)  amountInput.addEventListener("input",  () => { updateTotals(); updateSmartHintPanel(); });
+    if (methodSelect) methodSelect.addEventListener("change", () => { updateTotals(); updateSmartHintPanel(); });
+    if (pendingCb) {
+      pendingCb.addEventListener("change", () => {
+        updateTotals();
+        updateSmartHintPanel();
+        if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
+      });
+      if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked); // 首屏回显
+    }
+    if (charterAmountInput) charterAmountInput.addEventListener("input", updateSmartHintPanel);
+    if (charterCheckbox)    charterCheckbox.addEventListener("change", updateSmartHintPanel);
+  }
+
+  // —— 5) 克隆模板 / 插入行 —— 
+  function getDataTbody() {
+  return document.querySelector("table.report-table > tbody#data-rows")
+      || document.getElementById("data-rows")
+      || null;
+}
+  function makeNewRowFromTemplate() {
+    const totalEl  = document.querySelector("input[name$='-TOTAL_FORMS']");
+    const template = document.getElementById("empty-form-template");
+    if (!template || !totalEl) return null;
+    const count = parseInt(totalEl.value, 10);
+    const html = template.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count + 1);
+    const temp = document.createElement("tbody"); temp.innerHTML = html;
+    return { tr: temp.querySelector("tr"), count };
+  }
+  document.getElementById("add-row-btn")?.addEventListener("click", () => {
+    const tbody = getDataTbody(), totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
+    if (!tbody || !totalEl) return;
+    const created = makeNewRowFromTemplate(); if (!created) return;
+    tbody.appendChild(created.tr);
+    totalEl.value = String(parseInt(totalEl.value, 10) + 1);
+    bindRowEvents(created.tr);
+    updateRowNumbersAndIndexes();
+    updateTotals(); updateSmartHintPanel();
+  });
+  document.querySelector("table.report-table")?.addEventListener("click", (e) => {
+    if (!e.target.classList.contains("insert-below")) return;
+    const tbody = getDataTbody(), totalEl = document.querySelector("input[name$='-TOTAL_FORMS']");
+    if (!tbody || !totalEl) return;
+    const created = makeNewRowFromTemplate(); if (!created) return;
+    const currentRow = e.target.closest("tr");
+    tbody.insertBefore(created.tr, currentRow.nextSibling);
+    totalEl.value = String(parseInt(totalEl.value, 10) + 1);
+    bindRowEvents(created.tr);
+    updateRowNumbersAndIndexes();
+    updateTotals(); updateSmartHintPanel();
+  });
+
+  // —— 6) 读取/写入工具 —— 
+  function readIntById(id, fallback = 0) {
+    const el = document.getElementById(id); if (!el) return fallback;
+    const raw = el.value ?? el.textContent ?? `${fallback}`;
+    const n = parseInt(raw, 10); return Number.isNaN(n) ? fallback : n;
+  }
+
+  // —— 7) ETC 相关 —— 
+  function updateEtcDifference() {
+    const rideTotal = readIntById('id_etc_collected', 0);
+    const hasNewEmpty = !!document.getElementById('id_etc_uncollected');
+    let emptyAmount = hasNewEmpty ? readIntById('id_etc_uncollected', 0) : 0;
+    const returnFee = hasNewEmpty ? readIntById('id_etc_return_fee_claimed', 0) : 0;
+    const returnFeeMethod = hasNewEmpty ? (document.getElementById('id_etc_return_fee_method')?.value || 'none') : 'none';
+    // 读取空車ETC用卡（模板里是 id_etc_empty_card，值为 company / own）
+    const emptyCardRaw = hasNewEmpty ? (document.getElementById('id_etc_empty_card')?.value || 'company') : 'company';
+    // 规范化到旧口径（company_card / personal_card）
+    const emptyCard = (emptyCardRaw === 'company') ? 'company_card' : 'personal_card';
+    const coveredByCustomer = (returnFeeMethod === 'app_ticket') ? returnFee : 0;
+
+    let etcUncollected = 0, etcDriverBurden = 0;
+    if (hasNewEmpty) {
+      if (emptyCard === 'company_card' || emptyCard === '') {
+        etcUncollected  = Math.max(0, coveredByCustomer - emptyAmount);
+        etcDriverBurden = Math.max(0, emptyAmount - coveredByCustomer);
+      }
+    } else {
+      etcUncollected  = readIntById('id_etc_uncollected', 0);
+      etcDriverBurden = readIntById('id_etc_shortage', 0);
+    }
+
+    const display = document.getElementById('etc-diff-display');
+    if (display) {
+      display.className = (etcDriverBurden > 0 || etcUncollected > 0) ? 'alert alert-warning' : 'alert alert-info';
+      display.innerText = `未收ETC：${etcUncollected.toLocaleString()} 円；司机负担：${etcDriverBurden.toLocaleString()} 円`;
+    }
+    if (document.getElementById('id_etc_uncollected')) document.getElementById('id_etc_uncollected').value = etcUncollected;
+    if (document.getElementById('id_etc_shortage')) {
+      const el = document.getElementById('id_etc_shortage');
+      el.value = etcDriverBurden;
+      el.classList.toggle('text-danger', etcDriverBurden > 0);
+      el.classList.toggle('fw-bold', etcDriverBurden > 0);
+    }
+
+    // 应收合计（显示）
+    const etcExpected = (parseInt(document.getElementById('id_etc_collected')?.value || "0", 10) || 0)
+                      + (parseInt(document.getElementById('id_etc_uncollected')?.value || "0", 10) || 0);
+    const expectedDisplay = document.getElementById('etc-expected-output');
+    if (expectedDisplay) expectedDisplay.value = etcExpected.toLocaleString();
+    const hiddenExpected = document.getElementById('id_etc_expected');
+    if (hiddenExpected) hiddenExpected.value = etcExpected;
+  }
+  function updateEtcShortage() { updateEtcDifference(); }
+  function updateEtcInclusionWarning() {
+    const deposit = readIntById('id_deposit_amount', readIntById('deposit-input', 0));
+    const cashNagashi = readIntById('total_cash', 0);
+    const charterCash = readIntById('charter-cash-total', 0);
+    const etcRideCash = readIntById('id_etc_collected_cash', 0);
+    const expected = cashNagashi + charterCash + etcRideCash;
+    const diff = deposit - expected;
+    const box = document.getElementById('etc-included-warning'); if (!box) return;
+    if (Math.abs(diff) <= 100) {
+      box.className = 'alert alert-success';
+      box.innerText = `✅ 入金額が妥当です。基準：現金(ながし)+貸切現金+乗車ETC現金 = ${expected.toLocaleString()}円`;
+    } else if (diff > 100) {
+      box.className = 'alert alert-warning';
+      box.innerText = `⚠️ 入金額が多いようです（+${diff.toLocaleString()}円）。乗車ETC現金や端数を確認してください。`;
+    } else {
+      box.className = 'alert alert-warning';
+      box.innerText = `⚠️ 入金額が不足しています（${diff.toLocaleString()}円）。現金(ながし)・貸切現金・乗車ETC現金を見直してください。`;
+    }
+  }
+
+  // —— 8) 支付方式映射 —— 
+  function resolveJsPaymentMethod(raw) {
+    if (!raw) return "";
+    const val = String(raw).trim();
+    const exact = {
+      cash:"cash", uber_cash:"cash", didi_cash:"cash", go_cash:"cash",
+      uber:"uber", didi:"didi", go:"go",
+      credit_card:"credit", kyokushin:"kyokushin", omron:"omron", kyotoshi:"kyotoshi", barcode:"qr", qr:"qr",
+      "------":"", "--------":""
+    };
+    if (exact[val] !== undefined) return exact[val];
+    const v = val.toLowerCase();
+    if (val.includes("現金")) return "cash";
+    if (v.includes("uber")) return "uber";
+    if (v.includes("didi") || v.includes("ｄｉｄｉ") || v.includes("di di")) return "didi";
+    if (v === "go" || v === "ｇｏ" || /(^|\s)go(\s|$)/.test(v)) return "go";
+    if (val.includes("クレジ") || v.includes("credit")) return "credit";
+    if (val.includes("京交信")) return "kyokushin";
+    if (val.includes("オムロン")) return "omron";
+    if (val.includes("京都市他")) return "kyotoshi";
+    if (val.includes("バーコード") || v.includes("paypay") || val.includes("微信") || val.includes("支付宝") || val.includes("扫码") || v.includes("qr")) return "qr";
+    return val;
+  }
+
+  // —— 9) 合计逻辑（不并 ETC；过不足含乘车 ETC 现金）——
+  function updateTotals() {
+    const totalMap = { cash:0, uber:0, didi:0, go:0, credit:0, kyokushin:0, omron:0, kyotoshi:0, qr:0 };
+    let totalMeterOnly = 0, charterCashTotal = 0, charterUncollectedTotal = 0;
+
+    document.querySelectorAll(".report-item-row").forEach(row => {
+      const isPending = (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
+      if (isPending) return;
+
+      const fee = parseInt(row.querySelector(".meter-fee-input")?.value || "0", 10);
+      const payment = row.querySelector("select[name$='payment_method']")?.value || "";
+      const isCharter = row.querySelector("input[name$='is_charter']")?.checked;
+      const charterAmount = parseInt(row.querySelector(".charter-amount-input")?.value || "0", 10);
+      const charterPayMethod = row.querySelector(".charter-payment-method-select")?.value || "";
+
+      if (!isCharter) totalMeterOnly += fee;
+
+      const method = resolveJsPaymentMethod(payment);
+      if (!isCharter && fee > 0 && Object.prototype.hasOwnProperty.call(totalMap, method)) {
+        totalMap[method] += fee;
+      }
+
+      const CASH = ['jpy_cash','rmb_cash','self_wechat','boss_wechat'];
+      const UNCOLLECTED = ['to_company','bank_transfer',''];
+      if (isCharter && charterAmount > 0) {
+        if (CASH.includes(charterPayMethod)) charterCashTotal += charterAmount;
+        else if (UNCOLLECTED.includes(charterPayMethod)) charterUncollectedTotal += charterAmount;
+      }
+    });
+
+    // 渲染各项
+    const meterSum = Object.values(totalMap).reduce((a,b)=>a+b,0);
+    const salesTotal = meterSum + charterCashTotal + charterUncollectedTotal;
+
+    const idText = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = Number(n||0).toLocaleString(); };
+    idText("total_meter_only", meterSum);
+    idText("total_meter", salesTotal);
+    idText("sales-total", salesTotal);
+    idText("total_cash", totalMap.cash);
+    idText("total_credit", totalMap.credit);
+    idText("charter-cash-total", charterCashTotal);
+    idText("charter-uncollected-total", charterUncollectedTotal);
+    Object.entries(totalMap).forEach(([k,v]) => idText(`total_${k}`, v));
+
+    // 手数料/分成
+    const rateOf = (k) => (window.PAYMENT_RATES && window.PAYMENT_RATES[k] != null) ? Number(window.PAYMENT_RATES[k]) : 0;
+    ['credit','qr','kyokushin','omron','kyotoshi','uber','didi','go'].forEach(k=>{
+      const el = document.getElementById(`bonus_${k}`); if (!el) return;
+      el.textContent = Math.round(Number(totalMap[k]||0) * rateOf(k)).toLocaleString();
+    });
+    const bonusCashEl = document.getElementById('bonus_cash'); if (bonusCashEl) bonusCashEl.textContent = '0';
+
+    // 过不足
+    const depositInput = parseInt(document.getElementById("deposit-input")?.value || "0", 10);
+    const shortage = depositInput - totalMap.cash - charterCashTotal;
+    const diffEl = document.getElementById("difference-output")
+      || document.getElementById("deposit-difference")
+      || document.getElementById("shortage-diff");
+    if (diffEl) diffEl.textContent = shortage.toLocaleString();
+  }
+
+  // —— 10) 智能提示面板 —— 
+  function updateSmartHintPanel() {
+    const panel = document.querySelector("#smart-hint-panel"); if (!panel) return;
+
+    const cashTotal     = parseInt(document.querySelector("#total_cash")?.textContent || "0", 10);
+    const etcCollected  = parseInt(document.querySelector("#id_etc_collected")?.value || "0", 10);
+    const etcUncollected= parseInt(document.querySelector("#id_etc_uncollected")?.value || "0", 10);
+    const totalSales    = parseInt(document.querySelector("#total_meter")?.textContent || "0", 10);
+    const deposit       = parseInt(document.querySelector("#deposit-input")?.value || "0", 10);
+    const totalCollected = cashTotal + etcCollected;
+
+    // 待入统计
+    const toInt = v => { const n = parseInt(String(v??"").replace(/[^\d-]/g,""),10); return Number.isFinite(n)?n:0; };
+    const pendingRows = Array.from(document.querySelectorAll(
+      ".report-item-row input[name$='-is_pending']:checked, .report-item-row .pending-checkbox:checked"
+    )).map(cb => cb.closest("tr.report-item-row")).filter(Boolean);
+    const pendingCount = pendingRows.length;
+    let pendingSum = 0;
+    pendingRows.forEach(row => {
+      const isCharter = !!row.querySelector("input[name$='-is_charter']")?.checked;
+      pendingSum += toInt(isCharter ? row.querySelector(".charter-amount-input")?.value : row.querySelector(".meter-fee-input")?.value);
+    });
+
+    let html = "";
+    if (pendingCount > 0) {
+      html += `
+      <div class="alert alert-info py-1 px-2 small mb-2">
+        ℹ️ 現在有 <strong>${pendingCount}</strong> 筆「待入」，合計 <strong>${pendingSum.toLocaleString()}円</strong>。
+        這些明細暫不計入売上合計；入帳後取消勾選即可立即納入核算。
+      </div>`;
+    }
+    if (deposit < totalCollected) {
+      html += `<div class="alert alert-danger py-1 px-2 small mb-2">
+        ⚠️ 入金額が不足しています。請求額（現金 + ETC）は <strong>${totalCollected.toLocaleString()}円</strong>，
+        入金は <strong>${deposit.toLocaleString()}円</strong> です。
+      </div>`;
+    } else {
+      html += `<div class="alert alert-success py-1 px-2 small mb-2">✔️ 入金額は現金 + ETC をカバーしています。</div>`;
+    }
+    if (etcUncollected > 0) {
+      html += `<div class="alert alert-info py-1 px-2 small mb-2">🚧 ETC 未收：<strong>${etcUncollected.toLocaleString()}円</strong>。请确认司机是否已补收。</div>`;
+    }
+    if (deposit < totalSales) {
+      html += `<div class="alert alert-warning py-1 px-2 small mb-2">
+        ℹ️ 売上合計 <strong>${totalSales.toLocaleString()}円</strong> 大于入金 <strong>${deposit.toLocaleString()}円</strong>，可能包含未收 ETC、或其他延迟结算项。
+      </div>`;
+    }
+    panel.innerHTML = html;
+  }
+
+  // —— 11) 貸切：行状态控制 & 首次进场只读态 —— 
+  function applyCharterState(row, isCharter) {
+    if (!row) return;
+    const meterInput           = row.querySelector(".meter-fee-input");
+    const charterAmountInput   = row.querySelector(".charter-amount-input");
+    const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
+    if (meterInput) {
+      meterInput.removeAttribute('disabled');
+      if (!meterInput.dataset.originalValue) meterInput.dataset.originalValue = meterInput.value || "";
+      if (isCharter) {
+        meterInput.setAttribute('readonly','readonly');
+        meterInput.classList.add('readonly');
+        meterInput.value = meterInput.dataset.originalValue;
+      } else {
+        meterInput.removeAttribute('readonly');
+        meterInput.classList.remove('readonly');
+      }
+    }
+    if (!isCharter) {
+      if (charterAmountInput) {
+        charterAmountInput.value = "";
+        charterAmountInput.dispatchEvent(new Event('input',  { bubbles: true }));
+        charterAmountInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (charterPaymentSelect) {
+        charterPaymentSelect.value = "";
+        charterPaymentSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    updateTotals();
+  }
+  function hydrateAllCharterRows() {
+    document.querySelectorAll("input[type='checkbox'][name$='-is_charter']")
+      .forEach(chk => applyCharterState(getRow(chk), chk.checked));
+  }
+
+  // —— 12)【放这里】两个“全局”change 监听器（并入同一作用域）——
+
+  // 12-1 勾选「貸切」：复制金额/方式 + 同步
+  document.addEventListener("change", function (e) {
+    const el = e.target;
+    if (!el.matches("input[type='checkbox'][name$='-is_charter']")) return;
+
+    const row = getRow(el); if (!row) return;
+    const meterInput           = row.querySelector(".meter-fee-input");
+    const paySelect            = row.querySelector(".payment-method-select");
+    const charterAmountInput   = row.querySelector(".charter-amount-input");
+    const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
+
+    const toInt = (v) => { const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10); return Number.isFinite(n) ? n : 0; };
+    const isCashLike = (v) => (v || "").toLowerCase().includes("cash") || /現金/.test(v || "");
+
+    if (el.checked) {
+      const feeInt = toInt(meterInput ? meterInput.value : 0);
+      if (charterAmountInput) charterAmountInput.value = String(feeInt);
+      if (charterPaymentSelect) {
+        const pm = paySelect?.value || "";
+        charterPaymentSelect.value = isCashLike(pm) ? "jpy_cash" : "to_company";
+      }
+      applyCharterState(row, true);
+      if (meterInput) {
+        meterInput.readOnly = true;
+        meterInput.classList.add("disabled");
+        meterInput.value = String(feeInt);
+      }
+      if (paySelect && !isCashLike(paySelect.value)) {
+        const cashOpt = Array.from(paySelect.options || []).find(
+          (o) => isCashLike(o.value) || isCashLike(o.textContent)
+        );
+        if (cashOpt) {
+          paySelect.value = cashOpt.value;
+          paySelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+      if (!row.dataset.charterSyncBound) {
+        row.dataset.charterSyncBound = "1";
+        if (meterInput && charterAmountInput) {
+          const syncAmount = () => { if (!el.checked) return; charterAmountInput.value = String(toInt(meterInput.value)); updateTotals(); };
+          meterInput.addEventListener("input", syncAmount);
+          meterInput.addEventListener("change", syncAmount);
+        }
+        if (paySelect && charterPaymentSelect) {
+          const syncPM = () => { if (!el.checked) return; const pm2 = paySelect.value || ""; charterPaymentSelect.value = isCashLike(pm2) ? "jpy_cash" : "to_company"; updateTotals(); };
+          paySelect.addEventListener("change", syncPM);
+        }
+      }
+    } else {
+      applyCharterState(row, false);
+      if (meterInput) {
+        meterInput.readOnly = false;
+        meterInput.classList.remove("disabled");
+        meterInput.value = String(toInt(meterInput.value));
+      }
+      if (charterAmountInput) charterAmountInput.value = String(toInt(charterAmountInput.value));
+    }
+    updateTotals();
+    updateSmartHintPanel();
+  });
+
+  // 12-2 待入提示 + 智能面板兜底
+  document.addEventListener("change", (e) => {
+    const t = e.target;
+    if (t.matches("input[name$='-is_pending'], .pending-checkbox")) {
+      const row  = getRow(t);
+      const hint = row?.querySelector(".pending-mini-hint");
+      if (hint) hint.classList.toggle("d-none", !t.checked);
+      updateTotals();
+    }
+    if (
+      t.matches("input[name$='-is_pending'], .pending-checkbox") ||
+      t.matches("input[name$='-is_charter']") ||
+      t.matches(".charter-amount-input") ||
+      t.matches(".meter-fee-input")
+    ) {
+      updateSmartHintPanel();
+    }
+  });
+
+  // —— 13) 首屏回显（一次）——
+  document.querySelectorAll("tr.report-item-row").forEach((row) => {
+    const cb   = row.querySelector("input[name$='-is_pending'], .pending-checkbox");
+    const hint = row.querySelector(".pending-mini-hint");
+    if (cb && hint) hint.classList.toggle("d-none", !cb.checked);
+  });
+
+  // —— 14) 其他输入监听 —— 
+  [
+    ['id_etc_collected_cash', [updateEtcDifference, updateEtcShortage]],
+    ['id_etc_uncollected',    [updateEtcDifference, updateEtcShortage]],
+    ['id_etc_collected',      [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
+    ['id_deposit_amount',     [updateEtcDifference, updateEtcInclusionWarning]],
+    ['clock_in',              [updateDuration]],
+    ['clock_out',             [updateDuration]],
+    ['break-time-input',      [updateDuration]],
+    ['id_etc_empty_card', [updateTotals]],
+  ].forEach(([id, fns]) => {
+    const el = document.getElementById(id);
+    if (el) fns.forEach(fn => el.addEventListener("input", fn));
+  });
+
+  // —— 15) 初始执行 —— 
+  updateDuration();
+  updateEtcDifference();
+  updateEtcShortage();
+  updateEtcInclusionWarning();
+  updateRowNumbersAndIndexes();
+  updateTotals();
+  updateSmartHintPanel();
+
+  // —— 16) 导出给外部（其他脚本/提交排序 IIFE 会用到）——
+  window.updateTotals = updateTotals;
+  window.updateSmartHintPanel = updateSmartHintPanel;
+  window.updateRowNumbersAndIndexes = updateRowNumbersAndIndexes;
+  window.hydrateAllCharterRows = hydrateAllCharterRows;
+
+  // —— 17) 进场：按当前勾选状态套只读灰态 —— 
+  hydrateAllCharterRows();
+});
+
+// ============ 夜班排序（保持原有 IIFE；提交时排序 DOM，不改 name/index） ============
+(function () {
+  function parseHHMM(str) {
+    if (!str) return null;
+    const m = String(str).trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h  = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+    return h * 60 + mm;
+  }
+  function getAnchorMinutes() {
+    const el = document.querySelector("input[name='clock_in']") || document.getElementById("id_clock_in");
+    const v  = el && el.value ? el.value : "12:00";
+    const m  = parseHHMM(v);
+    return m == null ? 12 * 60 : m;
+  }
+  function sortRowsByTime() {
+    const anchor = getAnchorMinutes();
+    const tbody  = document.querySelector("table.report-table tbody:not(#empty-form-template)");
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll("tr.report-item-row"));
+    const pairs = rows.map(row => {
+      const t = (row.querySelector("input[name$='-ride_time']") || row.querySelector(".ride-time-input") || row.querySelector(".time-input"))?.value || "";
+      let mins = parseHHMM(t);
+      if (mins == null) mins = Number.POSITIVE_INFINITY;
+      else if (mins < anchor) mins += 24 * 60;
+      return { row, key: mins };
+    });
+    pairs.sort((a, b) => a.key - b.key).forEach(p => tbody.appendChild(p.row));
+    let idx = 1; pairs.forEach(p => { const num = p.row.querySelector(".row-number"); if (num) num.textContent = idx++; });
+  }
+  window.addEventListener("DOMContentLoaded", () => {
+    const form = document.querySelector('form[method="post"]'); if (!form) return;
+    form.addEventListener('submit', () => {
+      sortRowsByTime();
+      if (typeof updateRowNumbersAndIndexes === 'function') updateRowNumbersAndIndexes();
+    });
+  });
+})();
+
+// ============ 提交前兜底：金额空串→"0" ============
+(function () {
+  const form = document.querySelector("form"); if (!form) return;
+  form.addEventListener("submit", function () {
+    const sel = [".meter-fee-input",".charter-amount-input",".deposit-input",".toll-input"].join(",");
+    document.querySelectorAll(sel).forEach((inp) => {
+      if (!inp) return;
+      const v = inp.value;
+      if (v === "" || v == null) { inp.value = "0"; }
+      else {
+        const n = parseInt(String(v).replace(/[^\d-]/g, ""), 10);
+        inp.value = Number.isFinite(n) ? String(n) : "0";
+      }
+    });
+  });
+})();
+// === 指定行に挿入ボタン ===
+// 入力された行番号 N（1 始まり）の行を見つけて、その行の「.insert-below」をクリックする。
+// 既存の挿入ロジックを再利用するだけなので副作用がない。
+document.addEventListener('DOMContentLoaded', function () {
+  var goBtn    = document.getElementById('insert-at-btn');
+  var idxInput = document.getElementById('insert-index-input');
+  if (!goBtn || !idxInput) return;
+
+  goBtn.addEventListener('click', function () {
+    var v = parseInt(idxInput.value, 10);
+    if (!v || v < 1) { alert('行番号は 1 以上を入力してください'); return; }
+
+    // 「挿入可能な行」を抽出（.insert-below がある行）
+    var rows = Array.from(document.querySelectorAll('table tbody tr'))
+      .filter(function (r) { return r.querySelector('.insert-below'); });
+
+    if (!rows.length) { alert('挿入可能な行がありません'); return; }
+
+    // 範囲外は最後の行に丸める
+    var i = Math.min(v, rows.length);
+    var target = rows[i - 1];
+    var btn = target.querySelector('.insert-below');
+    if (btn) btn.click(); else alert('対象行の挿入ボタンが見つかりません');
+  });
+});
+
+/* === 指定行に挿入：即時バインド（DOMContentLoaded 済みでも動く） === */
+(function () {
+  function bindInsertAt() {
+    var goBtn    = document.getElementById('insert-at-btn');
+    var idxInput = document.getElementById('insert-index-input');
+    if (!goBtn || !idxInput) return;
+
+    // 重复绑定保护
+    if (goBtn.dataset.boundInsertAt === '1') return;
+    goBtn.dataset.boundInsertAt = '1';
+
+    goBtn.addEventListener('click', function () {
+      var v = parseInt(idxInput.value, 10);
+      if (!v || v < 1) { alert('行番号は 1 以上を入力してください'); return; }
+
+      // 仅统计真正的数据行
+      var rows = Array.from(document.querySelectorAll('table.report-table tbody tr.report-item-row'));
+
+      // 若当前没有任何行，先点“新增一行”
+      if (rows.length === 0) {
+        var addBtn = document.getElementById('add-row-btn');
+        if (addBtn) addBtn.click();
+        // 再取一次
+        rows = Array.from(document.querySelectorAll('table.report-table tbody tr.report-item-row'));
+      }
+
+      if (!rows.length) { alert('挿入可能な行がありません'); return; }
+
+      var i = Math.min(v, rows.length);
+      var target = rows[i - 1];
+      var btn = target.querySelector('.insert-below');
+
+      if (btn) {
+        btn.click();            // 复用既有插入逻辑
+      } else {
+        // 极端情况下该行没有按钮，则退化为“新增一行”（插到末尾）
+        var addBtn2 = document.getElementById('add-row-btn');
+        if (addBtn2) addBtn2.click();
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindInsertAt);
+  } else {
+    // DOM 已经 ready，立刻绑定
+    bindInsertAt();
+  }
+})();
+
+/* === 兜底：从 #empty-form-template 克隆一行，并插入到第 N 行之后 === */
+(function () {
+  function getDataTbody() {
+  return document.querySelector("table.report-table > tbody#data-rows")
+      || document.getElementById("data-rows")
+      || null;
+}) || null;
+  }
+  function cloneRowFromTemplate() {
+    var tpl = document.getElementById('empty-form-template');
+    var total = document.querySelector("input[name$='-TOTAL_FORMS']");
+    if (!tpl || !total) return null;
+    var count = parseInt(total.value || '0', 10);
+    var html  = tpl.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count + 1);
+    var tmp   = document.createElement('tbody');
+    tmp.innerHTML = html;
+    var tr = tmp.querySelector('tr');
+    total.value = String(count + 1);
+    return tr;
+  }
+  // 暴露给按钮处理逻辑使用
+  window.__DR_cloneRowAfter__ = function (n) {
+    // n: 1 起始的“目标行号”，在它之后插入
+    var rows = Array.from(document.querySelectorAll('table.report-table tbody tr.report-item-row'));
+    var tb   = getDataTbody();
+    if (!tb) return false;
+
+    if (rows.length === 0) {
+      // 没有任何数据行：直接在末尾添加一行
+      var tr0 = cloneRowFromTemplate();
+      if (tr0) { tb.appendChild(tr0); return true; }
+      return false;
+    }
+
+    var i = Math.min(Math.max(1, n), rows.length); // clamp 到 [1, rows.length]
+    var target = rows[i - 1];
+    var newTr  = cloneRowFromTemplate();
+    if (!newTr) return false;
+
+    // 插入到目标行「之后」
+    (target.closest("tbody")||tb).insertBefore(newTr, target.nextSibling);
+    if (typeof bindRowEvents === "function") bindRowEvents(newTr);
+    if (window.updateRowNumbersAndIndexes) window.updateRowNumbersAndIndexes();
+    if (window.updateTotals) window.updateTotals();
+    if (window.updateSmartHintPanel) window.updateSmartHintPanel();
+    return true;
+  };
+})();
+
+/* === 指定行に挿入：优先触发 .insert-below；没有则克隆模板插入 === */
+(function () {
+  function bindInsertAtSmart() {
+    var btn = document.getElementById('insert-at-btn');
+    var input = document.getElementById('insert-index-input');
+    if (!btn || !input) return;
+    if (btn.dataset.boundSmart === '1') return;
+    btn.dataset.boundSmart = '1';
+
+    btn.addEventListener('click', function () {
+      var v = parseInt(input.value, 10);
+      if (!v || v < 1) { alert('行番号は 1 以上を入力してください'); return; }
+
+      // 先尝试现有行的 .insert-below
+      var rows = Array.from(document.querySelectorAll('table.report-table tbody tr.report-item-row'));
+      if (rows.length) {
+        var i = Math.min(v, rows.length);
+        var target = rows[i - 1];
+        var belowBtn = target.querySelector('.insert-below');
+        if (belowBtn) {
+          belowBtn.click(); // 复用你已有的插入逻辑
+          return;
+        }
+      }
+
+      // 兜底：没有 .insert-below，就直接克隆模板插入到第 v 行之后
+      if (typeof window.__DR_cloneRowAfter__ === 'function') {
+        var ok = window.__DR_cloneRowAfter__(v);
+        if (!ok) alert('行を挿入できませんでした（テンプレートが見つからない可能性）');
+      } else {
+        alert('挿入ロジックが初期化されていません');
+      }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindInsertAtSmart);
+  } else {
+    bindInsertAtSmart();
+  }
+})();
+
+// === 最终兜底：一律在第 1 行后插入 ===
+(function () {
+  function getDataTbody() {
+  return document.querySelector("table.report-table > tbody#data-rows")
+      || document.getElementById("data-rows")
+      || null;
+}) || null;
+  }
+  function cloneRowFromTemplateBare() {
+    var tpl = document.getElementById('empty-form-template');
+    var total = document.querySelector("input[name$='-TOTAL_FORMS']");
+    if (!tpl || !total) return null;
+    var count = parseInt(total.value || '0', 10);
+    var html  = tpl.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count + 1);
+    var tmp   = document.createElement('tbody');
+    tmp.innerHTML = html;
+    var tr = tmp.querySelector('tr');
+    total.value = String(count + 1);
+    return tr;
+  }
+  function insertAfterFirstRow() {
+    // 优先用你已有的函数
+    if (typeof window.__DR_cloneRowAfter__ === 'function') {
+      return !!window.__DR_cloneRowAfter__(1);
+    }
+    // 兜底：直接克隆并插入
+    var tb   = getDataTbody();
+    var rows = Array.from(document.querySelectorAll('table.report-table tbody tr.report-item-row'));
+    if (!tb) return false;
+
+    var newTr = cloneRowFromTemplateBare();
+    if (!newTr) return false;
+
+    if (rows.length > 0) {
+      var target = rows[0];
+      (target.parentNode || tb).insertBefore(newTr, target.nextSibling);
+    } else {
+      tb.appendChild(newTr);
+    }
+    // 绑定与刷新（若这些函数存在就调用）
+    if (typeof bindRowEvents === "function") bindRowEvents(newTr);
+    if (window.updateRowNumbersAndIndexes) window.updateRowNumbersAndIndexes();
+    if (window.updateTotals) window.updateTotals();
+    if (window.updateSmartHintPanel) window.updateSmartHintPanel();
+    // 体验：滚动并聚焦
+    newTr.scrollIntoView({behavior:'smooth', block:'center'});
+    (newTr.querySelector('.time-input') || newTr.querySelector('input,select'))?.focus?.();
+    return true;
+  }
+
+  // 用事件代理捕获点击；即使按钮后来被重绘也有效
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest && e.target.closest('#insert-at-btn');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    insertAfterFirstRow();
+  });
+})();
+
+// --- 最终兜底（捕获阶段）：不填也默认在第1行后插入 ---
+document.addEventListener('click', function (e) {
+  var btn = e.target && e.target.closest && e.target.closest('#insert-at-btn');
+  if (!btn) return;
+
+  // 默认置 1，拦截旧监听器
+  var idx = document.getElementById('insert-index-input');
+  if (idx) idx.value = '1';
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+  // 直接在第1行后插入（已存在的全局函数）
+  if (typeof window.__DR_cloneRowAfter__ === 'function') {
+    window.__DR_cloneRowAfter__(1);
+  } else {
+    console.warn('__DR_cloneRowAfter__ not found');
+  }
+}, true); // ★ 捕获阶段
+
+// --- 最终兜底（捕获阶段，独立实现）：不填也默认在第1行后插入 ---
+document.addEventListener("click", function (e) {
+  var btn = e.target && e.target.closest && e.target.closest("#insert-at-btn");
+  if (!btn) return;
+
+  // 默认把输入框置为 '1'，并拦截其它监听器
+  var idx = document.getElementById("insert-index-input");
+  if (idx) idx.value = "1";
+  e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+  // 取数据 tbody（排除 #empty-form-template）
+  var tb = document.querySelector("table.report-table > tbody:not(#empty-form-template)");
+  if (!tb) {
+    var bodies = Array.from(document.querySelectorAll("table.report-table > tbody"));
+    tb = bodies.find(function(b){ return b.id !== "empty-form-template"; }) || null;
+  }
+  if (!tb) return;
+
+  // 克隆模板
+  var tpl   = document.getElementById("empty-form-template");
+  var total = document.querySelector("input[name$='-TOTAL_FORMS']");
+  if (!tpl || !total) return;
+  var count = parseInt(total.value || "0", 10) || 0;
+  var html  = tpl.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count + 1);
+  var tmp   = document.createElement("tbody"); tmp.innerHTML = html;
+  var newTr = tmp.querySelector("tr"); if (!newTr) return;
+  total.value = String(count + 1);
+
+  // 在第1行后插入（若当前无行则 append 到末尾）
+  var rows = Array.from(document.querySelectorAll("table.report-table tbody tr.report-item-row"));
+  if (rows.length > 0) {
+    var target = rows[0];
+    (target.parentNode || tb).insertBefore(newTr, target.nextSibling);
+  } else {
+    tb.appendChild(newTr);
+  }
+
+  // 绑定事件 & 刷新
+  if (typeof bindRowEvents === "function") bindRowEvents(newTr);
+  if (window.updateRowNumbersAndIndexes) window.updateRowNumbersAndIndexes();
+  if (window.updateTotals) window.updateTotals();
+  if (window.updateSmartHintPanel) window.updateSmartHintPanel();
+
+  // 体验：滚动并聚焦
+  newTr.scrollIntoView({behavior:"smooth", block:"center"});
+  (newTr.querySelector(".time-input") || newTr.querySelector("input,select"))?.focus?.();
+}, true);
+
+// --- 进场强制把输入框默认值设为 1（防止旧代码清空触发提示） ---
+document.addEventListener("DOMContentLoaded", function(){
+  var idx = document.getElementById("insert-index-input");
+  if (idx && (!idx.value || parseInt(idx.value,10) < 1)) idx.value = "1";
+});
+
+// === [insert-at-btn PATCH] 強制・独立の挿入ロジック（他のコードに依存しない） ===
+(function () {
+  function getDataTbody() {
+    // 先找显式的数据区 tbody
+    var tb = document.querySelector('table.report-table > tbody#data-rows');
+    if (tb) return tb;
+    // 否则：找所有 tbody，剔除模板 tbody
+    var bodies = Array.from(document.querySelectorAll('table.report-table > tbody'));
+    var tpl = document.getElementById('empty-form-template');
+    if (!bodies.length) return null;
+    if (tpl) {
+      var notTpl = bodies.find(function (b) { return b !== tpl; });
+      return notTpl || bodies[0];
+    }
+    return bodies[0];
+  }
+
+  function cloneOneRow() {
+    var tpl   = document.getElementById('empty-form-template');
+    var total = document.querySelector("input[name$='-TOTAL_FORMS']");
+    if (!tpl || !total) return null;
+
+    var count = parseInt(total.value || '0', 10) || 0;
+    var tmp   = document.createElement('tbody');
+    tmp.innerHTML = tpl.innerHTML
+      .replace(/__prefix__/g, count)
+      .replace(/__num__/g, count + 1);
+
+    var tr = tmp.querySelector('tr');
+    if (!tr) return null;
+
+    // —— 强制“可见 + 可用” —— //
+    tr.classList.remove('d-none','hidden','invisible','template-row');
+    tr.style.removeProperty('display');
+    tr.removeAttribute('aria-hidden');
+    tr.querySelectorAll('input,select,textarea,button').forEach(function(el){
+      el.disabled = false; el.removeAttribute('disabled');
+    });
+
+    // 表单总数 +1
+    total.value = String(count + 1);
+    return tr;
+  }
+
+  function insertAfterN(n) {
+    var tb   = getDataTbody();
+    var newTr = cloneOneRow();
+    if (!tb || !newTr) return false;
+
+    var rows = Array.from(tb.querySelectorAll('tr.report-item-row'));
+    if (!rows.length) {
+      tb.appendChild(newTr);
+    } else {
+      var i = Math.min(Math.max(1, n), rows.length); // clamp 到 [1, rows.length]
+      var target = rows[i - 1];
+      (target.closest('tbody') || tb).insertBefore(newTr, target.nextSibling);
+    }
+
+    // 绑定事件与刷新合计（若这些函数存在就调用）
+    if (typeof bindRowEvents === 'function') bindRowEvents(newTr);
+    if (typeof updateRowNumbersAndIndexes === 'function') updateRowNumbersAndIndexes();
+    if (typeof updateTotals === 'function') updateTotals();
+    if (typeof updateSmartHintPanel === 'function') updateSmartHintPanel();
+
+    // 视图定位与焦点
+    try { newTr.scrollIntoView({behavior:'smooth', block:'center'}); } catch(e){}
+    (newTr.querySelector('.time-input') || newTr.querySelector('input,select'))?.focus?.();
+    return true;
+  }
+
+  // 按钮点击（捕获阶段），不依赖任何其它全局函数
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest && e.target.closest('#insert-at-btn');
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation();
+
+    var idxInput = document.getElementById('insert-index-input');
+    var n = parseInt((idxInput && idxInput.value) || '1', 10) || 1;
+    var ok = insertAfterN(n);
+    if (!ok) {
+      alert('挿入ロジックが見つかりません（テンプレート/データ領域が取得できない）');
+    }
+  }, true);
+
+  // 初期値：输入框为空时默认=1（不改 DOM 值就只在前端生效）
+  document.addEventListener('DOMContentLoaded', function(){
+    var idx = document.getElementById('insert-index-input');
+    if (idx && !idx.value) idx.value = '1';
+  });
+})();
+ // === [END insert-at-btn PATCH] ===
