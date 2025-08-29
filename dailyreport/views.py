@@ -1,20 +1,20 @@
-import csv, os, sys, logging
+import csv, logging
 from io import BytesIO
-logger = logging.getLogger(__name__)
 from datetime import datetime, date, timedelta, time as dtime
 from tempfile import NamedTemporaryFile
-
+from collections import defaultdict
+from decimal import Decimal, ROUND_HALF_UP
+from calendar import monthrange
 
 from django.contrib.auth.decorators import user_passes_test, login_required
+from django.contrib.auth.models import User
 from django.contrib import messages
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
-from datetime import datetime, timedelta, time as dtime
 from django.utils import timezone
-from django.db import models
-from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q, Count
-from django.db.models.functions import Substr, Cast, Coalesce, NullIf  # ←【在这行里确保包含 Coalesce, NullIf】
+from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q
+from django.db.models.functions import Substr, Cast, Coalesce, NullIf, Lower, Trim
 from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
 from django.urls import reverse
@@ -22,49 +22,36 @@ from django.utils.http import urlencode
 from django.forms import inlineformset_factory
 from dateutil.relativedelta import relativedelta
 
-from django.db.models.functions import Lower, Trim, ExtractHour, ExtractMinute
-from dailyreport.constants import PAYMENT_RATES
-
+from dailyreport.constants import PAYMENT_RATES, CHARTER_CASH_KEYS, CHARTER_UNCOLLECTED_KEYS
 from dailyreport.models import DriverDailyReport, DriverDailyReportItem
 from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet, RequiredReportItemFormSet
-from .services.calculations import calculate_deposit_difference  # ✅ 导入新函数
-
-from staffbook.services import get_driver_info
-
-from staffbook.models import Driver
+from .services.calculations import calculate_deposit_difference
 from dailyreport.services.summary import (
-    resolve_payment_method, 
+    resolve_payment_method,
     calculate_totals_from_instances, calculate_totals_from_formset
 )
-from dailyreport.constants import CHARTER_CASH_KEYS, CHARTER_UNCOLLECTED_KEYS
+from dailyreport.utils.debug import debug_print
+
+from staffbook.services import get_driver_info
+from staffbook.models import Driver
 
 from vehicles.models import Reservation
 from urllib.parse import quote
-from carinfo.models import Car  # 🚗 请根据你项目中车辆模型名称修改
-from collections import defaultdict
 
-from decimal import Decimal, ROUND_HALF_UP
-from calendar import monthrange, month_name
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from dailyreport.utils.debug import debug_print
 
-# >>> SOFT_PREFILL (no-FK) START
-# 目的：仅在日報字段为空时，尝试从 Reservation 软关联预填 vehicle / clock_in / clock_out（不保存 DB）
-# 依赖：vehicles.models.Reservation（driver=User, date, start_time, end_time, actual_return, vehicle）
+logger = logging.getLogger(__name__)
+
+# ========= 软预填（不落库，仅用于渲染初值） =========
 def _safe_as_time(val):
-    """将 datetime/time/字符串 中的时间部分取出为 time；失败返回 None。"""
     try:
         if val is None:
             return None
-        # datetime-like
         if hasattr(val, "time") and callable(getattr(val, "time")):
             return val.time()
-        # time-like（有 hour/minute，无 date）
         if hasattr(val, "hour") and hasattr(val, "minute") and not hasattr(val, "date"):
             return val
-        # 字符串 "HH:MM"
         s = str(val).strip()
         if ":" in s:
             h, m = s.split(":", 1)
@@ -76,26 +63,11 @@ def _safe_as_time(val):
         pass
     return None
 
-
 def _prefill_report_without_fk(report):
-    """
-    仅在 report 的相关字段为空时，从 Reservation 做“软关联”预填：
-      - vehicle：优先取当天任一预约里的 vehicle
-      - clock_in：当天预约的最早 start_time
-      - clock_out：当天预约里最晚 actual_return；如无实际返回则取最晚 end_time
-    注意：不保存数据库；仅用于 GET 渲染阶段作为初始值。
-    """
     try:
-        # 司机在日報里是 staffbook.Driver；Reservation 中是 User（AUTH_USER）
         user = getattr(getattr(report, "driver", None), "user", None)
         the_date = getattr(report, "date", None)
         if not user or not the_date:
-            return
-
-        try:
-            from vehicles.models import Reservation
-        except Exception as e:
-            debug_print("SOFT_PREFILL import Reservation failed:", e)
             return
 
         qs = (Reservation.objects
@@ -105,7 +77,6 @@ def _prefill_report_without_fk(report):
         if not qs.exists():
             return
 
-        # 预填 vehicle（仅在 report.vehicle 为空时）
         if not getattr(report, "vehicle_id", None):
             for r in qs:
                 v = getattr(r, "vehicle", None)
@@ -113,14 +84,12 @@ def _prefill_report_without_fk(report):
                     report.vehicle = v
                     break
 
-        # 预填 clock_in（仅在为空时）：取最早 start_time
         if getattr(report, "clock_in", None) in (None, ""):
             first = qs.first()
             st = _safe_as_time(getattr(first, "start_time", None))
             if st:
                 report.clock_in = st
 
-        # 预填 clock_out（仅在为空时）：优先当天预约中“最晚 actual_return”，否则“最晚 end_time”
         if getattr(report, "clock_out", None) in (None, ""):
             actual_returns = []
             for r in qs:
@@ -135,40 +104,13 @@ def _prefill_report_without_fk(report):
                 if et:
                     report.clock_out = et
     except Exception as e:
-        # 静默失败，不阻断编辑流程
         debug_print("SOFT_PREFILL error:", e)
-# <<< SOFT_PREFILL (no-FK) END
 
-# 固定加算の休憩(分)
-BASE_BREAK_MINUTES = 20  
-
-def _hm_from_minutes(total_min: int):
-    """把分钟数转成 (小时, 分钟)"""
-    total_min = max(0, int(total_min or 0))
-    return total_min // 60, total_min % 60
-
-def _minutes_from_timedelta(td):
-    """把 timedelta 转成整数分钟"""
-    if not td:
-        return 0
-    try:
-        return int(td.total_seconds() // 60)
-    except Exception:
-        return 0
-
+# ========= 小工具 =========
+BASE_BREAK_MINUTES = 20
 DEBUG_PRINT_ENABLED = True
-#import builtins
-#builtins.print = lambda *args, **kwargs: None   #删除或注释掉
+print("🔥 views.py 加载 OK")
 
-def test_view(request):
-    print("✅ test_view 被调用", flush=True)
-    return HttpResponse("ok")
-
-debug_print("✅ DEBUG_PRINT 导入成功，模块已执行")
-# 直接测试原生 print 看能否打印
-print("🔥🔥🔥 原生 print 测试：views.py 模块加载成功")
-
-# --- 安全整数转换：空串/None/异常 -> 0  ←【新增：就插在这里】
 def _to_int0(v):
     try:
         if v in ("", None):
@@ -177,13 +119,20 @@ def _to_int0(v):
     except (TypeError, ValueError):
         return 0
 
+# 兼容旧代码里用到的 _to_int
+_to_int = _to_int0
+
+def _minutes_from_timedelta(td):
+    if not td:
+        return 0
+    try:
+        return int(td.total_seconds() // 60)
+    except Exception:
+        return 0
+
 NIGHT_END_MIN = 5 * 60  # 05:00
 
 def _sorted_items_qs(report):
-    """
-    ride_time 为字符串(HH:MM)时的排序：
-    05:00 之前的时间 +24h 排到当天最后
-    """
     safe_ride = Coalesce(NullIf(F('ride_time'), Value('')), Value('00:00'))
     return (
         report.items
@@ -204,56 +153,10 @@ def _sorted_items_qs(report):
         )
         .order_by('_minutes_for_sort', 'id')
     )
-# --- end 明细时间排序 ---
-
-def _to_aware_dt(val, base_date, *, base_clock_in=None, tz=None):
-    """
-    把 str('HH:MM' 或 'HH:MM:SS') / time / datetime 统一转成有时区的 datetime。
-    接受第二个位置参数 base_date，以兼容旧调用：_to_aware_dt(xxx, self.instance.date, ...)
-    """
-    if val in (None, ''):
-        return None
-
-    # 统一得到 naive datetime
-    if isinstance(val, datetime):
-        dt = val
-    elif isinstance(val, dtime):
-        dt = datetime.combine(base_date, val)
-    elif isinstance(val, str):
-        s = val.strip()
-        if not s:
-            return None
-        parts = s.split(':')
-        if 2 <= len(parts) <= 3 and all(p.isdigit() for p in parts):
-            h = int(parts[0]); m = int(parts[1]); sec = int(parts[2]) if len(parts) == 3 else 0
-            dt = datetime.combine(base_date, dtime(hour=h, minute=m, second=sec))
-        else:
-            return None
-    else:
-        return None
-
-    # 跨日：给了出勤时间且当前时间 < 出勤 → +1 天
-    if base_clock_in:
-        ci = base_clock_in.time() if isinstance(base_clock_in, datetime) else base_clock_in
-        if isinstance(ci, dtime) and dt.time() < ci:
-            dt += timedelta(days=1)
-
-    tz = tz or timezone.get_current_timezone()
-    if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, tz)
-    return dt
 
 def to_aware_dt(base_date, value, *, base_clock_in=None, tz=None):
-    """
-    把 value 统一变成“有时区的 datetime”或 None。
-    支持：datetime / time / 'HH:MM' 字符串 / None
-    不再使用 parse_datetime/parse_time。
-    若提供 base_clock_in（出勤），且 value 早于出勤，则视为跨日 +1 天。
-    """
     if value in (None, ""):
         return None
-
-    # 先构造 naive datetime
     if isinstance(value, datetime):
         dt = value
     elif isinstance(value, dtime):
@@ -270,41 +173,31 @@ def to_aware_dt(base_date, value, *, base_clock_in=None, tz=None):
     else:
         return None
 
-    # 跨日判断（可选）
     if base_clock_in:
         ci = base_clock_in.time() if isinstance(base_clock_in, datetime) else base_clock_in
         if isinstance(ci, dtime) and dt.time() < ci:
             dt += timedelta(days=1)
 
-    # 加时区
     tz = tz or timezone.get_current_timezone()
     if timezone.is_naive(dt):
         dt = timezone.make_aware(dt, tz)
     return dt
 
 def check_module_permission(user, perm_key: str) -> bool:
-    """
-    通用兜底：
-    - 先允许 superuser
-    - 尝试 Django 权限 user.has_perm('<app>.<codename>')
-    - 允许拥有该 app 的模块权限 user.has_module_perms('<app>')
-    - 允许同名用户组（如 'dailyreport_admin' 或 'dailyreport:dailyreport_admin'）
-    """
     try:
         if not getattr(user, "is_authenticated", False):
             return False
         if getattr(user, "is_superuser", False):
             return True
 
-        APP_LABEL = "dailyreport"  # ← 如你的 app 名不同，改这里
+        APP_LABEL = "dailyreport"
         key = (perm_key or "").strip().lower()
 
-        # 1) 逐个尝试常见的 codename 组合
         candidates = [
-            f"{APP_LABEL}.{key}",         # dailyreport.dailyreport_admin
-            f"{APP_LABEL}.can_{key}",     # dailyreport.can_dailyreport_admin
-            f"{APP_LABEL}.is_{key}",      # dailyreport.is_dailyreport_admin
-            key,                          # 已经是 'app.codename' 的情况
+            f"{APP_LABEL}.{key}",
+            f"{APP_LABEL}.can_{key}",
+            f"{APP_LABEL}.is_{key}",
+            key,
         ]
         for perm in candidates:
             try:
@@ -313,14 +206,12 @@ def check_module_permission(user, perm_key: str) -> bool:
             except Exception:
                 pass
 
-        # 2) 模块级权限（授予了该 app 任一权限时为 True）
         try:
             if user.has_module_perms(APP_LABEL):
                 return True
         except Exception:
             pass
 
-        # 3) 用户组名兜底（建组时把组名起成 dailyreport_admin 之类）
         try:
             group_names = {g.name.strip().lower() for g in user.groups.all()}
             if key in group_names or f"{APP_LABEL}:{key}" in group_names:
@@ -333,10 +224,6 @@ def check_module_permission(user, perm_key: str) -> bool:
         return False
 
 def is_dailyreport_admin(user):
-    """
-    允许：superuser 或 拥有 dailyreport_admin / dailyreport 模块权限；回退 is_staff。
-    如你的权限键不同，请把下面的 key 改成你实际使用的。
-    """
     try:
         return (
             check_module_permission(user, 'dailyreport_admin')
@@ -347,23 +234,15 @@ def is_dailyreport_admin(user):
     except Exception:
         return bool(getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False))
 
-# 你文件里大量写了 @user_passes_test(is_dailyreport_admin)，继续可用；
-# 若需要装饰器名，也提供一个等价别名：
 dailyreport_admin_required = user_passes_test(is_dailyreport_admin)
 
 def get_active_drivers(month_obj=None, keyword=None):
-    """
-    兼容旧代码：month_obj 不传则默认今天所在月份。
-    staffbook.utils 里原函数签名需要 month_obj；这里包装一下以便无参调用。
-    """
-    # 基本“在职当月”过滤（根据你 models 的字段名适当调整）
     qs = Driver.objects.all()
     if month_obj is None:
         month_obj = date.today()
 
     year = month_obj.year
     month = month_obj.month
-    # 当月起止
     from datetime import date as _date
     from calendar import monthrange as _monthrange
     first_day = _date(year, month, 1)
@@ -375,7 +254,6 @@ def get_active_drivers(month_obj=None, keyword=None):
             & (Q(resigned_date__isnull=True) | Q(resigned_date__gte=first_day))
         )
     except Exception:
-        # 若字段不匹配，退化为不过滤
         pass
 
     if hasattr(Driver, 'is_active'):
@@ -392,7 +270,7 @@ def get_active_drivers(month_obj=None, keyword=None):
 
     return qs.order_by('name')
 
-# ✅ 新增日报
+# ========= 基础视图 =========
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_create(request):
     if request.method == 'POST':
@@ -404,7 +282,6 @@ def dailyreport_create(request):
         form = DriverDailyReportForm()
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {'form': form})
 
-# ✅ 编辑日报（管理员）
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_edit(request, pk):
     report = get_object_or_404(DriverDailyReport, pk=pk)
@@ -424,12 +301,9 @@ def dailyreport_edit(request, pk):
         formset = ReportItemFormSet(request.POST, instance=report)
 
         if form.is_valid() and formset.is_valid():
-            # 先不立即保存，先把主表字段兜底规范一下
             inst = form.save(commit=False)
-
             cd = form.cleaned_data
 
-            # —— ETC 相关安全取值（全都转 int，空值=0）
             inst.etc_collected_cash = _to_int(cd.get('etc_collected_cash') or request.POST.get('etc_collected_cash'))
             inst.etc_collected_app  = _to_int(cd.get('etc_collected_app')  or request.POST.get('etc_collected_app'))
 
@@ -442,27 +316,22 @@ def dailyreport_edit(request, pk):
             inst.etc_uncollected = _to_int(
                 cd.get('etc_uncollected') or request.POST.get('etc_uncollected') or request.POST.get('etc_empty_amount')
             )
-
             inst.etc_payment_method = cd.get('etc_payment_method') or None
 
-            # 不足额：如果表单里没有字段，就按 “应收-实收” 计算
             if 'etc_shortage' in form.fields:
                 inst.etc_shortage = _to_int(cd.get('etc_shortage'))
             else:
                 expected_val = _to_int(getattr(inst, 'etc_expected', 0))
                 inst.etc_shortage = max(0, expected_val - _to_int(inst.etc_collected))
 
-            # 休憩时间（允许空）
             break_input = (request.POST.get("break_time_input") or "").strip()
             break_minutes = 0
             try:
                 if ":" in break_input:
                     h, m = map(int, break_input.split(":", 1))
+                    break_minutes = h * 60 + m
                 elif break_input:
-                    h, m = 0, int(break_input)
-                else:
-                    h, m = 0, 0
-                break_minutes = h * 60 + m
+                    break_minutes = int(break_input)
             except Exception:
                 break_minutes = 0
             try:
@@ -470,7 +339,6 @@ def dailyreport_edit(request, pk):
             except Exception:
                 pass
 
-            # 工作时长（若模型里有该方法）
             try:
                 inst.calculate_work_times()
             except Exception:
@@ -478,7 +346,6 @@ def dailyreport_edit(request, pk):
 
             inst.edited_by = request.user
 
-            # 入金差額 = 入金 - 现现金 - 貸切現金
             cash_total = sum(
                 (it.cleaned_data.get('meter_fee') or 0)
                 for it in formset.forms
@@ -489,7 +356,8 @@ def dailyreport_edit(request, pk):
                 (it.cleaned_data.get('charter_amount_jpy') or 0)
                 for it in formset.forms
                 if it.cleaned_data.get('is_charter')
-                and (it.cleaned_data.get('charter_payment_method') in ['jpy_cash', 'jp_cash', 'cash', 'rmb_cash', 'self_wechat', 'boss_wechat'])
+                and (it.cleaned_data.get('charter_payment_method') in
+                     ['jpy_cash', 'jp_cash', 'cash', 'rmb_cash', 'self_wechat', 'boss_wechat'])
                 and not it.cleaned_data.get('DELETE', False)
             )
             deposit = inst.deposit_amount or 0
@@ -499,7 +367,6 @@ def dailyreport_edit(request, pk):
             formset.instance = inst
             formset.save()
 
-            # 汇总 has_issue
             try:
                 inst.has_issue = inst.items.filter(has_issue=True).exists()
                 inst.save(update_fields=["has_issue"])
@@ -514,13 +381,11 @@ def dailyreport_edit(request, pk):
         form = DriverDailyReportForm(instance=report)
         formset = ReportItemFormSet(instance=report)
 
-    # 排序明细（夜跨 05:00 后移）
     try:
         formset.queryset = _sorted_items_qs(report)
     except Exception:
         pass
 
-    # 统计（模板合计栏用）
     data_iter = []
     for f in formset.forms:
         if f.is_bound and f.is_valid():
@@ -579,7 +444,7 @@ def dailyreport_edit(request, pk):
         'form': form,
         'formset': formset,
         'report': report,
-        'duration': timedelta(),  # 需要的话你再补
+        'duration': timedelta(),
         'summary_keys': summary_keys,
         'summary_panel_data': summary_panel_data,
         'cash_total': cash,
@@ -593,12 +458,10 @@ def dailyreport_edit(request, pk):
     }
     return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
 
-
 @login_required
 def sales_thanks(request):
     return render(request, 'dailyreport/sales_thanks.html')
 
-# ✅ 删除日报（管理员）
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_delete_for_driver(request, driver_id, pk):
     driver = get_object_or_404(Driver, pk=driver_id)
@@ -612,7 +475,6 @@ def dailyreport_delete_for_driver(request, driver_id, pk):
         'driver': driver,
     })
 
-# ✅ 日报列表（管理员看全部，司机看自己）
 @login_required
 def dailyreport_list(request):
     if request.user.is_staff:
@@ -621,11 +483,9 @@ def dailyreport_list(request):
         reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
     return render(request, 'dailyreport/dailyreport_list.html', {'reports': reports})
 
-#全员每日明细
-# ✅ 新版本：全员每日明细导出为 Excel（每个日期一个 Sheet）
+# ========= 导出：每日汇总（openpyxl） =========
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_csv(request, year, month):
-
     reports = (
         DriverDailyReport.objects
         .filter(date__year=year, date__month=month)
@@ -635,13 +495,10 @@ def export_dailyreports_csv(request, year, month):
     )
 
     reports_by_date = defaultdict(list)
-
-    # ✅ 所有统计用支付方式
     payment_keys = ['cash', 'uber', 'didi', 'ticket', 'credit', 'qr']
 
     for report in reports:
         summary = defaultdict(int)
-
         for item in report.items.all():
             if (
                 item.payment_method in payment_keys
@@ -678,13 +535,11 @@ def export_dailyreports_csv(request, year, month):
             'note': report.note or '',
         })
 
-    # ✅ 创建 Excel 工作簿
     wb = Workbook()
     wb.remove(wb.active)
 
     for date_str, rows in sorted(reports_by_date.items()):
         ws = wb.create_sheet(title=date_str)
-
         headers = [
             '司机代码', '司机', '出勤状态',
             '现金', 'Uber', 'Didi', 'チケット', 'クレジット', '扫码',
@@ -693,7 +548,6 @@ def export_dailyreports_csv(request, year, month):
             '公里数', '油量', '备注'
         ]
         ws.append(headers)
-
         for row in rows:
             ws.append([
                 row['driver_code'],
@@ -719,64 +573,21 @@ def export_dailyreports_csv(request, year, month):
     tmp = NamedTemporaryFile()
     wb.save(tmp.name)
     tmp.seek(0)
-
     response = FileResponse(tmp, as_attachment=True, filename=quote(filename))
     response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return response
 
-@login_required
-def sales_thanks(request):
-    return render(request, 'dailyreport/sales_thanks.html')
-
-# ✅ 删除日报（管理员）
-@user_passes_test(is_dailyreport_admin)
-def dailyreport_delete_for_driver(request, driver_id, pk):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    report = get_object_or_404(DriverDailyReport, pk=pk, driver=driver)
-    if request.method == "POST":
-        report.delete()
-        messages.success(request, "已删除该日报记录。")
-        return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
-    return render(request, 'dailyreport/dailyreport_confirm_delete.html', {
-        'report': report,
-        'driver': driver,
-    })
-
-# ✅ 日报列表（管理员看全部，司机看自己）
-@login_required
-def dailyreport_list(request):
-    if request.user.is_staff:
-        reports = DriverDailyReport.objects.all().order_by('-date')
-    else:
-        reports = DriverDailyReport.objects.filter(driver=request.user).order_by('-date')
-    return render(request, 'dailyreport/dailyreport_list.html', {'reports': reports})
-
-# 全员每日明细（每个日期一个 Sheet，仿截图样式）
+# ========= 导出：每日/集计（xlsxwriter） =========
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_excel(request, year, month):
-    """全员每日 Excel 导出（索引 + 每日 + 月度(集計)）
-    - 金额列：¥#,##0
-    - L/KM 两位小数
-    - 月度(集計)出勤時数(h) 两位小数
-    - 负数過不足标红
-    """
-    # 依赖（更友好提示）
     try:
         import xlsxwriter
     except ModuleNotFoundError:
         return HttpResponse("XlsxWriter 未安装。请在虚拟环境中运行：pip install XlsxWriter", status=500)
 
-    # 常量
     FEE_RATE = Decimal("0.05")
-
-    # ながし現金判定（普通单）
     CASH_METHODS = {"cash", "uber_cash", "didi_cash", "go_cash"}
 
-    # 貸切現金 / 貸切未収 判定（全部按小写比较；“現金”不受 lower 影响，但保留以直观表达）
-    #CHARTER_CASH_KEYS = {"jpy_cash", "jp_cash", "cash", "現金"}
-    #CHARTER_UNCOLLECTED_KEYS = {"to_company", "invoice", "uncollected", "未収", "請求"}
-
-    # 数据：整月日报
     reports = (
         DriverDailyReport.objects
         .filter(date__year=year, date__month=month)
@@ -788,10 +599,8 @@ def export_dailyreports_excel(request, year, month):
     for r in reports:
         by_date[r.date].append(r)
 
-    # 单日行计算
     def compute_row(r):
         def norm(s): return str(s).strip().lower() if s else ""
-
         meter_only = 0
         nagashi_cash = 0
         charter_cash = 0
@@ -817,13 +626,11 @@ def export_dailyreports_excel(request, year, month):
                 elif pm in {"qr", "scanpay"}:         amt["paypay"] += meter_fee
                 elif pm == "didi":    amt["didi"] += meter_fee
             else:
-                # 先二分：现金 vs 非现金（非现金一律视为未収/后结）
                 if cpm in CHARTER_CASH_KEYS:
                     charter_cash += charter_jpy
                 else:
                     charter_uncol += charter_jpy
 
-                # 再做渠道归集（用于未収合计、平台费率等）
                 if cpm == "kyokushin": amt["kyokushin"] += charter_jpy
                 elif cpm == "omron":   amt["omron"] += charter_jpy
                 elif cpm == "kyotoshi":amt["kyotoshi"] += charter_jpy
@@ -869,32 +676,24 @@ def export_dailyreports_excel(request, year, month):
             "deposit_diff": int(deposit_diff),
         }
 
-    # === 工作簿 & 样式 ===
     output = BytesIO()
     wb = xlsxwriter.Workbook(output, {'in_memory': True, 'constant_memory': True})
 
-    # 基础样式
     fmt_header = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#DDDDDD', 'border': 1})
     fmt_subheader_red = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#CC0000'})
     fmt_border = wb.add_format({'border': 1})
     fmt_total_base = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right'})
-    fmt_right = wb.add_format({'align': 'right', 'valign': 'vcenter'})
     fmt_neg_red = wb.add_format({'font_color': '#CC0000'})
 
-    # 金额/两位小数样式
     fmt_yen     = wb.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '¥#,##0'})
     fmt_yen_tot = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right', 'num_format': '¥#,##0'})
     fmt_num_2d   = wb.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '#,##0.00'})
     fmt_num_2d_t = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right', 'num_format': '#,##0.00'})
 
-    # 列宽
-    col_widths = {
-        0:10, 1:12, 2:9, 3:9, 4:12, 5:12, 6:12, 7:14, 8:12, 9:12, 10:12, 11:12,
-        12:12, 13:10, 14:14, 15:10, 16:12, 17:10, 18:12, 19:10, 20:12, 21:12,
-        22:12, 23:12, 24:12, 25:12, 26:12, 27:12
-    }
+    col_widths = {0:10, 1:12, 2:9, 3:9, 4:12, 5:12, 6:12, 7:14, 8:12, 9:12, 10:12, 11:12,
+                  12:12, 13:10, 14:14, 15:10, 16:12, 17:10, 18:12, 19:10, 20:12, 21:12,
+                  22:12, 23:12, 24:12, 25:12, 26:12, 27:12}
 
-    # 两行表头（每日 & 集计共用）
     row1 = [
         "社員番号","従業員","出勤時刻","退勤時刻",
         "1.ながし現金","2.貸切現金",
@@ -934,12 +733,10 @@ def export_dailyreports_excel(request, year, month):
         for c, w in col_widths.items():
             ws.set_column(c, c, w)
 
-    # 金额/两位小数列定位
     MONEY_COLS = {4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27}
-    TWO_DEC_COLS = {25, 26}  # L / KM
+    TWO_DEC_COLS = {25, 26}
 
     def write_mixed_row(ws, r, values, is_total=False):
-        """按列写入：金额¥、两位小数、其他"""
         for c, v in enumerate(values):
             if c in MONEY_COLS:
                 num = float(v or 0)
@@ -950,7 +747,6 @@ def export_dailyreports_excel(request, year, month):
             else:
                 ws.write(r, c, v, fmt_total_base if is_total else fmt_border)
 
-    # === 索引 Sheet ===
     idx_ws = wb.add_worksheet("索引")
     idx_ws.write_row(0, 0, ["日付", "件数"], fmt_header)
     rr = 1
@@ -958,9 +754,8 @@ def export_dailyreports_excel(request, year, month):
         idx_ws.write_row(rr, 0, [d.strftime("%Y-%m-%d"), len(reps)], fmt_border)
         rr += 1
     idx_ws.set_column(0, 0, 14); idx_ws.set_column(1, 1, 8)
-    idx_ws.freeze_panes(1, 0)  # 冻结表头
+    idx_ws.freeze_panes(1, 0)
 
-    # === 每日 Sheet ===
     for d, day_reports in sorted(by_date.items()):
         def _code_key(rep):
             code = getattr(rep.driver, "driver_code", "") if rep.driver else ""
@@ -969,7 +764,7 @@ def export_dailyreports_excel(request, year, month):
 
         ws = wb.add_worksheet(d.strftime("%Y-%m-%d"))
         write_headers(ws)
-        ws.freeze_panes(2, 2)  # 冻结两行表头 + 左两列
+        ws.freeze_panes(2, 2)
 
         r = 2
         totals = defaultdict(Decimal)
@@ -991,7 +786,6 @@ def export_dailyreports_excel(request, year, month):
                 data["deposit_diff"],
             ]
             write_mixed_row(ws, r, row_vals, is_total=False)
-
             for k, v in data.items():
                 if isinstance(v, (int, float, Decimal)):
                     totals[k] += Decimal(str(v))
@@ -1013,15 +807,12 @@ def export_dailyreports_excel(request, year, month):
         ]
         write_mixed_row(ws, r, total_vals, is_total=True)
 
-        # 「過不足」（列 27）负数标红
         if r > 2:
             ws.conditional_format(2, 27, r-1, 27, {
-                'type': 'cell', 'criteria': '<', 'value': 0, 'format': fmt_neg_red
+                'type': 'cell', 'criteria': '<', 'value': 0, 'format': wb.add_format({'font_color': '#CC0000'})
             })
 
-    # === 月度(集計) Sheet ===
     summary_ws = wb.add_worksheet(f"{year}-{month:02d} 月度(集計)")
-    # 表头
     summary_ws.write_row(0, 0, row1, fmt_header)
     summary_ws.write_row(1, 0, row2, fmt_header)
     merges = [
@@ -1039,7 +830,6 @@ def export_dailyreports_excel(request, year, month):
         summary_ws.set_column(c, c, w)
     summary_ws.freeze_panes(2, 2)
 
-    # 聚合（每司机）
     per_driver = {}
     def add_to_driver(rep, data):
         if not rep.driver:
@@ -1062,9 +852,7 @@ def export_dailyreports_excel(request, year, month):
                 "deposit_diff":0,
             }
         row = per_driver[did]
-        row["days"] += 1  # 有日报记一天
-
-        # 出勤时数（跨日修正，扣休憩）
+        row["days"] += 1
         try:
             if rep.clock_in and rep.clock_out and rep.date:
                 dt_in = datetime.combine(rep.date, rep.clock_in)
@@ -1092,7 +880,6 @@ def export_dailyreports_excel(request, year, month):
         for rep in reps:
             add_to_driver(rep, compute_row(rep))
 
-    # 写入 + 合计
     def _sort_key(code, name):
         return (int(code) if str(code).isdigit() else 10**9, str(code) or name)
 
@@ -1115,11 +902,11 @@ def export_dailyreports_excel(request, year, month):
             row["deposit_diff"],
         ]
         write_mixed_row(summary_ws, r, sum_vals, is_total=False)
-        # 将“出勤時数(h)”强制两位小数样式
         summary_ws.write_number(r, 3, float(hours_2d), fmt_num_2d)
 
         for k, v in row.items():
-            if k in ("code","name"): continue
+            if k in ("code","name"):
+                continue
             if isinstance(v, (int, float, Decimal)):
                 totals_sum[k] += Decimal(str(v))
         r += 1
@@ -1140,47 +927,38 @@ def export_dailyreports_excel(request, year, month):
         int(totals_sum["deposit_diff"]),
     ]
     write_mixed_row(summary_ws, r, sum_total_vals, is_total=True)
-    # 覆盖“出勤時数(h)”为两位小数合计样式
     summary_ws.write_number(r, 3, float(hours_total_2d), fmt_num_2d_t)
 
-    # 负数過不足标红
     if r > 2:
         summary_ws.conditional_format(2, 27, r-1, 27, {
-            'type': 'cell', 'criteria': '<', 'value': 0, 'format': fmt_neg_red
+            'type': 'cell', 'criteria': '<', 'value': 0, 'format': wb.add_format({'font_color': '#CC0000'})
         })
 
-    # === 导出 ===
     wb.close()
     output.seek(0)
     filename = f"{year}年{month}月_全員毎日集計.xlsx"
     return FileResponse(output, as_attachment=True, filename=quote(filename),
                         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-
+# ========= 合计辅助 =========
 def _normalize(val: str) -> str:
-    """把 charter_payment_method 归一化，防止显示文案/大小写导致漏算"""
     if not val:
         return ''
     v = str(val).strip().lower()
     mapping = {
-        # 规范值
         'jpy_cash':'jpy_cash','rmb_cash':'rmb_cash',
         'self_wechat':'self_wechat','boss_wechat':'boss_wechat',
         'to_company':'to_company','bank_transfer':'bank_transfer',
         '--------':'','------':'','': '',
-        # 现场常见写法 → 规范值（按你实际打印出来的补充）
         '現金':'jpy_cash','现金':'jpy_cash','日元現金':'jpy_cash','日元现金':'jpy_cash',
         '人民幣現金':'rmb_cash','人民币现金':'rmb_cash',
         '自有微信':'self_wechat','老板微信':'boss_wechat',
         '公司回收':'to_company','会社回収':'to_company','公司结算':'to_company',
         '銀行振込':'bank_transfer','bank':'bank_transfer',
-        # ……把你打印出来的值逐个补齐
     }
-
     return mapping.get(v, v)
 
 def _totals_of(items):
-    """一次性算出  メータのみ / 貸切現金 / 貸切未収 / 未分類  和  sales_total"""
     meter_only = Decimal('0')
     charter_cash = Decimal('0')
     charter_uncol = Decimal('0')
@@ -1197,10 +975,8 @@ def _totals_of(items):
             elif method in {'to_company', 'bank_transfer', ''}:
                 charter_uncol += amt
             else:
-                # 未知的枚举也计入总额，避免漏算（但单列“未知”便于后续清洗）
                 charter_unknown += amt
         else:
-            # メータのみ：与编辑页一致，要求存在支付方式才计入
             if getattr(it, 'payment_method', None):
                 meter_only += Decimal(it.meter_fee or 0)
 
@@ -1213,13 +989,11 @@ def _totals_of(items):
         'sales_total': sales_total,
     }
 
+# ========= 月视图 =========
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_month(request, driver_id):
-    from datetime import datetime, timedelta
-
     driver = get_object_or_404(Driver, id=driver_id)
 
-    # 解析 ?month=YYYY-MM
     month_str = request.GET.get("month", "")
     try:
         month = datetime.strptime(month_str, "%Y-%m").date().replace(day=1)
@@ -1232,31 +1006,18 @@ def driver_dailyreport_month(request, driver_id):
         DriverDailyReport.objects
         .filter(driver=driver, date__year=month.year, date__month=month.month)
         .order_by('-date')
-        .prefetch_related('items')  # ✅ 避免 N+1
+        .prefetch_related('items')
     )
 
     report_list = []
     for report in reports_qs:
         items = report.items.all()
-
-        # 如需定位特定一天（例：2025-08-10），开启下面这个 if block：
-        # if report.date.strftime('%Y-%m-%d') == '2025-08-10':
-        #     for it in items:
-        #         print(f"[DEBUG-8/10] id={it.id}, is_charter={getattr(it,'is_charter',None)}, "
-        #               f"meter_fee={it.meter_fee}, payment_method={it.payment_method!r}, "
-        #               f"charter_amount_jpy={getattr(it,'charter_amount_jpy',None)}, "
-        #               f"charter_payment_method={getattr(it,'charter_payment_method',None)!r}")
-
-        # ✅ 更健壮的合计（归一化 + 未知兜底）
         totals = _totals_of(items)
-
-        report.total_all = totals['sales_total']                # 合計：メータのみ + 貸切現金 + 貸切未収 (+ 未分類)
-        report.meter_only_total = totals['meter_only_total']    # メータのみ（不含貸切）
-        report.charter_unknown_total = totals['charter_unknown_total']  # 可选：模板显示方便排查
-
+        report.total_all = totals['sales_total']
+        report.meter_only_total = totals['meter_only_total']
+        report.charter_unknown_total = totals['charter_unknown_total']
         report_list.append(report)
 
-    # 上/下月（可选：模板里做月切换链接）
     prev_month = (month - timedelta(days=1)).replace(day=1).strftime('%Y-%m')
     next_month = (month.replace(day=28) + timedelta(days=4)).replace(day=1).strftime('%Y-%m')
 
@@ -1264,39 +1025,32 @@ def driver_dailyreport_month(request, driver_id):
         'driver': driver,
         'month': month,
         'reports': report_list,
-
-        # ✅ 模板使用的几个上下文（你的模板里有）
         'selected_month': month_str,
         'selected_date': request.GET.get("date", ""),
         'today': timezone.localdate(),
-
-        # （可选）提供 prev/next，若你想加“前の月 / 次の月”按钮
         'prev_month': prev_month,
         'next_month': next_month,
     })
 
-
+# ========= 选择器 & 直接创建 =========
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_add_selector(request, driver_id):
-    from datetime import datetime, date
+    from datetime import date as _date
     driver = get_object_or_404(Driver, pk=driver_id)
 
-    # ✅ 解析 ?month=2025-03 参数
     month_str = request.GET.get("month")
     try:
         if month_str:
             target_year, target_month = map(int, month_str.split("-"))
-            display_date = date(target_year, target_month, 1)
+            display_date = _date(target_year, target_month, 1)
         else:
-            display_date = date.today()
+            display_date = _date.today()
     except ValueError:
-        display_date = date.today()
+        display_date = _date.today()
 
     current_month = display_date.strftime("%Y-%m")
-
-    # ✅ 构造当月所有日期与是否有预约
     num_days = monthrange(display_date.year, display_date.month)[1]
-    all_dates = [date(display_date.year, display_date.month, d) for d in range(1, num_days + 1)]
+    all_dates = [_date(display_date.year, display_date.month, d) for d in range(1, num_days + 1)]
 
     reserved_dates = set()
     if driver.user:
@@ -1306,15 +1060,8 @@ def dailyreport_add_selector(request, driver_id):
             .values_list("date", flat=True)
         )
 
-    calendar_dates = [
-        {
-            "date": d,
-            "enabled": d in reserved_dates,
-        }
-        for d in all_dates
-    ]
+    calendar_dates = [{"date": d, "enabled": d in reserved_dates} for d in all_dates]
 
-    # ✅ 提交处理
     if request.method == "POST":
         selected_date_str = request.POST.get("selected_date")
         try:
@@ -1351,7 +1098,6 @@ def dailyreport_add_selector(request, driver_id):
 
         return redirect("dailyreport:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
 
-    # ✅ 渲染模板
     return render(request, "dailyreport/driver_dailyreport_add.html", {
         "driver": driver,
         "current_month": display_date.strftime("%Y年%m月"),
@@ -1360,48 +1106,50 @@ def dailyreport_add_selector(request, driver_id):
         "calendar_dates": calendar_dates,
     })
 
-
-# ✅ 管理员新增日报给某员工
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_create_for_driver(request, driver_id):
     driver = get_driver_info(driver_id)
     if not driver:
         return render(request, 'dailyreport/not_found.html', status=404)
 
-    # ✅ 特殊 GET 请求：根据 ?date=YYYY-MM-DD 自动创建日报并跳转
     if request.method == 'GET' and request.GET.get('date'):
         try:
-            date = datetime.strptime(request.GET.get('date'), "%Y-%m-%d").date()
+            the_date = datetime.strptime(request.GET.get('date'), "%Y-%m-%d").date()
         except ValueError:
             messages.error(request, "无效的日期格式")
             return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
 
-        # 如果日报已存在，则直接跳转
-        existing = DriverDailyReport.objects.filter(driver=driver, date=date).first()
+        existing = DriverDailyReport.objects.filter(driver=driver, date=the_date).first()
         if existing:
             return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=existing.id)
 
-        # 否则创建空日报并跳转编辑页
-        new_report = DriverDailyReport.objects.create(driver=driver, date=date)
+        new_report = DriverDailyReport.objects.create(driver=driver, date=the_date)
         return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=new_report.id)
 
-    # ✅ 表单提交处理逻辑
+    ReportItemFS = inlineformset_factory(
+        DriverDailyReport, DriverDailyReportItem,
+        form=DriverDailyReportItemForm,
+        formset=RequiredReportItemFormSet,
+        extra=0, can_delete=True, max_num=40,
+    )
+
     if request.method == 'POST':
         report_form = DriverDailyReportForm(request.POST)
-        formset = ReportItemFormSet(request.POST)
+        formset = ReportItemFS(request.POST)
 
         if report_form.is_valid() and formset.is_valid():
             dailyreport = report_form.save(commit=False)
             dailyreport.driver = driver
+            try:
+                dailyreport.calculate_work_times()
+            except Exception:
+                pass
 
-            # 自动计算时间字段
-            dailyreport.calculate_work_times()
-
-            # 计算现现金合计差额
             cash_total = sum(
                 item.cleaned_data.get('meter_fee') or 0
                 for item in formset.forms
-                if item.cleaned_data.get('payment_method') == 'cash' and not item.cleaned_data.get('DELETE', False)
+                if item.cleaned_data.get('payment_method') == 'cash'
+                and not item.cleaned_data.get('DELETE', False)
             )
             deposit = dailyreport.deposit_amount or 0
             dailyreport.deposit_difference = deposit - cash_total
@@ -1417,18 +1165,15 @@ def dailyreport_create_for_driver(request, driver_id):
             print("明细表错误：", formset.errors)
     else:
         report_form = DriverDailyReportForm()
-        formset = ReportItemFormSet()
+        formset = ReportItemFS()
 
-    # ✅ 合计统计（POST 用 cleaned_data，GET 用 instance）
     if request.method == 'POST' and formset.is_valid():
         data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
         totals = calculate_totals_from_formset(data_iter)
     else:
         data_iter = [f.instance for f in formset.forms]
         totals = calculate_totals_from_instances(data_iter)
-        print("🔍 totals =", totals)
 
-    # ✅ 用于模板合计栏
     summary_keys = [
         ('meter', 'メーター(水揚)'),
         ('cash', '現金(ながし)'),
@@ -1449,10 +1194,9 @@ def dailyreport_create_for_driver(request, driver_id):
         'is_edit': False,
         'summary_keys': summary_keys,
         'totals': totals,
-        "nagashi_cash_total": nagashi_cash_total,
     })
 
-# ✅ 編集日報（従業員）
+# ========= 编辑（员工） =========
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_edit_for_driver(request, driver_id, report_id):
     driver = get_driver_info(driver_id)
@@ -1474,11 +1218,9 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     if request.method == 'POST':
         post = request.POST.copy()
 
-        # 🚩 保底：如果没传 vehicle，就用 report 原值
         if not post.get("vehicle") and report.vehicle_id:
             post["vehicle"] = str(report.vehicle_id)
 
-        # 支付方式归一化
         PM_ALIASES = {
             'company card': 'credit', 'Company Card': 'credit', '会社カード': 'credit',
             'company_card': 'credit', 'credit card': 'credit',
@@ -1490,14 +1232,10 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             if k.endswith('-payment_method'):
                 post[k] = PM_ALIASES.get(v, v)
 
-        # 出退勤时间规范化
         def _norm_hhmm(v):
-            if not v:
-                return ''
-            if isinstance(v, dtime):
-                return v.strftime('%H:%M')
-            if isinstance(v, datetime):
-                return v.strftime('%H:%M')
+            if not v: return ''
+            if isinstance(v, dtime): return v.strftime('%H:%M')
+            if isinstance(v, datetime): return v.strftime('%H:%M')
             s = str(v).strip()
             if ':' in s:
                 try:
@@ -1515,11 +1253,9 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
 
-            # 🚩 保底：如果实例里没有 vehicle，写回旧值
             if not inst.vehicle_id and report.vehicle_id:
                 inst.vehicle_id = report.vehicle_id
 
-            # === 休憩（用户输入 +20 分钟）===
             break_input = (post.get("break_time_input") or "").strip()
             user_minutes = 0
             try:
@@ -1533,7 +1269,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             total_minutes = user_minutes + BASE_BREAK_MINUTES
             inst.休憩時間 = timedelta(minutes=total_minutes)
 
-            # === 出退勤回填 ===
             ci = form.cleaned_data.get("clock_in")
             co = form.cleaned_data.get("clock_out")
             if ci is not None:
@@ -1541,7 +1276,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             if co is not None:
                 inst.clock_out = co
 
-            # === 重新计算工时 ===
             try:
                 inst.calculate_work_times()
             except Exception:
@@ -1549,7 +1283,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
             inst.edited_by = request.user
 
-            # === 入金差額 ===
             cash_total = sum(
                 (it.cleaned_data.get('meter_fee') or 0)
                 for it in formset.forms
@@ -1569,18 +1302,14 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             deposit = inst.deposit_amount or 0
             inst.deposit_difference = deposit - cash_total - charter_cash_total
 
-            # === 保存主表 + 明细 ===
             inst.save()
             formset.instance = inst
             items = formset.save(commit=False)
             for item in items:
-                # [PATCH 开始] —— 防止 is_pending=None
                 if getattr(item, "is_pending", None) is None:
                     item.is_pending = False
-                # [PATCH 结束]
                 item.save()
 
-            # === has_issue 更新 ===
             try:
                 inst.has_issue = inst.items.filter(has_issue=True).exists()
                 inst.save(update_fields=["has_issue"])
@@ -1593,21 +1322,15 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         else:
             messages.error(request, "❌ 保存失败，请检查输入内容")
     else:
-
-        # >>> SOFT_PREFILL CALL START
-        _prefill_report_without_fk(report)  # 仅填空白：vehicle / clock_in / clock_out（不保存 DB）
-        # <<< SOFT_PREFILL CALL END
-
+        _prefill_report_without_fk(report)
         form = DriverDailyReportForm(instance=report)
         formset = ReportItemFormSet(instance=report)
 
-    # 排序明细
     try:
         formset.queryset = _sorted_items_qs(report)
     except Exception:
         pass
 
-    # 统计 totals
     data_iter = []
     for f in formset.forms:
         if f.is_bound and f.is_valid():
@@ -1643,7 +1366,6 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         ('qr', '扫码'),
     ]
 
-    # === 回显休憩时间（输入值=已存-20，実休憩=已存）===
     actual_break_min = _minutes_from_timedelta(getattr(report, "休憩時間", None))
     input_break_min  = max(0, actual_break_min - BASE_BREAK_MINUTES)
     break_time_h, break_time_m = divmod(input_break_min, 60)
@@ -1663,6 +1385,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'actual_break_value': actual_break_value,
     })
 
+# ========= 未分配账号司机：当天创建 =========
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_add_unassigned(request, driver_id):
     driver = get_object_or_404(Driver, id=driver_id, user__isnull=True)
@@ -1670,16 +1393,12 @@ def driver_dailyreport_add_unassigned(request, driver_id):
         messages.warning(request, "未找到未分配账号的员工")
         return redirect("dailyreport:dailyreport_overview")
 
-    driver = get_object_or_404(Driver, id=driver_id, user__isnull=True)
-
     today = date.today()
     report, created = DriverDailyReport.objects.get_or_create(
         driver=driver,
         date=today,
         defaults={"status": "草稿"}
     )
-
-    # ✅ 加在这里：命令行中会输出 driver 和 report 的主键
     print("🚗 创建日报：", driver.id, report.id, "是否新建：", created)
 
     if created:
@@ -1689,27 +1408,23 @@ def driver_dailyreport_add_unassigned(request, driver_id):
 
     return redirect("dailyreport:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
 
-
-# ✅ 司机查看自己日报
+# ========= 我的日报 =========
 @login_required
 def my_dailyreports(request):
     try:
-        # ✅ 获取当前登录用户对应的 Driver 实例
         driver = Driver.objects.get(user=request.user)
     except Driver.DoesNotExist:
         return render(request, 'dailyreport/not_found.html', {
             'message': '该用户未绑定司机档案。'
         }, status=404)
 
-    # ✅ 现在使用 Driver 实例来查询日报
     reports = DriverDailyReport.objects.filter(driver=driver).order_by('-date')
-
     return render(request, 'dailyreport/my_dailyreports.html', {
         'reports': reports,
         'driver': driver,
     })
 
-# ✅ 批量生成账号绑定员工
+# ========= 批量补账号 =========
 @user_passes_test(is_dailyreport_admin)
 def bind_missing_users(request):
     drivers_without_user = Driver.objects.filter(user__isnull=True)
@@ -1727,8 +1442,7 @@ def bind_missing_users(request):
         'drivers': drivers_without_user,
     })
 
-
-#导出每日明细
+# ========= 导出：ETC 明细 =========
 @user_passes_test(is_dailyreport_admin)
 def export_etc_daily_csv(request, year, month):
     reports = DriverDailyReport.objects.filter(date__year=year, date__month=month)
@@ -1747,7 +1461,7 @@ def export_etc_daily_csv(request, year, month):
 
         writer.writerow([
             report.date.strftime('%Y-%m-%d'),
-            report.driver.name,
+            report.driver.name if report.driver else "",
             expected,
             collected,
             diff
@@ -1755,6 +1469,7 @@ def export_etc_daily_csv(request, year, month):
 
     return response
 
+# ========= 导出：车辆运输实绩 =========
 @user_passes_test(is_dailyreport_admin)
 def export_vehicle_csv(request, year, month):
     reports = DriverDailyReport.objects.filter(
@@ -1763,7 +1478,6 @@ def export_vehicle_csv(request, year, month):
         vehicle__isnull=False
     ).select_related('vehicle')
 
-    # 以车辆为单位进行统计
     data = defaultdict(lambda: {
         '出勤日数': 0,
         '走行距離': 0,
@@ -1788,13 +1502,9 @@ def export_vehicle_csv(request, year, month):
         total_fee = float(r.total_meter_fee or 0)
         boarding_count = r.items.count()
 
-        # --- 出勤计数（替换开始：原先是无条件 +1） ---
         if r.items.filter(start_time__isnull=False, end_time__isnull=False).exists():
-            # 如果有实际出勤时间，则计数 +1
-            data[key]['出勤日数'] += 1 
-        # --- 出勤计数（替换结束） ---
+            data[key]['出勤日数'] += 1
 
-        # 累加各项数据
         data[key]['走行距離'] += mileage
         data[key]['実車距離'] += mileage * 0.75
         data[key]['乗車回数'] += boarding_count
@@ -1802,28 +1512,22 @@ def export_vehicle_csv(request, year, month):
         data[key]['水揚金額'] += total_fee
         data[key]['車名'] = car.name
         data[key]['車牌'] = car.license_plate
-        data[key]['部門'] = car.department
-        data[key]['使用者名'] = car.user_company_name
-        data[key]['所有者名'] = car.owner_company_name
+        data[key]['部門'] = getattr(car, 'department', '')
+        data[key]['使用者名'] = getattr(car, 'user_company_name', '')
+        data[key]['所有者名'] = getattr(car, 'owner_company_name', '')
 
-    # CSV 响应设置
     response = HttpResponse(content_type='text/csv')
     filename = f"{year}年{month}月_車両運輸実績表.csv"
     response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
 
-    # 添加 UTF-8 BOM 防止 Excel 乱码
     response.write(u'\ufeff'.encode('utf8'))
     writer = csv.writer(response)
 
-    # 表头
-    headers = [
-        '車名', '車牌', '部門', '使用者名', '所有者名',
-        '出勤日数', '走行距離', '実車距離', '乗車回数', '人数', '水揚金額'
-    ]
+    headers = ['車名', '車牌', '部門', '使用者名', '所有者名',
+               '出勤日数', '走行距離', '実車距離', '乗車回数', '人数', '水揚金額']
     writer.writerow(headers)
 
-    # 数据行
-    total_row = [0] * 6  # 出勤〜水揚合计
+    total_row = [0] * 6
     for info in data.values():
         row = [
             info['車名'], info['車牌'], info['部門'],
@@ -1834,29 +1538,23 @@ def export_vehicle_csv(request, year, month):
             round(info['水揚金額'], 2),
         ]
         writer.writerow(row)
-
-        # 合计累加
         for i in range(5, 11):
             total_row[i - 5] += row[i]
 
-    # ✅ 合计行
     writer.writerow([
         '合計', '', '', '', '',
-        total_row[0],  # 出勤日数
-        total_row[1],  # 走行距離
-        round(total_row[2], 2),  # 実車距離
-        total_row[3],  # 乗車回数
-        total_row[4],  # 人数
-        round(total_row[5], 2),  # 水揚金額
+        total_row[0], total_row[1], round(total_row[2], 2),
+        total_row[3], total_row[4], round(total_row[5], 2),
     ])
 
     return response
 
+# ========= 月份入口（表单选择） =========
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_add_by_month(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
 
-    month_str = request.GET.get("month")  # 格式："2025-03"
+    month_str = request.GET.get("month")
     if not month_str:
         return redirect("dailyreport:driver_dailyreport_add_selector", driver_id=driver_id)
 
@@ -1868,29 +1566,21 @@ def dailyreport_add_by_month(request, driver_id):
 
     current_month = f"{year}年{month}月"
 
-    # ✅ 处理表单提交
     if request.method == "POST":
         selected_date_str = request.POST.get("selected_date")
         try:
             selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
         except (ValueError, TypeError):
-            # 日期不合法 → 返回本页
             return render(request, "dailyreport/driver_dailyreport_add.html", {
-                "driver": driver,
-                "year": year,
-                "month": month,
-                "current_month": current_month,
-                "error": "日付が正しくありません"
+                "driver": driver, "year": year, "month": month,
+                "current_month": current_month, "error": "日付が正しくありません"
             })
 
-        # ✅ 重定向到“该司机该日新增日报”页面
-        # ✅ 构造重定向 URL，带上 date 参数
         base_url = reverse("dailyreport:driver_dailyreport_direct_add", args=[driver.id])
         query_string = urlencode({"date": selected_date})
         url = f"{base_url}?{query_string}"
         return redirect(url)
 
-    # 默认 GET 显示页面
     return render(request, "dailyreport/driver_dailyreport_add.html", {
         "driver": driver,
         "year": year,
@@ -1898,146 +1588,26 @@ def dailyreport_add_by_month(request, driver_id):
         "current_month": current_month,
     })
 
-
-# ✅ 管理员新增日报给某员工
-@user_passes_test(is_dailyreport_admin)
-def dailyreport_create_for_driver(request, driver_id):
-    driver = get_driver_info(driver_id)
-    if not driver:
-        return render(request, 'dailyreport/not_found.html', status=404)
-
-    # ✅ 如果带有 GET 参数 ?date=2025-03-29 就自动创建日报并跳转
-    if request.method == 'GET' and request.GET.get('date'):
-        try:
-            date = datetime.strptime(request.GET.get('date'), "%Y-%m-%d").date()
-        except ValueError:
-            messages.error(request, "无效的日期格式")
-            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
-
-        existing = DriverDailyReport.objects.filter(driver=driver, date=date).first()
-        if existing:
-            return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=existing.id)
-
-        # ✅ 创建空日报并跳转到编辑页
-        new_report = DriverDailyReport.objects.create(driver=driver, date=date)
-        return redirect('dailyreport:driver_dailyreport_edit', driver_id=driver.id, report_id=new_report.id)
-
-    # ✅ POST：提交表单
-    if request.method == 'POST':
-        report_form = DriverDailyReportForm(request.POST)
-        formset = ReportItemFormSet(request.POST)
-
-        if report_form.is_valid() and formset.is_valid():
-            dailyreport = report_form.save(commit=False)
-            dailyreport.driver = driver
-            dailyreport.calculate_work_times()
-
-            cash_total = sum(
-                item.cleaned_data.get('meter_fee') or 0
-                for item in formset.forms
-                if item.cleaned_data.get('payment_method') == 'cash' and not item.cleaned_data.get('DELETE', False)
-            )
-            deposit = dailyreport.deposit_amount or 0
-            dailyreport.deposit_difference = deposit - cash_total
-
-            dailyreport.save()
-            formset.instance = dailyreport
-            formset.save()
-
-            messages.success(request, '新增日报成功')
-            return redirect('dailyreport:driver_dailyreport_month', driver_id=driver.id)
-        else:
-            print("日报主表错误：", report_form.errors)
-            print("明细表错误：", formset.errors)
-    else:
-        report_form = DriverDailyReportForm()
-        formset = ReportItemFormSet()
-        # ✅ 这一步关键：用于模板显示司机名等
-        report = DriverDailyReport(driver=driver)
-
-    # ✅ 合计逻辑
-    if request.method == 'POST' and formset.is_valid():
-        data_iter = [f.cleaned_data for f in formset.forms if f.cleaned_data]
-        totals = calculate_totals_from_formset(data_iter)
-    else:
-        data_iter = [f.instance for f in formset.forms]
-        totals = calculate_totals_from_instances(data_iter)
-
-    summary_keys = [
-        ('meter', 'メーター(水揚)'),
-        ('nagashi_cash', '現金(ながし)'),   # ✅ 这是我们要加的合并字段
-        ('cash', '現金'),                   # ✅ 若仍想分开显示可保留，否则可删
-        ('uber', 'Uber'),
-        ('didi', 'Didi'),
-        ('credit', 'クレジ'),
-        ('kyokushin', '京交信'),
-        ('omron', 'オムロン(愛のタクシーチケット)'),
-        ('kyotoshi', '京都市他'),
-        ('qr', '扫码'),
-    ]
-
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', {
-        'form': report_form,
-        'formset': formset,
-        'driver': driver,
-        'report': report,  # ✅ 模板能取到 driver.name 等
-        'is_edit': False,
-        'summary_keys': summary_keys,
-        'totals': totals,
-        'nagashi_cash_total': nagashi_cash_total,
-    })
-
-@user_passes_test(is_dailyreport_admin)
-def driver_dailyreport_add_unassigned(request):
-    driver = get_driver_info(driver_id)
-    if not driver or driver.user:
-        messages.warning(request, "未找到未分配账号的员工")
-        return redirect("dailyreport:dailyreport_overview")
-
-    driver = get_object_or_404(Driver, id=driver_id, user__isnull=True)
-
-    today = date.today()
-    report, created = DriverDailyReport.objects.get_or_create(
-        driver=driver,
-        date=today,
-        defaults={"status": "草稿"}
-    )
-
-    # ✅ 加在这里：命令行中会输出 driver 和 report 的主键
-    print("🚗 创建日报：", driver.id, report.id, "是否新建：", created)
-
-    if created:
-        messages.success(request, f"已为 {driver.name} 创建 {today} 的日报。")
-    else:
-        messages.info(request, f"{driver.name} 今天的日报已存在，跳转到编辑页面。")
-
-    return redirect("dailyreport:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
-
-
+# ========= 月度总览 =========
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_overview(request):
-    # 1. 基本参数
     today = now().date()
     keyword = request.GET.get('keyword', '').strip()
     month_str = request.GET.get('month', '')
 
-    # 2. 解析月份
     try:
         month = datetime.strptime(month_str, "%Y-%m")
     except ValueError:
         month = today.replace(day=1)
         month_str = month.strftime('%Y-%m')
 
-    # ✅ 供模板导航
     month_label = f"{month.year}年{month.month:02d}月"
     prev_month = (month - relativedelta(months=1)).strftime('%Y-%m')
     next_month = (month + relativedelta(months=1)).strftime('%Y-%m')
 
-    # 3. 导出按钮
     export_year = month.year
     export_month = month.month
 
-    # 4. 所有当月日报（含离职者），及用于展示/计算的在职司机
     reports_all = DriverDailyReport.objects.filter(
         date__year=month.year,
         date__month=month.month,
@@ -2045,7 +1615,6 @@ def dailyreport_overview(request):
 
     drivers = get_active_drivers(month, keyword)
 
-    # —— 视图层兜底关键字过滤（name/kana/driver_code）
     if keyword:
         drivers = drivers.filter(
             Q(name__icontains=keyword) |
@@ -2055,7 +1624,6 @@ def dailyreport_overview(request):
 
     reports = reports_all.filter(driver__in=drivers)
 
-    # 5. 取本月所有明细并归一化字段
     items_all = DriverDailyReportItem.objects.filter(report__in=reports_all)
     items_norm = items_all.annotate(
         pm=Lower(Trim('payment_method')),
@@ -2065,18 +1633,13 @@ def dailyreport_overview(request):
     totals = defaultdict(Decimal)
     counts = defaultdict(int)
 
-    # 6. メーター(水揚) —— 仅统计非貸切的 meter_fee
     meter_sum_non_charter = items_norm.filter(is_charter=False)\
         .aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
     totals['total_meter'] = meter_sum_non_charter
-    totals['meter_only_total'] = meter_sum_non_charter  # 给模板的“メータのみ”
+    totals['meter_only_total'] = meter_sum_non_charter
 
-    # 7. 各支付方式口径
-    #    规则：
-    #    - 普通部分：meter_fee 且 is_charter=False
-    #    - 貸切部分：charter_amount_jpy 且 is_charter=True（仅在需要将貸切计入该方式时）
     ALIASES = {
-        'cash':      {'normal': ['cash'],                 'charter': ['jpy_cash']},  # 注意：这里不会叠加 charter 到 cash
+        'cash':      {'normal': ['cash'],                 'charter': ['jpy_cash']},
         'credit':    {'normal': ['credit', 'credit_card'],'charter': ['credit','credit_card']},
         'uber':      {'normal': ['uber'],                 'charter': ['uber']},
         'didi':      {'normal': ['didi'],                 'charter': ['didi']},
@@ -2085,16 +1648,13 @@ def dailyreport_overview(request):
         'kyotoshi':  {'normal': ['kyotoshi'],             'charter': ['kyotoshi']},
         'qr':        {'normal': ['qr', 'scanpay'],        'charter': ['qr', 'scanpay']},
     }
-    # 现金卡片不叠加貸切
     EXCLUDE_CHARTER_IN_METHODS = {'cash'}
 
     for key, alias in ALIASES.items():
-        # 普通：排除貸切
         normal_qs = items_norm.filter(is_charter=False, pm__in=alias['normal'])
         normal_amt = normal_qs.aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
         normal_cnt = normal_qs.count()
 
-        # 貸切：需要时才叠加（除 cash 外）
         charter_amt = Decimal('0')
         charter_cnt = 0
         if key not in EXCLUDE_CHARTER_IN_METHODS:
@@ -2105,8 +1665,6 @@ def dailyreport_overview(request):
         totals[f'total_{key}'] = normal_amt + charter_amt
         counts[key] = normal_cnt + charter_cnt
 
-    # 8. 貸切現金 / 貸切未収（独立卡片）
-    #    ✅ 修正拼写：'jpy_cash'（之前写成了 'jp_cash' 导致 0）
     totals['charter_cash_total'] = items_norm.filter(
         is_charter=True, cpm__in=['jpy_cash']
     ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
@@ -2115,14 +1673,12 @@ def dailyreport_overview(request):
         is_charter=True, cpm__in=['to_company', 'invoice', 'uncollected', '未収', '請求']
     ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
 
-    # ✅ 水揚合計(= 売上合計) を “total_meter” に反映
     totals['total_meter'] = (
         (totals.get('meter_only_total') or Decimal('0')) +
         (totals.get('charter_cash_total') or Decimal('0')) +
         (totals.get('charter_uncollected_total') or Decimal('0'))
     )
 
-    # 9. 分成费率（ETC 不参与）
     rates = {
         'meter':     Decimal('0.9091'),
         'cash':      Decimal('0'),
@@ -2139,23 +1695,15 @@ def dailyreport_overview(request):
         amt = totals.get(f"total_{key}") or Decimal('0')
         return (amt * rates[key]).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
-    totals_all = {
-        k: {"total": totals.get(f"total_{k}", Decimal("0")), "bonus": split(k)}
-        for k in rates
-    }
+    totals_all = {k: {"total": totals.get(f"total_{k}", Decimal("0")), "bonus": split(k)} for k in rates}
     totals_all["meter_only_total"] = totals.get("meter_only_total", Decimal("0"))
 
-    # 10. 税前合计（基于非貸切 meter）
     gross = totals.get('total_meter') or Decimal('0')
     totals['meter_pre_tax'] = (gross / Decimal('1.1')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
-    # 11. ETC 不足合计（来自日报主表）
     etc_shortage_total = reports.aggregate(total=Sum('etc_shortage'))['total'] or 0
 
-    # 12. 每位司机当月「売上合計」
-    #     口径：メータのみ(非貸切) + 貸切現金 + 貸切未収
     items = DriverDailyReportItem.objects.filter(report__in=reports)
-
     per_driver = items.values('report__driver').annotate(
         meter_only=Sum('meter_fee', filter=Q(is_charter=False)),
         charter_cash=Sum(
@@ -2168,28 +1716,19 @@ def dailyreport_overview(request):
         ),
     )
 
-    # 売上合計 = メータのみ + 貸切現金 + 貸切未収
     fee_map = {
-        r['report__driver']: (r['meter_only'] or 0)
-                            + (r['charter_cash'] or 0)
-                            + (r['charter_uncol'] or 0)
+        r['report__driver']: (r['meter_only'] or 0) + (r['charter_cash'] or 0) + (r['charter_uncol'] or 0)
         for r in per_driver
     }
 
-    # —— 读取排序参数（默认金额降序）
     sort = request.GET.get("sort", "amount_desc")
 
-    # 供排序用：社員番号 -> (是否非数字, 数字或字符串)
     def code_key(d):
         code = (getattr(d, "driver_code", "") or "").strip()
         if code.isdigit():
             return (0, int(code))
-        return (1, code)  # 非数字的排在数字后面
+        return (1, code)
 
-    # —— 计算“売上合計”（你上面已经算了 fee_map）
-    # fee_map: driver_id -> 金额(Decimal)
-
-    # —— 排序驱动顺序
     if sort == "code_asc":
         ordered_drivers = sorted(drivers, key=code_key)
     elif sort == "code_desc":
@@ -2199,14 +1738,13 @@ def dailyreport_overview(request):
             drivers,
             key=lambda d: (fee_map.get(d.id, Decimal("0")), code_key(d))
         )
-    else:  # "amount_desc" 默认
+    else:
         ordered_drivers = sorted(
             drivers,
             key=lambda d: (fee_map.get(d.id, Decimal("0")), code_key(d)),
             reverse=True
         )
 
-    # —— 生成列表数据：按 ordered_drivers 的顺序
     driver_data = []
     for d in ordered_drivers:
         total = fee_map.get(d.id, Decimal("0"))
@@ -2220,7 +1758,6 @@ def dailyreport_overview(request):
             'month_str': month_str,
         })
 
-    # 13. 分页
     page_obj = Paginator(driver_data, 10).get_page(request.GET.get('page'))
 
     summary_keys = [
@@ -2241,11 +1778,9 @@ def dailyreport_overview(request):
         'etc_shortage_total': etc_shortage_total,
         'drivers': drivers,
         'page_obj': page_obj,
-
         'counts': counts,
-        'current_sort': sort,   # ✅ 让模板里的隐藏字段/切换按钮/分页保留排序
-        'keyword': keyword,     # ✅ 搜索框回填与链接需要
-
+        'current_sort': sort,
+        'keyword': keyword,
         'month_str': month_str,
         'current_year': export_year,
         'current_month': export_month,
@@ -2253,7 +1788,5 @@ def dailyreport_overview(request):
         'month_label': month_label,
         'prev_month': prev_month,
         'next_month': next_month,
-        'counts': counts,
-        
-        'sort': sort,                      # ✅ 新增
+        'sort': sort,
     })
