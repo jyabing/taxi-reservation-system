@@ -12,7 +12,6 @@
 {% block extra_css %}
 
 
-{% endblock %}
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -72,8 +71,14 @@ input[type=number] {
     color:#666 !important;
     pointer-events:none; /* 阻止点击但值仍会提交 */
   }
+  /* === 强制显示数据区行；仅隐藏模板区 === */
+  table.report-table tbody:not(#empty-form-template) tr {
+    display: table-row !important; visibility: visible !important; opacity: 1 !important;
+  }
+  #empty-form-template tr { display: none !important; visibility: hidden !important; }
 </style>
 
+{% endblock %}
 {% block content %}
 <div class="container mt-4">
   {% if messages %}
@@ -152,7 +157,7 @@ input[type=number] {
           <th style="white-space: nowrap;">走行距離 (KM)</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="data-rows">
         <tr>
           <td>
             <span class="form-control-plaintext">
@@ -289,10 +294,6 @@ input[type=number] {
           {{ form.deposit_difference.value|default:"--" }}
         </div>
 
-        <!-- 放这里！ -->
-        <div id="etc-included-warning" class="alert alert-info small py-1 px-2 mt-1">
-          ETC 收款状态判断中…
-        </div>
       </div>
       <!-- ✅ 新增区域结束 -->
 
@@ -345,7 +346,7 @@ input[type=number] {
           </div>
           <!-- 空車ETC 使用卡 -->
           <div class="col-6">
-            <label for="id_etc_payment_method" class="form-label small">空車ETC カード</label>
+            <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
             <select id="id_etc_empty_card" name="etc_empty_card" class="form-select form-select-sm">
               <option value="company">会社カード</option>
               <option value="own">自己カード</option>
@@ -509,7 +510,7 @@ input[type=number] {
               
             <!-- ▼ 勾选“待入”时显示的小提示（默认隐藏） -->
             <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
-              些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+              這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
             </div>
             <!-- ▲ 小提示结束 -->
             
@@ -594,158 +595,26 @@ input[type=number] {
 {% endblock %}
 
 {% block extra_js %}
-  <!-- ✅ 引入 flatpickr -->
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
-
-  <!-- ✅ 引入自定义脚本之前先注入费率 -->
+  <!-- 费率注入：给 dailyreport.js 计算分成用 -->
   <script>
     window.PAYMENT_RATES = {{ payment_rates|safe }};
   </script>
-  <script src="{% static 'dailyreport/js/dailyreport.js' %}"></script>
 
-  <!-- ✅ 保留高亮样式（无需多份 JS） -->
+  <!-- 只保留这一处外链脚本。加个版本号防缓存 -->
+{% now 'U' as cache_bust %}
+  <script src="{% static 'dailyreport/js/dailyreport.js' %}?v={{ cache_bust }}"></script>
+
+  <!-- 可留的高亮样式（CSS 不会冲突） -->
   <style>
     table.table tr.has-note td,
     table.table tr.has-note {
       background-color: #fff8b3 !important;
     }
+  /* === 强制显示数据区行；仅隐藏模板区 === */
+  table.report-table tbody:not(#empty-form-template) tr {
+    display: table-row !important; visibility: visible !important; opacity: 1 !important;
+  }
+  #empty-form-template tr { display: none !important; visibility: hidden !important; }
   </style>
-<script>
-(function () {
-  function lockStyle(el, on) {
-    if (!el) return;
-    if (on) {
-      // 先记住原值
-      if (!el.dataset.keep) {
-        el.dataset.keep = el.value || '';
-      }
-      el.readOnly = true;
-      el.style.backgroundColor = '#eee';
-      el.style.color = '#666';
-      el.style.cursor = 'not-allowed';
-      el.style.pointerEvents = 'none';
-      el.value = el.dataset.keep; // 回填保存的值
-    } else {
-      el.readOnly = false;
-      el.style.backgroundColor = '';
-      el.style.color = '';
-      el.style.cursor = '';
-      el.style.pointerEvents = '';
-    }
-  }
-
-  function applyForRow(chk) {
-    const row = chk.closest('tr');
-    if (!row) return;
-    const fee   = row.querySelector('input[name$="-meter_fee"]');                 
-    const chAmt = row.querySelector('input[name$="-charter_amount_jpy"]');        
-    const chPM  = row.querySelector('select[name$="-charter_payment_method"]');   
-    const pay   = row.querySelector('select[name$="-payment_method"]');           
-
-    if (!fee) return;
-    fee.removeAttribute('disabled');
-
-    if (chk.checked) {
-      // 保留現有料金
-      if (!fee.dataset.keep) {
-        fee.dataset.keep = fee.value || '';
-      }
-      lockStyle(fee, true);
-      if (chAmt) chAmt.value = fee.dataset.keep || '';
-      if (chPM && pay) {
-        const txt = pay.options[pay.selectedIndex]?.text || '';
-        const isCash = /cash/i.test(pay.value||'') || /現金/.test(txt);
-        chPM.value = isCash ? 'jpy_cash' : 'to_company';
-        chPM.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    } else {
-      lockStyle(fee, false);
-      delete fee.dataset.keep; // 解除記錄
-      if (chAmt) chAmt.value = '';
-      if (chPM && !chPM.value) {
-        chPM.value  = 'to_company'; // 给个安全默认值，避免必填报错
-        chPM.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }
-    if (window.updateTotals) window.updateTotals();
-  }
-
-  document.querySelectorAll('input[type="checkbox"][name$="-is_charter"]').forEach(chk => {
-    chk.addEventListener('change', () => applyForRow(chk));
-    if (chk.checked) applyForRow(chk);
-  });
-
-})();
-</script>
-
-<script>
-document.addEventListener('click', function (e) {
-  // 删除已保存的行（有 pk）
-  if (e.target.closest('.delete-row')) {
-    const row = e.target.closest('tr');
-    const del = row.querySelector('input[name$="-DELETE"]');
-    if (del) {
-      del.checked = true;      // 勾选 DELETE
-      del.value = "on";        // 确保提交时有值
-    }
-    row.style.display = 'none'; // 隐藏这一行
-    if (window.updateTotals) window.updateTotals();
-  }
-
-  // 移除新建的行（还没保存过）
-  if (e.target.closest('.remove-row')) {
-    const row = e.target.closest('tr');
-    row.parentNode.removeChild(row);
-
-    const totalInput = document.querySelector('input[name$="-TOTAL_FORMS"]');
-    if (totalInput) {
-      totalInput.value = String(Math.max(0, parseInt(totalInput.value || '0', 10) - 1));
-    }
-    if (window.updateTotals) window.updateTotals();
-  }
-});
-</script>
-<script>
-(function() {
-  const input = document.getElementById('break-time-input');
-  const display = document.getElementById('break-time-display');
-  const hidden = document.getElementById('break-time-plus20');
-
-  function parseHM(s) {
-    if (!s) return 0;
-    s = s.trim();
-    if (!s) return 0;
-    const parts = s.split(':');
-    let h = 0, m = 0;
-    if (parts.length >= 2) {
-      h = parseInt(parts[0], 10) || 0;
-      m = parseInt(parts[1], 10) || 0;
-    } else {
-      // 允许只填分钟（比如 "15"）
-      m = parseInt(parts[0], 10) || 0;
-    }
-    return Math.max(0, h * 60 + m);
-  }
-
-  function formatHM(mins) {
-    mins = Math.max(0, parseInt(mins, 10) || 0);
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${h}:${String(m).padStart(2,'0')}`;
-  }
-
-  function update() {
-    const base = parseHM(input.value);
-    const plus20 = base + 20;
-    display.textContent = formatHM(plus20);
-    if (hidden) hidden.value = plus20; // 以“总分钟数”提交（可选）
-  }
-
-  // 初始与监听
-  update();
-  input.addEventListener('input', update);
-})();
-</script>
 
 {% endblock %}

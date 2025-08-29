@@ -1572,7 +1572,13 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             # === 保存主表 + 明细 ===
             inst.save()
             formset.instance = inst
-            formset.save()
+            items = formset.save(commit=False)
+            for item in items:
+                # [PATCH 开始] —— 防止 is_pending=None
+                if getattr(item, "is_pending", None) is None:
+                    item.is_pending = False
+                # [PATCH 结束]
+                item.save()
 
             # === has_issue 更新 ===
             try:
