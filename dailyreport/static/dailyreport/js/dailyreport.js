@@ -95,9 +95,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const amountInput = row.querySelector("input[name$='-meter_fee']");
     const methodSelect = row.querySelector("select[name$='-payment_method']");
     const pendingCb    = row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"); // ← 新增
+    const pendingHint = row.querySelector(".pending-mini-hint");  // ← 新增：行内提示块引用
     if (amountInput)  amountInput.addEventListener("input",  updateTotals);
     if (methodSelect) methodSelect.addEventListener("change", updateTotals);
-    if (pendingCb)    pendingCb.addEventListener("change",   updateTotals); // ← 新增：切换“待入”即重算
+    if (pendingCb) {
+      pendingCb.addEventListener("change", updateTotals);
+      pendingCb.addEventListener("change", updateSmartHintPanel); 
+
+      // ← 新增：切换行内小提示显示/隐藏
+      pendingCb.addEventListener("change", () => {
+        if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
+      });
+
+      // ← 新增：页面加载/克隆新行后，按当前勾选状态回显小提示
+      if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
+    }
+
+    const charterAmountInput = row.querySelector(".charter-amount-input");
+    const charterCheckbox    = row.querySelector("input[name$='-is_charter']");
+
+    if (amountInput)        amountInput.addEventListener("input",  updateSmartHintPanel);
+    if (charterAmountInput) charterAmountInput.addEventListener("input", updateSmartHintPanel);
+    if (charterCheckbox)    charterCheckbox.addEventListener("change", updateSmartHintPanel);
 
   }
 
@@ -540,6 +559,36 @@ function insertRowAt(n) {
 
     let html = "";
 
+    // —— 新增：统计「待入」笔数与金额，并提示 —— 
+  const pendingRows = Array.from(document.querySelectorAll(
+    ".report-item-row input[name$='-is_pending']:checked, .report-item-row .pending-checkbox:checked"
+  )).map(cb => cb.closest("tr.report-item-row")).filter(Boolean);
+
+  const pendingCount = pendingRows.length;
+
+  // 计算待入金额：非貸切→取 料金；貸切→取 貸切金額
+  const toInt = v => {
+    const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  let pendingSum = 0;
+  pendingRows.forEach(row => {
+    const isCharter = !!row.querySelector("input[name$='-is_charter']")?.checked;
+    if (isCharter) {
+      pendingSum += toInt(row.querySelector(".charter-amount-input")?.value || 0);
+    } else {
+      pendingSum += toInt(row.querySelector(".meter-fee-input")?.value || 0);
+    }
+  });
+
+  if (pendingCount > 0) {
+    html += `
+      <div class="alert alert-info py-1 px-2 small mb-2">
+        ℹ️ 現在有 <strong>${pendingCount}</strong> 筆「待入」，合計 <strong>${pendingSum.toLocaleString()}円</strong>。
+        這些明細暫不計入売上合計；入帳後取消勾選即可立即納入核算。
+      </div>`;
+  }
+
     if (deposit < totalCollected) {
       html += `
         <div class="alert alert-danger py-1 px-2 small mb-2">
@@ -879,7 +928,40 @@ document.addEventListener("change", function (e) {
   }
 
   window.updateTotals?.();
+});// ←←← 这里结束第一个监听器
+
+// ✅ 兜底：与「待入提示」相关的控件变化，刷新智能提示面板（独立的监听器，不能嵌套）
+document.addEventListener("change", (e) => {
+  const t = e.target;
+
+  // 勾/取消「待入」时，切换本行的小提示
+  if (t.matches("input[name$='-is_pending'], .pending-checkbox")) {
+    const row  = (typeof getRow === "function" ? getRow(t) : t.closest("tr.report-item-row"));
+    const hint = row?.querySelector(".pending-mini-hint");
+    if (hint) hint.classList.toggle("d-none", !t.checked);
+  }
+
+  if (
+    t.matches("input[name$='-is_pending'], .pending-checkbox") || // 勾/取消「待入」
+    t.matches("input[name$='-is_charter']") ||                   // 切换「貸切」
+    t.matches(".charter-amount-input") ||                        // 改「貸切金額」
+    t.matches(".meter-fee-input")                                // 改「料金」
+  ) {
+    if (typeof updateSmartHintPanel === "function") updateSmartHintPanel();
+  }
 });
+
+// ✅ 进场回显：按当前「待入」勾选状态显示/隐藏小提示
+(function initPendingMiniHints() {
+  document.querySelectorAll("tr.report-item-row").forEach((row) => {
+    const cb   = row.querySelector("input[name$='-is_pending'], .pending-checkbox");
+    const hint = row.querySelector(".pending-mini-hint");
+    if (cb && hint) {
+      hint.classList.toggle("d-none", !cb.checked);
+    }
+  });
+})();
+
 
 // === 提交前兜底：所有金额空串 → '0'（杜绝 "" 进入后端） ===
 (function () {

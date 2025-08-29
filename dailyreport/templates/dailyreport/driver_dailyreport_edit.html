@@ -506,6 +506,13 @@ input[type=number] {
                 <div class="text-danger small">{{ form.note.errors.0 }}</div>
               {% endif %}
               {{ form.note }}
+              
+            <!-- ▼ 勾选“待入”时显示的小提示（默认隐藏） -->
+            <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
+              些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+            </div>
+            <!-- ▲ 小提示结束 -->
+            
             </td>
 
             <!-- ✅ 删除按钮区域 -->
@@ -552,7 +559,13 @@ input[type=number] {
           <!-- 再支払；注意用 form-select -->
           <td>{{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}</td>
 
-          <td>{{ formset.empty_form.note|add_class:"form-control" }}</td>
+          <td>{{ formset.empty_form.note|add_class:"form-control" }}
+
+              <!-- ▼ 与上面一致 -->
+              <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
+                些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+              </div>
+          </td>
 
           
           <td style="white-space:nowrap;">
