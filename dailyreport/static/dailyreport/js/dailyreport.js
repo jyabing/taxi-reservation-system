@@ -94,8 +94,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 合计更新
     const amountInput = row.querySelector("input[name$='-meter_fee']");
     const methodSelect = row.querySelector("select[name$='-payment_method']");
-    if (amountInput) amountInput.addEventListener("input", updateTotals);
+    const pendingCb    = row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"); // ← 新增
+    if (amountInput)  amountInput.addEventListener("input",  updateTotals);
     if (methodSelect) methodSelect.addEventListener("change", updateTotals);
+    if (pendingCb)    pendingCb.addEventListener("change",   updateTotals); // ← 新增：切换“待入”即重算
+
   }
 
   // 帮助函数：用空模板克隆新行（prefix=当前TOTAL_FORMS）
@@ -422,6 +425,11 @@ function insertRowAt(n) {
 
     // 遍历明细行
     document.querySelectorAll(".report-item-row").forEach(row => {
+      // —— 新增：勾选“待入”的行一律不计入任何合计 ——
+      const isPending =
+        (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
+      if (isPending) return;
+      // —— 新增结束 ——
       const fee = parseInt(row.querySelector(".meter-fee-input")?.value || "0", 10);
       const payment = row.querySelector("select[name$='payment_method']")?.value || "";
       const isCharter = row.querySelector("input[name$='is_charter']")?.checked;

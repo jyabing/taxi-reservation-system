@@ -47,6 +47,11 @@ class DriverDailyReportItemForm(forms.ModelForm):
         fields = "__all__"
         # 你项目里已存在的字段（如 is_charter / charter_amount_jpy / charter_payment_method 等）
         # 将自动包含在内；需要自定义展示再在此添加 widgets/labels
+        widgets = {
+            "is_pending": forms.CheckboxInput(attrs={"class": "pending-checkbox"}),
+            "is_charter": forms.CheckboxInput(attrs={"class": "charter-checkbox"}),
+            "is_flagged": forms.CheckboxInput(attrs={"class": "mark-checkbox"}),
+        }
 
     def clean(self):
         cleaned = super().clean()

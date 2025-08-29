@@ -216,6 +216,9 @@ class DriverDailyReportItem(models.Model):
     #charter_amount_jpy = models.DecimalField(max_digits=8, decimal_places=0, default=0)
     #charter_payment_method = models.CharField(max_length=20, blank=True, default="")
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
+     # --- 新增开始：待入（未到账不计入売上；到账后手动取消勾选） ---
+    is_pending = models.BooleanField(default=False, verbose_name="待入")
+    # --- 新增结束 ---
 
      # === ↓↓↓ 包车收款明细字段：用于计算貸切現金/未収合计 ↓↓↓ ===
 

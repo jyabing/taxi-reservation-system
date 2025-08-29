@@ -420,12 +420,15 @@ input[type=number] {
           <th style="white-space: nowrap;">時間</th>
           <th style="white-space: nowrap;">乗車地</th>
           <th style="white-space: nowrap;">料金</th>
+          
           <th style="white-space: nowrap;">支付</th>
+          <th style="white-space: nowrap;">待入</th>
+
           <th style="white-space: nowrap;">強調</th>
           <th style="white-space: nowrap;">貸切</th>
           
           <th style="white-space: nowrap;">貸切金額</th>
-          <th style="white-space: nowrap;">処理</th>
+          <th style="white-space: nowrap;">貸切支払</th>
           <th>注釈</th>
           <th style="white-space: nowrap;">操作</th>
         </tr>
@@ -466,6 +469,15 @@ input[type=number] {
               {% endif %}
               {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
             </td>
+
+            <!-- ▼ 新增：待入列（is_pending），位于 支付 与 強調 之间 -->
+            <td class="text-center">
+              {% if form.is_pending.errors %}
+                <div class="text-danger small">{{ form.is_pending.errors.0 }}</div>
+              {% endif %}
+              {{ form.is_pending }}  <!-- forms.py 已加 pending-checkbox class 的 widget -->
+            </td>
+            <!-- ▲ 新增结束 -->
 
             <td class="text-center">
               {% if form.is_flagged.errors %}
@@ -523,13 +535,26 @@ input[type=number] {
           <td>{{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}</td>
           <td>{{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}</td>
           <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}</td>
+          
+          <!-- ▼ 新增：待入（is_pending）列，位置：支付之后、強調之前 -->
+          <td class="text-center">
+            {{ formset.empty_form.is_pending|add_class:"pending-checkbox" }}
+          </td>
+          <!-- ▲ 新增结束 -->
+          
           <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
 
           <td class="text-center">{{ formset.empty_form.is_charter }}</td>
+
+          <!-- 先金额 -->
           <td>{{ formset.empty_form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}</td>
+          
+          <!-- 再支払；注意用 form-select -->
           <td>{{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}</td>
 
           <td>{{ formset.empty_form.note|add_class:"form-control" }}</td>
+
+          
           <td style="white-space:nowrap;">
             <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
             <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
