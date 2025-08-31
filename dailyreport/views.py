@@ -183,6 +183,91 @@ def to_aware_dt(base_date, value, *, base_clock_in=None, tz=None):
         dt = timezone.make_aware(dt, tz)
     return dt
 
+# === [SYNC UTILS START] 日报 <-> 预约 同步工具（在本文件内，不新建模块） ===
+def _reservation_plan_window(reservation):
+    """
+    将 Reservation 的 (date, start_time) / (end_date, end_time)
+    组合成本地时区 datetime 的计划窗口。
+    """
+    s = to_aware_dt(reservation.date, reservation.start_time)
+    e = to_aware_dt(reservation.end_date, reservation.end_time, base_clock_in=reservation.start_time)
+    return s, e
+
+
+def _find_best_reservation_for_report(report, in_dt, out_dt):
+    """
+    在同一司机（report.driver.user）、同一车辆（若选择了车辆）、
+    以 report.date 为中心 前后各 1 天 的范围内，选一条“最匹配”的预约：
+      - 同时有 in/out：选“重叠时长最大”的预约
+      - 只有一个时间点：选“距离最近”的预约
+    """
+    driver_user = getattr(getattr(report, "driver", None), "user", None)
+    if not driver_user:
+        return None
+
+    qs = Reservation.objects.filter(
+        driver=driver_user,
+        date__lte=report.date + timedelta(days=1),
+        end_date__gte=report.date - timedelta(days=1),
+    )
+    if getattr(report, "vehicle_id", None):
+        qs = qs.filter(vehicle_id=report.vehicle_id)
+
+    if not qs.exists():
+        return None
+
+    def overlap_or_gap(r):
+        s, e = _reservation_plan_window(r)
+        if in_dt and out_dt:
+            a, b = max(s, in_dt), min(e, out_dt)
+            overlap = max(timedelta(0), b - a)
+            # 负数表示“更差”，用于排序（重叠越大越好）
+            return (0, -overlap.total_seconds())
+        else:
+            t = in_dt or out_dt
+            if s <= t <= e:
+                gap = 0
+            else:
+                gap = min(abs(t - s), abs(t - e)).total_seconds()
+            return (1, gap)
+
+    # 按 (模式, 指标) 排序：模式 0(有重叠) 优于 1(只看距离)；指标越小越好
+    best = sorted(qs, key=overlap_or_gap)[0]
+    return best
+
+
+def _sync_reservation_actual_for_report(report, old_clock_in, old_clock_out):
+    """
+    只在“从空到有”的场景下，同步 Reservation.actual_departure / actual_return。
+    若预约里已有实际时间，则不覆盖。
+    """
+    # 判断是否“从空到有”
+    filled_in_from_empty  = (not old_clock_in)  and bool(getattr(report, "clock_in",  None))
+    filled_out_from_empty = (not old_clock_out) and bool(getattr(report, "clock_out", None))
+    if not (filled_in_from_empty or filled_out_from_empty):
+        return
+
+    # 计算当天的 aware datetime（退勤相对出勤自动跨天）
+    in_dt  = to_aware_dt(report.date, report.clock_in)  if getattr(report, "clock_in",  None) else None
+    out_dt = to_aware_dt(report.date, report.clock_out, base_clock_in=in_dt) if getattr(report, "clock_out", None) else None
+
+    reservation = _find_best_reservation_for_report(report, in_dt, out_dt)
+    if not reservation:
+        return
+
+    updated_fields = []
+    if filled_in_from_empty and in_dt and getattr(reservation, "actual_departure", None) in (None, ""):
+        reservation.actual_departure = in_dt
+        updated_fields.append("actual_departure")
+
+    if filled_out_from_empty and out_dt and getattr(reservation, "actual_return", None) in (None, ""):
+        reservation.actual_return = out_dt
+        updated_fields.append("actual_return")
+
+    if updated_fields:
+        reservation.save(update_fields=updated_fields)
+# === [SYNC UTILS END] ===
+
 def check_module_permission(user, perm_key: str) -> bool:
     try:
         if not getattr(user, "is_authenticated", False):
@@ -301,6 +386,10 @@ def dailyreport_edit(request, pk):
         formset = ReportItemFormSet(request.POST, instance=report)
 
         if form.is_valid() and formset.is_valid():
+            # === 记录保存前的旧值（用于判断“从空到有”） ===
+            _old_in  = getattr(report, "clock_in",  None)
+            _old_out = getattr(report, "clock_out", None)
+
             inst = form.save(commit=False)
             cd = form.cleaned_data
 
@@ -366,6 +455,13 @@ def dailyreport_edit(request, pk):
             inst.save()
             formset.instance = inst
             formset.save()
+
+            # >>> [SYNC-RESERVATION CALL] 仅当从空到有时，同步预约实际出/入库
+            try:
+                _sync_reservation_actual_for_report(inst, _old_in, _old_out)
+            except Exception as _e:
+                logger.warning("sync reservation (dailyreport_edit) failed: %s", _e)
+            # <<< [SYNC-RESERVATION CALL]
 
             try:
                 inst.has_issue = inst.items.filter(has_issue=True).exists()
@@ -1251,6 +1347,10 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         formset = ReportItemFormSet(post, instance=report)
 
         if form.is_valid() and formset.is_valid():
+            # === 记录保存前的旧值 ===
+            _old_in  = getattr(report, "clock_in",  None)
+            _old_out = getattr(report, "clock_out", None)
+
             inst = form.save(commit=False)
 
             if not inst.vehicle_id and report.vehicle_id:
@@ -1309,6 +1409,13 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                 if getattr(item, "is_pending", None) is None:
                     item.is_pending = False
                 item.save()
+
+            # >>> [SYNC-RESERVATION CALL] 仅当从空到有时，同步预约实际出/入库
+            try:
+                _sync_reservation_actual_for_report(inst, _old_in, _old_out)
+            except Exception as _e:
+                logger.warning("sync reservation (dailyreport_edit_for_driver) failed: %s", _e)
+            # <<< [SYNC-RESERVATION CALL]
 
             try:
                 inst.has_issue = inst.items.filter(has_issue=True).exists()

@@ -1,5 +1,10 @@
 .gantt-wrapper {
+
   position: relative;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
 }
 
 #gantt-grid-overlay {
@@ -12,16 +17,39 @@
 
 .gantt-table {
   width: 100%;
+
   border-collapse: collapse;
+  border-spacing: 0;
+  table-layout: fixed;
   font-size: 12px;
+  font-family: "Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 }
 
 .gantt-table th,
 .gantt-table td {
-  border: 1px solid #ddd;
+  border: 1px solid #eef1f4;
   height: 24px;
   padding: 0;
   text-align: center;
+  vertical-align: middle;
+}
+
+.gantt-table thead th {
+  background: #f7f7fa;
+  color: #334155;
+  font-weight: 600;
+}
+
+/* 首列粘性（周/月共用）；若模板里给了 .sticky-col 会更精准 */
+.gantt-table .sticky-col,
+.gantt-table th:first-child,
+.gantt-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  min-width: 160px;
+  white-space: nowrap;
 }
 
 .gantt-empty {
@@ -31,6 +59,16 @@
 .gantt-seg {
   background: #007bff;
   position: relative;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.06);
+  color: #fff;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04) inset;
+}
+
+.gantt-seg[title]:hover {
+  filter: brightness(1.03);
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.12);
 }
 
 .gantt-pending {
@@ -40,8 +78,24 @@
   background-color: #007bff;
 }
 .gantt-out {
-  background-color: #fd7e14;
+
+  background-color: #0ea5e9; /* 更清爽的天蓝 */
 }
 .gantt-canceled {
   background-color: #6c757d;
+}
+
+/* 小屏时：表头字号稍小，避免太挤 */
+@media (max-width: 1200px){
+  .gantt-table thead th { font-size: 11px; }
+}
+
+/* Legend (状态说明) 小方块 */
+.legend-box {
+  display: inline-block;
+  width: 16px;
+  height: 12px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: middle;
 }

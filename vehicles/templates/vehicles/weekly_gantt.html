@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load static %}
+{% load dict_helpers %}
+{% block content %}
+
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center mb-3">
+    <div class="me-3 d-flex align-items-baseline gap-2">
+      <span class="fs-5">🚗</span>
+      <h6 class="mb-0 fw-semibold">一周预约甘特图</h6>
+      <span class="text-muted small">（{{ week_start }} 〜 {{ week_end }}）</span>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="?start={{ prev_week|date:'Y-m-d' }}">前週</a>
+      <a class="btn btn-primary btn-sm" href="?start={{ this_week|date:'Y-m-d' }}">本週</a>
+      <a class="btn btn-outline-secondary btn-sm" href="?start={{ next_week|date:'Y-m-d' }}">次週</a>
+    </div>
+  </div>
+
+  <!-- 凡例（状态说明） -->
+  <!-- Legend 样式（内联，确保立即生效；之后可移入 CSS 文件） -->
+    <style>
+    .legend-box{display:inline-block;width:16px;height:12px;margin-right:4px;border-radius:3px;vertical-align:middle;}
+    </style>
+
+   <div class="mb-2 small d-flex gap-3 align-items-center"> 
+    <span><span class="legend-box gantt-reserved"></span> 確定済み</span>
+    <span><span class="legend-box gantt-pending"></span> 承認待ち</span>
+    <span><span class="legend-box gantt-out"></span> 出库中</span>
+    <span><span class="legend-box gantt-canceled"></span> キャンセル</span>
+  </div>
+
+  <div class="gantt-wrapper">
+    <!-- 叠加网格的画布（沿用 static/js/gantt.js 的逻辑） -->
+    <canvas id="gantt-grid-overlay"></canvas>
+
+    <table class="gantt-table jp-compact">
+      <thead>
+        <tr>
+          <th class="sticky-col">车辆</th>
+          {# 周一到周日，各占 24 列：这里只做标题行，真正 24 列在 tbody 由空白/段拼满 #}
+          {% for d in week_dates %}
+            <th colspan="24" class="text-center">{{ d|date:"Y-m-d" }}（{{ d|ja_weekday }}）</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in vehicle_rows %}
+        <tr>
+          <td class="sticky-col">
+            {{ row.vehicle_label }}
+          </td>
+
+          {# 逐段渲染：每段之前渲染 gap（空白），再渲染段；最后渲染尾部空白 #}
+          {% for seg in row.segs %}
+            {% if seg.gap > 0 %}
+              <td colspan="{{ seg.gap }}" class="gantt-empty"></td>
+            {% endif %}
+            <td colspan="{{ seg.length }}"
+                class="gantt-seg gantt-{{ seg.status }}"
+                title="{{ seg.title }}"></td>
+          {% endfor %}
+
+          {% if row.tail_gap > 0 %}
+            <td colspan="{{ row.tail_gap }}" class="gantt-empty"></td>
+          {% endif %}
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="{{ 1|add:HOURS }}" class="text-center text-muted py-4">本周暂无预约</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // 让网格脚本知道总列数（168）
+  const tbl = document.querySelector('.gantt-table');
+  if (tbl) tbl.setAttribute('data-hours', '{{ HOURS }}');
+</script>
+{% endblock %}

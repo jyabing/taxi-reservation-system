@@ -1,6 +1,6 @@
 import calendar, requests, random, os, json
 from calendar import monthrange
-from datetime import datetime, timedelta, time, date
+from datetime import datetime, timedelta, time as dtime, date
 from .models import (
     Reservation,
     ReservationStatus,
@@ -732,6 +732,170 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
         'now': now,
         'is_admin': request.user.is_staff,
     })
+
+from datetime import datetime, timedelta, time as dtime
+from django.utils import timezone
+from django.db.models import Q
+from django.shortcuts import render
+
+def vehicle_weekly_gantt_view(request):
+    """
+    周甘特图（所有车辆一览）
+    URL: /vehicles/weekly/gantt/?start=YYYY-MM-DD
+    模板: vehicles/weekly_gantt.html
+    依赖字段：
+      Reservation: date(Date), end_date(Date|NULL), start_time(Time|NULL), end_time(Time|NULL),
+                   vehicle(FK), driver(FK|NULL), status(可选)
+      Vehicle: 显示名用 display_name/plate/name 任一；兜底用 id
+    """
+    tz = timezone.get_current_timezone()
+    today_local = timezone.localdate()
+
+    # 解析 ?start=YYYY-MM-DD，归一到周一
+    raw = request.GET.get("start")
+    try:
+        base = datetime.strptime(raw, "%Y-%m-%d").date() if raw else today_local
+    except (TypeError, ValueError):
+        base = today_local
+    week_start = base - timedelta(days=base.weekday())     # 周一
+    week_end   = week_start + timedelta(days=7)            # [start, end)
+    week_start_dt = datetime.combine(week_start, dtime(0, 0, 0), tzinfo=tz)
+    week_end_dt   = datetime.combine(week_end,   dtime(0, 0, 0), tzinfo=tz)
+    HOURS = 7 * 24
+    week_dates = [week_start + timedelta(days=i) for i in range(7)]
+
+    # 取覆盖该周的预约：开始 < 周末 且 结束 >= 周初
+    from vehicles.models import Reservation  # 维持你项目里的导入风格
+    qs = (
+        Reservation.objects
+        .select_related("vehicle", "driver")
+        .filter(
+            Q(date__lt=week_end) &
+            (Q(end_date__gte=week_start) | Q(end_date__isnull=True, date__gte=week_start))
+        )
+        .order_by("vehicle__id", "date", "start_time")
+    )
+
+    vehicle_rows = []
+
+    def label_of_vehicle(v):
+        """
+        行头展示优先用车号/车牌号（和 weekly_view.html 一致），
+        其次用内部编号；最后才用名称兜底。
+        """
+        code = (
+            getattr(v, "license_plate", "")   # ✅ 你周视图使用的字段
+            or getattr(v, "car_number", "")
+            or getattr(v, "vehicle_code", "")
+            or ""
+        )
+        name = (
+            getattr(v, "display_name", "")
+            or getattr(v, "name", "")
+            or getattr(v, "model_name", "")
+            or ""
+        )
+        if code and name:
+            return f"{code}（{name}）"
+        return code or name or f"Vehicle #{getattr(v, 'id', 'N/A')}"
+
+    # 内嵌：按单个车辆聚合并推入 vehicle_rows
+    def flush_bucket(vobj, items):
+        segs = []
+        cursor = 0
+        for r in items:
+            # 组合 datetime（允许空的 start/end_time）
+            s_d = r.date
+            e_d = r.end_date or r.date
+            s_t = getattr(r, "start_time", None) or dtime(0, 0, 0)
+            e_t = getattr(r, "end_time",   None) or dtime(23, 59, 59)
+
+            s_dt = datetime.combine(s_d, s_t, tzinfo=tz)
+            e_dt = datetime.combine(e_d, e_t, tzinfo=tz)
+
+            # 与本周窗口取交集
+            start_clamped = max(s_dt, week_start_dt)
+            end_clamped   = min(e_dt, week_end_dt - timedelta(seconds=1))
+            if start_clamped >= end_clamped:
+                continue
+
+            # 转小时索引（向上取整结束）
+            start_hours = int((start_clamped - week_start_dt).total_seconds() // 3600)
+            end_hours   = int(((end_clamped - week_start_dt).total_seconds() + 3599) // 3600)
+            start_hours = max(0, min(HOURS, start_hours))
+            end_hours   = max(0, min(HOURS, end_hours))
+            length = max(1, end_hours - start_hours)
+
+            # 前置空白
+            gap = start_hours - cursor
+            if gap < 0:
+                gap = 0
+            cursor = start_hours + length
+
+            status = getattr(r, "status", None) or "reserved"
+            dname = ""
+            if getattr(r, "driver", None):
+                dname = getattr(r.driver, "username", "") or getattr(r.driver, "name", "") or ""
+            title = (
+                f"{label_of_vehicle(vobj)}  "
+                f"{dname}  "
+                f"{start_clamped.strftime('%m/%d %H:%M')}–{end_clamped.strftime('%m/%d %H:%M')}"
+            ).strip()
+
+            segs.append({
+                "start": start_hours,
+                "length": length,
+                "title": title,
+                "status": status,
+                "gap": gap,
+            })
+
+        segs.sort(key=lambda x: x["start"])
+        if not segs:
+            return
+
+        tail_gap = HOURS - cursor
+        if tail_gap < 0:
+            tail_gap = 0
+
+        vehicle_rows.append({
+            "vehicle_label": label_of_vehicle(vobj),
+            "segs": segs,
+            "tail_gap": tail_gap,
+        })
+
+    # 按 vehicle 分桶
+    current_vid = None
+    bucket = []
+    current_vehicle = None
+    for r in qs:
+        vid = getattr(r.vehicle, "id", None)
+        if current_vid is None:
+            current_vid = vid
+            current_vehicle = r.vehicle
+            bucket = [r]
+        elif vid == current_vid:
+            bucket.append(r)
+        else:
+            flush_bucket(current_vehicle, bucket)
+            current_vid = vid
+            current_vehicle = r.vehicle
+            bucket = [r]
+    if bucket:
+        flush_bucket(current_vehicle, bucket)
+
+    ctx = {
+        "week_start": week_start,
+        "week_end": week_end - timedelta(days=1),   # 显示到周日
+        "prev_week": week_start - timedelta(days=7),
+        "this_week": (today_local - timedelta(days=today_local.weekday())),
+        "next_week": week_start + timedelta(days=7),
+        "HOURS": HOURS,               # 168
+        "week_dates": week_dates,     # 模板表头
+        "vehicle_rows": vehicle_rows, # 行数据
+    }
+    return render(request, "vehicles/weekly_gantt.html", ctx)
+
 
 @login_required
 def daily_selector_view(request):

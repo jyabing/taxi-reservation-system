@@ -24,6 +24,11 @@
   <a href="?date={{ today }}&offset=0" class="fw-bold">本週</a>
   <span class="mx-2">|</span>
   <a href="?date={{ today }}&offset={{ offset|add:"1" }}">次週 →</a>
+
+  <span class="mx-2">|</span>
+  <a class="btn btn-success btn-sm"
+    href="{% url 'vehicles:vehicle_weekly_gantt' %}?start={{ today|date:'Y-m-d' }}">📊 甘特图
+  </a>
 </nav>
 
 <style>

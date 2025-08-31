@@ -32,6 +32,7 @@ urlpatterns = [
     path('confirm_check_io/', views.confirm_check_io, name='confirm_check_io'),
     path('status/photo/', views.vehicle_status_with_photo, name='vehicle_status_with_photo'),
     path('monthly/<int:vehicle_id>/', views.vehicle_monthly_gantt_view, name='vehicle_monthly_gantt'),
+    path('weekly/gantt/', views.vehicle_weekly_gantt_view, name='vehicle_weekly_gantt'),  # ✅ 新增：周甘特图
     path('admin/vehicle/<int:vehicle_id>/images/', views.vehicle_image_list_view, name='vehicle_image_list'),
     path('admin/vehicle/<int:vehicle_id>/delete_image/<int:index>/', views.vehicle_image_delete_view, name='vehicle_image_delete'),
     path('edit_notes/<int:car_id>/', views.edit_vehicle_notes, name='edit_vehicle_notes'),
