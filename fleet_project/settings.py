@@ -53,6 +53,7 @@ ALLOWED_HOSTS = [
 # 应用
 # =========================
 INSTALLED_APPS = [
+    # 系统自带
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -62,7 +63,8 @@ INSTALLED_APPS = [
 
     # 你的 app
     'accounts.apps.AccountsConfig',
-    'vehicles.apps.VehiclesConfig',   # ⚠️ 这里最好也写成 AppConfig
+    'vehicles.apps.VehiclesConfig',
+    'dailyreport.apps.DailyreportConfig',
     'rangefilter',
     'staffbook',
     'carinfo',
@@ -71,10 +73,8 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'widget_tweaks',
 
-    "dailyreport.apps.DailyreportConfig",
-
     # 新增
-    'storages',   # ✅ 用于 Cloudflare R2 存储
+    'storages',   # ✅ Cloudflare R2
 ]
 
 ROOT_URLCONF = 'fleet_project.urls'

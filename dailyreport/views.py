@@ -11,7 +11,8 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
-from django.utils.timezone import now
+from django.utils.timezone import now, make_aware, get_current_timezone
+TZ = get_current_timezone()
 from django.utils import timezone
 from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q, DateField
 from django.db.models.functions import Substr, Cast, Coalesce, NullIf, Lower, Trim
@@ -42,6 +43,59 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
+
+def _norm_hhmm(v: object) -> str:
+    """
+    归一化为 'HH:MM'；不合法返回 ''。
+    支持：
+      - datetime/time 对象
+      - '10:30'、'10：30'（全角冒号）
+      - '1030' 或 '930'
+    """
+    if not v:
+        return ""
+    if isinstance(v, dtime):
+        return v.strftime("%H:%M")
+    if isinstance(v, datetime):
+        return v.strftime("%H:%M")
+
+    s = str(v).strip().replace("：", ":")
+    if not s:
+        return ""
+
+    # 纯数字 3~4 位：930 / 1030
+    if s.isdigit() and len(s) in (3, 4):
+        h = int(s[:-2]); m = int(s[-2:])
+        if 0 <= h < 24 and 0 <= m < 60:
+            return f"{h:02d}:{m:02d}"
+        return ""
+
+    if ":" in s:
+        try:
+            h, m = map(int, s.split(":", 1))
+            if 0 <= h < 24 and 0 <= m < 60:
+                return f"{h:02d}:{m:02d}"
+        except Exception:
+            return ""
+    return ""
+
+def _as_aware_dt(val, base_date):
+    """把 datetime / time / 'HH:MM' 统一成当天的 aware datetime。"""
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val if val.tzinfo else make_aware(val, TZ)
+    if isinstance(val, dtime):
+        return make_aware(datetime.combine(base_date, val), TZ)
+    s = str(val).strip()
+    if ":" in s:
+        try:
+            h, m = map(int, s.split(":", 1))
+            return make_aware(datetime.combine(base_date, dtime(h, m)), TZ)
+        except Exception:
+            return None
+    return None
+# =================================================
 
 # ========= 软预填（不落库，仅用于渲染初值） =========
 def _safe_as_time(val):
@@ -1416,19 +1470,8 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             if k.endswith('-payment_method'):
                 post[k] = PM_ALIASES.get(v, v)
 
-        def _norm_hhmm(v):
-            if not v: return ''
-            if isinstance(v, dtime): return v.strftime('%H:%M')
-            if isinstance(v, datetime): return v.strftime('%H:%M')
-            s = str(v).strip()
-            if ':' in s:
-                try:
-                    h, m = map(int, s.split(':'))
-                    return f'{h:02d}:{m:02d}'
-                except Exception:
-                    return ''
-            return ''
-        post['clock_in'] = _norm_hhmm(post.get('clock_in'))
+        # ✅ 只交给表单“HH:MM”，表单验证通过后我们再拼成当天的 datetime 存库
+        post['clock_in']  = _norm_hhmm(post.get('clock_in'))
         post['clock_out'] = _norm_hhmm(post.get('clock_out'))
 
         form = DriverDailyReportForm(post, instance=report)
@@ -1457,12 +1500,15 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             total_minutes = user_minutes + BASE_BREAK_MINUTES
             inst.休憩時間 = timedelta(minutes=total_minutes)
 
+            # ✅ 把表单的 time/'HH:MM' 合成当天 datetime（带时区）存模型
             ci = form.cleaned_data.get("clock_in")
             co = form.cleaned_data.get("clock_out")
-            if ci is not None:
-                inst.clock_in = ci
-            if co is not None:
-                inst.clock_out = co
+            ci_dt = _as_aware_dt(ci, report.date)
+            co_dt = _as_aware_dt(co, report.date)
+            if ci_dt is not None:
+                inst.clock_in = ci_dt
+            if co_dt is not None:
+                inst.clock_out = co_dt
 
             try:
                 inst.calculate_work_times()
@@ -1498,7 +1544,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                     item.is_pending = False
                 item.save()
 
-            # >>> [SYNC-RESERVATION CALL] 仅当从空到有时，同步预约实际出/入库
+            # >>> [SYNC-RESERVATION CALL]
             try:
                 _sync_reservation_actual_for_report(inst, _old_in, _old_out)
             except Exception as _e:
@@ -1541,7 +1587,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             data_iter.append({
                 'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
                 'payment_method': getattr(f.instance, 'payment_method', '') or '',
-                'note': getattr(f.instance, 'note') or '',
+                'note': getattr(f.instance, 'note', '') or '',
                 'DELETE': False,
             })
     totals_raw = calculate_totals_from_formset(data_iter)
