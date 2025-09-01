@@ -1,6 +1,6 @@
 import calendar, requests, random, os, json
 from calendar import monthrange
-from datetime import datetime, timedelta, time as dtime, date, time
+from datetime import date, datetime, timedelta, time as dtime
 from .models import (
     Reservation,
     ReservationStatus,
@@ -345,7 +345,7 @@ def reserve_vehicle_view(request, car_id):
 
                     # 夜班限制（可选）
                     if end_date > start_date:
-                        if start_time < time(12, 0) or end_time > time(12, 0):
+                        if start_time < dtime(12, 0) or end_time > dtime(12, 0):
                             messages.error(request, f"⚠️ {start_date} 的跨日预约时间段非法。夜班必须 12:00 后开始，次日 12:00 前结束。")
                             continue
 
@@ -467,7 +467,7 @@ def vehicle_timeline_view(request, vehicle_id):
     # 1. 获取当前时间
     now = timezone.localtime()
     is_today = selected_date == timezone.localdate()
-    is_past = is_today and timezone.localtime().time() > time(0, 30)
+    is_past = is_today and timezone.localtime().time() > dtime(0, 30)
     # 0:30之后不允许新预约
 
     vehicle = get_object_or_404(Car, id=vehicle_id)
@@ -590,7 +590,7 @@ def weekly_overview_view(request):
             else:
                 if d < today:
                     is_past = True
-                elif d == today and now_time < time(hour=0, minute=30):
+                elif d == today and now_time < dtime(hour=0, minute=30):
                     is_past = True
                 else:
                     is_past = False
@@ -711,7 +711,7 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
             is_past = False
         elif d < today:
             is_past = True
-        elif d == today and now.time() >= time(23, 30):
+        elif d == today and now.time() >= dtime(23, 30):
             is_past = True
         else:
             is_past = False
@@ -733,7 +733,6 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
         'is_admin': request.user.is_staff,
     })
 
-from datetime import datetime, timedelta, time as dtime
 from django.utils import timezone
 from django.db.models import Q
 from django.shortcuts import render
@@ -927,7 +926,7 @@ def daily_overview_view(request):
             item = {'vehicle': vehicle, 'reservation': r}
         else:
             is_today = selected_date == now_dt.date()
-            is_past = is_today and now_dt.time() > time(0, 30)
+            is_past = is_today and now_dt.time() > dtime(0, 30)
 
             if request.user.is_staff:
                 is_past = False
@@ -1752,8 +1751,8 @@ def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
 
     # ✅ 定义“日报工作窗口”：前一日 12:00 ~ 次日 12:00
-    window_start = make_aware(datetime.combine(report.date - timedelta(days=1), time(12, 0)))
-    window_end   = make_aware(datetime.combine(report.date + timedelta(days=1), time(12, 0)))
+    window_start = make_aware(datetime.combine(report.date - timedelta(days=1), dtime(12, 0)))
+    window_end   = make_aware(datetime.combine(report.date + timedelta(days=1), dtime(12, 0)))
 
     # ✅ 只有【日报选了车辆】才去找预约；否则显示 --:--
     reservation = None
