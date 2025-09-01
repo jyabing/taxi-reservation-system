@@ -31,14 +31,14 @@
     .gantt-seg{ color:#fff; font-size:11px; text-align:center; vertical-align:middle; font-weight:600; }
 
     /* ====== 平板及以下 ====== */
-    @media (max-width: 992px){
+    @media (max-width: 768px){
       .gantt-table{ font-size:11px; }
       .gantt-seg{ height:18px; font-size:10px; }
       .gantt-table thead th{ padding:2px 0; font-size:11px; }
       .sticky-col{ min-width:100px; padding-left:4px; }
     }
     /* ====== 手机（竖屏） ====== */
-    @media (max-width: 576px){
+    @media (max-width: 480px){
       .gantt-wrapper{ overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:12px; }
       .gantt-table{ min-width: 900px; }
       .gantt-table thead th{ font-size:10px; padding:1px 0; }
@@ -59,7 +59,7 @@
     <span class="legend-item" title="承認待ち">
       <span class="legend-box gantt-pending"></span><span class="label"> 承認待ち</span>
     </span>
-    <span class="legend-item" title="外出中">
+    <span class="legend-item" title="出庫中">
       <span class="legend-box gantt-out"></span><span class="label"> 出庫中</span>
     </span>
     <span class="legend-item" title="キャンセル">

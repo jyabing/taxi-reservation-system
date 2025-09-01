@@ -78,8 +78,7 @@
   background-color: #007bff;
 }
 .gantt-out {
-
-  background-color: #0ea5e9; /* 更清爽的天蓝 */
+  background-color: #ff6b00; /* 更清爽的天蓝 */
 }
 .gantt-canceled {
   background-color: #6c757d;
