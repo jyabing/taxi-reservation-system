@@ -62,15 +62,16 @@ INSTALLED_APPS = [
 
     # 你的 app
     'accounts.apps.AccountsConfig',
-    'vehicles',
+    'vehicles.apps.VehiclesConfig',   # ⚠️ 这里最好也写成 AppConfig
     'rangefilter',
     'staffbook',
-    'dailyreport',
     'carinfo',
     'admin_tools',
     'common',
     'django.contrib.humanize',
     'widget_tweaks',
+
+    "dailyreport.apps.DailyreportConfig",
 
     # 新增
     'storages',   # ✅ 用于 Cloudflare R2 存储
