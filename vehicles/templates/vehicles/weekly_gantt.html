@@ -60,7 +60,7 @@
       <span class="legend-box gantt-pending"></span><span class="label"> 承認待ち</span>
     </span>
     <span class="legend-item" title="外出中">
-      <span class="legend-box gantt-out"></span><span class="label"> 外出中</span>
+      <span class="legend-box gantt-out"></span><span class="label"> 出庫中</span>
     </span>
     <span class="legend-item" title="キャンセル">
       <span class="legend-box gantt-canceled"></span><span class="label"> キャンセル</span>
@@ -98,7 +98,7 @@
                 title="{{ seg.title }}">
               {% if seg.status == "reserved" %}確定
               {% elif seg.status == "pending" %}申請
-              {% elif seg.status == "out" %}外出
+              {% elif seg.status == "out" %}出庫
               {% elif seg.status == "canceled" %}取消
               {% endif %}
             </td>
