@@ -1,6 +1,6 @@
 import csv, logging
 from io import BytesIO
-from datetime import datetime, date, timedelta, time as dtime
+from datetime import datetime, date, timedelta, time as dtime, time
 from tempfile import NamedTemporaryFile
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
@@ -13,7 +13,7 @@ from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now
 from django.utils import timezone
-from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q
+from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q, DateField
 from django.db.models.functions import Substr, Cast, Coalesce, NullIf, Lower, Trim
 from django.http import HttpResponse, FileResponse
 from django.utils.encoding import escape_uri_path
@@ -580,100 +580,109 @@ def dailyreport_list(request):
     return render(request, 'dailyreport/dailyreport_list.html', {'reports': reports})
 
 # ========= 导出：每日汇总（openpyxl） =========
-@user_passes_test(is_dailyreport_admin)
-def export_dailyreports_csv(request, year, month):
-    reports = (
-        DriverDailyReport.objects
-        .filter(date__year=year, date__month=month)
-        .select_related('driver')
-        .prefetch_related('items')
-        .order_by('date', 'driver__name')
-    )
+# ========== [BEGIN 保留：export_dailyreports_csv（已停用）] ==========
+# @user_passes_test(is_dailyreport_admin)
+# def export_dailyreports_csv(request, year, month):
+#     from datetime import time as dtime, timedelta
+#     from django.db.models import Case, When, F, ExpressionWrapper, DateField
+#     work_date_expr = Case(
+#         When(clock_in__lt=dtime(6, 0),
+#              then=ExpressionWrapper(F('date') - timedelta(days=1), output_field=DateField())),
+#         default=F('date'), output_field=DateField(),
+#     )
+#     reports = (
+#         DriverDailyReport.objects
+#         .annotate(work_date=work_date_expr)
+#         .filter(work_date__year=year, work_date__month=month)
+#         .select_related('driver')
+#         .prefetch_related('items')
+#         .order_by('work_date', 'driver__name')
+#     )
+    # ========== [END   新：按“勤務開始日(work_date)”归属月份过滤] ==========
 
-    reports_by_date = defaultdict(list)
-    payment_keys = ['cash', 'uber', 'didi', 'ticket', 'credit', 'qr']
+#    reports_by_date = defaultdict(list)
+#    payment_keys = ['cash', 'uber', 'didi', 'ticket', 'credit', 'qr']
 
-    for report in reports:
-        summary = defaultdict(int)
-        for item in report.items.all():
-            if (
-                item.payment_method in payment_keys
-                and item.meter_fee and item.meter_fee > 0
-                and (not item.note or 'キャンセル' not in item.note)
-            ):
-                summary[item.payment_method] += item.meter_fee
+#    for report in reports:
+#        summary = defaultdict(int)
+#        for item in report.items.all():
+#            if (
+#                item.payment_method in payment_keys
+#                and item.meter_fee and item.meter_fee > 0
+#                and (not item.note or 'キャンセル' not in item.note)
+#            ):
+#                summary[item.payment_method] += item.meter_fee
 
-        deposit = report.deposit_amount or 0
-        etc_app = report.etc_collected_app or 0
-        etc_cash = report.etc_collected_cash or 0
-        etc_total = etc_app + etc_cash
-        etc_expected = report.etc_expected or 0
-        etc_diff = etc_expected - etc_total
-        deposit_diff = calculate_deposit_difference(report, summary['cash'])
+#        deposit = report.deposit_amount or 0
+#        etc_app = report.etc_collected_app or 0
+#        etc_cash = report.etc_collected_cash or 0
+#        etc_total = etc_app + etc_cash
+#        etc_expected = report.etc_expected or 0
+#        etc_diff = etc_expected - etc_total
+#        deposit_diff = calculate_deposit_difference(report, summary['cash'])
 
-        reports_by_date[report.date.strftime('%Y-%m-%d')].append({
-            'driver_code': report.driver.driver_code if report.driver else '',
-            'driver': report.driver.name if report.driver else '',
-            'status': report.get_status_display(),
-            'cash': summary['cash'],
-            'uber': summary['uber'],
-            'didi': summary['didi'],
-            'ticket': summary['ticket'],
-            'credit': summary['credit'],
-            'qr': summary['qr'],
-            'etc_expected': etc_expected,
-            'etc_collected': etc_total,
-            'etc_diff': etc_diff,
-            'deposit': deposit,
-            'deposit_diff': deposit_diff,
-            'mileage': report.mileage or '',
-            'gas_volume': report.gas_volume or '',
-            'note': report.note or '',
-        })
+#        reports_by_date[report.date.strftime('%Y-%m-%d')].append({
+#           'driver_code': report.driver.driver_code if report.driver else '',
+#            'driver': report.driver.name if report.driver else '',
+#            'status': report.get_status_display(),
+#            'cash': summary['cash'],
+#            'uber': summary['uber'],
+#            'didi': summary['didi'],
+#            'ticket': summary['ticket'],
+#            'credit': summary['credit'],
+#            'qr': summary['qr'],
+#            'etc_expected': etc_expected,
+#            'etc_collected': etc_total,
+#            'etc_diff': etc_diff,
+#            'deposit': deposit,
+#            'deposit_diff': deposit_diff,
+#            'mileage': report.mileage or '',
+#            'gas_volume': report.gas_volume or '',
+#            'note': report.note or '',
+#        })
 
-    wb = Workbook()
-    wb.remove(wb.active)
+#    wb = Workbook()
+#    wb.remove(wb.active)
 
-    for date_str, rows in sorted(reports_by_date.items()):
-        ws = wb.create_sheet(title=date_str)
-        headers = [
-            '司机代码', '司机', '出勤状态',
-            '现金', 'Uber', 'Didi', 'チケット', 'クレジット', '扫码',
-            'ETC应收', 'ETC实收', '未收ETC',
-            '入金', '差額',
-            '公里数', '油量', '备注'
-        ]
-        ws.append(headers)
-        for row in rows:
-            ws.append([
-                row['driver_code'],
-                row['driver'],
-                row['status'],
-                row['cash'],
-                row['uber'],
-                row['didi'],
-                row['ticket'],
-                row['credit'],
-                row['qr'],
-                row['etc_expected'],
-                row['etc_collected'],
-                row['etc_diff'],
-                row['deposit'],
-                row['deposit_diff'],
-                row['mileage'],
-                row['gas_volume'],
-                row['note'],
-            ])
+#    for date_str, rows in sorted(reports_by_date.items()):
+#        ws = wb.create_sheet(title=date_str)
+#        headers = [
+#            '司机代码', '司机', '出勤状态',
+#            '现金', 'Uber', 'Didi', 'チケット', 'クレジット', '扫码',
+#            'ETC应收', 'ETC实收', '未收ETC',
+#            '入金', '差額',
+#            '公里数', '油量', '备注'
+#        ]
+#        ws.append(headers)
+#        for row in rows:
+#            ws.append([
+#                row['driver_code'],
+#                row['driver'],
+#                row['status'],
+#                row['cash'],
+#                row['uber'],
+#                row['didi'],
+#                row['ticket'],
+#                row['credit'],
+#                row['qr'],
+#                row['etc_expected'],
+#                row['etc_collected'],
+#                row['etc_diff'],
+#                row['deposit'],
+#                row['deposit_diff'],
+#                row['mileage'],
+#                row['gas_volume'],
+#                row['note'],
+#            ])
 
-    filename = f"{year}年{month}月全员每日明细.xlsx"
-    tmp = NamedTemporaryFile()
-    wb.save(tmp.name)
-    tmp.seek(0)
-    response = FileResponse(tmp, as_attachment=True, filename=quote(filename))
-    response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    return response
+#    filename = f"{year}年{month}月全员每日明细.xlsx"
+#    tmp = NamedTemporaryFile()
+#    wb.save(tmp.name)
+#    tmp.seek(0)
+#    response = FileResponse(tmp, as_attachment=True, filename=quote(filename))
+#    response['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+#    return response
 
-# ========= 导出：每日/集计（xlsxwriter） =========
 # ========= 导出：每日/集计（xlsxwriter） =========
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_excel(request, year, month):
@@ -703,27 +712,59 @@ def export_dailyreports_excel(request, year, month):
             return HttpResponse("日期格式应为 YYYY-MM-DD", status=400)
     # ==== END: 支持区间导出（from/to） ====
 
-    # === 改动点：若带区间参数则按区间筛选，否则维持按年/月 ===
+    # ========== [BEGIN 保留：原来的“按业务日期”过滤] ==========
+    # if date_range:
+    #     reports = (
+    #         DriverDailyReport.objects
+    #         .filter(date__range=date_range)
+    #         .select_related("driver")
+    #         .prefetch_related("items")
+    #         .order_by("date", "driver__name")
+    #     )
+    # else:
+    #     reports = (
+    #         DriverDailyReport.objects
+    #         .filter(date__year=year, date__month=month)
+    #         .select_related("driver")
+    #         .prefetch_related("items")
+    #         .order_by("date", "driver__name")
+    #     )
+    # ========== [END   保留：原来的“按业务日期”过滤] ==========
+
+    # ========== [BEGIN 新：按“勤務開始日(work_date)”过滤] ==========
+    from datetime import time as dtime, timedelta
+    from django.db.models import Case, When, F, ExpressionWrapper, DateField
+
+    # 规则：clock_in < 06:00 → 归属前一日，否则归属当天
+    work_date_expr = Case(
+        When(
+            clock_in__lt=dtime(6, 0),
+            then=ExpressionWrapper(F('date') - timedelta(days=1), output_field=DateField()),
+        ),
+        default=F('date'),
+        output_field=DateField(),
+    )
+
+    base_qs = (DriverDailyReport.objects
+               .annotate(work_date=work_date_expr)
+               .select_related("driver")
+               .prefetch_related("items"))
+
     if date_range:
-        reports = (
-            DriverDailyReport.objects
-            .filter(date__range=date_range)
-            .select_related("driver")
-            .prefetch_related("items")
-            .order_by("date", "driver__name")
-        )
+        # 区间模式也用 work_date 做区间（含头含尾）
+        reports = base_qs.filter(work_date__range=date_range).order_by("work_date", "driver__name")
     else:
-        reports = (
-            DriverDailyReport.objects
-            .filter(date__year=year, date__month=month)
-            .select_related("driver")
-            .prefetch_related("items")
-            .order_by("date", "driver__name")
-        )
+        reports = base_qs.filter(
+            work_date__year=year, work_date__month=month
+        ).order_by("work_date", "driver__name")
+    # ========== [END   新：按“勤務開始日(work_date)”过滤] ==========
 
     by_date = defaultdict(list)
     for r in reports:
-        by_date[r.date].append(r)
+        # 用 work_date 分组；若注解不存在则退回 r.date（向后兼容）
+        key_date = getattr(r, "work_date", None) or r.date
+        by_date[key_date].append(r)
+
 
     def compute_row(r):
         def norm(s): return str(s).strip().lower() if s else ""
@@ -1762,10 +1803,29 @@ def dailyreport_overview(request):
     export_year = month.year
     export_month = month.month
 
-    reports_all = DriverDailyReport.objects.filter(
-        date__year=month.year,
-        date__month=month.month,
+    # ========== [BEGIN 保留：原来的按业务日期月份过滤] ==========
+    # reports_all = DriverDailyReport.objects.filter(
+    #     date__year=month.year,
+    #     date__month=month.month,
+    # )
+    # ========== [END   保留：原来的按业务日期月份过滤] ==========
+
+    # ========== [BEGIN 新：按“勤務開始日(开始日)”归属月份] ==========
+
+    # 约定：clock_in < 06:00 视为夜勤跨零点 → 归前一天
+    work_date_expr = Case(
+        When(clock_in__lt=time(6, 0),
+            then=ExpressionWrapper(F('date') - timedelta(days=1), output_field=DateField())),
+        default=F('date'),
+        output_field=DateField()
     )
+
+    reports_all = (
+        DriverDailyReport.objects
+        .annotate(work_date=work_date_expr)
+        .filter(work_date__year=month.year, work_date__month=month.month)
+    )
+    # ========== [END   新：按“勤務開始日(开始日)”归属月份] ==========
 
     drivers = get_active_drivers(month, keyword)
 
@@ -1778,7 +1838,13 @@ def dailyreport_overview(request):
 
     reports = reports_all.filter(driver__in=drivers)
 
-    items_all = DriverDailyReportItem.objects.filter(report__in=reports_all)
+    # ========== [BEGIN 保留：旧写法，统计了所有司机（含已离职）] ==========
+    # items_all = DriverDailyReportItem.objects.filter(report__in=reports_all)
+    # ========== [END   保留] ==========
+
+    # ========== [BEGIN 新写法：仅统计页面显示的司机（活跃/筛选后）] ==========
+    items_all = DriverDailyReportItem.objects.filter(report__in=reports)
+    # ========== [END   新写法] ==========
     items_norm = items_all.annotate(
         pm=Lower(Trim('payment_method')),
         cpm=Lower(Trim('charter_payment_method')),
