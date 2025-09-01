@@ -674,6 +674,7 @@ def export_dailyreports_csv(request, year, month):
     return response
 
 # ========= 导出：每日/集计（xlsxwriter） =========
+# ========= 导出：每日/集计（xlsxwriter） =========
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_excel(request, year, month):
     try:
@@ -684,13 +685,42 @@ def export_dailyreports_excel(request, year, month):
     FEE_RATE = Decimal("0.05")
     CASH_METHODS = {"cash", "uber_cash", "didi_cash", "go_cash"}
 
-    reports = (
-        DriverDailyReport.objects
-        .filter(date__year=year, date__month=month)
-        .select_related("driver")
-        .prefetch_related("items")
-        .order_by("date", "driver__name")
-    )
+    # ==== BEGIN: 支持区间导出（from/to） ====
+    q_from = (request.GET.get("from") or "").strip()
+    q_to   = (request.GET.get("to") or "").strip()
+
+    date_from = None
+    date_to   = None
+    date_range = None
+    if q_from and q_to:
+        try:
+            date_from = datetime.strptime(q_from, "%Y-%m-%d").date()
+            date_to   = datetime.strptime(q_to,   "%Y-%m-%d").date()
+            if date_from > date_to:
+                return HttpResponse("開始日必须早于/等于終了日", status=400)
+            date_range = (date_from, date_to)
+        except ValueError:
+            return HttpResponse("日期格式应为 YYYY-MM-DD", status=400)
+    # ==== END: 支持区间导出（from/to） ====
+
+    # === 改动点：若带区间参数则按区间筛选，否则维持按年/月 ===
+    if date_range:
+        reports = (
+            DriverDailyReport.objects
+            .filter(date__range=date_range)
+            .select_related("driver")
+            .prefetch_related("items")
+            .order_by("date", "driver__name")
+        )
+    else:
+        reports = (
+            DriverDailyReport.objects
+            .filter(date__year=year, date__month=month)
+            .select_related("driver")
+            .prefetch_related("items")
+            .order_by("date", "driver__name")
+        )
+
     by_date = defaultdict(list)
     for r in reports:
         by_date[r.date].append(r)
@@ -908,7 +938,13 @@ def export_dailyreports_excel(request, year, month):
                 'type': 'cell', 'criteria': '<', 'value': 0, 'format': wb.add_format({'font_color': '#CC0000'})
             })
 
-    summary_ws = wb.add_worksheet(f"{year}-{month:02d} 月度(集計)")
+    # === 改动点：汇总sheet标题在区间模式下更友好 ===
+    summary_title = (
+        f"{date_from:%Y-%m-%d}~{date_to:%Y-%m-%d}(集計)"
+        if date_range else
+        f"{year}-{int(month):02d} 月度(集計)"
+    )
+    summary_ws = wb.add_worksheet(summary_title)
     summary_ws.write_row(0, 0, row1, fmt_header)
     summary_ws.write_row(1, 0, row2, fmt_header)
     merges = [
@@ -1032,9 +1068,20 @@ def export_dailyreports_excel(request, year, month):
 
     wb.close()
     output.seek(0)
-    filename = f"{year}年{month}月_全員毎日集計.xlsx"
-    return FileResponse(output, as_attachment=True, filename=quote(filename),
-                        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # === 改动点：文件名按是否区间生成 ===
+    if date_range:
+        filename = f"{date_from.strftime('%Y%m%d')}-{date_to.strftime('%Y%m%d')}_全員毎日集計.xlsx"
+    else:
+        filename = f"{year}年{month}月_全員毎日集計.xlsx"
+
+    return FileResponse(
+        output,
+        as_attachment=True,
+        filename=quote(filename),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
 # ========= 合计辅助 =========
 def _normalize(val: str) -> str:

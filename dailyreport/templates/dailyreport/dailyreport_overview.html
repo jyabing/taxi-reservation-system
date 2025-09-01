@@ -26,12 +26,18 @@
 <!-- ✅ 导出按钮 -->
 <div class="my-3">
   {% if current_year and current_month %}
-    <a href="{% url 'dailyreport:export_dailyreports_excel' year=current_year month=current_month %}"
-       class="btn btn-sm btn-outline-primary me-2">
+    {# ==== BEGIN: 导出区间（按钮触发 Modal） ==== #}
+    <button type="button"
+            class="btn btn-sm btn-outline-primary me-2"
+            id="btn-export-excel"
+            data-bs-toggle="modal"
+            data-bs-target="#exportRangeModal"
+            data-export-url="{% url 'dailyreport:export_dailyreports_excel' year=current_year month=current_month %}"
+            data-year="{{ current_year }}"
+            data-month="{{ current_month }}">
       📤 导出 {{ current_year }}年{{ current_month }}月全员每日统计 Excel
-    </a>
-
-
+    </button>
+    {# ==== END: 导出区间（按钮触发 Modal） ==== #}
 
     <a href="{% url 'dailyreport:export_vehicle_csv' year=current_year month=current_month %}"
       class="btn btn-sm btn-outline-info">
@@ -193,4 +199,132 @@
     input.addEventListener('input', sync);
   });
 </script>
+
+
+{# ==== BEGIN: 导出区间 Modal（dailyreport_overview.html 内） ==== #}
+<div class="modal fade" id="exportRangeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">选择导出日期区间</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- ==== BEGIN patch: native date inputs ==== -->
+        <div class="mb-3">
+          <label class="form-label">开始日期</label>
+          <input type="date" class="form-control" id="exportFrom" inputmode="numeric" pattern="\d{4}-\d{2}-\d{2}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">结束日期</label>
+          <input type="date" class="form-control" id="exportTo" inputmode="numeric" pattern="\d{4}-\d{2}-\d{2}">
+        </div>
+        <!-- ==== END patch: native date inputs ==== -->
+        <div class="small text-muted">
+          不填或清空日期时，可直接点击「按当前月份导出」导出 {{ current_year }} 年 {{ current_month }} 月全量数据。
+        </div>
+        <div id="exportErr" class="text-danger small mt-2 d-none"></div>
+      </div>
+
+      <div class="modal-footer justify-content-between">
+        <div class="btn-group">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="btnFillThisMonth">本月</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="btnClearRange">清空</button>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-primary" id="btnExportMonth">按当前月份导出</button>
+          <button type="button" class="btn btn-primary" id="btnExportRange">导出所选区间</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{# ==== END: 导出区间 Modal（dailyreport_overview.html 内） ==== #}
+
+{# ==== BEGIN: 导出区间 JS（dailyreport_overview.html 内） ==== #}
+<script>
+(function() {
+  console.log('export-range JS loaded');   // ✅ 顶部调试标记
+
+  const btn = document.getElementById('btn-export-excel');
+  const modalEl = document.getElementById('exportRangeModal');
+  if (!btn || !modalEl) return;
+
+  // ⚠️ 这里不再手动 new bootstrap.Modal().show()
+  // 因为按钮已用 data-bs-toggle="modal" 交给 Bootstrap 自动弹出
+  // 我们只负责 inside modal 的取值与跳转
+
+  const exportUrlBase = btn.getAttribute('data-export-url');
+  const YEAR  = parseInt(btn.getAttribute('data-year'), 10);
+  const MONTH = parseInt(btn.getAttribute('data-month'), 10);
+
+  const fromInput = document.getElementById('exportFrom');
+  const toInput   = document.getElementById('exportTo');
+  const errBox    = document.getElementById('exportErr');
+
+  function monthFirstLast(y, m) {
+    const first = new Date(y, m-1, 1);
+    const last  = new Date(y, m, 0);
+    const pad = n => String(n).padStart(2, '0');
+    return {
+      firstStr: `${first.getFullYear()}-${pad(first.getMonth()+1)}-${pad(first.getDate())}`,
+      lastStr:  `${last.getFullYear()}-${pad(last.getMonth()+1)}-${pad(last.getDate())}`,
+    };
+  }
+  function fillThisMonth() {
+    const { firstStr, lastStr } = monthFirstLast(YEAR, MONTH);
+    fromInput.value = firstStr;
+    toInput.value   = lastStr;
+  }
+  function buildRangeUrl() {
+    const from = (fromInput.value || '').trim();
+    const to   = (toInput.value || '').trim();
+    if (!from || !to) {
+      errBox.classList.remove('d-none');
+      errBox.textContent = '请选择完整的开始与结束日期；或点击“按当前月份导出”。';
+      return null;
+    }
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    if (!re.test(from) || !re.test(to)) {
+      errBox.classList.remove('d-none');
+      errBox.textContent = '日期格式应为 YYYY-MM-DD。';
+      return null;
+    }
+    if (from > to) {
+      errBox.classList.remove('d-none');
+      errBox.textContent = '开始日期不能晚于结束日期。';
+      return null;
+    }
+    errBox.classList.add('d-none');
+    return `${exportUrlBase}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  }
+
+  // 👉 下面几个按钮都是 Modal 内部的点击行为
+  document.getElementById('btnFillThisMonth').addEventListener('click', fillThisMonth);
+  document.getElementById('btnClearRange').addEventListener('click', () => {
+    fromInput.value = ''; toInput.value = '';
+    errBox.classList.add('d-none');
+  });
+  document.getElementById('btnExportMonth').addEventListener('click', () => {
+    window.location.href = exportUrlBase;
+  });
+  document.getElementById('btnExportRange').addEventListener('click', () => {
+    const url = buildRangeUrl();
+    if (url) window.location.href = url;
+  });
+
+  // 如果页面有 flatpickr，则增强日期输入
+  try {
+    if (window.flatpickr) {
+      flatpickr(fromInput, { dateFormat: 'Y-m-d' });
+      flatpickr(toInput,   { dateFormat: 'Y-m-d' });
+    }
+  } catch(e) {}
+})();
+</script>
+{# ==== END: 导出区间 JS ==== #}
+
+
+
 {% endblock %}
