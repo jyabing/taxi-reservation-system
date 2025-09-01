@@ -77,6 +77,23 @@ require_vehicles_admin = user_passes_test(is_vehicles_admin)
 
 # 后续你只需要在已有函数前加上这个装饰器组合，并统一模板路径写为 'vehicles/xxx.html' 即可。
 
+def _parse_dt_local(s: str):
+    """把 datetime-local(YYYY-MM-DDTHH:MM) 解析成服务器时区的 aware datetime。"""
+    if not s:
+        return None
+    dt = None
+    try:
+        # '2025-09-03T18:00'
+        dt = datetime.fromisoformat(s)
+    except Exception:
+        dt = parse_datetime(s)
+    if not dt:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+
 @login_required
 def recent_reservations_view(request, car_id):
     car = get_object_or_404(Car, id=car_id)
@@ -1196,35 +1213,69 @@ def vehicle_detail_view(request, vehicle_id):
 
 @require_POST
 @login_required
+def complete_return(request, pk):
+    """
+    一键入库：仅允许本人（或按需放宽），把 actual_return 设为现在，并将状态置为 DONE。
+    适用于“未完成出入库手续(incomplete)”或“已出库(out)”且尚未入库的预约。
+    """
+    # 仅本人（如需管理员可操作，按需放宽为：if request.user.is_staff: 不限制 driver）
+    res = get_object_or_404(Reservation, pk=pk, driver=request.user)
+
+    # 已经入库过就不重复
+    if res.actual_return:
+        messages.info(request, "该预约已完成入库。")
+        return redirect("vehicles:my_reservations")
+
+    # 仅允许在 out / incomplete 时一键入库
+    if res.status not in (ReservationStatus.OUT, ReservationStatus.INCOMPLETE):
+        messages.error(request, "当前状态不可执行入库操作。")
+        return redirect("vehicles:my_reservations")
+
+    # 执行入库 → 置为完成
+    res.actual_return = timezone.now()
+    res.status = ReservationStatus.DONE
+    res.save(update_fields=["actual_return", "status"])
+
+    messages.success(request, "入库手续已完成。")
+    return redirect("vehicles:my_reservations")
+
+@require_POST
+@login_required
 def confirm_check_io(request):
     # ① 取预约ID：POST 优先，URL ?rid= 兜底
     reservation_id = (request.POST.get("reservation_id", "").strip()
                       or request.GET.get("rid", "").strip())
-    action_type = (request.POST.get("action_type") or "").strip()
+    action_type = (request.POST.get("action_type") or "").strip().lower()
     actual_time_str = (request.POST.get("actual_time") or "").strip()
 
     if not reservation_id.isdigit():
         messages.error(request, "无效的预约编号，请刷新页面后重试。")
         return redirect("vehicles:my_reservations")
 
-    # ② 解析为 aware datetime（表单是 datetime-local，无时区）
+    # ② 解析为 aware datetime（表单是 datetime-local，无时区）；空值时兜底为“现在”
     try:
-        actual_time = datetime.strptime(actual_time_str, "%Y-%m-%dT%H:%M")
-        if timezone.is_naive(actual_time):
-            actual_time = timezone.make_aware(actual_time)
+        if actual_time_str:
+            actual_time = datetime.strptime(actual_time_str, "%Y-%m-%dT%H:%M")
+            if timezone.is_naive(actual_time):
+                actual_time = timezone.make_aware(actual_time)
+        else:
+            actual_time = timezone.now()
     except Exception:
         messages.error(request, "时间格式不正确。")
         return redirect("vehicles:my_reservations")
 
+    # 仅允许本人操作；如需管理员越权，这里可放宽
     reservation = get_object_or_404(Reservation, id=int(reservation_id), driver=request.user)
 
     if action_type == "departure":
         with transaction.atomic():
-            # A. 拦截：是否还有“出库未入库”的其他记录
+            # A. 拦截：是否还有“出库未入库/未完成”的其他记录（out 或 incomplete，且 actual_return 为空）
             unfinished_exists = (
                 Reservation.objects
                 .select_for_update()
-                .filter(driver=request.user, status="out", actual_return__isnull=True)
+                .filter(driver=request.user,
+                        actual_return__isnull=True,
+                        status__in=[ReservationStatus.OUT, ReservationStatus.INCOMPLETE])
                 .exclude(id=reservation.id)
                 .exists()
             )
@@ -1232,7 +1283,7 @@ def confirm_check_io(request):
                 messages.error(request, "因有未完成入库操作的记录，请先完成上一次入库。")
                 return redirect("vehicles:my_reservations")
 
-            # B. 10 小时冷却
+            # B. 10 小时冷却（距上次入库不足 10 小时不允许再次出库）
             last_return = (
                 Reservation.objects
                 .filter(driver=request.user, actual_return__isnull=False, actual_return__lt=actual_time)
@@ -1241,21 +1292,24 @@ def confirm_check_io(request):
             )
             if last_return and (actual_time - last_return.actual_return) < timedelta(hours=10):
                 next_allowed = last_return.actual_return + timedelta(hours=10)
-                messages.error(request, f"距上次入库未满 10 小时，请于 {timezone.localtime(next_allowed).strftime('%Y-%m-%d %H:%M')} 后再试。")
+                messages.error(
+                    request,
+                    f"距上次入库未满 10 小时，请于 {timezone.localtime(next_allowed).strftime('%Y-%m-%d %H:%M')} 后再试。"
+                )
                 return redirect("vehicles:my_reservations")
 
-            # C. 更新为“出库中”
+            # C. 更新为“已出库”
             reservation.actual_departure = actual_time
-            reservation.status = "out"
+            reservation.status = ReservationStatus.OUT
             reservation.save(update_fields=["actual_departure", "status"])
 
         messages.success(request, "✅ 出库记录已保存。")
         return redirect("vehicles:my_reservations")
 
     elif action_type == "return":
-        # A. 入库
+        # A. 入库 -> 直接视为完成（无论当前是 out 还是 incomplete）
         reservation.actual_return = actual_time
-        reservation.status = "done"
+        reservation.status = ReservationStatus.DONE
         reservation.save(update_fields=["actual_return", "status"])
 
         # B. 如有后续预约且不足 10 小时，则自动顺延
@@ -1263,19 +1317,24 @@ def confirm_check_io(request):
             Reservation.objects
             .filter(driver=request.user,
                     date__gte=reservation.date,
-                    status__in=["pending", "booked"])
+                    status__in=[ReservationStatus.PENDING, ReservationStatus.BOOKED])
             .exclude(id=reservation.id)
             .order_by("date", "start_time")
             .first()
         )
         if next_res:
-            next_start = timezone.make_aware(datetime.combine(next_res.date, next_res.start_time))
+            next_start = timezone.make_aware(datetime.combine(next_res.date, next_res.start_time)) \
+                         if timezone.is_naive(datetime.combine(next_res.date, next_res.start_time)) \
+                         else datetime.combine(next_res.date, next_res.start_time)
             if (next_start - actual_time) < timedelta(hours=10):
                 new_start = actual_time + timedelta(hours=10)
                 next_res.date = new_start.date()
                 next_res.start_time = new_start.time()
                 next_res.save(update_fields=["date", "start_time"])
-                messages.warning(request, f"⚠️ 下次预约已顺延至 {timezone.localtime(new_start).strftime('%Y-%m-%d %H:%M')}")
+                messages.warning(
+                    request,
+                    f"⚠️ 下次预约已顺延至 {timezone.localtime(new_start).strftime('%Y-%m-%d %H:%M')}"
+                )
 
         messages.success(request, "✅ 入库记录已保存。")
         return redirect("vehicles:my_reservations")

@@ -176,9 +176,27 @@ input[type=number] {
             <input type="text" name="clock_in" class="form-control form-control-sm time-input" value="{{ form.clock_in.value|default_if_none:'' }}">
           </td>
 
-          <!-- 退勤 -->
-          <td style="max-width:110px;" >
-            <input type="text" name="clock_out" class="form-control form-control-sm time-input" style="min-width: 60px; max-width: 200px; width: 100%; overflow-x: auto; white-space: nowrap;" value="{{ form.initial.clock_out|default_if_none:'' }}">
+          <!-- 退勤（含“未完成入库手续”勾选） -->
+          <td style="max-width:220px;">
+            <div style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
+              <!-- 退勤输入框 -->
+              <input
+                type="text"
+                name="clock_out"
+                id="id_clock_out"
+                class="form-control form-control-sm time-input"
+                style="min-width: 80px; max-width: 120px;"
+                value="{{ form.clock_out.value|default_if_none:form.initial.clock_out|default_if_none:'' }}"
+              >
+
+              <!-- 勾选框（使用表单字段，便于 cleaned_data 解析为 bool） -->
+              <label class="form-check d-inline-flex align-items-center m-0" style="gap:.25rem;">
+                {{ form.unreturned_flag }}
+                <span id="return-status-text">
+                  {% if form.clock_out.value|default_if_none:form.initial.clock_out %}已完成{% else %}未完成入库手续{% endif %}
+                </span>
+              </label>
+            </div>
           </td>
           <td id="work-duration">--:--</td> <!--勤務時間-->
 
@@ -616,5 +634,31 @@ input[type=number] {
   }
   #empty-form-template tr { display: none !important; visibility: hidden !important; }
   </style>
+
+  <script>
+    (function(){
+      var out = document.getElementById("id_clock_out");
+      var chk = document.getElementById("id_unreturned_flag") || document.querySelector('input[name="unreturned_flag"]');
+      var txt = document.getElementById("return-status-text");
+
+      function sync() {
+        var hasVal = out && out.value.trim() !== "";
+        if (hasVal) {
+          // 有退勤 => 视为“已完成”，自动取消勾选
+          if (chk) chk.checked = false;
+          if (txt) txt.textContent = "已完成";
+        } else {
+          // 没退勤 => 可勾选“未完成入库手续”
+          if (txt) txt.textContent = "未完成入库手续";
+        }
+      }
+
+      if (out) {
+        out.addEventListener("input", sync);
+        // 初始也同步一次
+        window.addEventListener("load", sync);
+      }
+    })();
+  </script>
 
 {% endblock %}

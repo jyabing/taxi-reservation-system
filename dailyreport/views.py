@@ -118,19 +118,28 @@ def _safe_as_time(val):
     return None
 
 def _prefill_report_without_fk(report):
+    """
+    预填规则（只用实际值，不用计划值）：
+    - 车辆：取当天该司机任一预约的 vehicle
+    - 出勤：若为空，取当天所有预约中最早的 actual_departure
+    - 退勤：若为空，取当天所有预约中最晚的 actual_return
+      ▶ 若没有 actual_return，则保持空（绝不再用 end_time 回填）
+    """
     try:
         user = getattr(getattr(report, "driver", None), "user", None)
         the_date = getattr(report, "date", None)
         if not user or not the_date:
             return
 
+        # 当天所有覆盖该日期的预约（含跨天）
         qs = (Reservation.objects
-              .filter(driver=user, date=the_date)
+              .filter(driver=user, date__lte=the_date, end_date__gte=the_date)
               .select_related("vehicle")
-              .order_by("start_time"))
+              .order_by("date", "start_time"))
         if not qs.exists():
             return
 
+        # 车辆：缺就取第一条有车的
         if not getattr(report, "vehicle_id", None):
             for r in qs:
                 v = getattr(r, "vehicle", None)
@@ -138,25 +147,30 @@ def _prefill_report_without_fk(report):
                     report.vehicle = v
                     break
 
+        # 出勤：仅取“实际出库”中最早的一个
         if getattr(report, "clock_in", None) in (None, ""):
-            first = qs.first()
-            st = _safe_as_time(getattr(first, "start_time", None))
-            if st:
-                report.clock_in = st
+            actual_deps = []
+            for r in qs:
+                ad = getattr(r, "actual_departure", None)
+                if ad:
+                    t = _safe_as_time(ad)
+                    if t:
+                        actual_deps.append(t)
+            if actual_deps:
+                report.clock_in = sorted(actual_deps)[0]
 
+        # 退勤：仅取“实际入库”中最晚的一个；没有就保持空
         if getattr(report, "clock_out", None) in (None, ""):
             actual_returns = []
             for r in qs:
-                ar = _safe_as_time(getattr(r, "actual_return", None))
+                ar = getattr(r, "actual_return", None)
                 if ar:
-                    actual_returns.append(ar)
+                    t = _safe_as_time(ar)
+                    if t:
+                        actual_returns.append(t)
             if actual_returns:
                 report.clock_out = sorted(actual_returns)[-1]
-            else:
-                last = qs.order_by("-end_time").first()
-                et = _safe_as_time(getattr(last, "end_time", None))
-                if et:
-                    report.clock_out = et
+            # else: 不再用 end_time 填充，保持为空
     except Exception as e:
         debug_print("SOFT_PREFILL error:", e)
 
@@ -1503,11 +1517,24 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             # ✅ 把表单的 time/'HH:MM' 合成当天 datetime（带时区）存模型
             ci = form.cleaned_data.get("clock_in")
             co = form.cleaned_data.get("clock_out")
+            unreturned = bool(form.cleaned_data.get("unreturned_flag"))
+
             ci_dt = _as_aware_dt(ci, report.date)
             co_dt = _as_aware_dt(co, report.date)
+
             if ci_dt is not None:
                 inst.clock_in = ci_dt
+
+            # 若已填写退勤时间，则视为已完成，覆盖勾选框
             if co_dt is not None:
+                unreturned = False
+
+            # 规则：
+            # - 勾选“未完成入库手续” -> 退勤必须为空
+            # - 未勾选：只有用户真的填了退勤才保存，否则保持为空
+            if unreturned or co_dt is None:
+                inst.clock_out = None
+            else:
                 inst.clock_out = co_dt
 
             try:
@@ -1516,6 +1543,39 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                 pass
 
             inst.edited_by = request.user
+
+            # ===== 保存主表/明细后，联动预约状态 =====
+            #   - 退勤为空 + 勾选 -> status=未完成入库手续，actual_return 保持 None
+            #   - 退勤有值 -> status=已完成（actual_return 会由 signals 用 inst.clock_out 同步回预约）
+            try:
+                from dailyreport.signals import _pick_reservation_for_report
+                res = _pick_reservation_for_report(inst)
+                if res:
+                    if inst.clock_out is None:
+                        # 退勤为空：实际入库也保持空
+                        res.actual_return = None
+                        if unreturned:
+                            # 勾选“未完成入库手续”
+                            try:
+                                from vehicles.models import ReservationStatus
+                                res.status = ReservationStatus.INCOMPLETE  # ← 使用新的枚举
+                            except Exception:
+                                res.status = "未完成出入库手续"
+                            res.save(update_fields=["actual_return", "status"])
+                        else:
+                            res.save(update_fields=["actual_return"])
+                    else:
+                        # 退勤有值 => 已完成（actual_return 会由 signals 用 inst.clock_out 同步）
+                        try:
+                            from vehicles.models import ReservationStatus
+                            res.status = ReservationStatus.DONE
+                        except Exception:
+                            res.status = "已完成"
+                        res.save(update_fields=["status"])
+            except Exception as _e:
+                logger.warning("update reservation status (incomplete/done) failed: %s", _e)
+                
+            # ===== [END] 预约状态联动 =====
 
             cash_total = sum(
                 (it.cleaned_data.get('meter_fee') or 0)

@@ -93,7 +93,28 @@
           <span class="status-badge badge-{{ r.status }}">{{ r.get_status_display }}</span>
         </td>
 
-        <td>{% include 'partials/_check_io_buttons.html' with r=r %}</td>
+        <td class="text-center" style="white-space:nowrap;">
+          {# 未完成 -> 显示“入库”按钮（弹出入库时间对话框） #}
+          {% if r.status == "incomplete" and r.driver_id == request.user.id %}
+            <button type="button"
+                    class="btn btn-sm btn-primary"
+                    data-id="{{ r.id }}"
+                    data-reservation-id="{{ r.id }}"
+                    data-bs-toggle="modal"
+                    data-bs-target="#returnModal"
+                    onclick="primeReturn(this)">
+              入庫
+            </button>
+
+          {# 已完成 -> 显示“完了”徽章 #}
+          {% elif r.status == "done" %}
+            <span class="badge bg-success">完了</span>
+
+          {# 其他状态，沿用你原来的按钮局部模板 #}
+          {% else %}
+            {% include 'partials/_check_io_buttons.html' with r=r %}
+          {% endif %}
+        </td>
       </tr>
 
       <thead>

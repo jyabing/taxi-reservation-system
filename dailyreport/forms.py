@@ -26,17 +26,23 @@ class DriverDailyReportForm(forms.ModelForm):
         queryset=Car.objects.all().order_by('name'),
         required=False
     )
+    # 新增：未完成入库手续（非模型字段）
+    unreturned_flag = forms.BooleanField(
+        required=False,
+        label="未完成入库手续"
+    )
+
     class Meta:
         model = DriverDailyReport
         exclude = ["driver"]
-        fields = "__all__"
-        # 如需定制部件请在此追加 widgets / labels
-        # widgets = {...}
-        # labels = {...}
+        fields = "__all__"   # 保持你的原样
 
-    # 如需基础校验，可在此添加；保持空实现更稳妥
     def clean(self):
         cleaned = super().clean()
+        # 若用户输入了退勤时间，则把“未完成入库手续”强制视为未勾选
+        co = cleaned.get("clock_out")
+        if co:
+            cleaned["unreturned_flag"] = False
         return cleaned
 
 
