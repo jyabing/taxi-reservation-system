@@ -1,6 +1,6 @@
 import calendar, requests, random, os, json
 from calendar import monthrange
-from datetime import datetime, timedelta, time as dtime, date
+from datetime import datetime, timedelta, time as dtime, date, time
 from .models import (
     Reservation,
     ReservationStatus,
