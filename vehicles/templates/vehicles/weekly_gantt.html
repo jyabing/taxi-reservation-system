@@ -4,6 +4,8 @@
 {% block content %}
 
 <div class="container-fluid py-3">
+
+  <!-- 标题 + 周切换 -->
   <div class="d-flex align-items-center mb-3">
     <div class="me-3 d-flex align-items-baseline gap-2">
       <span class="fs-5">🚗</span>
@@ -17,28 +19,63 @@
     </div>
   </div>
 
-  <!-- 凡例（状态说明） -->
-  <!-- Legend 样式（内联，确保立即生效；之后可移入 CSS 文件） -->
-    <style>
+  <!-- Legend 样式（内联，确保立即生效；可移入 static/css/gantt.css） -->
+  <style>
     .legend-box{display:inline-block;width:16px;height:12px;margin-right:4px;border-radius:3px;vertical-align:middle;}
-    </style>
+    .sticky-col{
+      position: sticky; left: 0; z-index: 2; background: #fff;
+      min-width: 120px; border-right: 2px solid #e5e7eb; text-align: left; padding-left: 6px;
+      white-space: nowrap;
+    }
+    /* 甘特色块里的字更易读 */
+    .gantt-seg{ color:#fff; font-size:11px; text-align:center; vertical-align:middle; font-weight:600; }
 
-   <div class="mb-2 small d-flex gap-3 align-items-center"> 
-    <span><span class="legend-box gantt-reserved"></span> 確定済み</span>
-    <span><span class="legend-box gantt-pending"></span> 承認待ち</span>
-    <span><span class="legend-box gantt-out"></span> 出库中</span>
-    <span><span class="legend-box gantt-canceled"></span> キャンセル</span>
+    /* ====== 平板及以下 ====== */
+    @media (max-width: 992px){
+      .gantt-table{ font-size:11px; }
+      .gantt-seg{ height:18px; font-size:10px; }
+      .gantt-table thead th{ padding:2px 0; font-size:11px; }
+      .sticky-col{ min-width:100px; padding-left:4px; }
+    }
+    /* ====== 手机（竖屏） ====== */
+    @media (max-width: 576px){
+      .gantt-wrapper{ overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:12px; }
+      .gantt-table{ min-width: 900px; }
+      .gantt-table thead th{ font-size:10px; padding:1px 0; }
+      .sticky-col{ min-width:86px; border-right:1px solid #e5e7eb; padding-left:4px; }
+      .gantt-seg{ height:16px; font-size:9px; border-radius:4px; }
+      .legend{ gap:8px; flex-wrap: wrap; }
+      .legend .label{ display:none; }
+      .legend-box{ width:12px; height:10px; margin-right:2px; }
+      .btn-sm{ padding:2px 6px; font-size:12px; }
+    }
+  </style>
+
+  <!-- 凡例（状态说明） -->
+  <div class="legend mb-2 small d-flex gap-3 align-items-center">
+    <span class="legend-item" title="確定済み">
+      <span class="legend-box gantt-reserved"></span><span class="label"> 確定済み</span>
+    </span>
+    <span class="legend-item" title="承認待ち">
+      <span class="legend-box gantt-pending"></span><span class="label"> 承認待ち</span>
+    </span>
+    <span class="legend-item" title="外出中">
+      <span class="legend-box gantt-out"></span><span class="label"> 外出中</span>
+    </span>
+    <span class="legend-item" title="キャンセル">
+      <span class="legend-box gantt-canceled"></span><span class="label"> キャンセル</span>
+    </span>
   </div>
 
   <div class="gantt-wrapper">
-    <!-- 叠加网格的画布（沿用 static/js/gantt.js 的逻辑） -->
+    <!-- 叠加网格的画布（若需要，可由 static/js/gantt.js 读取 data-hours 来画竖线） -->
     <canvas id="gantt-grid-overlay"></canvas>
 
     <table class="gantt-table jp-compact">
       <thead>
         <tr>
           <th class="sticky-col">车辆</th>
-          {# 周一到周日，各占 24 列：这里只做标题行，真正 24 列在 tbody 由空白/段拼满 #}
+          {# 表头按日分组，每天 24 小时列 #}
           {% for d in week_dates %}
             <th colspan="24" class="text-center">{{ d|date:"Y-m-d" }}（{{ d|ja_weekday }}）</th>
           {% endfor %}
@@ -58,7 +95,13 @@
             {% endif %}
             <td colspan="{{ seg.length }}"
                 class="gantt-seg gantt-{{ seg.status }}"
-                title="{{ seg.title }}"></td>
+                title="{{ seg.title }}">
+              {% if seg.status == "reserved" %}確定
+              {% elif seg.status == "pending" %}申請
+              {% elif seg.status == "out" %}外出
+              {% elif seg.status == "canceled" %}取消
+              {% endif %}
+            </td>
           {% endfor %}
 
           {% if row.tail_gap > 0 %}
@@ -76,7 +119,7 @@
 </div>
 
 <script>
-  // 让网格脚本知道总列数（168）
+  // 可供网格脚本读取（总小时数 7*24 = 168）
   const tbl = document.querySelector('.gantt-table');
   if (tbl) tbl.setAttribute('data-hours', '{{ HOURS }}');
 </script>
