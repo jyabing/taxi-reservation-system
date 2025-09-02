@@ -66,7 +66,7 @@
 
           {# ✅ 如果当前可预约，显示“可预约”按钮 #}
           {% if info.reservable and not info.has_reservation and not info.is_repair %}
-            <a href="{% url 'vehicles:make_reservation_car' vehicle.id %}"
+            <a href="{% url 'vehicles:make_reservation' vehicle.id %}"
               class="badge d-inline-flex align-items-center gap-1 bg-danger text-white px-2 py-1 rounded-pill">
               🟥 可预约（点击预约）
             </a>
