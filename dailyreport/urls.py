@@ -52,6 +52,8 @@ urlpatterns = [
     # 未分配司机账号的日报
     path('dailyreport/add/unassigned/', views.driver_dailyreport_add_unassigned, name='driver_dailyreport_add_unassigned'), #无账号员工日报
 
+    path('items/<int:item_id>/delete/', views.dailyreport_item_delete, name='report_item_delete'),
+
 
     
 ]

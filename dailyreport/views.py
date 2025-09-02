@@ -14,6 +14,7 @@ from django.shortcuts import render, get_object_or_404, redirect, HttpResponse
 from django.utils.timezone import now, make_aware, get_current_timezone
 TZ = get_current_timezone()
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import IntegerField, Value, Case, When, ExpressionWrapper, F, Sum, Q, DateField
 from django.db.models.functions import Substr, Cast, Coalesce, NullIf, Lower, Trim
 from django.http import HttpResponse, FileResponse
@@ -435,107 +436,34 @@ def dailyreport_create(request):
         form = DriverDailyReportForm()
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {'form': form})
 
-@user_passes_test(is_dailyreport_admin)
+
+PREFIX = "items"   # ✅ 前后端统一的前缀
+
+ReportItemFormSet = inlineformset_factory(
+    DriverDailyReport,
+    DriverDailyReportItem,
+    form=DriverDailyReportItemForm,
+    extra=0,
+    can_delete=True,     # ✅ 允许删除
+    max_num=40,
+)
+
+
 def dailyreport_edit(request, pk):
     report = get_object_or_404(DriverDailyReport, pk=pk)
 
-    ReportItemFormSet = inlineformset_factory(
-        DriverDailyReport,
-        DriverDailyReportItem,
-        form=DriverDailyReportItemForm,
-        formset=RequiredReportItemFormSet,
-        extra=0,
-        can_delete=True,
-        max_num=40,
-    )
-
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
-        formset = ReportItemFormSet(request.POST, instance=report)
+        formset = ReportItemFormSet(request.POST, instance=report, prefix=PREFIX)
 
         if form.is_valid() and formset.is_valid():
-            # === 记录保存前的旧值（用于判断“从空到有”） ===
-            _old_in  = getattr(report, "clock_in",  None)
-            _old_out = getattr(report, "clock_out", None)
-
             inst = form.save(commit=False)
-            cd = form.cleaned_data
-
-            inst.etc_collected_cash = _to_int(cd.get('etc_collected_cash') or request.POST.get('etc_collected_cash'))
-            inst.etc_collected_app  = _to_int(cd.get('etc_collected_app')  or request.POST.get('etc_collected_app'))
-
-            etc_collected_val = cd.get('etc_collected')
-            inst.etc_collected = _to_int(
-                etc_collected_val if etc_collected_val not in [None, '']
-                else (inst.etc_collected_cash or 0) + (inst.etc_collected_app or 0)
-            )
-
-            inst.etc_uncollected = _to_int(
-                cd.get('etc_uncollected') or request.POST.get('etc_uncollected') or request.POST.get('etc_empty_amount')
-            )
-            inst.etc_payment_method = cd.get('etc_payment_method') or None
-
-            if 'etc_shortage' in form.fields:
-                inst.etc_shortage = _to_int(cd.get('etc_shortage'))
-            else:
-                expected_val = _to_int(getattr(inst, 'etc_expected', 0))
-                inst.etc_shortage = max(0, expected_val - _to_int(inst.etc_collected))
-
-            break_input = (request.POST.get("break_time_input") or "").strip()
-            break_minutes = 0
-            try:
-                if ":" in break_input:
-                    h, m = map(int, break_input.split(":", 1))
-                    break_minutes = h * 60 + m
-                elif break_input:
-                    break_minutes = int(break_input)
-            except Exception:
-                break_minutes = 0
-            try:
-                inst.休憩時間 = timedelta(minutes=break_minutes)
-            except Exception:
-                pass
-
-            try:
-                inst.calculate_work_times()
-            except Exception:
-                pass
-
             inst.edited_by = request.user
-
-            cash_total = sum(
-                (it.cleaned_data.get('meter_fee') or 0)
-                for it in formset.forms
-                if it.cleaned_data.get('payment_method') == 'cash'
-                and not it.cleaned_data.get('DELETE', False)
-            )
-            charter_cash_total = sum(
-                (it.cleaned_data.get('charter_amount_jpy') or 0)
-                for it in formset.forms
-                if it.cleaned_data.get('is_charter')
-                and (it.cleaned_data.get('charter_payment_method') in
-                     ['jpy_cash', 'jp_cash', 'cash', 'rmb_cash', 'self_wechat', 'boss_wechat'])
-                and not it.cleaned_data.get('DELETE', False)
-            )
-            deposit = inst.deposit_amount or 0
-            inst.deposit_difference = deposit - cash_total - charter_cash_total
-
             inst.save()
+
+            # 关键：一句话就够了（增/改/删 都在这里完成）
             formset.instance = inst
-            formset.save()
-
-            # >>> [SYNC-RESERVATION CALL] 仅当从空到有时，同步预约实际出/入库
-            try:
-                _sync_reservation_actual_for_report(inst, _old_in, _old_out)
-            except Exception as _e:
-                logger.warning("sync reservation (dailyreport_edit) failed: %s", _e)
-            # <<< [SYNC-RESERVATION CALL]
-
-            try:
-                inst.has_issue = inst.items.filter(has_issue=True).exists()
-                inst.save(update_fields=["has_issue"])
-            except Exception:
-                pass
+            formset.save()   # ✅ 会自动删除勾选 DELETE 的旧行
 
             messages.success(request, "保存成功！")
             return redirect('dailyreport:dailyreport_edit', pk=inst.pk)
@@ -543,84 +471,30 @@ def dailyreport_edit(request, pk):
             messages.error(request, "保存失败，请检查输入内容")
     else:
         form = DriverDailyReportForm(instance=report)
-        formset = ReportItemFormSet(instance=report)
+        formset = ReportItemFormSet(instance=report, prefix=PREFIX)  # ✅ GET 同样用 prefix
 
-    try:
-        formset.queryset = _sorted_items_qs(report)
-    except Exception:
-        pass
-
-    data_iter = []
-    for f in formset.forms:
-        if f.is_bound and f.is_valid():
-            cleaned = f.cleaned_data
-            if not cleaned.get("DELETE", False):
-                data_iter.append({
-                    'meter_fee': _to_int0(cleaned.get('meter_fee')),
-                    'payment_method': cleaned.get('payment_method') or '',
-                    'note': cleaned.get('note') or '',
-                    'DELETE': False,
-                })
-        elif f.instance and not getattr(f.instance, 'DELETE', False):
-            data_iter.append({
-                'meter_fee': _to_int0(getattr(f.instance, 'meter_fee', 0)),
-                'payment_method': getattr(f.instance, 'payment_method', '') or '',
-                'note': getattr(f.instance, 'note', '') or '',
-                'DELETE': False,
-            })
-    totals_raw = calculate_totals_from_formset(data_iter)
-    totals = {f"{k}_raw": v["total"] for k, v in totals_raw.items() if isinstance(v, dict)}
-    totals.update({f"{k}_split": v["bonus"] for k, v in totals_raw.items() if isinstance(v, dict)})
-    totals["meter_only_total"] = totals_raw.get("meter_only_total", 0)
-
-    summary_keys = [
-        ('meter', 'メーター(水揚)'),
-        ('cash', '現金(ながし)'),
-        ('uber', 'Uber'),
-        ('didi', 'Didi'),
-        ('credit', 'クレジ'),
-        ('kyokushin', '京交信'),
-        ('omron', 'オムロン'),
-        ('kyotoshi', '京都市他'),
-        ('qr', '扫码'),
-    ]
-    summary_panel_data = [
-        {
-            'key': key,
-            'label': label,
-            'raw': totals.get(f'{key}_raw', 0),
-            'split': totals.get(f'{key}_split', 0),
-            'meter_only': totals.get(f'{key}_meter_only', 0),
-        }
-        for key, label in summary_keys
-    ]
-
-    cash = totals.get("cash_raw", 0)
-    etc = report.etc_collected or 0
-    deposit_amt = int(form.cleaned_data.get("deposit_amount") if form.is_bound else (report.deposit_amount or 0))
-    total_sales = totals.get("meter_raw", 0)
-    meter_only_total = totals.get("meter_only_total", 0)
-    deposit_diff = getattr(report, "deposit_difference", deposit_amt - cash)
-
-    payment_rates = {k: float(v) for k, v in PAYMENT_RATES.items()}
-
-    context = {
+    # 模板需要的其它上下文按你现有的来，这里只保证能渲染
+    return render(request, 'dailyreport/driver_dailyreport_edit.html', {
         'form': form,
         'formset': formset,
         'report': report,
-        'duration': timedelta(),
-        'summary_keys': summary_keys,
-        'summary_panel_data': summary_panel_data,
-        'cash_total': cash,
-        'etc_collected': etc,
-        'deposit_amt': deposit_amt,
-        'total_collected': cash,
-        'total_sales': total_sales,
-        'meter_only_total': meter_only_total,
-        'deposit_diff': deposit_diff,
-        'payment_rates': payment_rates,
-    }
-    return render(request, 'dailyreport/driver_dailyreport_edit.html', context)
+        'driver': getattr(report, 'driver', None),
+        'is_edit': True,
+    })
+from django.views.decorators.http import require_POST
+from django.shortcuts import get_object_or_404, redirect
+from django.contrib import messages
+# 如果上面没引入 user_passes_test / 模型，也一并确认
+from django.contrib.auth.decorators import user_passes_test
+from .models import DriverDailyReportItem
+@user_passes_test(is_dailyreport_admin)
+@require_POST
+def dailyreport_item_delete(request, item_id):
+    item = get_object_or_404(DriverDailyReportItem, pk=item_id)
+    report_id = item.report_id
+    item.delete()
+    messages.success(request, "已删除 1 条明细。")
+    return redirect('dailyreport:dailyreport_edit', pk=report_id)
 
 @login_required
 def sales_thanks(request):

@@ -75,6 +75,11 @@ class DriverDailyReportItemForm(forms.ModelForm):
 
 # --- 明细 FormSet（不含任何分段逻辑） ---
 class _BaseReportItemFormSet(BaseInlineFormSet):
+    def _should_delete_form(self, form):
+        # ★ 勾了 DELETE 就判定为删除
+        return bool(getattr(form, "cleaned_data", {}) and form.cleaned_data.get("DELETE"))
+
+    
     def clean(self):
         super().clean()
         # 如需“至少 1 条明细”强校验，取消注释：

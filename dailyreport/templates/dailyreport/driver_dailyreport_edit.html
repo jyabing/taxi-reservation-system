@@ -433,169 +433,192 @@ input[type=number] {
     </div>
 
     <table class="table table-bordered table-sm report-table">
-      <thead class="table-light">
-        <tr>
-          <th class="row-number-header">#</th>
-          <th style="white-space: nowrap;">時間</th>
-          <th style="white-space: nowrap;">乗車地</th>
-          <th style="white-space: nowrap;">料金</th>
-          
-          <th style="white-space: nowrap;">支付</th>
-          <th style="white-space: nowrap;">待入</th>
+  <thead class="table-light">
+    <tr>
+      <th class="row-number-header">#</th>
+      <th style="white-space: nowrap;">時間</th>
+      <th style="white-space: nowrap;">乗車地</th>
+      <th style="white-space: nowrap;">料金</th>
+      <th style="white-space: nowrap;">支付</th>
+      <th style="white-space: nowrap;">待入</th>
+      <th style="white-space: nowrap;">強調</th>
+      <th style="white-space: nowrap;">貸切</th>
+      <th style="white-space: nowrap;">貸切金額</th>
+      <th style="white-space: nowrap;">貸切支払</th>
+      <th>注釈</th>
+      <th style="white-space: nowrap;">操作</th>
+    </tr>
+  </thead>
 
-          <th style="white-space: nowrap;">強調</th>
-          <th style="white-space: nowrap;">貸切</th>
-          
-          <th style="white-space: nowrap;">貸切金額</th>
-          <th style="white-space: nowrap;">貸切支払</th>
-          <th>注釈</th>
-          <th style="white-space: nowrap;">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{ formset.management_form }}
-        {% for form in formset.forms %}
-          <tr class="report-item-row {% if form.instance.is_flagged %}has-note{% endif %}">
-            {{ form.id }}
-            <td class="row-number">{{ forloop.counter }}</td>
-            <td style="min-width: 70px;">
-              {% if form.ride_time.errors %}
-                <div class="text-danger small">{{ form.ride_time.errors.0 }}</div>
-              {% endif %}
-              {{ form.ride_time|add_class:"form-control form-control-sm time-input" }}
-            </td>
+  <tbody>
+    {{ formset.management_form }}
 
-            <td style="min-width: 70px;">
-              {% if form.ride_from.errors %}
-                <div class="text-danger small">{{ form.ride_from.errors.0 }}</div>
-              {% endif %}
-              {{ form.ride_from|add_class:"form-control form-control-sm" }}
-            </td>
+    {% for form in formset.forms %}
+      <tr class="report-item-row {% if form.instance.is_flagged %}has-note{% endif %}">
+        {# ✅ 隐藏单元格：保证 id / DELETE 在本行 DOM 内 #}
+        <td class="d-none">
+          {{ form.id }}
+          {{ form.DELETE|add_class:"delete-flag" }}
+        </td>
 
-            <td style="min-width: 70px;">
-              <input
-                type="text"
-                name="{{ form.meter_fee.html_name }}"
-                id="{{ form.meter_fee.id_for_label }}"
-                value="{{ form.meter_fee.value|floatformat:"-0" }}"
-                class="form-control form-control-sm text-end meter-fee-input"
-              >
-            </td>
+        <td class="row-number">{{ forloop.counter }}</td>
 
-            <td style="min-width: 100px;">
-              {% if form.payment_method.errors %}
-                <div class="text-danger small">{{ form.payment_method.errors.0 }}</div>
-              {% endif %}
-              {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
-            </td>
+        <td style="min-width: 70px;">
+          {% if form.ride_time.errors %}
+            <div class="text-danger small">{{ form.ride_time.errors.0 }}</div>
+          {% endif %}
+          {{ form.ride_time|add_class:"form-control form-control-sm time-input" }}
+        </td>
 
-            <!-- ▼ 新增：待入列（is_pending），位于 支付 与 強調 之间 -->
-            <td class="text-center">
-              {% if form.is_pending.errors %}
-                <div class="text-danger small">{{ form.is_pending.errors.0 }}</div>
-              {% endif %}
-              {{ form.is_pending }}  <!-- forms.py 已加 pending-checkbox class 的 widget -->
-            </td>
-            <!-- ▲ 新增结束 -->
+        <td style="min-width: 70px;">
+          {% if form.ride_from.errors %}
+            <div class="text-danger small">{{ form.ride_from.errors.0 }}</div>
+          {% endif %}
+          {{ form.ride_from|add_class:"form-control form-control-sm" }}
+        </td>
 
-            <td class="text-center">
-              {% if form.is_flagged.errors %}
-                <div class="text-danger small">{{ form.is_flagged.errors.0 }}</div>
-              {% endif %}
-              {{ form.is_flagged }}
-            </td>
+        <td style="min-width: 70px;">
+          <input
+            type="text"
+            name="{{ form.meter_fee.html_name }}"
+            id="{{ form.meter_fee.id_for_label }}"
+            value="{{ form.meter_fee.value|floatformat:"-0" }}"
+            class="form-control form-control-sm text-end meter-fee-input"
+          >
+        </td>
 
-            <td class="text-center">
-              {% if form.is_charter.errors %}
-                <div class="text-danger small">{{ form.is_charter.errors.0 }}</div>
-              {% endif %}
-              {{ form.is_charter }}
-            </td>
+        <td style="min-width: 100px;">
+          {% if form.payment_method.errors %}
+            <div class="text-danger small">{{ form.payment_method.errors.0 }}</div>
+          {% endif %}
+          {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
+        </td>
 
-            <td>
-              {{ form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}
-            </td>
-            <td>
-              {{ form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
-            </td>
+        {# ▼ 待入列 #}
+        <td class="text-center">
+          {% if form.is_pending.errors %}
+            <div class="text-danger small">{{ form.is_pending.errors.0 }}</div>
+          {% endif %}
+          {{ form.is_pending }} {# widget 上已有 pending-checkbox class #}
+        </td>
+        {# ▲ #}
 
-            <td>
-              {% if form.note.value %}📝{% endif %}
-              {% if form.note.errors %}
-                <div class="text-danger small">{{ form.note.errors.0 }}</div>
-              {% endif %}
-              {{ form.note }}
-              
-            <!-- ▼ 勾选“待入”时显示的小提示（默认隐藏） -->
-            <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
-              這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
-            </div>
-            <!-- ▲ 小提示结束 -->
-            
-            </td>
+        <td class="text-center">
+          {% if form.is_flagged.errors %}
+            <div class="text-danger small">{{ form.is_flagged.errors.0 }}</div>
+          {% endif %}
+          {{ form.is_flagged }}
+        </td>
 
-            <!-- ✅ 删除按钮区域 -->
-            <td style="white-space: nowrap;">
-              <div class="d-flex flex-row gap-1">
-                {% if form.instance.pk %}
-                  {{ form.DELETE|add_class:"d-none delete-flag" }}
-                  <button type="button" class="btn btn-sm btn-danger delete-row">削除</button>
-                {% else %}
-                  <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
-                {% endif %}
-                  <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕下に挿入</button>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
+        <td class="text-center">
+          {% if form.is_charter.errors %}
+            <div class="text-danger small">{{ form.is_charter.errors.0 }}</div>
+          {% endif %}
+          {{ form.is_charter }}
+        </td>
 
-      <!-- ✅ 新增：隐藏的空模板行供 JS 克隆 -->
-      <tbody id="empty-form-template" class="d-none">
-        <tr class="report-item-row">
-          {{ formset.empty_form.id }}
-          {{ formset.empty_form.DELETE }}
+        <td>
+          {{ form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}
+        </td>
 
-          <td class="row-number">__num__</td>
-          <td>{{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}</td>
-          <td>{{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}</td>
-          <td>{{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}</td>
-          <td>{{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}</td>
-          
-          <!-- ▼ 新增：待入（is_pending）列，位置：支付之后、強調之前 -->
-          <td class="text-center">
-            {{ formset.empty_form.is_pending|add_class:"pending-checkbox" }}
-          </td>
-          <!-- ▲ 新增结束 -->
-          
-          <td class="text-center">{{ formset.empty_form.is_flagged }}</td>
+        <td>
+          {{ form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
+        </td>
 
-          <td class="text-center">{{ formset.empty_form.is_charter }}</td>
+        <td>
+          {% if form.note.value %}📝{% endif %}
+          {% if form.note.errors %}
+            <div class="text-danger small">{{ form.note.errors.0 }}</div>
+          {% endif %}
+          {{ form.note }}
 
-          <!-- 先金额 -->
-          <td>{{ formset.empty_form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}</td>
-          
-          <!-- 再支払；注意用 form-select -->
-          <td>{{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}</td>
+          <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
+            這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+          </div>
+        </td>
 
-          <td>{{ formset.empty_form.note|add_class:"form-control" }}
+        {# 每一行的操作列里：#}
+        <td style="white-space: nowrap;">
+          <div class="d-flex flex-row gap-1">
+            {% if form.instance.pk %}
+              <!-- 立即删除：用 data-delete-url 存路由 -->
+              <button type="button"
+                      class="btn btn-sm btn-danger js-delete-item"
+                      data-delete-url="{% url 'dailyreport:report_item_delete' form.instance.pk %}">
+                删除
+              </button>
+            {% else %}
+              <!-- 还没保存到数据库的临时行：前端移除即可 -->
+              <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕下に挿入</button>
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
 
-              <!-- ▼ 与上面一致 -->
-              <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
-                些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
-              </div>
-          </td>
+  {# ✅ 空模板：同样把 id/DELETE 放进隐藏 <td>；并保持列结构一致 #}
+  <tbody id="empty-form-template" class="d-none">
+    <tr class="report-item-row">
+      <td class="d-none">
+        {{ formset.empty_form.id }}
+        {{ formset.empty_form.DELETE|add_class:"delete-flag" }}
+      </td>
 
-          
-          <td style="white-space:nowrap;">
-            <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
-            <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
-          </td>
-        </tr>
-      </tbody>
-      <!-- ✅ 新增结束 -->
+      <td class="row-number">__num__</td>
 
-    </table>
+      <td>
+        {{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}
+      </td>
+
+      <td>
+        {{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}
+      </td>
+
+      <td>
+        {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
+      </td>
+
+      <td>
+        {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
+      </td>
+
+      <td class="text-center">
+        {{ formset.empty_form.is_pending|add_class:"pending-checkbox" }}
+      </td>
+
+      <td class="text-center">
+        {{ formset.empty_form.is_flagged }}
+      </td>
+
+      <td class="text-center">
+        {{ formset.empty_form.is_charter }}
+      </td>
+
+      <td>
+        {{ formset.empty_form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}
+      </td>
+
+      <td>
+        {{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
+      </td>
+
+      <td>
+        {{ formset.empty_form.note|add_class:"form-control" }}
+        <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
+          這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+        </div>
+      </td>
+
+      <td style="white-space:nowrap;">
+        <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+        <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
 
     <button type="submit" class="btn btn-primary">💾 保存する</button>
   </form>
@@ -659,6 +682,38 @@ input[type=number] {
         window.addEventListener("load", sync);
       }
     })();
+  </script>
+
+  <script>
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.js-delete-item');
+    if (!btn) return;
+
+    // 确认
+    if (!confirm('确定删除此行？')) return;
+
+    // 删除接口地址
+    const url = btn.dataset.deleteUrl;
+    if (!url) return;
+
+    // 取页面里已有的大表单里的 CSRF
+    const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+    const token = tokenInput ? tokenInput.value : '';
+
+    // 动态创建一个独立表单并提交
+    const f = document.createElement('form');
+    f.method = 'POST';
+    f.action = url;
+
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrfmiddlewaretoken';
+    csrf.value = token;
+    f.appendChild(csrf);
+
+    document.body.appendChild(f);
+    f.submit();
+  });
   </script>
 
 {% endblock %}

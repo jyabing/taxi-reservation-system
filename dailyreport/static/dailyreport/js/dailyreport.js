@@ -95,19 +95,39 @@ function bindRowEvents(row) {
     });
   }
 
-  // 删除
-  $all(".delete-row", row).forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (!confirm("确定删除此行？")) return;
-      const cb = row.querySelector("input[name$='-DELETE']");
-      if (cb) {
-        cb.checked = true;
-        row.style.display = "none";
-        updateRowNumbersAndIndexes();
-        updateTotals();
-      }
-    });
+  // 删除（已有行）
+$all(".delete-row", row).forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (!confirm("确定删除此行？")) return;
+    const cb = row.querySelector("input[name$='-DELETE']");
+    if (cb) {
+      cb.checked = true;
+      row.style.display = "none";
+      updateRowNumbersAndIndexes();
+      updateTotals();
+      updateSmartHintPanel?.();
+    }
   });
+});
+
+// 移除（新建行）
+$all(".remove-row", row).forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (!confirm("确定移除此行？")) return;
+    // 新行模板里我们已渲染了 {{ formset.empty_form.DELETE }}
+    const cb = row.querySelector("input[name$='-DELETE']");
+    if (cb) {
+      cb.checked = true;
+      row.style.display = "none";
+    } else {
+      // 兜底：极端情况下没有 DELETE，就从 DOM 移除
+      row.remove();
+    }
+    updateRowNumbersAndIndexes();
+    updateTotals();
+    updateSmartHintPanel?.();
+  });
+});
 
   // 标记/待入 UI
   const checkbox = row.querySelector(".mark-checkbox");
@@ -226,12 +246,16 @@ function updateTotals() {
   let meterSum=0, charterCashTotal=0, charterUncollectedTotal=0;
 
   $all(".report-item-row", dataTb).forEach(row => {
+    // 跳过被标记删除或已隐藏的行
+    const delFlag = row.querySelector("input[name$='-DELETE']");
+    if ((delFlag && delFlag.checked) || row.style.display === "none") return;
+
     const isPending = (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
     if (isPending) return;
 
     const fee = toInt(row.querySelector(".meter-fee-input")?.value, 0);
-    const payment = row.querySelector("select[name$='payment_method']")?.value || "";
-    const isCharter = row.querySelector("input[name$='is_charter']")?.checked;
+    const payment = row.querySelector("select[name$='-payment_method']")?.value || "";
+    const isCharter = row.querySelector("input[name$='-is_charter']")?.checked;
     const charterAmount = toInt(row.querySelector(".charter-amount-input")?.value, 0);
     const charterPayMethod = row.querySelector(".charter-payment-method-select")?.value || "";
 
