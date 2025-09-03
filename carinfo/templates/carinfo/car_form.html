@@ -81,14 +81,21 @@
     <!-- 📝 備考・写真 -->
     <div class="mb-4 border rounded p-3 bg-light-subtle">
       <h5 class="fw-bold text-primary mb-3">📝 備考・写真</h5>
+
       <div class="mb-3">
         {{ form.notes.label_tag }} {{ form.notes }}
       </div>
+
       <div class="mb-3">
-        {{ form.image.label_tag }} {{ form.image }}
-        {% if form.instance.image %}
+        {{ form.main_photo.label_tag }} {{ form.main_photo }}
+        {% if form.main_photo.errors %}
+          <div class="text-danger small">{{ form.main_photo.errors }}</div>
+        {% endif %}
+
+        {% if form.instance.photo_url %}
           <div class="mt-2">
-            <img src="{{ form.instance.image.url }}" alt="車両画像" class="img-thumbnail" style="max-height: 150px;">
+            <img src="{{ form.instance.photo_url }}" alt="車両画像"
+                class="img-thumbnail" style="max-height: 150px;">
           </div>
         {% endif %}
       </div>
