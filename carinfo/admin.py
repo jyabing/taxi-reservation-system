@@ -6,6 +6,8 @@ from .models import Car
 from carinfo.services.car_access import is_car_reservable
 from carinfo.services.car_flags import is_under_repair, is_retired
 
+from django.core.files.storage import default_storage
+
 # ✅ 筛选器：保险状态
 class InsuranceStatusFilter(SimpleListFilter):
     title = '保险状态'
@@ -73,11 +75,11 @@ class ReservableStatusFilter(SimpleListFilter):
 @admin.register(Car)
 class CarAdmin(admin.ModelAdmin):
     list_display = (
-        'thumb',  # ✅ 缩略图列（放在最前）
+        'thumb',  # ✅ 缩略图
         'license_plate', 'name', 'brand', 'model', 'year',
         'colored_status', 'is_active',
-        'insurance_status_colored',    # 高亮显示保险状态
-        'inspection_status_colored',   # 高亮显示车检状态
+        'insurance_status_colored',
+        'inspection_status_colored',
         'registration_number', 'first_registration_date', 'usage', 'body_shape',
         'model_code', 'engine_model', 'engine_displacement',
         'length', 'width', 'height', 'vehicle_weight', 'gross_weight',
@@ -89,9 +91,7 @@ class CarAdmin(admin.ModelAdmin):
 
     list_filter = (
         'status', 'is_active', 'brand', 'department', 'fuel_type',
-        InsuranceStatusFilter,         # ✅ 保险状态筛选
-        InspectionStatusFilter,        # ✅ 车检状态筛选
-        ReservableStatusFilter,
+        InsuranceStatusFilter, InspectionStatusFilter, ReservableStatusFilter,
     )
 
     search_fields = (
@@ -104,61 +104,63 @@ class CarAdmin(admin.ModelAdmin):
     list_per_page = 15
     list_display_links = ('license_plate', 'name')
 
-    actions = ['update_selected_insurance_status']  # ✅ 批量更新操作
+    actions = ['update_selected_insurance_status']
 
-    # ✅ 轻量方式把“main_photo + preview”插入到表单最上方
+    # ✅ 只读预览字段（保留一处即可）
+    readonly_fields = ('preview',)
+
+    # ✅ 把 main_photo + preview 插到表单最前
     def get_fields(self, request, obj=None):
         fields = list(super().get_fields(request, obj))
-        # 确保 main_photo 在最前，并把 preview 紧随其后
         if 'main_photo' in fields:
             fields.remove('main_photo')
         return ['main_photo', 'preview'] + fields
 
-    # ✅ 列表页缩略图
+    # ===== 图片工具 =====
+    def _photo_url(self, obj):
+        f = getattr(obj, "main_photo", None)
+        if not (f and getattr(f, "name", "")):
+            return None
+        try:
+            if default_storage.exists(f.name):
+                return f.url    # 私有桶：签名 URL
+        except Exception:
+            return None
+        return None
+
+    @admin.display(description="照片", ordering="main_photo")
     def thumb(self, obj):
-        if getattr(obj, "main_photo", None):
+        url = self._photo_url(obj)
+        if url:
             return format_html(
                 '<img src="{}" style="width:72px;height:48px;object-fit:cover;'
-                'border-radius:6px;box-shadow:0 0 2px rgba(0,0,0,.25);" />',
-                obj.main_photo.url
+                'border-radius:6px;box-shadow:0 0 2px rgba(0,0,0,.25);" />', url
             )
         return "—"
-    thumb.short_description = "照片"
-    thumb.admin_order_field = "main_photo"
 
-    # ✅ 编辑页右侧预览
+    @admin.display(description="预览")
     def preview(self, obj):
-        if getattr(obj, "main_photo", None):
+        url = self._photo_url(obj)
+        if url:
             return format_html(
                 '<img src="{}" style="max-width:280px;height:auto;border-radius:8px;'
-                'box-shadow:0 0 3px rgba(0,0,0,.2);" />',
-                obj.main_photo.url
+                'box-shadow:0 0 3px rgba(0,0,0,.2);" />', url
             )
         return "（暂无图片）"
-    preview.short_description = "预览"
 
-    # ✅ 让“预览”成为只读字段（不用自定义 fieldsets）
-    readonly_fields = ('preview',)
-
+    # ===== 你的其他方法保持不变 =====
     def update_selected_insurance_status(self, request, queryset):
         today = localdate()
         updated = 0
-
         for car in queryset:
             old_status = car.insurance_status
-
             if car.insurance_end_date:
-                if car.insurance_end_date < today:
-                    car.insurance_status = 'expired'
-                else:
-                    car.insurance_status = 'valid'
+                car.insurance_status = 'expired' if car.insurance_end_date < today else 'valid'
             else:
                 car.insurance_status = 'none'
-
             if car.insurance_status != old_status:
                 car.save(update_fields=['insurance_status'])
                 updated += 1
-
         self.message_user(request, f"✅ 已更新 {updated} 条保险状态记录。")
     update_selected_insurance_status.short_description = "✅ 更新所选车辆的保险状态"
 
@@ -171,7 +173,7 @@ class CarAdmin(admin.ModelAdmin):
             return format_html('<span style="color:gray;">🗑️ 已报废</span>')
         else:
             return format_html('<span style="color:black;">❓ 未设定</span>')
-        colored_status.short_description = '状态'
+    colored_status.short_description = '状态'
 
     def insurance_status_colored(self, obj):
         if obj.is_insurance_expired():
@@ -188,3 +190,21 @@ class CarAdmin(admin.ModelAdmin):
             return format_html('<span style="color: green;">✅ 有效</span>')
         return format_html('<span style="color: gray;">无记录</span>')
     inspection_status_colored.short_description = "车检状态"
+
+    def save_model(self, request, obj, form, change):
+        old_name = None
+        if change:
+            try:
+                old = type(obj).objects.get(pk=obj.pk)
+                old_name = getattr(old.main_photo, 'name', None)
+            except type(obj).DoesNotExist:
+                pass
+
+        super().save_model(request, obj, form, change)
+
+        # 如果这次确实上传了新图片，并且旧的是占位图，清理占位对象
+        if form.cleaned_data.get('main_photo') and old_name and old_name.startswith('placeholder_'):
+            try:
+                obj.main_photo.storage.delete(old_name)
+            except Exception:
+                pass

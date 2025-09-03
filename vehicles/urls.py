@@ -63,4 +63,5 @@ urlpatterns = [
     path('admin/list/', views.admin_list, name='vehicle_admin_list'),
     path('my_dailyreports/', views.my_dailyreports, name='my_dailyreports'),
     path('my_dailyreport/<int:report_id>/', views.my_daily_report_detail, name='my_daily_report_detail'),
+    
 ]
