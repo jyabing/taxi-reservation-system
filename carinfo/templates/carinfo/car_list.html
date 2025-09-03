@@ -33,8 +33,8 @@
         {% with car=car_info.obj %}
         <tr>
           <td>
-            {% if car.image %}
-              <img src="{{ car.image.url }}" style="height: 50px;">
+            {% if car.main_photo %}
+              <img src="{{ car.main_photo.url }}" style="height: 50px;">
             {% else %}-{% endif %}
           </td>
           <td>

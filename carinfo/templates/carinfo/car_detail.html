@@ -11,8 +11,8 @@
   <div class="row">
     <!-- 左侧图片 -->
     <div class="col-md-4 mb-3">
-      {% if car.image %}
-        <img src="{{ car.image.url }}" alt="车辆图片" class="img-fluid rounded border">
+      {% if car.main_photo %}
+        <img src="{{ car.main_photo.url }}" alt="车辆图片" class="img-fluid rounded border">
       {% else %}
         <div class="border rounded p-4 text-muted text-center">暂无图片</div>
       {% endif %}
