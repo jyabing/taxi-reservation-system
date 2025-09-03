@@ -2,6 +2,7 @@ from django.db import models
 from datetime import date
 from django.core.exceptions import ValidationError
 from django.utils.timezone import localdate
+from django.core.files.storage import default_storage
 
 def car_main_photo_path(instance, filename):
     # 存储到 R2：cars/<car_id>/<原文件名>
@@ -143,30 +144,46 @@ class Car(models.Model):
             self.insurance_status = 'none'
 
     def clean(self):
-        if self.status == 'available' and self.is_insurance_expired():
+        if self.status == 'usable' and self.is_insurance_expired():
             raise ValidationError("车辆为可用状态，但保险已过期。")
-        if self.status == 'available' and self.is_inspection_expired():
+        if self.status == 'usable' and self.is_inspection_expired():
             raise ValidationError("车辆为可用状态，但车检已过期。")
+        
+    @property
+    def photo_url(self) -> str | None:
+        """
+        模板统一用 car.photo_url；返回可直接放到 <img src> 的 URL。
+        做了 fail-open：HEAD 出错也返回 url（R2 的 GET 仍可用）。
+        """
+        f = getattr(self, "main_photo", None)
+        if f and getattr(f, "name", ""):
+            try:
+                default_storage.exists(f.name)  # 可选：HEAD 检查；失败也不抛
+            except Exception:
+                pass
+            return f.url
+        # 回退：旧字段仍有图时也能显示
+        img = getattr(self, "image", None)
+        if img and getattr(img, "url", None):
+            return img.url
+        return None
 
 def get_inspection_reminder(self):
-        """
-        根据 inspection_date 返回车检提醒文案（5天内提示、过期天数、当天提醒）
-        """
-        if not self.inspection_date:
-            print(f"[REMINDER] {self.license_plate}: 没有设置 inspection_date")
-            return None
+    """
+    根据 inspection_date 返回车检提醒文案（5天内提示、过期天数、当天提醒）
+    """
+    if not self.inspection_date:
+        return None
 
-        today = today = localdate()
-        delta = (self.inspection_date - today).days
+    today = localdate()
+    delta = (self.inspection_date - today).days
 
-        # ✅ 调试输出
-        print(f"[REMINDER] {self.license_plate}: inspection_date={self.inspection_date}, today={today}, delta={delta}")
-
-        if 0 < delta <= 5:
-            return f"🚨 还有 {delta} 天请协助事务所对本车进行车检"
-        elif delta == 0:
-            return "✅ 不要忘记本日车检"
-        elif -5 <= delta < 0:
-            return f"⚠️ 车检日已推迟 {abs(delta)} 天"
-        else:
-            return None
+    if 0 < delta <= 5:
+        return f"🚨 还有 {delta} 天请协助事务所对本车进行车检"
+    elif delta == 0:
+        return "✅ 不要忘记本日车检"
+    elif -5 <= delta < 0:
+        return f"⚠️ 车检日已推迟 {abs(delta)} 天"
+    else:
+        return None
+        
