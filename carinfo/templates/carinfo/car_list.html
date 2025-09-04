@@ -43,11 +43,9 @@
           <td>{{ car.brand }}</td>
           <td>{{ car.model }}</td>
           <td>
-            {% if car.obj.length %}
-              {{ car.obj.length }} × {{ car.obj.width }} × {{ car.obj.height }} <span class="text-muted small">mm</span>
-            {% else %}
-              -
-            {% endif %}
+            {% if car.length or car.width or car.height %}
+              {{ car.length|default:"-" }} × {{ car.width|default:"-" }} × {{ car.height|default:"-" }} <span class="text-muted small">mm</span>
+            {% else %}-{% endif %}
           </td>
           <td>{% include "partials/_car_status_badge.html" with car=car %}</td>
           <td>{{ car.manager_name }}</td>
