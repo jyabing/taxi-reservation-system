@@ -1,5 +1,10 @@
 # dailyreport/forms.py
 # 终版：完全移除“车辆分段/segment”相关代码；仅保留日报主表、明细、与可选图片表单。
+from __future__ import annotations
+
+from django.utils.encoding import force_str
+import datetime as _dt
+
 from django import forms
 from django.forms import inlineformset_factory, BaseInlineFormSet
 from carinfo.models import Car
@@ -103,3 +108,58 @@ ReportItemFormSet = inlineformset_factory(
 
 # 兼容旧代码里对 RequiredReportItemFormSet 的引用
 RequiredReportItemFormSet = ReportItemFormSet
+
+
+
+
+class _NormalizePostMixin:
+    """把 self.data 里所有值强制规范为字符串，避免 fromisoformat 类型错误。"""
+    def _normalize_querydict(self):
+        if not hasattr(self, "data") or self.data is None:
+            return
+        qd = self.data
+        try:
+            qd = qd.copy()  # QueryDict -> 可写
+        except Exception:
+            return
+        for key in list(qd.keys()):
+            vals = qd.getlist(key)
+            raw = vals[0] if vals else ""
+            # 统一为字符串
+            if isinstance(raw, (_dt.datetime, _dt.date, _dt.time)):
+                norm = raw.isoformat(sep=" ")
+            elif isinstance(raw, (bytes, bytearray)):
+                norm = raw.decode("utf-8", errors="ignore")
+            elif isinstance(raw, str):
+                norm = raw
+            else:
+                norm = force_str(raw)
+            qd.setlist(key, [norm])
+        self.data = qd
+
+class DriverDailyReportAdminForm(_NormalizePostMixin, forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 🚧 在字段解析前就把 data 里的值全转成 str
+        self._normalize_querydict()
+
+    class Meta:
+        from .models import DriverDailyReport
+        model = DriverDailyReport
+        fields = "__all__"
+
+
+
+class NormalizeInlineFormSet(_NormalizePostMixin, BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        # 先规范化，再交给父类去解析
+        if args and hasattr(args[0], "copy"):
+            data = args[0].copy()
+            # 对整个 formset 的 POST 做一次通杀
+            self.data = data  # 暂存给 mixin 用
+        else:
+            self.data = None
+        self._normalize_querydict()
+        if self.data is not None:
+            args = (self.data, *args[1:])
+        super().__init__(*args, **kwargs)

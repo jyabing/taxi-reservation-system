@@ -1,6 +1,8 @@
-import subprocess, os
+import subprocess, os, logging
 from django.db import models
+from django.utils.encoding import force_str
 from django.contrib import admin
+import datetime as _dt
 from rangefilter.filters import DateRangeFilter
 from django.http import HttpResponse
 from django.urls import path
@@ -12,6 +14,9 @@ from datetime import time, datetime  # 新增
 
 # >>> ADMIN SOFT PREFILL (no-FK) START
 from django import forms
+
+logger = logging.getLogger(__name__)
+
 
 def _safe_as_time(val):
     """datetime/time/'HH:MM' -> time；失败返回 None"""
@@ -117,11 +122,54 @@ class DriverDailyReportItemInline(admin.TabularInline):
         # ——— 备注与标记 ———
         'note', 'comment', 'is_flagged', 'has_issue',
     ]
-    readonly_fields = ['has_issue']
+    readonly_fields = ["meter_fee", 'has_issue']
+
 
 @admin.register(DriverDailyReport)
 class DriverDailyReportAdmin(admin.ModelAdmin):
-    form = DriverDailyReportAdminForm  # ✅ 使用上面的预填表单
+    form = DriverDailyReportAdminForm
+    inlines = [DriverDailyReportItemInline]
+
+    # ✅ 通杀守门器：所有 POST 值入表单解析前强制变成 str（inline 也覆盖）
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if request.method == "POST":
+            qd = request.POST  # QueryDict
+            if hasattr(qd, "_mutable"):
+                old_mutable = qd._mutable
+                qd._mutable = True
+
+            for key in list(qd.keys()):
+                vals = qd.getlist(key)
+
+                # 1) 扁平：只保留第一个值，避免 formset 字段进来是 list
+                raw = vals[0] if vals else ""
+
+                # 2) 规范化为字符串
+                try:
+                    if isinstance(raw, (_dt.datetime, _dt.date, _dt.time)):
+                        norm = raw.isoformat(sep=" ")  # 更易被 Django 解析
+                    elif isinstance(raw, (bytes, bytearray)):
+                        norm = raw.decode("utf-8", errors="ignore")
+                    elif isinstance(raw, str):
+                        norm = raw
+                    else:
+                        # 例如 JS 对象 / Decimal / list 等
+                        norm = force_str(raw)
+                    if len(vals) > 1:
+                        qd.setlist(key, [norm])
+                    else:
+                        qd[key] = norm
+                except Exception as e:
+                    logger.exception("POST normalize failed for key=%s, val=%r (%s)", key, raw, type(raw))
+                    qd[key] = force_str(raw)
+
+            if hasattr(qd, "_mutable"):
+                qd._mutable = old_mutable
+
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+    
+
     # --- SOFT PREFILL on save (from Vehicles.Reservation) ---
     def save_model(self, request, obj, form, change):
         try:
