@@ -10,24 +10,28 @@ AWS_ACCESS_KEY_ID        = os.getenv("R2_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY    = os.getenv("R2_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME  = os.getenv("R2_BUCKET_NAME")
 R2_ACCOUNT_ID            = os.getenv("R2_ACCOUNT_ID")
+# ⚠️ 这里必须是 Cloudflare 分配的真实 r2.dev 域名，比如：
+# pub-48d6e7c8197d4dde7a3f41f343085e209.r2.dev
+AWS_S3_CUSTOM_DOMAIN     = os.getenv("R2_PUBLIC_DOMAIN") or os.getenv("AWS_S3_CUSTOM_DOMAIN")
 
-if not all([AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_STORAGE_BUCKET_NAME, R2_ACCOUNT_ID]):
-    raise ImproperlyConfigured("❌ Missing one or more R2 environment variables")
+_missing = [k for k, v in {
+    "R2_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
+    "R2_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
+    "R2_BUCKET_NAME": AWS_STORAGE_BUCKET_NAME,
+    "R2_ACCOUNT_ID": R2_ACCOUNT_ID,
+    "R2_PUBLIC_DOMAIN/AWS_S3_CUSTOM_DOMAIN": AWS_S3_CUSTOM_DOMAIN,
+}.items() if not v]
+if _missing:
+    raise ImproperlyConfigured("Missing env var(s): " + ", ".join(_missing))
 
-# boto3 连接用的 API Endpoint（走 s3 协议）
+# boto3 用的 S3 API 端点
 AWS_S3_ENDPOINT_URL = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-# 生成前端可访问的 URL 用的公共域（无签名、可直链）
-# 若你愿意用 env 配置，也可以用 os.getenv("AWS_S3_CUSTOM_DOMAIN") 覆盖
-AWS_S3_CUSTOM_DOMAIN = f"pub-{R2_ACCOUNT_ID}.r2.dev"
-AWS_S3_URL_PROTOCOL  = "https:"   # 明确协议，避免相对协议
-
-# R2 关键参数
+# 前端直链用 r2.dev 域名
+AWS_S3_URL_PROTOCOL  = "https:"   # 明确协议
 AWS_S3_REGION_NAME        = "auto"
 AWS_S3_SIGNATURE_VERSION  = "s3v4"
-AWS_S3_ADDRESSING_STYLE   = "path"   # R2 必须 path
-
-# 上传/URL 策略
-AWS_QUERYSTRING_AUTH  = False        # 生成的 URL 不带 ?X-Amz-*
-AWS_S3_FILE_OVERWRITE = False        # 同名不覆盖
-AWS_DEFAULT_ACL       = None         # 不使用默认 ACL
+AWS_S3_ADDRESSING_STYLE   = "path"   # R2 用 path
+AWS_QUERYSTRING_AUTH      = False
+AWS_S3_FILE_OVERWRITE     = False
+AWS_DEFAULT_ACL           = None
