@@ -1,3 +1,7 @@
+import os
+from django.core.exceptions import ImproperlyConfigured
+
+
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
 AWS_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
