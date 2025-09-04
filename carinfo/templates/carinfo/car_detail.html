@@ -12,7 +12,7 @@
     <!-- 左侧图片 -->
     <div class="col-md-4 mb-3">
       {% if car.photo_url %}
-        <img src="{{ car.photo_url.url }}" alt="车辆图片" class="img-fluid rounded border">
+        <img src="{{ car.photo_url }}" alt="车辆图片" class="img-fluid rounded border">
       {% else %}
         <div class="border rounded p-4 text-muted text-center">暂无图片</div>
       {% endif %}
@@ -65,7 +65,7 @@
 
         <tr><th>车辆状态</th>
           <td>
-            {% if car.status == 'available' %}
+            {% if car.status == 'usable' %}
               <span class="badge bg-success">可用</span>
             {% elif car.status == 'repair' %}
               <span class="badge bg-warning text-dark">维修中</span>
@@ -80,8 +80,8 @@
 
         <tr><th>保险到期日</th>
           <td>
-            {{ car.insurance_expiry }}
-            {% if car.insurance_expiry and car.insurance_expiry|stringformat:"s" <= today_plus_30|stringformat:"s" %}
+            {{ car.insurance_end_date }}
+            {% if car.insurance_end_date and car.insurance_end_date|stringformat:"s" <= today_plus_30|stringformat:"s" %}
               <span class="text-danger">⚠️ 即将到期</span>
             {% endif %}
           </td>
