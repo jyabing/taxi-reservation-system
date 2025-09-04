@@ -1,12 +1,18 @@
+from uuid import uuid4
+import os
 from django.db import models
-from datetime import date
 from django.core.exceptions import ValidationError
 from django.utils.timezone import localdate
-from django.core.files.storage import default_storage
 
 def car_main_photo_path(instance, filename):
-    # 存储到 R2：cars/<car_id>/<原文件名>
-    return f"cars/{instance.pk}/{filename}"
+    """
+    R2 路径：cars/<car_id 或 tmp>/<uuid><ext>
+    - 新建对象还没 pk 时先放到 cars/tmp/ 下，也没关系
+    """
+    base, ext = os.path.splitext(filename or "")
+    ext = (ext or ".jpg").lower()
+    folder = instance.pk or "tmp"
+    return f"cars/{folder}/{uuid4().hex}{ext}"
 
 class Car(models.Model):
     STATUS_CHOICES = [
@@ -16,6 +22,37 @@ class Car(models.Model):
     ]
     
     main_photo = models.ImageField(upload_to=car_main_photo_path, blank=True, null=True, verbose_name="车辆照片")
+    image = models.ImageField("车辆照片(旧)", upload_to="cars/", blank=True, null=True)  # 想删可以晚点做数据迁移后删除
+
+    
+    # ========= 警示：把 get_inspection_reminder 放回类里 =========
+    @property
+    def inspection_reminder(self):
+        """模板里可用 {{ car.inspection_reminder }}"""
+        if not self.inspection_date:
+            return None
+        delta = (self.inspection_date - localdate()).days
+        if 0 < delta <= 5:
+            return f"🚨 还有 {delta} 天请协助事务所对本车进行车检"
+        elif delta == 0:
+            return "✅ 不要忘记本日车检"
+        elif -5 <= delta < 0:
+            return f"⚠️ 车检日已推迟 {abs(delta)} 天"
+        return None
+
+    @property
+    def photo_url(self) -> str | None:
+        """
+        模板统一用 car.photo_url；返回可直接放到 <img src> 的 URL。
+        不做 HEAD/exits 检查，直接给直链，避免 403。
+        """
+        f = getattr(self, "main_photo", None)
+        if f and getattr(f, "name", ""):
+            return f.url
+        img = getattr(self, "image", None)
+        if img and getattr(img, "url", None):
+            return img.url
+        return None
 
     # --- 基本信息 ---
     name = models.CharField("车辆名称", max_length=100)
@@ -149,24 +186,6 @@ class Car(models.Model):
         if self.status == 'usable' and self.is_inspection_expired():
             raise ValidationError("车辆为可用状态，但车检已过期。")
         
-    @property
-    def photo_url(self) -> str | None:
-        """
-        模板统一用 car.photo_url；返回可直接放到 <img src> 的 URL。
-        做了 fail-open：HEAD 出错也返回 url（R2 的 GET 仍可用）。
-        """
-        f = getattr(self, "main_photo", None)
-        if f and getattr(f, "name", ""):
-            try:
-                default_storage.exists(f.name)  # 可选：HEAD 检查；失败也不抛
-            except Exception:
-                pass
-            return f.url
-        # 回退：旧字段仍有图时也能显示
-        img = getattr(self, "image", None)
-        if img and getattr(img, "url", None):
-            return img.url
-        return None
 
 def get_inspection_reminder(self):
     """

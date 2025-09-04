@@ -33,5 +33,5 @@ AWS_S3_REGION_NAME        = "auto"
 AWS_S3_SIGNATURE_VERSION  = "s3v4"
 AWS_S3_ADDRESSING_STYLE   = "path"   # R2 用 path
 AWS_QUERYSTRING_AUTH      = False
-AWS_S3_FILE_OVERWRITE     = False
+AWS_S3_FILE_OVERWRITE     = True
 AWS_DEFAULT_ACL           = None
