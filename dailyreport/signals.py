@@ -1,6 +1,9 @@
 from __future__ import annotations
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 from typing import Optional, Tuple, List
+from django.utils import timezone
+
+from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils.timezone import make_aware, get_current_timezone
@@ -37,25 +40,78 @@ def _combine_date_time(d, t, fallback_date=None) -> Optional[datetime]:
             return None
     return _to_aware(datetime.combine(d, t))
 
-def _reservation_start_dt(res: Reservation, fallback_date) -> Optional[datetime]:
-    if getattr(res, "start_datetime", None):
-        return _to_aware(res.start_datetime)
-    return _combine_date_time(getattr(res, "date", None), getattr(res, "start_time", None), fallback_date)
+# ---- 通用：把 time/datetime 统一为“带日期的 aware datetime” ----
+def _as_aware_datetime(value: datetime | dtime | None, base_date: date | None) -> Optional[datetime]:
+    """
+    - value 可为 datetime / time / None
+    - base_date 用于把 time 组合成 datetime；缺省时用 localdate()
+    - 返回：时区 aware 的 datetime；若 value 为 None 返回 None
+    """
+    if value is None:
+        return None
 
-def _pick_reservation_for_report(rep: DriverDailyReport) -> Optional[Reservation]:
+    if base_date is None:
+        base_date = timezone.localdate()
+
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, dtime):
+        dt = datetime.combine(base_date, value)
+    else:
+        raise TypeError(f"Unsupported type: {type(value)!r}")
+
+    if getattr(settings, "USE_TZ", False):
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+# ---- 从 Reservation 拿“开始时间”的 datetime 表达 ----
+def _reservation_start_dt(r, base_date: date | None) -> Optional[datetime]:
+    """
+    兼容两种模型设计：
+    - 若有 r.start_datetime（DateTimeField），优先用它
+    - 否则用 r.date + r.start_time（TimeField）
+    都会统一转为 aware datetime
+    """
+    # 1) 显式的 DateTimeField
+    start_dt_field = getattr(r, "start_datetime", None)
+    if start_dt_field:
+        return _as_aware_datetime(start_dt_field, base_date)
+
+    # 2) date + time
+    r_date = getattr(r, "date", None) or base_date
+    r_time = getattr(r, "start_time", None)
+    if r_time:
+        return _as_aware_datetime(r_time, r_date)
+
+    return None
+
+# ---- 你原来的函数：改成安全/稳态版 ----
+def _pick_reservation_for_report(rep: "DriverDailyReport") -> Optional["Reservation"]:
+    # 司机绑定校验
     if not rep.driver or not getattr(rep.driver, "user", None):
         return None
+
     qs = (Reservation.objects
           .filter(driver=rep.driver.user, date__lte=rep.date, end_date__gte=rep.date)
           .order_by("date", "start_time"))
     candidates = list(qs[:20])
     if not candidates:
         return None
-    key_time = _to_aware(rep.clock_in) or _to_aware(datetime.combine(rep.date, dtime(10, 0)))
-    def score(r: Reservation):
-        start_dt = _reservation_start_dt(r, rep.date) or key_time
-        start_dt = _to_aware(start_dt)
+
+    base_date = getattr(rep, "date", None) or timezone.localdate()
+
+    # 统一：key_time 为 aware datetime（优先用 clock_in，没有则用当天 10:00）
+    key_time = _as_aware_datetime(getattr(rep, "clock_in", None), base_date)
+    if key_time is None:
+        key_time = _as_aware_datetime(dtime(10, 0), base_date)  # 兜底参考点
+
+    def score(r: "Reservation") -> float:
+        # 统一：每个候选的开始时刻也转成 aware datetime；没有就用 key_time 自身
+        start_dt = _reservation_start_dt(r, base_date) or key_time
+        # 两端都是 aware datetime，可安全做差
         return abs((start_dt - key_time).total_seconds())
+
     return min(candidates, key=score)
 
 def _get_actual_out_in(res: Reservation) -> Tuple[Optional[datetime], Optional[datetime]]:
