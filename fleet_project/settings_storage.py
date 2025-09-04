@@ -12,8 +12,7 @@ AWS_STORAGE_BUCKET_NAME  = os.getenv("R2_BUCKET_NAME")
 R2_ACCOUNT_ID            = os.getenv("R2_ACCOUNT_ID")
 
 if not all([AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_STORAGE_BUCKET_NAME, R2_ACCOUNT_ID]):
-    raise ImproperlyConfigured("Missing one or more R2 environment variables: "
-                               "R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_ACCOUNT_ID")
+    raise ImproperlyConfigured("❌ Missing one or more R2 environment variables")
 
 # boto3 连接用的 API Endpoint（走 s3 协议）
 AWS_S3_ENDPOINT_URL = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
