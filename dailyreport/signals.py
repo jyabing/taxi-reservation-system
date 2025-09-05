@@ -70,8 +70,10 @@ def _reservation_start_dt(reservation, base_date: date | None) -> Optional[datet
 
 def _pick_reservation_for_report(rep: DriverDailyReport) -> Optional["Reservation"]:
     """
-    在同司机、覆盖 rep.date 的预约中，选“开始时刻最接近 key_time”的一条。
-    key_time 优先用 rep.clock_in；否则用当日 10:00。
+    在同司机、覆盖 rep.date 的预约中选择：
+      1) 尽量同日
+      2) 若日报有车，尽量同车
+      3) 再用“开始时刻最接近 key_time（clock_in 或 10:00）”打分
     """
     driver = getattr(getattr(rep, "driver", None), "user", None)
     if not driver or not getattr(rep, "date", None):
@@ -83,6 +85,21 @@ def _pick_reservation_for_report(rep: DriverDailyReport) -> Optional["Reservatio
         .filter(driver=driver, date__lte=rep.date, end_date__gte=rep.date)
         .order_by("date", "start_time")
     )
+
+    # 1) 优先同一天
+    same_day = qs.filter(date=rep.date)
+
+    # 2) 若日报有车，优先同车
+    veh_id = getattr(rep, "vehicle_id", None)
+    if veh_id:
+        same_day_same_car = same_day.filter(vehicle_id=veh_id)
+        if same_day_same_car.exists():
+            qs = same_day_same_car
+        elif same_day.exists():
+            qs = same_day
+    elif same_day.exists():
+        qs = same_day
+
     candidates = list(qs[:20])
     if not candidates:
         return None
@@ -95,7 +112,13 @@ def _pick_reservation_for_report(rep: DriverDailyReport) -> Optional["Reservatio
         start_dt = _reservation_start_dt(r, base_date) or key_time
         return abs((start_dt - key_time).total_seconds())
 
-    return min(candidates, key=_score)
+    picked = min(candidates, key=_score)
+    logger.info("[R->V] pick by score: reservation_id=%s vehicle=%r date=%s~%s",
+                getattr(picked, "pk", None),
+                getattr(picked, "vehicle_id", None),
+                getattr(picked, "date", None),
+                getattr(picked, "end_date", None))
+    return picked
 
 
 # ========= 评分（按需扩展，不保存自身，避免递归） =========
@@ -197,13 +220,28 @@ def sync_report_to_reservation(sender, instance: DriverDailyReport, **kwargs):
     """
     rep = instance
     try:
+        logger.info(
+            "[R->V] report_id=%s date=%s driver=%s completed_flags=%s",
+            getattr(rep, "pk", None),
+            getattr(rep, "date", None),
+            getattr(getattr(rep, "driver", None), "user", None),
+            {k: getattr(rep, k, None) for k in ("is_completed", "completed", "is_done", "finished")}
+        )
+
         # 如果是 Reservation→Report 的链路触发，这里退出避免回环
         if _in_guard("sync_reservation_to_report"):
+            logger.info("[R->V] skipped due to guard(sync_reservation_to_report)")
             return
 
         res = _pick_reservation_for_report(rep)
         if not res:
+            logger.warning("[R->V] no reservation found for report_id=%s", getattr(rep, "pk", None))
             return
+
+        logger.info("[R->V] picked reservation id=%s status=%r vehicle_id=%r dates=%s~%s",
+                    getattr(res, "pk", None), getattr(res, "status", None),
+                    getattr(res, "vehicle_id", None),
+                    getattr(res, "date", None), getattr(res, "end_date", None))
 
         # 统一出退勤时间
         base_date = getattr(rep, "date", None)
@@ -222,31 +260,58 @@ def sync_report_to_reservation(sender, instance: DriverDailyReport, **kwargs):
         if completed and return_dt is None:
             return_dt = timezone.now()
 
+        logger.info("[R->V] depart_dt=%s return_dt=%s completed=%s", depart_dt, return_dt, completed)
+
+        # ==== 字段名自适应（避免和你模型的实际字段名不一致） ====
+        def _first_attr(obj, names):
+            for n in names:
+                if hasattr(obj, n):
+                    return n
+            return None
+
+        field_depart = _first_attr(res, ("actual_departure", "actual_out", "actual_departure_datetime"))
+        field_return = _first_attr(res, ("actual_return", "actual_in", "actual_return_datetime"))
+
         fields_to_update = []
-        if depart_dt is not None and hasattr(res, "actual_departure"):
-            res.actual_departure = depart_dt
-            fields_to_update.append("actual_departure")
-        if return_dt is not None and hasattr(res, "actual_return"):
-            res.actual_return = return_dt
-            fields_to_update.append("actual_return")
+        if depart_dt is not None and field_depart:
+            setattr(res, field_depart, depart_dt)
+            fields_to_update.append(field_depart)
+        if return_dt is not None and field_return:
+            setattr(res, field_return, return_dt)
+            fields_to_update.append(field_return)
 
         # 同步车辆（预约无车时）
         if getattr(rep, "vehicle_id", None) and getattr(res, "vehicle_id", None) is None:
             res.vehicle_id = rep.vehicle_id
             fields_to_update.append("vehicle_id")
 
-        # 改状态为“已完成”
+        # ==== 状态值：优先使用常量或从 choices 里反查（不是中文标签） ====
         if completed and hasattr(res, "status"):
-            target_done = getattr(res, "STATUS_COMPLETED", "已完成")
-            if getattr(res, "status", None) != target_done:
+            target_done = None
+            # 常量优先
+            if hasattr(res, "STATUS_COMPLETED"):
+                target_done = getattr(res, "STATUS_COMPLETED")
+            # 从 choices 里按标签反查值
+            elif hasattr(type(res), "status") and hasattr(type(res).status, "choices"):
+                for val, label in type(res).status.flatchoices:
+                    if str(label) in ("已完成", "完成", "完了", "Completed", "complete"):
+                        target_done = val
+                        break
+            if target_done is not None and getattr(res, "status", None) != target_done:
                 res.status = target_done
                 fields_to_update.append("status")
 
+        logger.info("[R->V] fields_to_update=%s values=%s",
+                    fields_to_update, {f: getattr(res, f, None) for f in fields_to_update})
+
         if fields_to_update:
             # 用 save(update_fields=...) 保留你在 Reservation.save()/signals 的后续行为
-            from vehicles.models import Reservation  # 延迟导入
             with _Guard("sync_report_to_reservation"):
                 res.save(update_fields=fields_to_update)
+            logger.info("[R->V] saved reservation id=%s with fields=%s",
+                        getattr(res, "pk", None), fields_to_update)
+        else:
+            logger.info("[R->V] nothing to update for reservation id=%s", getattr(res, "pk", None))
 
     except Exception as e:
         logger.exception(

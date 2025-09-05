@@ -10,7 +10,7 @@ from dailyreport.signals import _Guard, _in_guard, _get_actual_out_in  # 复用
 
 
 def _pick_report_for_reservation(res: Reservation) -> Optional[DriverDailyReport]:
-    """根据 Reservation 找到对应的 DriverDailyReport（优先同日）"""
+    """根据 Reservation 找到对应的 DriverDailyReport（优先同日；无则区间内第一条）"""
     if not res.driver:
         return None
     qs = (
