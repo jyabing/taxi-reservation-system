@@ -138,25 +138,40 @@ def _apply_scores(report: DriverDailyReport) -> None:
 
 __guard_flags = threading.local()
 
-@contextmanager
-def _Guard(name: str):
-    """
-    用法：
-        with _Guard("sync_report_to_reservation"):
-            ...  # 在这个区间内 _in_guard(name) 为 True
-    """
+def __get_flags():
     if not hasattr(__guard_flags, "flags"):
         __guard_flags.flags = set()
-    entered = name in __guard_flags.flags
-    __guard_flags.flags.add(name)
+    return __guard_flags.flags
+
+@contextmanager
+def _Guard(name: str | None = None):
+    """
+    兼容两种用法：
+        with _Guard("sync_report_to_reservation"):
+            ...
+        with _Guard():  # 旧代码可能这么写
+            ...
+    """
+    flags = __get_flags()
+    key = name or "__default__"
+    entered = key in flags
+    flags.add(key)
     try:
         yield
     finally:
         if not entered:
-            __guard_flags.flags.discard(name)
+            flags.discard(key)
 
-def _in_guard(name: str) -> bool:
-    return hasattr(__guard_flags, "flags") and (name in __guard_flags.flags)
+def _in_guard(name: str | None = None) -> bool:
+    """
+    兼容两种用法：
+        _in_guard("sync_reservation_to_report")
+        _in_guard()   # 无参时表示：处在任意保护区间
+    """
+    flags = __get_flags()
+    if name is None:
+        return bool(flags)
+    return name in flags
 
 def _get_actual_out_in(rep) -> tuple[Optional[datetime], Optional[datetime]]:
     """
