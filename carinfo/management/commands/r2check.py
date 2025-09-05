@@ -27,7 +27,9 @@ class Command(BaseCommand):
             return
 
         endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
-        cfg = Config(signature_version="s3v4", s3={"addressing_style": "path"})
+
+        # ✅ 用 virtual（或直接去掉 s3=... 这一项）
+        cfg = Config(signature_version="s3v4", s3={"addressing_style": "virtual"})
 
         s3 = boto3.client(
             "s3",
