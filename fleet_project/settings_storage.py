@@ -34,7 +34,7 @@ AWS_S3_URL_PROTOCOL      = "https:"
 # R2 必需参数
 AWS_S3_REGION_NAME       = "auto"
 AWS_S3_SIGNATURE_VERSION = "s3v4"
-AWS_S3_ADDRESSING_STYLE  = "path"
+AWS_S3_ADDRESSING_STYLE  = "virtual"
 
 # 上传/URL 策略
 AWS_QUERYSTRING_AUTH     = False
