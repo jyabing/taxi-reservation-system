@@ -70,6 +70,23 @@
 <h2>📋 私の予約履歴</h2>
 {% include 'partials/_messages.html' %}
 
+<!-- ▼▼▼ 日常点検15項 PDF 下载：BEGIN ▼▼▼ -->
+<div class="mb-3" style="font-size:14px;">
+  <span>
+    日常点検15項：
+    <a href="{% static 'pdfs/engine_check_5.pdf' %}" target="_blank" rel="noopener">
+      発動機室 5️⃣ 項（PDF）
+    </a> ・
+    <a href="{% static 'pdfs/surround_check_5.pdf' %}" target="_blank" rel="noopener">
+      車周辺 4️⃣ 項（PDF）
+    </a> ・
+    <a href="{% static 'pdfs/cabin_check_5.pdf' %}" target="_blank" rel="noopener">
+      乗務室 6️⃣ 項（PDF）
+    </a>
+  </span>
+</div>
+<!-- ▲▲▲ 日常点検15項 PDF 下载：END ▲▲▲ -->
+
 <table class="japanese-style-table">
   <thead>
     <tr>
