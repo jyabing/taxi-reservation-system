@@ -1,7 +1,14 @@
 {% extends 'base.html' %}
 
 {% block content %}
-  <h3>⏰ 确认 {{ action == 'departure' and '出库' or '入库' }} 时间</h3>
+  <h3>⏰ 确认 
+    {% if action == 'departure' %}
+      出庫
+    {% else %}
+      入庫
+    {% endif %}
+    时间
+  </h3>
 
   <p>车辆：{{ reservation.vehicle.license_plate }}</p>
   <p>预约时间：{{ reservation.date }} {{ reservation.start_time|time:"H:i" }} ～ {{ reservation.end_time|time:"H:i" }}</p>
@@ -11,10 +18,23 @@
     <input type="hidden" name="reservation_id" value="{{ reservation.id }}">
     <input type="hidden" name="action_type" value="{{ action }}">
     
-    <label for="actual_time">实际{{ action == 'departure' and '出库' or '入库' }}时间：</label>
+    <label for="actual_time">实际
+      {% if action == 'departure' %}
+        出庫
+      {% else %}
+        入庫
+      {% endif %}
+      时间：
+    </label>
     <input type="datetime-local" name="actual_time" required value="{{ default_time }}" class="form-control">
 
-    <button type="submit" class="btn btn-primary mt-3">确认{{ action == 'departure' and '出库' or '入库' }}</button>
+    <button type="submit" class="btn btn-primary mt-3">确认
+      {% if action == 'departure' %}
+        出庫
+      {% else %}
+        入庫
+      {% endif %}
+    </button>
   </form>
 
   <a href="{% url 'my_reservations' %}" class="btn btn-secondary mt-2">取消</a>

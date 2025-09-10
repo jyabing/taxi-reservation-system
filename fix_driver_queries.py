@@ -1,8 +1,8 @@
 import os
 
-driver = getattr(request.user, "driver_profile", None)
-if not driver:
-    return render(request, 'accounts/profile_error.html', {'message': '未绑定司机资料，请联系管理员'})
+#driver = getattr(request.user, "driver_profile", None)
+#if not driver:
+#    return render(request, 'accounts/profile_error.html', {'message': '未绑定司机资料，请联系管理员'})
 TARGET = 'driver=driver'
 REPLACEMENT = '''driver = getattr(request.user, "driver_profile", None)
 if not driver:
@@ -36,4 +36,5 @@ def scan_folder(folder):
                 replace_in_file(os.path.join(root, file))
 
 # 用法：替换当前目录下所有 Python 文件
-scan_folder('.')
+if __name__ == "__main__":
+    scan_folder('.')

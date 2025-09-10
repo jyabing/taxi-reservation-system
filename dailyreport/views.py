@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange
+from django.conf import settings
 
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib.auth.models import User
@@ -178,7 +179,8 @@ def _prefill_report_without_fk(report):
 # ========= 小工具 =========
 BASE_BREAK_MINUTES = 20
 DEBUG_PRINT_ENABLED = True
-print("🔥 views.py 加载 OK")
+if getattr(settings, "DEBUG", False):
+    print("🔥 views.py 加载 OK")
 
 def _to_int0(v):
     try:
@@ -450,7 +452,7 @@ ReportItemFormSet = inlineformset_factory(
 
 
 def dailyreport_edit(request, pk):
-    report = get_object_or_404(DriverDailyReport, pk=pk)
+    report = get_object_or_404(DR, pk=pk)
 
     if request.method == 'POST':
         form = DriverDailyReportForm(request.POST, instance=report)
@@ -503,7 +505,7 @@ def sales_thanks(request):
 @user_passes_test(is_dailyreport_admin)
 def dailyreport_delete_for_driver(request, driver_id, pk):
     driver = get_object_or_404(Driver, pk=driver_id)
-    report = get_object_or_404(DriverDailyReport, pk=pk, driver=driver)
+    report = get_object_or_404(DR, pk=pk, driver=driver)
     if request.method == "POST":
         report.delete()
         messages.success(request, "已删除该日报记录。")
@@ -1329,10 +1331,14 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     if not driver:
         return render(request, "dailyreport/not_found.html", status=404)
 
-    report = get_object_or_404(DriverDailyReport, pk=report_id, driver_id=driver_id)
+    # 防变量遮蔽：避免有人在函数内部把 DriverDailyReport 当作变量名赋值
+    # 用 apps.get_model 以“字符串”方式获取模型，绕开名字遮蔽。
+    from django.apps import apps
+    DR = apps.get_model('dailyreport', 'DriverDailyReport')
+    report = get_object_or_404(DR, pk=report_id, driver_id=driver_id)
 
     ReportItemFormSet = inlineformset_factory(
-        DriverDailyReport,
+        DR,
         DriverDailyReportItem,
         form=DriverDailyReportItemForm,
         formset=RequiredReportItemFormSet,
