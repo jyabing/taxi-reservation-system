@@ -25,3 +25,6 @@ AWS_S3_ADDRESSING_STYLE   = "virtual"
 AWS_DEFAULT_ACL        = None
 AWS_QUERYSTRING_AUTH   = False
 AWS_S3_FILE_OVERWRITE  = True
+
+# ✅ 使用 Cloudflare R2 公共访问域名
+AWS_S3_CUSTOM_DOMAIN = "pub-48d6e7c8197dde7a3f41f343085e209.r2.dev"

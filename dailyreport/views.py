@@ -1441,11 +1441,40 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
                     else:
                         # 退勤有值 => 已完成（actual_return 会由 signals 用 inst.clock_out 同步）
                         try:
-                            from vehicles.models import ReservationStatus
                             res.status = ReservationStatus.DONE
                         except Exception:
-                            res.status = "已完成"
+                            # 兜底也用英文值，避免混入中文
+                            res.status = "done"
                         res.save(update_fields=["status"])
+
+                        # >>> BEGIN patch: finalize report times and status (views)
+                        from django.utils import timezone
+                        from dailyreport.models import DriverDailyReport
+
+                        changed_fields_for_report = []
+
+                        # 用本地时区把预约的实际出入库写回日报的 time 字段（避免 Time vs UTC DateTime 比较错误）
+                        if getattr(res, "actual_departure", None):
+                            _t_in = timezone.localtime(res.actual_departure).time()
+                            if report.clock_in != _t_in:
+                                report.clock_in = _t_in
+                                changed_fields_for_report.append("clock_in")
+
+                        if getattr(res, "actual_return", None):
+                            _t_out = timezone.localtime(res.actual_return).time()
+                            if report.clock_out != _t_out:
+                                report.clock_out = _t_out
+                                changed_fields_for_report.append("clock_out")
+
+                        # 若日报已有出勤/退勤，则显式把状态置为已完成（completed）
+                        if report.clock_in and report.clock_out and report.status != DriverDailyReport.STATUS_COMPLETED:
+                            report.status = DriverDailyReport.STATUS_COMPLETED
+                            changed_fields_for_report.append("status")
+
+                        if changed_fields_for_report:
+                            report.save(update_fields=changed_fields_for_report)
+                        # >>> END patch
+
             except Exception as _e:
                 logger.warning("update reservation status (incomplete/done) failed: %s", _e)
                 

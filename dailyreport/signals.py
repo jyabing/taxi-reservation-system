@@ -14,6 +14,8 @@ from django.utils import timezone
 
 from .models import DriverDailyReport
 
+from vehicles.models import ReservationStatus
+
 logger = logging.getLogger(__name__)
 
 # ========= 通用：时间归一化 & 时长计算 =========
@@ -286,20 +288,35 @@ def sync_report_to_reservation(sender, instance: DriverDailyReport, **kwargs):
             fields_to_update.append("vehicle_id")
 
         # ==== 状态值：优先使用常量或从 choices 里反查（不是中文标签） ====
-        if completed and hasattr(res, "status"):
-            target_done = None
+#        if completed and hasattr(res, "status"):
+#            target_done = None
             # 常量优先
-            if hasattr(res, "STATUS_COMPLETED"):
-                target_done = getattr(res, "STATUS_COMPLETED")
+#            if hasattr(res, "STATUS_COMPLETED"):
+#                target_done = getattr(res, "STATUS_COMPLETED")
             # 从 choices 里按标签反查值
-            elif hasattr(type(res), "status") and hasattr(type(res).status, "choices"):
-                for val, label in type(res).status.flatchoices:
-                    if str(label) in ("已完成", "完成", "完了", "Completed", "complete"):
-                        target_done = val
-                        break
-            if target_done is not None and getattr(res, "status", None) != target_done:
-                res.status = target_done
+#            elif hasattr(type(res), "status") and hasattr(type(res).status, "choices"):
+#                for val, label in type(res).status.flatchoices:
+#                    if str(label) in ("已完成", "完成", "完了", "Completed", "complete"):
+#                        target_done = val
+#                        break
+#            if target_done is not None and getattr(res, "status", None) != target_done:
+#                res.status = target_done
+#                fields_to_update.append("status")
+
+        
+        # completed 表示“本次流程应判定为完成”
+        if completed and hasattr(res, "status"):
+            # 预约完成态：项目统一使用 DONE
+            if res.status != ReservationStatus.DONE:
+                res.status = ReservationStatus.DONE
                 fields_to_update.append("status")
+
+        # 同步把日报也设为已完成（条件可按你口径调整）
+        if completed and hasattr(report, "status"):
+            if report.clock_in and report.clock_out:
+                if report.status != DriverDailyReport.STATUS_COMPLETED:
+                    report.status = DriverDailyReport.STATUS_COMPLETED
+                    # 注意：report 不在 res 的 fields_to_update 里，单独保存或由外层统一保存
 
         logger.info("[R->V] fields_to_update=%s values=%s",
                     fields_to_update, {f: getattr(res, f, None) for f in fields_to_update})

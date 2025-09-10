@@ -38,5 +38,5 @@ def auto_update_reservations():
         actual_departure__isnull=False,
         actual_return__isnull=False
     ):
-        r.status = ReservationStatus.COMPLETED
+        r.status = ReservationStatus.DONE
         r.save()

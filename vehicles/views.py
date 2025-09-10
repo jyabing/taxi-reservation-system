@@ -1447,7 +1447,7 @@ def my_stats_view(request):
         driver=request.user,
         actual_departure__date__gte=first_day,
         actual_departure__date__lte=last_day,
-        status__in=[ReservationStatus.DEPARTED, ReservationStatus.COMPLETED],
+        status__in=[ReservationStatus.DEPARTED, ReservationStatus.DONE],
     )
 
     total_checkouts = qs.count()

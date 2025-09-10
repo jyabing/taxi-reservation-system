@@ -6,8 +6,6 @@ from .models import Car
 from carinfo.services.car_access import is_car_reservable
 from carinfo.services.car_flags import is_under_repair, is_retired
 
-from django.core.files.storage import default_storage
-
 # ✅ 筛选器：保险状态
 class InsuranceStatusFilter(SimpleListFilter):
     title = '保险状态'
@@ -118,15 +116,11 @@ class CarAdmin(admin.ModelAdmin):
 
     # ===== 图片工具 =====
     def _photo_url(self, obj):
-        f = getattr(obj, "main_photo", None)
-        if not (f and getattr(f, "name", "")):
-            return None
-        try:
-            if default_storage.exists(f.name):
-                return f.url    # 私有桶：签名 URL
-        except Exception:
-            return None
-        return None
+        """
+        统一走模型的 photo_url，不做 exists/HEAD 检查，
+        与 Car.photo_url 的设计保持一致，适配 R2/S3 私有桶签名 URL。
+        """
+        return getattr(obj, "photo_url", None)
 
     @admin.display(description="照片", ordering="main_photo")
     def thumb(self, obj):

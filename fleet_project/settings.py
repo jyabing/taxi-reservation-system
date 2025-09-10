@@ -75,6 +75,7 @@ INSTALLED_APPS = [
 
     # 新增
     'storages',   # ✅ Cloudflare R2
+    "django_extensions",
 ]
 
 ROOT_URLCONF = 'fleet_project.urls'
