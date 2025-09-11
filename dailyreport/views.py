@@ -1536,10 +1536,73 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         form = DriverDailyReportForm(instance=report)
         formset = ReportItemFormSet(instance=report)
 
-    try:
-        formset.queryset = _sorted_items_qs(report)
-    except Exception:
-        pass
+    # ---------- 预填：尝试从 Reservation 带出车辆与实际出/入库（仅 GET，不写库） ----------
+        try:
+            from django.db.models import Q
+            from vehicles.models import Reservation
+
+            # 同一天的预约
+            res_qs = Reservation.objects.filter(date=report.date)
+            print("[prefill] report.id=", report.id, "report.date=", report.date)
+
+            # 司机匹配：兼容“日报用档案ID、预约用账号ID”的场景
+            d = report.driver
+            user_obj = getattr(d, "user", None) or getattr(d, "account", None) \
+                       or getattr(d, "auth_user", None) or getattr(d, "profile_user", None)
+            cand = Q()
+            if user_obj and getattr(user_obj, "id", None):
+                cand |= Q(driver_id=user_obj.id)
+                cand |= Q(driver__username=getattr(user_obj, "username", None))
+            # 兜底：万一两边引用的是同一张表
+            cand |= Q(driver_id=getattr(d, "id", None))
+            res_qs = res_qs.filter(cand)
+
+            # 若日报已选车，则进一步按车辆过滤
+            if getattr(report, "vehicle_id", None):
+                res_qs = res_qs.filter(vehicle_id=report.vehicle_id)
+
+            # 优先选择“reserved/done”的预约；没有再取最早一条
+            preferred = res_qs.filter(status__in=["reserved", "done"]).order_by("start_time").first()
+            res = preferred or res_qs.order_by("start_time").first()
+            print("[prefill] matched reservation ->",
+                    None if not res else dict(
+                        id=res.id,
+                        vehicle_id=res.vehicle_id,
+                        actual_departure=res.actual_departure,
+                        actual_return=res.actual_return,
+                        status=res.status,
+                    ))
+
+
+            if res:
+                # 1) 预填车辆（日报未选车，预约有车）
+                if not getattr(report, "vehicle_id", None) and getattr(res, "vehicle_id", None):
+                    form.initial["vehicle"] = res.vehicle_id
+                    if "vehicle" in form.fields:
+                        form.fields["vehicle"].initial = res.vehicle_id  # 双保险：字段级 initial
+
+                # 2) 预填出勤/退勤（日报为空，预约有“实际出/入库”），仅填 HH:MM
+                if not getattr(report, "clock_in", None) and getattr(res, "actual_departure", None):
+#                    form.initial["clock_in"] = res.actual_departure.astimezone().strftime("%H:%M") \
+#                        if hasattr(res.actual_departure, "astimezone") else res.actual_departure.strftime("%H:%M")
+                    _in = res.actual_departure
+                    hhmm_in = (_in.astimezone().strftime("%H:%M") if hasattr(_in, "astimezone") else _in.strftime("%H:%M"))
+                    form.initial["clock_in"] = hhmm_in
+                    if "clock_in" in form.fields:
+                        form.fields["clock_in"].initial = hhmm_in
+                
+                
+                if not getattr(report, "clock_out", None) and getattr(res, "actual_return", None):
+#                    form.initial["clock_out"] = res.actual_return.astimezone().strftime("%H:%M") \
+#                        if hasattr(res.actual_return, "astimezone") else res.actual_return.strftime("%H:%M")
+                    _out = res.actual_return
+                    hhmm_out = (_out.astimezone().strftime("%H:%M") if hasattr(_out, "astimezone") else _out.strftime("%H:%M"))
+                    form.initial["clock_out"] = hhmm_out
+                    if "clock_out" in form.fields:
+                        form.fields["clock_out"].initial = hhmm_out
+        except Exception:
+            # 静默容错：预填失败不影响页面打开
+            pass
 
     data_iter = []
     for f in formset.forms:
