@@ -20,6 +20,12 @@ PAYMENT_METHOD_CHOICES = [
     ('uber_cash', 'Uber（現金）'),
     ('uber', 'Uber'),
 
+    # >>> 新增（只计入売上合計，不计入メーターのみ）
+    ('uber_reservation', 'Uber予約'),
+    ('uber_tip', 'Uberチップ'),
+    ('uber_promotion', 'Uberプロモーション'),
+    # <<< 新增结束
+
     ('didi_cash', 'Didi（現金）'),
     ('didi', 'Didi'),
 

@@ -11,6 +11,9 @@
 })();
 
 // ============ 工具函数（全局可用） ============
+// >>> 追加: 排序开关（仅提交时排序）
+const ENABLE_LIVE_SORT = false;
+// <<< 追加 end
 function $(sel, root){ return (root||document).querySelector(sel); }
 function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
 function getRow(el){ return el?.closest("tr.report-item-row") || el?.closest("tr"); }
@@ -96,38 +99,38 @@ function bindRowEvents(row) {
   }
 
   // 删除（已有行）
-$all(".delete-row", row).forEach(btn => {
-  btn.addEventListener("click", () => {
-    if (!confirm("确定删除此行？")) return;
-    const cb = row.querySelector("input[name$='-DELETE']");
-    if (cb) {
-      cb.checked = true;
-      row.style.display = "none";
+  $all(".delete-row", row).forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (!confirm("确定删除此行？")) return;
+      const cb = row.querySelector("input[name$='-DELETE']");
+      if (cb) {
+        cb.checked = true;
+        row.style.display = "none";
+        updateRowNumbersAndIndexes();
+        updateTotals();
+        updateSmartHintPanel?.();
+        if (ENABLE_LIVE_SORT) window.__resortByTime?.(); // >>> 追加：删除后也重排
+      }
+    });
+  });
+
+  // 移除（新建行）
+  $all(".remove-row", row).forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (!confirm("确定移除此行？")) return;
+      const cb = row.querySelector("input[name$='-DELETE']");
+      if (cb) {
+        cb.checked = true;
+        row.style.display = "none";
+      } else {
+        row.remove();
+      }
       updateRowNumbersAndIndexes();
       updateTotals();
       updateSmartHintPanel?.();
-    }
+      if (ENABLE_LIVE_SORT) window.__resortByTime?.(); // >>> 追加
+    });
   });
-});
-
-// 移除（新建行）
-$all(".remove-row", row).forEach(btn => {
-  btn.addEventListener("click", () => {
-    if (!confirm("确定移除此行？")) return;
-    // 新行模板里我们已渲染了 {{ formset.empty_form.DELETE }}
-    const cb = row.querySelector("input[name$='-DELETE']");
-    if (cb) {
-      cb.checked = true;
-      row.style.display = "none";
-    } else {
-      // 兜底：极端情况下没有 DELETE，就从 DOM 移除
-      row.remove();
-    }
-    updateRowNumbersAndIndexes();
-    updateTotals();
-    updateSmartHintPanel?.();
-  });
-});
 
   // 标记/待入 UI
   const checkbox = row.querySelector(".mark-checkbox");
@@ -146,10 +149,20 @@ $all(".remove-row", row).forEach(btn => {
 
   if (amountInput)  amountInput.addEventListener("input",  () => { updateTotals(); updateSmartHintPanel(); });
   if (methodSelect) methodSelect.addEventListener("change", () => { updateTotals(); updateSmartHintPanel(); });
+
+  // >>> 追加: 调整“时间”即重排
+  const rideTimeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
+  if (rideTimeInput) {
+    rideTimeInput.addEventListener("change", () => { if (ENABLE_LIVE_SORT) window.__resortByTime?.(); updateRowNumbersAndIndexes(); });
+    rideTimeInput.addEventListener("input",  () => { if (ENABLE_LIVE_SORT) window.__resortByTime?.(); updateRowNumbersAndIndexes(); });
+  }
+  // <<< 追加 end
+
   if (pendingCb) {
     pendingCb.addEventListener("change", () => {
       updateTotals(); updateSmartHintPanel();
       if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
+      if (ENABLE_LIVE_SORT) window.__resortByTime?.();// 待入状态变化也重排（可选）
     });
     if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
   }
@@ -185,6 +198,7 @@ function addRowToEnd() {
   updateRowNumbersAndIndexes();
   updateTotals();
   updateSmartHintPanel();
+  window.__resortByTime?.(); // >>> 追加：新增后重排
   try { tr.scrollIntoView({behavior:'smooth', block:'center'});}catch(e){}
   (tr.querySelector('.time-input')||tr.querySelector('input,select'))?.focus?.();
   return true;
@@ -209,6 +223,7 @@ function insertRowAfter(indexOneBased) {
   updateRowNumbersAndIndexes();
   updateTotals();
   updateSmartHintPanel();
+  window.__resortByTime?.(); // >>> 追加：按指定行插入后重排
   try { tr.scrollIntoView({behavior:'smooth', block:'center'});}catch(e){}
   (tr.querySelector('.time-input')||tr.querySelector('input,select'))?.focus?.();
   return true;
@@ -245,6 +260,14 @@ function updateTotals() {
   const totalMap = { cash:0, uber:0, didi:0, go:0, credit:0, kyokushin:0, omron:0, kyotoshi:0, qr:0 };
   let meterSum=0, charterCashTotal=0, charterUncollectedTotal=0;
 
+  // >>> 追加: 三类 Uber 的独立合计（只进売上合計，不进メーターのみ）
+  let uberReservationTotal = 0, uberReservationCount = 0;
+  let uberTipTotal         = 0, uberTipCount         = 0;
+  let uberPromotionTotal   = 0, uberPromotionCount   = 0;
+  // 这三类 Uber 的金额总和（用于加到总“売上合計”里，但不进入 meterSum）
+  let specialUberSum = 0;
+  // <<< 追加结束
+
   $all(".report-item-row", dataTb).forEach(row => {
     // 跳过被标记删除或已隐藏的行
     const delFlag = row.querySelector("input[name$='-DELETE']");
@@ -259,11 +282,30 @@ function updateTotals() {
     const charterAmount = toInt(row.querySelector(".charter-amount-input")?.value, 0);
     const charterPayMethod = row.querySelector(".charter-payment-method-select")?.value || "";
 
+    // >>> 修改: 非貸切时，三类 Uber（予約/チップ/プロモ）只计入売上合計，不进入 meterSum
     if (!isCharter) {
-      const method = resolveJsPaymentMethod(payment);
-      if (fee>0) {
-        meterSum += fee;
-        if (Object.hasOwn(totalMap, method)) totalMap[method] += fee;
+      if (fee > 0) {
+        const raw = payment; // 原始 payment 值
+        const isUberReservation = raw === 'uber_reservation';
+        const isUberTip         = raw === 'uber_tip';
+        const isUberPromotion   = raw === 'uber_promotion';
+        const isSpecialUber     = isUberReservation || isUberTip || isUberPromotion;
+
+        if (isSpecialUber) {
+          // ✅ 这些金额不计入“メーターのみ”，但要计入“売上合計”
+          specialUberSum += fee;
+
+          if (isUberReservation) { uberReservationTotal += fee; uberReservationCount += 1; }
+          else if (isUberTip)    { uberTipTotal         += fee; uberTipCount         += 1; }
+          else if (isUberPromotion){ uberPromotionTotal += fee; uberPromotionCount   += 1; }
+
+          // 不把它们并到 totalMap.uber，避免与常规 Uber 混合
+        } else {
+          // 常规项目：进入 meterSum，并按归一化方法计入各项合计
+          const method = resolveJsPaymentMethod(payment);
+          meterSum += fee;
+          if (Object.hasOwn(totalMap, method)) totalMap[method] += fee;
+        }
       }
     } else if (charterAmount>0) {
       const CASH = ['jpy_cash','rmb_cash','self_wechat','boss_wechat'];
@@ -271,11 +313,25 @@ function updateTotals() {
       if (CASH.includes(charterPayMethod)) charterCashTotal += charterAmount;
       else if (UNCOLLECTED.includes(charterPayMethod)) charterUncollectedTotal += charterAmount;
     }
+    // <<< 修改结束
   });
 
-  const salesTotal = meterSum + charterCashTotal + charterUncollectedTotal;
+  // >>> 修改: 売上合計 = meterSum（不含三类 Uber）+ specialUberSum + 貸切現金 + 貸切未収
+  const salesTotal = meterSum + specialUberSum + charterCashTotal + charterUncollectedTotal;
+  // <<< 修改结束
+
   const idText = (id, n) => { const el=document.getElementById(id); if (el) el.textContent = Number(n||0).toLocaleString(); };
   idText("total_meter_only", meterSum);
+
+  // >>> 追加: 写回三类 Uber 的合计与件数
+  idText("uber-reservation-total", uberReservationTotal);
+  idText("uber-reservation-count", uberReservationCount);
+  idText("uber-tip-total",         uberTipTotal);
+  idText("uber-tip-count",         uberTipCount);
+  idText("uber-promotion-total",   uberPromotionTotal);
+  idText("uber-promotion-count",   uberPromotionCount);
+  // <<< 追加结束
+
   idText("total_meter", salesTotal);
   idText("sales-total", salesTotal);
   idText("total_cash", totalMap.cash);
@@ -467,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
     addBtn.addEventListener('click', (e) => { e.preventDefault(); addRowToEnd(); });
   }
 
-  // 4) 指定行插入（**唯一入口**；不再触发 .insert-below.click()）
+  // 4) 指定行插入（**唯一入口**）
   const idxBtn   = document.getElementById('insert-at-btn');
   const idxInput = document.getElementById('insert-index-input');
   if (idxBtn && idxInput && !idxBtn.dataset.boundOnce) {
@@ -536,12 +592,19 @@ document.addEventListener('DOMContentLoaded', () => {
     pairs.sort((a, b) => a.key - b.key).forEach(p => dataTb.appendChild(p.row));
     let idx = 1; pairs.forEach(p => { const num = p.row.querySelector(".row-number"); if (num) num.textContent = idx++; });
   }
+
+  // >>> 追加: 暴露排序函数，供其它事件实时调用
+  window.__resortByTime = sortRowsByTime;
+  // <<< 追加 end
+
   window.addEventListener("DOMContentLoaded", () => {
     const form = document.querySelector('form[method="post"]'); if (!form) return;
     form.addEventListener('submit', () => {
       sortRowsByTime();
       if (typeof updateRowNumbersAndIndexes === 'function') updateRowNumbersAndIndexes();
     });
+    // 页面加载完成先排一次，确保初始顺序正确
+    sortRowsByTime(); // >>> 追加
   });
 })();
 
