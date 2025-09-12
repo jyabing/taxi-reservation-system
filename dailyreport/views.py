@@ -1138,11 +1138,28 @@ def driver_dailyreport_month(request, driver_id):
     )
 
     report_list = []
+    # 仅在本函数内声明，避免全局重复与缩进问题
+    SPECIAL_UBER = {'uber_reservation', 'uber_tip', 'uber_promotion'}
+
     for report in reports_qs:
         items = report.items.all()
         totals = _totals_of(items)
+
+        # 统计 3 类 Uber（仅非貸切、未“待入”）
+        special_uber_sum = 0
+        for it in items:
+            if getattr(it, 'is_pending', False):
+                continue
+            if getattr(it, 'is_charter', False):
+                continue
+            if getattr(it, 'payment_method', '') in SPECIAL_UBER:
+                special_uber_sum += int(getattr(it, 'meter_fee', 0) or 0)
+
+        # 合计仍用原 totals；“メータのみ”= 原来的 meter_only - 3 类 Uber
         report.total_all = totals['sales_total']
-        report.meter_only_total = totals['meter_only_total']
+        base_meter_only = totals.get('meter_only_total', totals.get('meter_total', 0)) or 0
+        report.meter_only_total = max(0, int(base_meter_only) - special_uber_sum)
+
         report.charter_unknown_total = totals['charter_unknown_total']
         report_list.append(report)
 
