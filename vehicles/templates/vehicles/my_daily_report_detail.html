@@ -63,9 +63,10 @@
 <!-- 💴 本日売上 -->
 <div class="card border-start border-4 border-secondary shadow-sm" style="min-width: 160px;">
   <div class="card-body py-2 px-3">
-    <div class="small text-muted">本日売上</div>
+    <div class="small text-muted">本日売上合計</div>
     <div class="fw-bold">{{ total_sales|floatformat:0 }} 円</div>
-    <div class="small text-muted">※ 現金・アプリ・チケット等を含む売上合計</div>
+    <div class="small text-muted">（メータのみ: ￥{{ meter_only_total|default:0|intcomma }}）</div>
+    <div class="small text-muted">※ 売上合計 = メータのみ ＋ 貸切現金 ＋ 貸切未収 ＋ Uber予約/チップ/プロモ</div>
   </div>
 </div>
 

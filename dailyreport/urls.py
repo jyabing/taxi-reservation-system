@@ -20,10 +20,6 @@ urlpatterns = [
     #path("dailyreport/export/monthly/<int:year>/<int:month>/", export_monthly_summary_excel, name="export_monthly_summary_excel"),#全员每月excel导出
     path('export/vehicle/<int:year>/<int:month>/', views.export_vehicle_csv, name='export_vehicle_csv'), # ✅ 車両運輸実績表 CSV 出力
 
-
-    path('my_dailyreports/', views.my_dailyreports, name='my_dailyreports'),  # 当前用户查看自己日报
-
-    # 管理员：直接新增日报（旧方式）→ 建议改路径避免冲突
     path('dailyreports/add/', views.dailyreport_create, name='dailyreport_add'),
 
     # 管理员：编辑/更新日报（旧方式）

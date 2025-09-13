@@ -9,6 +9,7 @@ from .models import (
     SystemNotice,
 )
 from collections import defaultdict
+from dailyreport.views import _totals_of
 
 from django import forms
 from decimal import Decimal, ROUND_HALF_UP
@@ -1740,70 +1741,82 @@ def admin_list(request):
 
 @login_required
 def my_dailyreports(request):
-    # 1. 拿到当前登录用户对应的 Driver
+    # 1) 当前司机
     driver = get_object_or_404(Driver, user=request.user)
 
-    # 2. 如果有 ?date=YYYY-MM-DD，就只看那一天，否则就全部
-    selected_date = request.GET.get('date', '').strip()
+    # 2) 年月
     today = timezone.localdate()
-
-    # 默认使用当前年月
     try:
         year = int(request.GET.get('year', today.year))
         month = int(request.GET.get('month', today.month))
     except ValueError:
-        year = today.year
-        month = today.month
+        year, month = today.year, today.month
 
-    # 只筛选该年月
-    qs = (DriverDailyReport.objects
-          .filter(driver=driver, date__year=year, date__month=month)
-          .order_by('-date'))
-
-    # 3. 汇总聚合原始里程费
-    agg = (
-        DriverDailyReportItem.objects
-        .filter(report__in=qs)
-        .values('report')
-        .annotate(meter_raw=Sum('meter_fee'))
+    # 3) 本月该司机的日报
+    qs = (
+        DriverDailyReport.objects
+        .filter(driver=driver, date__year=year, date__month=month)
+        .order_by('-date')
+        .prefetch_related('items')
     )
-    raw_map = {o['report']: o['meter_raw'] or Decimal('0') for o in agg}
 
-    # 4. 计算每行和总计
-    coef = Decimal('0.9091')
+    # ========== 口径 ==========
+    SPECIAL_UBER = {'uber_reservation', 'uber_tip', 'uber_promotion'}
+
     reports_data = []
-    total_raw = Decimal('0')
+    total_raw = Decimal('0')            # 本月メータ料金合計（未分成，所有明细 meter_fee 总和）
+    monthly_sales_total = 0             # 本月売上合計（列表口径）
+    monthly_meter_only_total = 0        # 本月メータのみ合計
 
     for rpt in qs:
-        raw = raw_map.get(rpt.id, Decimal('0'))
-        split = (raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        # 原始合计（底部“本月メータ料金合計”用）
+        raw = sum(Decimal(getattr(it, 'meter_fee', 0) or 0) for it in rpt.items.all())
         total_raw += raw
+
+        # 与详情页一致的売上合計
+        totals = _totals_of(rpt.items.all())
+        sales_total = int(totals.get('sales_total', 0) or 0)
+        monthly_sales_total += sales_total   # ✅ 只加一次
+
+        # 列表用「メータのみ」
+        meter_only_total = sum(
+            int(getattr(it, 'meter_fee', 0) or 0)
+            for it in rpt.items.all()
+            if (not getattr(it, 'is_charter', False))
+            and getattr(it, 'payment_method', None)
+            and getattr(it, 'payment_method') not in SPECIAL_UBER
+        )
+        monthly_meter_only_total += meter_only_total
+
         reports_data.append({
-            'id':           rpt.id,
-            'date':         rpt.date,
-            'note':         rpt.note,
-            'meter_raw':    raw,
-            'meter_split':  split,
+            'id':               rpt.id,
+            'date':             rpt.date,
+            'note':             rpt.note,
+            'sales_total':      sales_total,        # 売上合計
+            'meter_only_total': meter_only_total,   # メータのみ
         })
 
+    # 分成后的显示
+    coef = Decimal('0.9091')
     total_split = (total_raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
 
-    # ✅ 新增：本月出勤日数 = “有明细”的日报日期数（按天去重）
-    attendance_days = (
-        qs.filter(items__isnull=False)    # 只统计有明细的日报
-          .values('date').distinct().count()
-    )
-
     return render(request, 'vehicles/my_dailyreports.html', {
-        'reports_data':      reports_data,
-        'total_raw':         total_raw,
-        'total_split':       total_split,
-        'selected_date':     selected_date,
-        'selected_year':     year,
-        'selected_month':    month,
-        'current_month':     today.strftime("%Y年%-m月"),
-        'attendance_days':   attendance_days,   # ← 现在已定义
+        'reports': reports_data,
+        'selected_year': year,
+        'selected_month': month,
+
+        'monthly_sales_total': monthly_sales_total,               # ✅ 修正后不再翻倍
+        'monthly_meter_only_total': monthly_meter_only_total,     # ✅
+
+        'total_raw': total_raw,                                   # 原始 meter_fee 月总
+        'total_split': total_split,                               # 分成后
+        'attendance_days': (
+            qs.filter(items__isnull=False).values('date').distinct().count()
+        ),
+        'debug_text': f'qs_count={qs.count()} | reports_len={len(reports_data)}',
     })
+
+
 
 @login_required
 def my_daily_report_detail(request, report_id):
@@ -1819,8 +1832,8 @@ def my_daily_report_detail(request, report_id):
         reservation = (
             Reservation.objects.filter(
                 driver=request.user,
-                vehicle_id=report.vehicle_id,        # 限定同一车辆
-                actual_departure__isnull=False,      # 必须已出库
+                vehicle_id=report.vehicle_id,
+                actual_departure__isnull=False,
                 actual_departure__gte=window_start,
                 actual_departure__lt=window_end,
             )
@@ -1858,15 +1871,46 @@ def my_daily_report_detail(request, report_id):
     # ✅ 排序
     items = sorted(items_raw, key=parse_ride_datetime)
 
-    # ✅ 金额统计
-    total_sales = sum(Decimal(item.meter_fee) for item in items if item.meter_fee and item.payment_method)
-    total_cash  = sum(Decimal(item.meter_fee or 0) for item in items if item.payment_method and "cash" in item.payment_method.lower())
+    # ✅ 金额统计 —— 先用统一口径拿合计
+    totals = _totals_of(items)  # items 是我们已排序/去重后的列表
+    total_sales = totals.get('sales_total', 0)
+
+    # === 追加：在本页也按月视图口径计算「メータのみ」 ===
+    SPECIAL_UBER = {'uber_reservation', 'uber_tip', 'uber_promotion'}
+
+    # ① 基础“メータのみ”= 非貸切 且 有支付方式 的メータ合计
+    base_meter_only = sum(
+        int(getattr(it, 'meter_fee', 0) or 0)
+        for it in items
+        if not getattr(it, 'is_charter', False) and getattr(it, 'payment_method', None)
+    )
+
+    # ② 三类 Uber（予約/チップ/プロモ）总额（也只看非貸切）
+    special_uber_sum = sum(
+        int(getattr(it, 'meter_fee', 0) or 0)
+        for it in items
+        if not getattr(it, 'is_charter', False)
+        and getattr(it, 'payment_method', '') in SPECIAL_UBER
+    )
+
+    # ③ 详情页用的「メータのみ」
+    meter_only_total = max(0, base_meter_only - special_uber_sum)
+    # === 追加结束 ===
+
+    # （保留原本的现金统计兜底逻辑）
+    total_cash = totals.get('cash_total', None)
+    if total_cash is None:
+        total_cash = sum(
+            Decimal(it.meter_fee or 0)
+            for it in items
+            if getattr(it, 'payment_method', '') and 'cash' in it.payment_method.lower()
+        )
 
     deposit = report.deposit_amount or Decimal("0")
     deposit_diff = deposit - total_cash
     is_deposit_exact = (deposit_diff == 0)
 
-    # ✅ 本月出勤日数 = 本月“有明细”的日报天数（按天去重）
+    # ✅ 本月出勤日数
     month_start = report.date.replace(day=1)
     month_end   = month_start + relativedelta(months=1)
     attendance_days = (
@@ -1875,19 +1919,28 @@ def my_daily_report_detail(request, report_id):
         .values('date').distinct().count()
     )
 
+    # ✅ 新增：调用 _totals_of，得到正确的 sales_total 和 meter_only_total
+    totals = _totals_of(report.items.all())
+    report.meter_only_total = totals.get("meter_only_total", 0)
+
     return render(request, 'vehicles/my_daily_report_detail.html', {
         'report': report,
         'items': items,
         'start_time': start_time,
         'end_time': end_time,
         'duration': duration,
+
+        # ✅ 传给模板
         'total_cash': total_cash,
         'total_sales': total_sales,
+        'meter_only_total': meter_only_total,
+
         'deposit': deposit,
         'deposit_diff': deposit_diff,
         'is_deposit_exact': is_deposit_exact,
         'attendance_days': attendance_days,
     })
+
 
 # 函数：生成到期提醒文案（提前5天～当天～延后5天）
 def get_due_reminder(due_date, label="保险"):
