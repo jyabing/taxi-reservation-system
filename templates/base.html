@@ -91,11 +91,53 @@
         height: auto !important;
       }
 
-      /** ✅ 新增：移动端隐藏这类导航项 **/
+      /** ✅ 移动端隐藏这类导航项（若有需要） **/
       .mobile-hidden {
         display: none !important;
       }
     }
+
+    /* ===============================
+       BEGIN responsive-cards CSS (2025-09-15)
+       仅对 table.responsive-cards 生效；
+       桌面端保持表格，手机端显示为卡片。
+       =============================== */
+    @media (max-width: 991.98px){
+      table.responsive-cards{
+        width:100%;
+        border-collapse:separate;
+        border-spacing:0 10px;
+      }
+      table.responsive-cards thead{ display:none; }
+      table.responsive-cards tbody{ display:block; }
+      table.responsive-cards tr{
+        display:block;
+        background:#fff;
+        border:1px solid #e5e7eb;
+        border-radius:12px;
+        box-shadow:0 6px 16px rgba(0,0,0,.05);
+        padding:10px;
+        margin:10px 0;
+      }
+      table.responsive-cards td{
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        padding:8px 10px;
+        border:none;
+        border-bottom:1px dashed #f0f0f0;
+      }
+      table.responsive-cards td:last-child{ border-bottom:none; }
+      table.responsive-cards td::before{
+        content:attr(data-label);
+        font-weight:600;
+        color:#374151;
+      }
+      table.responsive-cards td[data-label=""]::before{ content:""; }
+    }
+    /* ===============================
+       END responsive-cards CSS
+       =============================== */
   </style>
 </head>
 
@@ -163,6 +205,39 @@
       });
     });
   </script>
+
+  <!-- ===============================
+       BEGIN responsive-cards JS (2025-09-15)
+       自动把 thead 的列名写入每个 td 的 data-label；
+       仅对 table.responsive-cards 生效。
+       =============================== -->
+  <script>
+    (function(){
+      function enhance(table){
+        if(table.dataset._cardsDone) return;
+        const heads=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim());
+        table.querySelectorAll('tbody tr').forEach(tr=>{
+          [...tr.children].forEach((td,idx)=>{
+            if(td.nodeName!=='TD') return;
+            if(!td.hasAttribute('data-label')){
+              const label=heads[idx]||'';
+              td.setAttribute('data-label',label);
+            }
+          });
+        });
+        table.dataset._cardsDone="1";
+      }
+      function run(){
+        document.querySelectorAll('table.responsive-cards').forEach(enhance);
+      }
+      document.addEventListener('DOMContentLoaded', run);
+      // 如果页面后续动态渲染了行/列，可调用 window.applyResponsiveCards() 重新应用
+      window.applyResponsiveCards = run;
+    })();
+  </script>
+  <!-- ===============================
+       END responsive-cards JS
+       =============================== -->
 
   {% block extra_js %}{% endblock %}
   

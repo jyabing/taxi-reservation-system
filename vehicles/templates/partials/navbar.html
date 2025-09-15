@@ -1,74 +1,140 @@
-<nav>
-  {% if user.is_authenticated %}
-    👋 {{ user.username }} |
-
-    <a href="{% url 'home' %}">🏠 系统首页</a>
-    <a href="{% url 'profile' %}">👤 我的资料</a>
-    <a href="{% url 'vehicles:vehicle_status' %}">🚗 車両状態</a>
-
-    {% with request.session.nav_clicks as clicks %}
-      {% if clicks %}
-        {% with clicks.vehicle_status|default_if_none:0 as click_vehicle_status %}
-          {% with clicks.weekly_overview|default_if_none:0 as click_weekly %}
-            {% with clicks.my_reservations|default_if_none:0 as click_my_res %}
-              {% with clicks.staffbook_dashboard|default_if_none:0 as click_staffbook %}
-                {% with clicks.carinfo_car_list|default_if_none:0 as click_carinfo %}
-                  {% with 10 as common_threshold %}
-
-                    {# ✅ 常用项主导航栏显示 #}
-                    {% if click_weekly >= common_threshold %}
-                      <a href="{% url 'vehicles:weekly_overview' %}">📅 一周预约概览</a>
-                    {% endif %}
-                    {% if click_my_res >= common_threshold %}
-                      <a href="{% url 'vehicles:my_reservations' %}">📋 私の予約</a>
-                    {% endif %}
-
-                    {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
-                      <a href="{% url 'vehicles:weekly_overview' %}">📅 一周预约概览</a>
-                      <a href="{% url 'vehicles:reservation_approval_list' %}">🛠️ 审批面板</a>
-                      <a href="{% url 'vehicles:admin_stats' %}" style="color:purple;">📊 管理员统计</a>
-                    {% endif %}
-
-                    <div class="dropdown d-inline-block">
-                      <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        ⋯ 更多
-                      </button>
-                      <ul class="dropdown-menu dropdown-menu-end">
-                        {% if click_weekly < common_threshold %}
-                          <li><a class="dropdown-item" href="{% url 'vehicles:reservation_dashboard' %}">🚖 配车系统</a></li>
-                        {% endif %}
-                        {% if click_my_res < common_threshold %}
-                          <li><a class="dropdown-item" href="{% url 'vehicles:my_reservations' %}">📋 私の予約</a></li>
-                        {% endif %}
-                        {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
-                          <li><a class="dropdown-item" href="{% url 'staffbook:dashboard' %}">📒 社員台帳</a></li>
-                        {% endif %}
-                        {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
-                          <li><a class="dropdown-item" href="{% url 'dailyreport:dailyreport_overview' %}">💸 日報一覧</a></li>
-                        {% endif %}
-                        {% if user.is_superuser or user.userprofile.is_carinfo_admin %}
-                          <li><a class="dropdown-item" href="{% url 'carinfo:car_list' %}">🚗 車両管理</a></li>
-                        {% endif %}
-                        {% if user.is_superuser %}
-                          <li><a class="dropdown-item" href="/admin/">⚙️ 后台</a></li>
-                        {% endif %}
-                      </ul>
-                    </div>
-
-                  {% endwith %}
-                {% endwith %}
-              {% endwith %}
-            {% endwith %}
-          {% endwith %}
-        {% endwith %}
+{# ====== NEW navbar (2025-09-15) —— 桌面=常驻全部；手机=三横线下拉 ====== #}
+<nav class="x-nav" role="navigation" aria-label="Main">
+  <!-- ↓↓↓ 新增的内包装，限制宽度并居中 ↓↓↓ -->
+  <div class="x-nav__inner">
+    <div class="x-nav__brand">
+      {% if user.is_authenticated %}
+        <span class="x-nav__hello">👋 {{ user.username }} |</span>
       {% endif %}
-    {% endwith %}
+    </div>
 
-    <form method="post" action="{% url 'logout' %}" style="display:inline;">
-      {% csrf_token %}
-      <button type="submit">🚪 退出</button>
-    </form>
-  {% else %}
-    <a href="{% url 'login' %}">登录</a>
-  {% endif %}
+  {# 手机端三横线按钮（桌面端隐藏） #}
+  <button id="xMenuToggle"
+            class="x-nav__btn"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="xMainMenu"
+            title="メニュー">
+    <span class="x-nav__icon" aria-hidden="true"></span>
+    <span class="x-sr-only">メニュー</span>
+  </button>
+
+  {# 统一菜单：桌面端常驻；手机端为下拉浮层 #}
+  <ul id="xMainMenu" class="x-nav__list" role="menubar">
+    {# —— 固定常用 —— #}
+    <li><a role="menuitem" href="{% url 'home' %}">🏠 系统首页</a></li>
+    <li><a role="menuitem" href="{% url 'profile' %}">👤 我的资料</a></li>
+    <li><a role="menuitem" href="{% url 'vehicles:vehicle_status' %}">🚗 車両状態</a></li>
+
+    {# —— 原“更多”里的全部链接直接平铺到这里 —— #}
+    <li><a role="menuitem" href="{% url 'vehicles:weekly_overview' %}">📅 一周预约概览</a></li>
+    <li><a role="menuitem" href="{% url 'vehicles:my_reservations' %}">📋 私の予約</a></li>
+
+    {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
+      <li><a role="menuitem" href="{% url 'vehicles:reservation_approval_list' %}">🛠️ 审批面板</a></li>
+      <li><a role="menuitem" href="{% url 'vehicles:admin_stats' %}">📊 管理员统计</a></li>
+    {% endif %}
+
+    <li><a role="menuitem" href="{% url 'vehicles:reservation_dashboard' %}">🚖 配车系统</a></li>
+
+    {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
+      <li><a role="menuitem" href="{% url 'staffbook:dashboard' %}">📒 社員台帳</a></li>
+    {% endif %}
+
+    {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
+      <li><a role="menuitem" href="{% url 'dailyreport:dailyreport_overview' %}">💸 日報一覧</a></li>
+    {% endif %}
+
+    {% if user.is_superuser or user.userprofile.is_carinfo_admin %}
+      <li><a role="menuitem" href="{% url 'carinfo:car_list' %}">🚗 車両管理</a></li>
+    {% endif %}
+
+    {% if user.is_superuser %}
+      <li><a role="menuitem" href="/admin/">⚙️ 后台</a></li>
+    {% endif %}
+
+    <li class="x-nav__divider" aria-hidden="true"></li>
+
+    {% if user.is_authenticated %}
+      <li>
+        <form method="post" action="{% url 'logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="x-nav__logout">🚪 退出</button>
+        </form>
+      </li>
+    {% else %}
+      <li><a role="menuitem" href="{% url 'login' %}">登录</a></li>
+    {% endif %}
+  </ul>
 </nav>
+
+{# ====== scoped styles：全部 .x-nav 前缀，避免影响其它 ====== #}
+<style>
+/* 外层条：只负责背景与边框，宽度 100% */
+.x-nav{position:relative;background:#fff;border-bottom:1px solid #eee}
+
+/* 新增：内层容器——限制最大宽度并居中，负责 flex 布局与内边距 */
+.x-nav__inner{
+  position:relative;
+  max-width:2000px;       /* ← 与你内容区一致 */
+  margin:0 auto;          /* ← 水平居中 */
+  padding:10px 14px;
+  display:flex; align-items:center; gap:12px;
+}
+.x-nav__brand{font-weight:600;color:#111}
+.x-nav__hello{color:#111}
+.x-nav__list{list-style:none;margin:0;padding:0;display:flex;gap:8px;align-items:center}
+.x-nav__list>li>a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111827}
+.x-nav__list>li>a:hover,.x-nav__list>li>a:focus{background:#f3f4f6}
+.x-nav__divider{width:1px;height:18px;background:#e5e7eb;margin:0 4px}
+.x-nav__btn{display:none;width:40px;height:40px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;margin-left:auto}
+.x-nav__btn:focus{outline:2px solid #4c9ffe;outline-offset:2px}
+.x-nav__icon,.x-nav__icon::before,.x-nav__icon::after{display:block;width:20px;height:2px;background:#333;position:relative;border-radius:2px;margin:0 auto}
+.x-nav__icon::before,.x-nav__icon::after{content:"";position:absolute;left:0}
+.x-nav__icon::before{top:-6px}.x-nav__icon::after{top:6px}
+.x-nav__logout{border:1px solid #ddd;background:#fff;border-radius:8px;padding:6px 10px}
+.x-nav__logout:hover{background:#f3f4f6;cursor:pointer}
+.x-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+
+/* 桌面端 ≥992px：菜单常驻、按钮隐藏 */
+@media (min-width:992px){
+  .x-nav{justify-content:flex-start}
+  .x-nav__list{margin-left:auto;position:static;box-shadow:none;border:0;background:transparent}
+  .x-nav__btn{display:none}
+}
+/* 手机端 <992px：默认隐藏菜单，按钮显示，菜单为下拉浮层 */
+@media (max-width:999.98px){
+  .x-nav__btn{display:inline-flex;align-items:center;justify-content:center;margin-left:auto}
+  .x-nav__list{display:none;position:absolute;right:14px;top:calc(100% + 8px);flex-direction:column;align-items:stretch;gap:4px;min-width:220px;max-height:70vh;overflow:auto;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:8px;z-index:1000}
+  .x-nav__list.x-open{display:flex}
+  .x-nav__divider{width:100%;height:1px}
+  .x-nav__logout{width:100%;text-align:left}
+}
+</style>
+
+<script>
+/* ====== scoped JS：仅作用于本 partial ====== */
+(function(){
+  const btn=document.getElementById('xMenuToggle');
+  const menu=document.getElementById('xMainMenu');
+  if(!btn||!menu) return;
+  const DESKTOP=window.matchMedia('(min-width: 992px)');
+  function openMenu(){ if(!menu.classList.contains('x-open')){ menu.classList.add('x-open'); btn.setAttribute('aria-expanded','true');
+    const first=menu.querySelector('a,button,[tabindex]:not([tabindex="-1"])'); first&&first.focus({preventScroll:true}); } }
+  function closeMenu(){ if(menu.classList.contains('x-open')){ menu.classList.remove('x-open'); btn.setAttribute('aria-expanded','false'); } }
+  function toggle(){ menu.classList.contains('x-open')?closeMenu():openMenu(); }
+  btn.addEventListener('click',e=>{ if(DESKTOP.matches) return; e.stopPropagation(); toggle(); });
+  menu.addEventListener('click',e=>e.stopPropagation());
+  document.addEventListener('click',()=>{ if(!DESKTOP.matches) closeMenu(); });
+  document.addEventListener('keydown',e=>{ if(DESKTOP.matches) return;
+    if(e.key==='Escape') closeMenu();
+    if(menu.classList.contains('x-open')&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+      const items=[...menu.querySelectorAll('a,button,[tabindex]:not([tabindex="-1"])')];
+      const i=items.indexOf(document.activeElement);
+      if(i>=0){ e.preventDefault(); const j=e.key==='ArrowDown'?(i+1)%items.length:(i-1+items.length)%items.length; items[j].focus(); }
+    }
+  });
+  DESKTOP.addEventListener?.('change',closeMenu);
+})();
+</script>
+{# ====== /NEW navbar ====== #}
