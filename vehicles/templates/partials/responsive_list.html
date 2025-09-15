@@ -1,0 +1,126 @@
+{# templates/partials/responsive_list.html #}
+{% load humanize %}
+
+{# 传参：
+  items:  列表（每条是对象或字典）
+  columns: 列定义数组，每项 {
+      key: string            # 取值字段（obj.key 或 dict['key']）
+      title: string          # 表头 / 卡片 label
+      class: string          # (可选) 表格列样式
+      is_money: bool         # (可选) 金额列：￥ + intcomma
+      is_date:  bool         # (可选) 日期列：date:"Y年n月j日"
+      small_note_key: string # (可选) 小字副文本字段，仅卡片用（如「メータのみ」）
+  }
+  detail_url_name: (可选) 明细路由名（会在最后一列/卡片右上渲染“查看明细”）
+  detail_url_pk_field: (可选) 作为 pk 的字段名，默认 'id'
+#}
+
+<style>
+  .mobile-card{border:1px solid #eee;border-radius:12px;padding:12px 14px;background:#fff}
+  .mobile-card+.mobile-card{margin-top:10px}
+  .mobile-card .mc-title{font-weight:700}
+  .mobile-card .mc-line{display:flex;justify-content:space-between;gap:8px;margin-top:4px}
+  .mobile-card .mc-label{color:#6c757d;font-size:.9rem}
+  .mobile-card .mc-value{font-family:ui-monospace,Menlo,Consolas,monospace}
+  .mobile-card .mc-sub{color:#6c757d;font-size:.85rem;margin-top:4px}
+  .td-money{text-align:right; white-space:nowrap;}
+  .td-date{white-space:nowrap;}
+</style>
+
+{# ── 桌面端：表格 ── #}
+<div class="d-none d-md-block">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr class="text-muted">
+          {% for c in columns %}
+            <th class="{{ c.class|default:'' }}">{{ c.title }}</th>
+          {% endfor %}
+          {% if detail_url_name %}<th style="width:7rem;text-align:center;">操作</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+          <tr>
+            {% for c in columns %}
+              <td class="{{ c.class|default:'' }}">
+                {% with val=it|dictsort:0 %}{% endwith %}
+                {# 直接用点号取值：it.c.key #}
+                {% with v=it|attr:c.key %}
+                  {% if c.is_money %}
+                    <span class="mono">￥&thinsp;{{ v|floatformat:"0"|intcomma }}</span>
+                  {% elif c.is_date %}
+                    {{ v|date:"Y年n月j日" }}
+                  {% else %}
+                    {{ v }}
+                  {% endif %}
+                  {% if c.small_note_key %}
+                    {% with sn=it|attr:c.small_note_key %}
+                      {% if sn %}
+                        <div class="mc-sub">（{{ sn }}）</div>
+                      {% endif %}
+                    {% endwith %}
+                  {% endif %}
+                {% endwith %}
+              </td>
+            {% endfor %}
+            {% if detail_url_name %}
+              {% with pkf=detail_url_pk_field|default:"id" %}
+                <td class="text-center">
+                  <a class="btn btn-link p-0" href="{% url detail_url_name it|attr:pkf %}">查看明細</a>
+                </td>
+              {% endwith %}
+            {% endif %}
+          </tr>
+        {% empty %}
+          <tr><td colspan="{{ columns|length|add:detail_url_name|yesno:'1,0' }}" class="text-center text-muted py-4">暂无数据</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ── 手机端：卡片 ── #}
+<div class="d-md-none">
+  {% for it in items %}
+    <div class="mobile-card">
+      {# 第一列作为标题 #}
+      {% with c0=columns.0 v0=it|attr:columns.0.key %}
+        <div class="mc-title">
+          {% if c0.is_money %}￥&thinsp;{{ v0|floatformat:"0"|intcomma }}
+          {% elif c0.is_date %}{{ v0|date:"Y年n月j日" }}
+          {% else %}{{ v0 }}{% endif %}
+        </div>
+      {% endwith %}
+
+      {# 其余列做成 label:value #}
+      {% for c in columns|slice:"1:" %}
+        {% with v=it|attr:c.key %}
+          <div class="mc-line">
+            <div class="mc-label">{{ c.title }}</div>
+            <div class="mc-value">
+              {% if c.is_money %}￥&thinsp;{{ v|floatformat:"0"|intcomma }}
+              {% elif c.is_date %}{{ v|date:"Y年n月j日" }}
+              {% else %}{{ v }}{% endif %}
+            </div>
+          </div>
+          {% if c.small_note_key %}
+            {% with sn=it|attr:c.small_note_key %}
+              {% if sn %}<div class="mc-sub">{{ sn }}</div>{% endif %}
+            {% endwith %}
+          {% endif %}
+        {% endwith %}
+      {% endfor %}
+
+      {% if detail_url_name %}
+        {% with pkf=detail_url_pk_field|default:"id" %}
+          <div class="mt-2">
+            <a class="btn btn-sm btn-outline-primary" href="{% url detail_url_name it|attr:pkf %}">查看明細</a>
+          </div>
+        {% endwith %}
+      {% endif %}
+    </div>
+  {% empty %}
+    <div class="text-center text-muted py-4">暂无数据</div>
+  {% endfor %}
+</div>

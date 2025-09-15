@@ -260,16 +260,14 @@ function updateTotals() {
   const totalMap = { cash:0, uber:0, didi:0, go:0, credit:0, kyokushin:0, omron:0, kyotoshi:0, qr:0 };
   let meterSum=0, charterCashTotal=0, charterUncollectedTotal=0;
 
-  // >>> 追加: 三类 Uber 的独立合计（只进売上合計，不进メーターのみ）
+  // >>> 追加: 三类 Uber 的独立合计
   let uberReservationTotal = 0, uberReservationCount = 0;
   let uberTipTotal         = 0, uberTipCount         = 0;
   let uberPromotionTotal   = 0, uberPromotionCount   = 0;
-  // 这三类 Uber 的金额总和（用于加到总“売上合計”里，但不进入 meterSum）
   let specialUberSum = 0;
   // <<< 追加结束
 
   $all(".report-item-row", dataTb).forEach(row => {
-    // 跳过被标记删除或已隐藏的行
     const delFlag = row.querySelector("input[name$='-DELETE']");
     if ((delFlag && delFlag.checked) || row.style.display === "none") return;
 
@@ -285,23 +283,18 @@ function updateTotals() {
     // >>> 修改: 非貸切时，三类 Uber（予約/チップ/プロモ）只计入売上合計，不进入 meterSum
     if (!isCharter) {
       if (fee > 0) {
-        const raw = payment; // 原始 payment 值
+        const raw = payment;
         const isUberReservation = raw === 'uber_reservation';
         const isUberTip         = raw === 'uber_tip';
         const isUberPromotion   = raw === 'uber_promotion';
         const isSpecialUber     = isUberReservation || isUberTip || isUberPromotion;
 
         if (isSpecialUber) {
-          // ✅ 这些金额不计入“メーターのみ”，但要计入“売上合計”
           specialUberSum += fee;
-
           if (isUberReservation) { uberReservationTotal += fee; uberReservationCount += 1; }
           else if (isUberTip)    { uberTipTotal         += fee; uberTipCount         += 1; }
           else if (isUberPromotion){ uberPromotionTotal += fee; uberPromotionCount   += 1; }
-
-          // 不把它们并到 totalMap.uber，避免与常规 Uber 混合
         } else {
-          // 常规项目：进入 meterSum，并按归一化方法计入各项合计
           const method = resolveJsPaymentMethod(payment);
           meterSum += fee;
           if (Object.hasOwn(totalMap, method)) totalMap[method] += fee;
@@ -346,7 +339,56 @@ function updateTotals() {
     || document.getElementById("deposit-difference")
     || document.getElementById("shortage-diff");
   if (diffEl) diffEl.textContent = shortage.toLocaleString();
+
+  // ==== [ETC LOGIC PATCH START @ 2025-09-14] ====
+  function _yen(v){ if(v==null) return 0; const n=Number(String(v).replace(/[,，\s]/g,'')); return isFinite(n)?n:0; }
+
+  const rideEtc = _yen(document.querySelector('#id_ride_etc_total, .js-ride-etc-total')?.value);
+  const rideMeth = (document.querySelector('#id_ride_etc_payment_method, .js-ride-etc-method')?.value||'').trim();
+
+  const emptyEtc   = _yen(document.querySelector('#id_etc_uncollected, .js-empty-etc-amount')?.value);
+  const emptyCard  = (document.querySelector('#id_etc_empty_card, .js-empty-etc-card')?.value||'').trim();
+  const retClaimed = _yen(document.querySelector('#id_etc_return_fee_claimed, .js-return-fee-claimed')?.value);
+  const retMethod  = (document.querySelector('#id_etc_return_fee_method, .js-return-fee-method')?.value||'').trim();
+
+  // 1) ETC 应收合计
+  const etcReceivable = rideEtc + emptyEtc;
+  const etcReceivableEl = document.querySelector('#etc-expected-output, .js-etc-receivable');
+  if (etcReceivableEl) etcReceivableEl.value = etcReceivable.toLocaleString();
+
+  // 2) 空车ETC → 司机负担 / 未収ETC
+  let driverBurden = 0;
+  let uncollectedEtc = 0;
+  if (emptyCard === 'company') {
+    if (retMethod === 'app_ticket') {
+      const cover = Math.min(retClaimed, emptyEtc);
+      driverBurden = Math.max(emptyEtc - cover, 0);
+      uncollectedEtc = Math.max(retClaimed - emptyEtc, 0);
+    } else {
+      driverBurden = emptyEtc;
+    }
+  }
+  const driverBurdenEl = document.querySelector('.js-driver-burden');
+  if (driverBurdenEl) driverBurdenEl.textContent = `司机负担：${driverBurden.toLocaleString()}円`;
+  const uncollectedEl = document.querySelector('.js-uncollected-etc');
+  if (uncollectedEl) uncollectedEl.textContent = `未収ETC：${uncollectedEtc.toLocaleString()}円；`;
+
+  // 3) 過不足：加上自分ETC卡
+  const income      = _yen(document.querySelector('#id_income, .income-input')?.value);
+  const cashNagashi = _yen(document.querySelector('#id_cash_nagashi, .cash-nagashi-input')?.value);
+  const charterCash = _yen(document.querySelector('#id_charter_cash, .charter-cash-input')?.value);
+  let imbalance = income - cashNagashi - charterCash;
+  if (rideMeth === 'self') {
+    imbalance += rideEtc;
+  }
+  const imbalanceEl = document.querySelector('#id_imbalance, .imbalance-total');
+  if (imbalanceEl) {
+    if ('value' in imbalanceEl) imbalanceEl.value = imbalance.toLocaleString();
+    else imbalanceEl.textContent = imbalance.toLocaleString();
+  }
+  // ==== [ETC LOGIC PATCH END @ 2025-09-14] ====
 }
+
 
 // ============ 智能提示面板 ============
 function updateSmartHintPanel() {

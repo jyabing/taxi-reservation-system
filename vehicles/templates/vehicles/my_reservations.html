@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load custom_filters %}
 
 {% block content %}
 
@@ -48,17 +49,20 @@
     100% { transform: translateX(-100%); }
   }
 
-  /* ✅ 新增：状态徽章样式 */
   .status-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:13px}
-  .badge-pending{background:#fff3cd;color:#856404}      /* 申请中 */
-  .badge-booked{background:#e7f1ff;color:#0b5ed7}       /* 已预约 */
-  .badge-out{background:#e2f0d9;color:#0f5132}          /* 已出库 */
-  .badge-done{background:#e6ffed;color:#1f7a1f}         /* 已完成 */
-  .badge-cancel{background:#fdecea;color:#b02a37}       /* 已取消 */
-  .badge-incomplete{background:#eee;color:#666}         /* 未完成 */
+  .badge-pending{background:#fff3cd;color:#856404}
+  .badge-booked{background:#e7f1ff;color:#0b5ed7}
+  .badge-out{background:#e2f0d9;color:#0f5132}
+  .badge-done{background:#e6ffed;color:#1f7a1f}
+  .badge-cancel{background:#fdecea;color:#b02a37}
+  .badge-incomplete{background:#eee;color:#666}
+
+  @media (max-width: 767.98px){
+    .card .btn { padding: .25rem .5rem; }
+    .card .status-badge { font-size: 12px; }
+  }
 </style>
 
-<!-- ✅ 滚动通知条 -->
 {% if notice_message %}
   <div class="marquee-container">
     <div class="marquee-content">
@@ -70,7 +74,6 @@
 <h2>📋 私の予約履歴</h2>
 {% include 'partials/_messages.html' %}
 
-<!-- ▼▼▼ 日常点検15項 PDF 下载：BEGIN ▼▼▼ -->
 <div class="mb-3" style="font-size:14px;">
   <span>
     日常点検15項：
@@ -85,33 +88,99 @@
     </a>
   </span>
 </div>
-<!-- ▲▲▲ 日常点検15項 PDF 下载：END ▲▲▲ -->
 
-<table class="japanese-style-table">
-  <thead>
-    <tr>
-      <th>🚘 車輌</th>
-      <th>📅 利用時間</th>
-      <th>📌 状態</th>
-      <th>✅ 操作</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for r in page_obj.object_list %}
+<!-- 桌面端：表格 -->
+<div class="d-none d-md-block">
+  <table class="japanese-style-table">
+    <thead>
       <tr>
-        <td>{{ r.vehicle.license_plate }}</td>
-        <td class="text-start">
-          {{ r.date|date:"Y/m/d" }} {{ r.start_time|time:"H:i" }} ~
+        <th>🚘 車輌</th>
+        <th>📅 利用時間</th>
+        <th>📌 状態</th>
+        <th>✅ 操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in page_obj.object_list %}
+        <tr>
+          <td>{{ r.vehicle.license_plate }}</td>
+          <td class="text-start">
+            {{ r.date|date:"Y/m/d" }} {{ r.start_time|time:"H:i" }} ~
+            {{ r.end_date|default:r.date|date:"Y/m/d" }} {{ r.end_time|time:"H:i" }}
+          </td>
+          <td>
+            <span class="status-badge badge-{{ r.status }}">{{ r.get_status_display|default:r.status }}</span>
+          </td>
+          <td class="text-center" style="white-space:nowrap;">
+            {% if r.status == "incomplete" and r.driver_id == request.user.id %}
+              <button type="button"
+                      class="btn btn-sm btn-primary"
+                      data-id="{{ r.id }}"
+                      data-reservation-id="{{ r.id }}"
+                      data-bs-toggle="modal"
+                      data-bs-target="#returnModal"
+                      onclick="primeReturn(this)">
+                入庫
+              </button>
+            {% elif r.status == "done" %}
+              <span class="badge bg-success">完了</span>
+            {% else %}
+              {% include 'partials/_check_io_buttons.html' with r=r %}
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4" class="text-center" style="font-weight:600;">
+            导航中点击车辆状态，在备注中可以修改今日使用车辆的设备情况，请协助！
+          </td>
+        </tr>
+        <tr>
+          <td colspan="4" style="font-size: 13px; color: #666; background-color: #f9f9f9;">
+            <div id="info-last-{{ r.id }}"></div>
+            <div id="info-next-{{ r.id }}"></div>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="4" class="empty-row">📭 ご予約履歴が見つかりませんでした。</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="pagination mt-3 text-center">
+    <span class="step-links">
+      {% if page_obj.has_previous %}
+        <a href="?page=1">&laquo; 第一頁</a>
+        <a href="?page={{ page_obj.previous_page_number }}">上一頁</a>
+      {% endif %}
+      <span class="current-page">
+        第 {{ page_obj.number }} 頁 / 共 {{ page_obj.paginator.num_pages }} 頁
+      </span>
+      {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}">下一頁</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}">最後一頁 &raquo;</a>
+      {% endif %}
+    </span>
+  </div>
+</div>
+
+<!-- 手机端：卡片 -->
+<div class="d-md-none">
+  {% for r in page_obj.object_list %}
+    <div class="card mb-3 shadow-sm" style="border-radius:12px;">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div class="fw-bold" style="font-size:16px;">🚘 {{ r.vehicle.license_plate }}</div>
+          <span class="status-badge badge-{{ r.status }}">{{ r.get_status_display|default:r.status }}</span>
+        </div>
+        <div class="text-muted mb-2" style="font-size:14px;">
+          📅 {{ r.date|date:"Y/m/d" }} {{ r.start_time|time:"H:i" }} ~
           {{ r.end_date|default:r.date|date:"Y/m/d" }} {{ r.end_time|time:"H:i" }}
-        </td>
-
-        <!-- ✅ 状态列：改为自动显示中文 + 动态徽章样式 -->
-        <td>
-          <span class="status-badge badge-{{ r.status }}">{{ r.get_status_display }}</span>
-        </td>
-
-        <td class="text-center" style="white-space:nowrap;">
-          {# 未完成 -> 显示“入库”按钮（弹出入库时间对话框） #}
+        </div>
+        <div class="mb-2 small text-secondary">
+          导航中点击车辆状态，在备注中可以修改今日使用车辆的设备情况，请协助！
+        </div>
+        <div class="mt-3">
           {% if r.status == "incomplete" and r.driver_id == request.user.id %}
             <button type="button"
                     class="btn btn-sm btn-primary"
@@ -122,76 +191,42 @@
                     onclick="primeReturn(this)">
               入庫
             </button>
-
-          {# 已完成 -> 显示“完了”徽章 #}
           {% elif r.status == "done" %}
             <span class="badge bg-success">完了</span>
-
-          {# 其他状态，沿用你原来的按钮局部模板 #}
           {% else %}
             {% include 'partials/_check_io_buttons.html' with r=r %}
           {% endif %}
-        </td>
-      </tr>
-
-      <thead>
-        <tr>
-          <th colspan="4" class="text-center">导航中点击车辆状态，在备注中可以修改今日使用车辆的设备情况，请协助！</th>
-        </tr>
-      </thead>
-
-      <!-- ✅ 插入新的提示行（保持你原样） -->
-      <tr>
-        <td colspan="4" style="font-size: 13px; color: #666; background-color: #f9f9f9;">
-          {% with info=reservation_infos.r.id %}
-            {% if info.last_return %}
-              🕓 上次入库时间：{{ info.last_return|date:"Y-m-d H:i" }}，
-              与本次预约起始相隔 {{ info.diff_from_last_return }} 小时。
-              {% if info.diff_from_last_return < 10 %}
-                <span style="color: red;">⚠️ 不足 10 小时，请注意休息。</span>
-              {% endif %}
-              <br>
-            {% endif %}
-            {% if info.next_reservation %}
-              ⏭️ 下次预约时间：{{ info.next_reservation|date:"Y-m-d H:i" }}，
-              与本次预约结束相隔 {{ info.diff_to_next }} 小时。
-              {% if info.diff_to_next < 10 %}
-                <span style="color: red;">⚠️ 不足 10 小时，系统将自动顺延。</span>
-              {% endif %}
-            {% endif %}
-          {% endwith %}
-        </td>
-      </tr>
-
-    {% empty %}
-      <tr>
-        <td colspan="4" class="empty-row">📭 ご予約履歴が見つかりませんでした。</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<!-- 分页控件 -->
-<div class="pagination mt-3" style="text-align: center;">
-  <span class="step-links">
-    {% if page_obj.has_previous %}
-      <a href="?page=1">&laquo; 第一頁</a>
-      <a href="?page={{ page_obj.previous_page_number }}">上一頁</a>
-    {% endif %}
-    <span class="current-page">
-      第 {{ page_obj.number }} 頁 / 共 {{ page_obj.paginator.num_pages }} 頁
+        </div>
+        <div class="mt-3 p-2" style="background:#f9f9f9;border-radius:8px;">
+          <div id="info-last-{{ r.id }}-m" class="small text-secondary"></div>
+          <div id="info-next-{{ r.id }}-m" class="small text-secondary"></div>
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="text-center text-muted">📭 ご予約履歴が見つかりませんでした。</div>
+  {% endfor %}
+  <div class="pagination mt-2 text-center">
+    <span class="step-links">
+      {% if page_obj.has_previous %}
+        <a href="?page=1">&laquo; 第一頁</a>
+        <a href="?page={{ page_obj.previous_page_number }}">上一頁</a>
+      {% endif %}
+      <span class="current-page">
+        第 {{ page_obj.number }} 頁 / 共 {{ page_obj.paginator.num_pages }} 頁
+      </span>
+      {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}">下一頁</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}">最後一頁 &raquo;</a>
+      {% endif %}
     </span>
-    {% if page_obj.has_next %}
-      <a href="?page={{ page_obj.next_page_number }}">下一頁</a>
-      <a href="?page={{ page_obj.paginator.num_pages }}">最後一頁 &raquo;</a>
-    {% endif %}
-  </span>
+  </div>
 </div>
 
 <!-- 出库弹窗 -->
 <div class="modal fade" id="departureModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
-    <form id="departureForm" method="post" 
+    <form id="departureForm" method="post"
           action="{% url 'vehicles:confirm_check_io' %}"
           data-base-action="{% url 'vehicles:confirm_check_io' %}">
       {% csrf_token %}
@@ -217,7 +252,7 @@
 <!-- 入库弹窗 -->
 <div class="modal fade" id="returnModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
-    <form id="returnForm" method="post" 
+    <form id="returnForm" method="post"
           action="{% url 'vehicles:confirm_check_io' %}"
           data-base-action="{% url 'vehicles:confirm_check_io' %}">
       {% csrf_token %}
@@ -245,30 +280,64 @@
 function toLocalInputValue(d){
   const tz = d.getTimezoneOffset() * 60000;
   const local = new Date(d.getTime() - tz);
-  return local.toISOString().slice(0,16); // YYYY-MM-DDTHH:MM
+  return local.toISOString().slice(0,16);
 }
-
-// 点击“出库”按钮时：写入隐藏字段 & 建议时间 & 给 action 附 ?rid=ID
 function primeDeparture(btn){
   const id = btn.dataset.reservationId || btn.getAttribute('data-id');
-  if(!id){ console.warn('no reservation id'); return; }
+  if(!id){ return; }
   const form = document.getElementById('departureForm');
-  const base = form?.dataset?.baseAction || form?.getAttribute('action') || '';
+  const base = form.dataset.baseAction;
   document.getElementById('reservationIdInput').value = id;
   document.getElementById('actualDepartureInput').value = toLocalInputValue(new Date());
-  if(form) form.setAttribute('action', base + '?rid=' + encodeURIComponent(id));
+  form.setAttribute('action', base + '?rid=' + encodeURIComponent(id));
 }
-
-// 点击“入库”按钮时：写入隐藏字段 & 当前本地时间 & 给 action 附 ?rid=ID
 function primeReturn(btn){
   const id = btn.dataset.reservationId || btn.getAttribute('data-id');
-  if(!id){ console.warn('no reservation id'); return; }
+  if(!id){ return; }
   const form = document.getElementById('returnForm');
-  const base = form?.dataset?.baseAction || form?.getAttribute('action') || '';
+  const base = form.dataset.baseAction;
   document.getElementById('returnReservationIdInput').value = id;
   document.getElementById('actualReturnInput').value = toLocalInputValue(new Date());
-  if(form) form.setAttribute('action', base + '?rid=' + encodeURIComponent(id));
+  form.setAttribute('action', base + '?rid=' + encodeURIComponent(id));
 }
+</script>
+
+{{ reservation_infos|json_script:"resvInfos" }}
+<script>
+(function(){
+  try{
+    const data = JSON.parse(document.getElementById('resvInfos').textContent || '{}');
+    const fmt = (iso) => {
+      if(!iso) return '';
+      const d = new Date(iso);
+      if(isNaN(d.getTime())) return '';
+      const pad = (n)=> String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    Object.keys(data || {}).forEach((rid)=>{
+      const info = data[rid] || {};
+      let lastLine = '';
+      if (info.last_return){
+        lastLine = `🕓 上次入库时间：${fmt(info.last_return)}，与本次预约起始相隔 ${info.diff_from_last_return} 小时。`;
+        if (info.diff_from_last_return < 10){
+          lastLine += ' <span style="color:red;">⚠️ 不足 10 小时，请注意休息。</span>';
+        }
+      }
+      [document.getElementById(`info-last-${rid}`), document.getElementById(`info-last-${rid}-m`)]
+        .forEach(el=>{ if(el) el.innerHTML = lastLine; });
+
+      let nextLine = '';
+      if (info.next_reservation){
+        nextLine = `⏭️ 下次预约时间：${fmt(info.next_reservation)}，与本次预约结束相隔 ${info.diff_to_next} 小时。`;
+        if (info.diff_to_next < 10){
+          nextLine += ' <span style="color:red;">⚠️ 不足 10 小时，系统将自动顺延。</span>';
+        }
+      }
+      [document.getElementById(`info-next-${rid}`), document.getElementById(`info-next-${rid}-m`)]
+        .forEach(el=>{ if(el) el.innerHTML = nextLine; });
+    });
+  }catch(e){ console.warn(e); }
+})();
 </script>
 
 <script src="{% static 'vehicles/js/check_io.js' %}"></script>

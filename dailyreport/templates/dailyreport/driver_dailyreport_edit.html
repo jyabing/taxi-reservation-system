@@ -363,26 +363,27 @@ input[type=number] {
       <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
       <div class="border rounded px-3 py-2" style="min-width: 280px;">
         <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
-  <div class="small text-muted">🧾 メータ小票 記載用：</div>
+        <div class="small text-muted">🧾 メータ小票 記載用：</div>
 
-  <div style="font-family:ui-monospace,Menlo,monospace;">空車ETC {{ report.etc_uncollected|default:0 }}円</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;">空車ETC {{ report.etc_uncollected|default:0 }}円</div>
         <div class="row g-2 align-items-end">
           <!-- 空車ETC金额 -->
           <div class="col-6">
             <label for="id_etc_uncollected" class="form-label small">空車ETC 金額（円）</label>
-            <input type="number" class="form-control form-control-sm text-end"
-                   id="id_etc_uncollected" name="etc_uncollected" min="0" step="1" value="">
+            <input type="number" class="form-control form-control-sm text-end js-empty-etc-amount"
+                  id="id_etc_uncollected" name="etc_uncollected" min="0" step="1" value="">
           </div>
           <!-- 回程费受领额 -->
           <div class="col-6">
             <label for="id_etc_return_fee_claimed" class="form-label small">回程費 受領額（円）</label>
-            <input type="number" class="form-control form-control-sm text-end"
-                   id="id_etc_return_fee_claimed" name="etc_return_fee_claimed" min="0" step="1" value="">
+            <input type="number" class="form-control form-control-sm text-end js-return-fee-claimed"
+                  id="id_etc_return_fee_claimed" name="etc_return_fee_claimed" min="0" step="1" value="">
           </div>
           <!-- 回程费支付方式 -->
           <div class="col-6">
             <label for="id_etc_return_fee_method" class="form-label small">回程費 支払方法</label>
-            <select id="id_etc_return_fee_method" name="etc_return_fee_method" class="form-select form-select-sm">
+            <select id="id_etc_return_fee_method" name="etc_return_fee_method"
+                    class="form-select form-select-sm js-return-fee-method">
               <option value="none">— 個別（別払い/なし）—</option>
               <option value="app_ticket">アプリ/チケット 一体結算</option>
               <option value="cash_to_driver">現金（直接司机）</option>
@@ -391,7 +392,8 @@ input[type=number] {
           <!-- 空車ETC 使用卡 -->
           <div class="col-6">
             <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
-            <select id="id_etc_empty_card" name="etc_empty_card" class="form-select form-select-sm">
+            <select id="id_etc_empty_card" name="etc_empty_card"
+                    class="form-select form-select-sm js-empty-etc-card">
               <option value="company">会社カード</option>
               <option value="own">自己カード</option>
             </select>
@@ -409,13 +411,13 @@ input[type=number] {
       <!-- ✅ ETC 应收合计（只读） -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
         <label class="small text-muted">ETC 应收合计（円）</label>
-        <input type="text" id="etc-expected-output" class="form-control form-control-sm text-end bg-light" readonly
+        <input type="text" id="etc-expected-output"
+              class="form-control form-control-sm text-end bg-light js-etc-receivable" readonly
               value="{{ report.etc_expected|default_if_none:'0' }}">
         <label class="small text-muted mt-2 d-block">乗車ETC合計＋空車ETC金额</label>
       </div>
-      
 
-      <!-- ✅ ETC 不足额 -->
+      <!-- ✅ ETC 不足额（保持你原逻辑，只读展示） -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
         <label for="{{ form.etc_shortage.id_for_label }}" class="small text-danger">ETC不足（円）</label>
         {{ form.etc_shortage|add_class:"form-control form-control-sm text-end text-danger"|attr:"readonly" }}
