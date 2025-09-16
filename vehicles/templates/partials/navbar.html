@@ -16,6 +16,7 @@
             aria-controls="xMainMenu"
             title="メニュー">
     <span class="x-nav__icon" aria-hidden="true"></span>
+    <span class="x-nav__label" aria-hidden="true">メニュー</span>
     <span class="x-sr-only">メニュー</span>
   </button>
 
@@ -87,11 +88,32 @@
 .x-nav__list>li>a{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;color:#111827}
 .x-nav__list>li>a:hover,.x-nav__list>li>a:focus{background:#f3f4f6}
 .x-nav__divider{width:1px;height:18px;background:#e5e7eb;margin:0 4px}
-.x-nav__btn{display:none;width:40px;height:40px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;margin-left:auto}
-.x-nav__btn:focus{outline:2px solid #4c9ffe;outline-offset:2px}
-.x-nav__icon,.x-nav__icon::before,.x-nav__icon::after{display:block;width:20px;height:2px;background:#333;position:relative;border-radius:2px;margin:0 auto}
-.x-nav__icon::before,.x-nav__icon::after{content:"";position:absolute;left:0}
-.x-nav__icon::before{top:-6px}.x-nav__icon::after{top:6px}
+.x-nav__btn{display:none;width:56px;height:56px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;margin-left:auto;
+  display:flex; flex-direction:column;          /* 竖排 */
+  justify-content:center; align-items:center;
+  gap:6px;                                      /* ↑ 图标与文字的间距 */
+  padding:6px 8px; line-height:1;               /* 避免文字行高撑开 */
+}
+.x-nav__label{
+  font-size:11px; line-height:1; color:#444; /* “メニュー” 的样式 */
+}
+/* 自身不再只有 2px 高，而是 14px 高，三条线都包在内部 */
+.x-nav__icon{
+  position:relative;
+  display:block; width:22px; height:14px; margin:0 auto;
+  /* 中间那条线：用背景画在 y=6px 处（14px 高的中线） */
+  background: linear-gradient(#333,#333) 0 6px / 100% 2px no-repeat;
+  border-radius:2px;
+}
+/* 顶部与底部两条线 */
+.x-nav__icon::before,
+.x-nav__icon::after{
+  content:""; position:absolute; left:0; right:0; height:2px;
+  background:#333; border-radius:2px;
+}
+.x-nav__icon::before{ top:0; }      /* 顶部线 */
+.x-nav__icon::after { bottom:0; }   /* 底部线 */
+
 .x-nav__logout{border:1px solid #ddd;background:#fff;border-radius:8px;padding:6px 10px}
 .x-nav__logout:hover{background:#f3f4f6;cursor:pointer}
 .x-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}

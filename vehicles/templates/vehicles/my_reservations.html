@@ -102,7 +102,7 @@
     </thead>
     <tbody>
       {% for r in page_obj.object_list %}
-        <tr>
+        <tr {% if today_first_id and r.id == today_first_id %}id="today-anchor"{% endif %}>
           <td>{{ r.vehicle.license_plate }}</td>
           <td class="text-start">
             {{ r.date|date:"Y/m/d" }} {{ r.start_time|time:"H:i" }} ~
@@ -167,7 +167,8 @@
 <!-- 手机端：卡片 -->
 <div class="d-md-none">
   {% for r in page_obj.object_list %}
-    <div class="card mb-3 shadow-sm" style="border-radius:12px;">
+    <div class="card mb-3 shadow-sm" style="border-radius:12px;"
+     {% if today_first_id and r.id == today_first_id %}id="today-anchor-m"{% endif %}>
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-2">
           <div class="fw-bold" style="font-size:16px;">🚘 {{ r.vehicle.license_plate }}</div>
@@ -341,5 +342,53 @@ function primeReturn(btn){
 </script>
 
 <script src="{% static 'vehicles/js/check_io.js' %}"></script>
+
+
+{% if today_page %}
+<a id="jump-to-today"
+   class="btn btn-primary shadow"
+   href="#"
+   data-today-page="{{ today_page }}"
+   style="position:fixed; right:16px; bottom:16px; z-index:1050; border-radius:999px; padding:10px 14px;">
+  跳转到今日
+</a>
+{% endif %}
+
+<script>
+(function(){
+  const btn = document.getElementById('jump-to-today');
+  if(!btn) return;
+  const url = new URL(window.location.href);
+  const curPage = parseInt(url.searchParams.get('page') || '1', 10);
+  const todayPage = parseInt(btn.dataset.todayPage || '1', 10);
+
+  function anchorId(){
+    return window.matchMedia('(max-width: 767.98px)').matches ? 'today-anchor-m' : 'today-anchor';
+  }
+  function scrollToToday(){
+    const el = document.getElementById(anchorId());
+    if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  btn.addEventListener('click', function(e){
+    e.preventDefault();
+    if (curPage !== todayPage){
+      const base = window.location.pathname;
+      const search = new URLSearchParams(url.searchParams);
+      search.set('page', String(todayPage));
+      window.location.href = `${base}?${search.toString()}#${anchorId()}`;
+    }else{
+      scrollToToday();
+    }
+  });
+
+  // 若 URL 带锚点，自动定位一次
+  const hash = (window.location.hash || '').replace('#','');
+  if (curPage === todayPage && (hash === 'today-anchor' || hash === 'today-anchor-m')){
+    setTimeout(scrollToToday, 100);
+  }
+})();
+</script>
+
 
 {% endblock %}

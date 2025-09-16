@@ -1057,13 +1057,37 @@ def my_reservations_view(request):
     notice_message = SystemNotice.objects.filter(is_active=True).first()
     print("当前用户：", request.user)
 
-    return render(request, 'vehicles/my_reservations.html', {
+    # === 新增: 计算今天所在页和今天第一条的ID ===
+    today = localdate()
+
+    # 是否有“今天”的记录
+    has_today = all_reservations.filter(date=today).exists()
+
+    # 比“今天更晚”的记录条数（注意你的排序是 -date, -start_time）
+    newer_count = all_reservations.filter(date__gt=today).count()
+
+    # 用 paginator.per_page 计算今天在第几页（若今天无记录则为 None）
+    today_page = (newer_count // paginator.per_page + 1) if has_today else None
+
+    # “今天”的第一条 id（按与列表一致的排序）
+    today_first_id = (
+        all_reservations.filter(date=today)
+        .order_by('-date', '-start_time', '-id')
+        .values_list('pk', flat=True)
+        .first()
+    )
+
+    # 传入模板
+    ctx = {
         'page_obj': page_obj,
         'reservation_infos': reservation_infos,
         'canceled_any': canceled_any,
         'tips': tips,
         'notice_message': notice_message,
-    })
+        'today_page': today_page,
+        'today_first_id': today_first_id,
+    }
+    return render(request, 'vehicles/my_reservations.html', ctx)
 
 @staff_member_required
 def reservation_approval_list(request):
