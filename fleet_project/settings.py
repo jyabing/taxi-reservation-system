@@ -173,6 +173,20 @@ LEDGER_API_HOST = os.getenv('LEDGER_API_HOST', 'taxi-reservation.onrender.com')
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}
+
 # =========================
 # Cloudflare R2 存储（稳定做法）
 # =========================

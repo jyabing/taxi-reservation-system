@@ -7,7 +7,7 @@
 <h2 class="mb-4">🚗 車輌 一週間予約概覧（{{ today }}〜）</h2>
 {% include 'partials/_messages.html' %}
 
-{# === 🚨 车辆到期提醒列表 === #}
+{# === 车辆到期提醒（顶端） === #}
 {% if reminders %}
   <div class="mb-3">
     {% for car, reminder in reminders %}
@@ -18,7 +18,8 @@
   </div>
 {% endif %}
 
-<nav class="mb-3">
+<!-- 仅桌面端显示的周跳转 + 甘特图 -->
+<nav class="mb-3 d-none d-md-block">
   <a href="?date={{ today }}&offset={{ offset|add:"-1" }}">← 前週</a>
   <span class="mx-2">|</span>
   <a href="?date={{ today }}&offset=0" class="fw-bold">本週</a>
@@ -27,11 +28,12 @@
 
   <span class="mx-2">|</span>
   <a class="btn btn-success btn-sm"
-    href="{% url 'vehicles:vehicle_weekly_gantt' %}?start={{ today|date:'Y-m-d' }}">📊 甘特图
+     href="{% url 'vehicles:vehicle_weekly_gantt' %}?start={{ today|date:'Y-m-d' }}">📊 甘特图
   </a>
 </nav>
 
 <style>
+/* ====== 桌面端表格样式（保留原样） ====== */
 .japanese-week-table {
   width: 100%;
   border-collapse: separate;
@@ -54,76 +56,244 @@
   font-size: 14px;
   vertical-align: top;
 }
-.japanese-week-table thead th {
-  text-align: center;
-  white-space: nowrap;
-}
-.japanese-week-table tbody tr:hover {
-  background: #f0f4fa;
-  transition: background 0.2s;
-}
-.japanese-week-table td a {
-  display: inline-block;
-  margin-bottom: 4px;
-}
+.japanese-week-table thead th { text-align: center; white-space: nowrap; }
+.japanese-week-table tbody tr:hover { background: #f0f4fa; transition: background 0.2s; }
+.japanese-week-table td a { display: inline-block; margin-bottom: 4px; }
 
 /* 维修中置灰 */
 .maintenance { background:#eee; color:#888; }
 .maintenance a { pointer-events:none; color:#888; text-decoration:none; }
 .badge-maint { font-size:12px; padding:2px 6px; border:1px solid #bbb; border-radius:4px; margin-left:6px; }
+
+/* ====== 手机端卡片样式 ====== */
+.week-mobile .vehicle-card .card-header { padding: .6rem .75rem; }
+.week-mobile .vehicle-card .card-body { padding: .75rem; }
+.week-mobile .day-row {
+  display:flex; align-items:flex-start; gap:.5rem;
+  padding:.5rem .6rem; border:1px solid #e9ecef; border-radius:8px;
+  margin-bottom:.5rem; background:#fff;
+}
+.week-mobile .day-date { min-width: 95px; font-weight:600; color:#2c3e50; }
+.week-mobile .day-content { flex:1; font-size: 14px; }
+.week-mobile .muted { color:#aaa; }
+.week-mobile .badge-line { display:inline-block; margin:.125rem .25rem .125rem 0; }
 </style>
 
-<table class="japanese-week-table">
-  <thead>
-    <tr>
-      <th style="width:120px;">🔢 车牌号</th>
-      {% for date in week_dates %}
-        <th>{{ date|date:"n/j（D）" }}</th>
+{# ===================== 桌面端：表格（≥ md 显示） ===================== #}
+<div class="d-none d-md-block">
+  <table class="japanese-week-table">
+    <thead>
+      <tr>
+        <th style="width:120px;">🔢 车牌号</th>
+        {% for date in week_dates %}
+          <th>{{ date|date:"n/j（D）" }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in vehicle_data %}
+        <tr class="{% if row.vehicle.is_maintenance %}maintenance{% endif %}">
+          <td class="text-start">
+            <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold">
+              {{ row.vehicle.license_plate }}
+            </a>
+
+            {% if row.reminders %}
+              <div class="mt-1 small">
+                {% for r in row.reminders %}
+                  <div class="px-2 py-1 rounded mb-1"
+                       style="font-size:12px;
+                              {% if r.is_today %} background:#fff3cd; color:#856404;
+                              {% elif '推迟' in r.message or '过期' in r.message %} background:#f8d7da; color:#721c24;
+                              {% elif '还有' in r.message %} background:#d1ecf1; color:#0c5460;
+                              {% else %} background:#eee; color:#333;
+                              {% endif %}">
+                    {% if r.type == 'inspection' %}🧾{% elif r.type == 'insurance' %}🛡{% elif r.type == 'maintenance' %}🔧{% else %}📌{% endif %}
+                    {{ r.message }}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </td>
+
+          {% for cell in row.days %}
+            <td class="{% if row.vehicle.is_maintenance %}maintenance{% endif %}"
+                style="{% if cell.is_past %}color:#aaa;{% endif %}">
+              {% if row.vehicle.is_maintenance %}
+                <span>🛠️ 维修中</span>
+
+              {% elif cell.reservations %}
+                {% for res in cell.reservations %}
+                  <div>
+                    {% if res.status == 'canceled' %}
+                      <span style="color:#999;">❌
+                        {% include 'partials/_time_range_snippet.html' with obj=res %}
+                        {{ res.driver.username }}
+                      </span>
+                    {% else %}
+                      <a href="{% url 'vehicles:reservation_detail' res.id %}">
+                        {% include 'partials/_time_range_snippet.html' with obj=res %}
+                        {{ res.driver.username }}
+                      </a>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+
+                {% if not cell.is_past %}
+                  {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
+                    {% if date_reminders %}
+                      <div class="mt-1" style="font-size:12px;">
+                        {% for rmsg in date_reminders %}
+                          <div style="font-size:12px;
+                                      {% if '还有' in rmsg.message %}color:#0c63e4;
+                                      {% elif '本日' in rmsg.message %}color:#d17700;
+                                      {% elif '推迟' in rmsg.message or '过期' in rmsg.message %}color:#c1121f;
+                                      {% else %}color:#666;{% endif %}">
+                            ⚠️ {{ rmsg.message }}
+                          </div>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                {% endif %}
+
+                {% if not cell.is_past %}{% include 'vehicles/weekly_empty_after.html' %}{% endif %}
+
+              {% else %}
+                {% if not cell.is_past %}
+                  {% if not row.vehicle.is_maintenance %}
+                    <a href="{% url 'vehicles:make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">📝 申请预约</a>
+                  {% else %}
+                    <div>🛠️ 维修中</div>
+                  {% endif %}
+
+                  {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
+                    {% if date_reminders %}
+                      <div class="mt-1" style="font-size:12px;">
+                        {% for rmsg in date_reminders %}
+                          <div style="font-size:12px;
+                                      {% if '还有' in rmsg.message %}color:#0c63e4;
+                                      {% elif '本日' in rmsg.message %}color:#d17700;
+                                      {% elif '推迟' in rmsg.message or '过期' in rmsg.message %}color:#c1121f;
+                                      {% else %}color:#666;{% endif %}">
+                            ⚠️ {{ rmsg.message }}
+                          </div>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  {% endwith %}
+                {% else %}
+                  <span>—</span>
+                {% endif %}
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
       {% endfor %}
-    </tr>
-  </thead>
-  <tbody>
-    {% for row in vehicle_data %}
-      {# 行级：维修中置灰 #}
-      <tr class="{% if row.vehicle.is_maintenance %}maintenance{% endif %}">
-        <td class="text-start">
-          <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold">
-            {{ row.vehicle.license_plate }}
-          </a>
+    </tbody>
+  </table>
+</div>
 
-          {# 行头可以附带车辆级别提醒 #}
-          {% if row.reminders %}
-            <div class="mt-1 small">
-              {% for r in row.reminders %}
-                <div
-                  class="px-2 py-1 rounded mb-1"
+
+
+{# ===================== 手机端：卡片（< md 显示） ===================== #}
+
+<style>
+@media (max-width: 767.98px) {
+  .mobile-sticky-nav {
+    position: sticky; top: 0; z-index: 1030;
+    background: rgba(255,255,255,.96);
+    border-bottom: 1px solid #e9ecef;
+    backdrop-filter: saturate(180%) blur(8px);
+  }
+  .mobile-sticky-nav .inner {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .5rem .75rem; overflow-x: auto; white-space: nowrap;
+  }
+  .mobile-sticky-nav a { white-space: nowrap; }
+  .mobile-sticky-nav .sep { color:#adb5bd; }
+  .mobile-sticky-nav input[type="text"] { min-width: 10rem; }
+
+  /* 候选下拉 */
+  .plate-suggest {
+    position: absolute; left: .75rem; right: .75rem; top: calc(100% - .25rem);
+    background: #fff; border: 1px solid #dee2e6; border-radius: .5rem;
+    box-shadow: 0 8px 16px rgba(0,0,0,.08); overflow: hidden;
+  }
+  .plate-suggest-item {
+    padding: .5rem .75rem; font-size: .95rem; cursor: pointer;
+  }
+  .plate-suggest-item:hover { background: #f6f8fb; }
+
+  /* 聚焦卡片高亮 */
+  .focus-glow { box-shadow: 0 0 0 3px rgba(13,110,253,.35) !important; transition: box-shadow .2s; }
+}
+</style>
+
+<div class="mobile-sticky-nav d-md-none">
+  <div class="inner position-relative">
+    <a id="prevLink" class="link-primary" href="?date={{ today }}&offset={{ offset|add:'-1' }}">← 前週</a>
+    <span class="sep">|</span>
+    <a id="thisLink" class="link-primary" href="?date={{ today }}&offset=0">本週</a>
+    <span class="sep">|</span>
+    <a id="nextLink" class="link-primary" href="?date={{ today }}&offset={{ offset|add:'1' }}">次週 →</a>
+
+    <input id="jumpInput" class="form-control form-control-sm" type="text" placeholder="車番を入力" />
+    <button id="jumpBtn" class="btn btn-sm btn-primary">GO</button>
+
+    {# 实时候选列表（JS 动态填充） #}
+    <div id="plateSuggest" class="plate-suggest d-none"></div>
+  </div>
+</div>
+
+<div class="week-mobile d-md-none">
+  {% for row in vehicle_data %}
+  <div id="v-{{ row.vehicle.id }}" data-plate="{{ row.vehicle.license_plate }}"
+      class="card vehicle-card mb-3 shadow-sm {% if row.vehicle.is_maintenance %}border-secondary{% endif %}">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <a href="#" onclick="showCarDetailModal({{ row.vehicle.id }}); return false;" class="fw-bold text-decoration-none">
+          🔢 {{ row.vehicle.license_plate }}
+        </a>
+        {% if row.vehicle.is_maintenance %}
+          <span class="badge bg-secondary ms-2">🛠️ 维修中</span>
+        {% endif %}
+      </div>
+      <small class="text-muted">{{ today|date:"n/j（D）" }} 起 7日</small>
+    </div>
+
+    <div class="card-body">
+      {# 行级提醒（与桌面端左侧相同） #}
+      {% if row.reminders %}
+        <div class="mb-2">
+          {% for r in row.reminders %}
+            <span class="badge badge-line"
                   style="font-size:12px;
-                        {% if r.is_today %} background:#fff3cd; color:#856404;
-                        {% elif '推迟' in r.message or '过期' in r.message %} background:#f8d7da; color:#721c24;
-                        {% elif '还有' in r.message %} background:#d1ecf1; color:#0c5460;
-                        {% else %} background:#eee; color:#333;
-                        {% endif %}">
-                  {% if r.type == 'inspection' %}🧾{% elif r.type == 'insurance' %}🛡{% elif r.type == 'maintenance' %}🔧{% else %}📌{% endif %}
-                  {{ r.message }}
-                </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-        </td>
+                         {% if r.is_today %} background:#fff3cd; color:#856404;
+                         {% elif '推迟' in r.message or '过期' in r.message %} background:#f8d7da; color:#721c24;
+                         {% elif '还有' in r.message %} background:#d1ecf1; color:#0c5460;
+                         {% else %} background:#eee; color:#333;
+                         {% endif %}">
+              {% if r.type == 'inspection' %}🧾{% elif r.type == 'insurance' %}🛡{% elif r.type == 'maintenance' %}🔧{% else %}📌{% endif %}
+              {{ r.message }}
+            </span>
+          {% endfor %}
+        </div>
+      {% endif %}
 
-        {% for cell in row.days %}
-          {# 单元格：维修中置灰；过去日浅灰字 #}
-          <td class="{% if row.vehicle.is_maintenance %}maintenance{% endif %}"
-              style="{% if cell.is_past %}color:#aaa;{% endif %}">
-
-            {# 维修中：每天都显示字样，禁用一切链接 #}
+      {# 七天逐项 #}
+      {% for cell in row.days %}
+        <div class="day-row {% if row.vehicle.is_maintenance %}maintenance{% endif %}">
+          <div class="day-date {% if cell.is_past %}muted{% endif %}">
+            {{ cell.date|date:"n/j（D）" }}
+          </div>
+          <div class="day-content {% if cell.is_past %}muted{% endif %}">
             {% if row.vehicle.is_maintenance %}
-              <span>🛠️ 维修中</span>
+              <div>🛠️ 维修中</div>
 
-            {# 已有预约 #}
             {% elif cell.reservations %}
               {% for res in cell.reservations %}
-                <div>
+                <div class="mb-1">
                   {% if res.status == 'canceled' %}
                     <span style="color:#999;">❌
                       {% include 'partials/_time_range_snippet.html' with obj=res %}
@@ -138,7 +308,6 @@
                 </div>
               {% endfor %}
 
-              {# 当日提醒 #}
               {% if not cell.is_past %}
                 {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
                   {% if date_reminders %}
@@ -157,24 +326,16 @@
                 {% endwith %}
               {% endif %}
 
-              {# 可预约空隙提示（非维修才会走到这里） #}
-              {% if not cell.is_past %}
-                {% include 'vehicles/weekly_empty_after.html' %}
-              {% endif %}
+              {% if not cell.is_past %}{% include 'vehicles/weekly_empty_after.html' %}{% endif %}
 
-            {# 整天空缺 #}
             {% else %}
               {% if not cell.is_past %}
-                {# 非维修时才显示预约入口 #}
                 {% if not row.vehicle.is_maintenance %}
-                  <a href="{% url 'vehicles:make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">
-                    📝 申请预约
-                  </a>
+                  <a href="{% url 'vehicles:make_reservation' row.vehicle.id %}?date={{ cell.date|date:'Y-m-d' }}">📝 申请预约</a>
                 {% else %}
                   <div>🛠️ 维修中</div>
                 {% endif %}
 
-                {# 当日提醒 #}
                 {% with row.vehicle.daily_reminders|get_item:cell.date as date_reminders %}
                   {% if date_reminders %}
                     <div class="mt-1" style="font-size:12px;">
@@ -194,12 +355,13 @@
                 <span>—</span>
               {% endif %}
             {% endif %}
-          </td>
-        {% endfor %}
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
 
 <p class="mt-4">
   <a href="{% url 'vehicles:vehicle_status' %}">← 返回车辆状态</a>
@@ -222,6 +384,196 @@ function showCarDetailModal(carId) {
     });
 }
 </script>
+
+<script>
+(function() {
+  const qs = new URLSearchParams(location.search);
+  let focusId = qs.get('focus') || '';
+  const inputEl = document.getElementById('jumpInput');
+  const btnEl   = document.getElementById('jumpBtn');
+  const sugEl   = document.getElementById('plateSuggest');
+
+  // === 建立 plate -> id 的索引（从 DOM 提取） ===
+  const cards = Array.from(document.querySelectorAll('[id^="v-"][data-plate]'));
+  const index = cards.map(card => ({
+    id: card.id.replace(/^v-/, ''),
+    plateRaw: card.getAttribute('data-plate') || '',
+    plateKey: normalize(card.getAttribute('data-plate') || ''),
+    el: card
+  }));
+
+  // ======= 工具：全角转半角 + 统一大小写 + 清理空白/连字符/点号 =======
+  function toHalfWidth(str) {
+    // 仅处理常见全角 ASCII 范围：！到～（65281-65374）和空格（12288）
+    return str.replace(/[\uFF01-\uFF5E]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+              .replace(/\u3000/g, ' ');
+  }
+  function normalize(str) {
+    return toHalfWidth(String(str))
+      .toUpperCase()
+      .replace(/[\s\-._]/g, '')       // 去掉空格/连字符/点
+      .replace(/[（）\(\)]/g, '');    // 去掉括号（有些车牌可能带）
+  }
+
+  // ======= 模糊匹配：得分规则 =======
+  function fuzzyFind(query) {
+    const key = normalize(query);
+    if (!key) return [];
+    const res = [];
+
+    for (const it of index) {
+      const plateKey = it.plateKey;
+      if (!plateKey) continue;
+
+      let score = 0;
+      if (plateKey === key) score = 100;                 // 完全匹配
+      else if (plateKey.startsWith(key)) score = 85;     // 前缀匹配
+      else if (plateKey.includes(key)) score = 70;       // 包含匹配
+      else {
+        // 简易子序列匹配（非连续）
+        let i = 0, j = 0;
+        while (i < plateKey.length && j < key.length) {
+          if (plateKey[i] === key[j]) j++;
+          i++;
+        }
+        if (j === key.length) score = 55;                // 子序列全匹配
+      }
+      if (score > 0) {
+        // 越短越优 + 越靠前越优
+        const bonus = Math.max(0, 10 - Math.abs(plateKey.length - key.length));
+        res.push({ ...it, score: score + bonus });
+      }
+    }
+    // 分数降序，长度近的优先，字面序兜底
+    res.sort((a,b) => b.score - a.score || a.plateKey.length - b.plateKey.length || a.plateKey.localeCompare(b.plateKey));
+    return res;
+  }
+
+  // ======= 定位 & 高亮 =======
+  function scrollToCardById(id, smooth=true) {
+    const card = document.getElementById('v-' + id);
+    if (!card) return false;
+    // 滚到卡片顶部；sticky 导航条高度通常 ~48-56px，可微调偏移：
+    const rect = card.getBoundingClientRect();
+    const top = window.scrollY + rect.top - 64; // 64 = 预留导航高度
+    window.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
+    card.classList.add('focus-glow');
+    setTimeout(() => card.classList.remove('focus-glow'), 2000);
+    return true;
+  }
+
+  // ======= 给周导航链接附带 focus 参数和 hash =======
+  function updateWeekLinks() {
+    ['prevLink','thisLink','nextLink'].forEach(id => {
+      const a = document.getElementById(id);
+      if (!a) return;
+      a.href = appendFocus(a.href, focusId);
+    });
+  }
+  function appendFocus(url, id) {
+    try {
+      const u = new URL(url, location.href);
+      if (id) {
+        u.searchParams.set('focus', id);
+        u.hash = 'v-' + id;
+      } else {
+        u.searchParams.delete('focus');
+        u.hash = '';
+      }
+      return u.toString();
+    } catch {
+      const sep = url.includes('?') ? '&' : '?';
+      return id ? `${url}${sep}focus=${encodeURIComponent(id)}#v-${id}` : url;
+    }
+  }
+  function setFocusInUrl(id) {
+    const u = new URL(location.href);
+    if (id) {
+      u.searchParams.set('focus', id);
+      u.hash = 'v-' + id;
+    } else {
+      u.searchParams.delete('focus');
+      u.hash = '';
+    }
+    history.replaceState(null, '', u.toString());
+  }
+
+  // ======= 实时候选 UI =======
+  let sugShown = false;
+  function showSuggest(items) {
+    if (!sugEl) return;
+    if (!items || !items.length) { hideSuggest(); return; }
+    const topN = items.slice(0, 8);
+    sugEl.innerHTML = topN.map(it => `
+      <div class="plate-suggest-item" data-id="${it.id}">
+        ${escapeHtml(it.plateRaw)}
+      </div>`).join('');
+    sugEl.classList.remove('d-none');
+    sugShown = true;
+  }
+  function hideSuggest() {
+    if (!sugEl) return;
+    sugEl.classList.add('d-none');
+    sugEl.innerHTML = '';
+    sugShown = false;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ======= 输入联动（实时模糊） =======
+  let debounceTimer = null;
+  inputEl?.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const q = inputEl.value.trim();
+      if (!q) { hideSuggest(); return; }
+      const list = fuzzyFind(q);
+      showSuggest(list);
+    }, 80);
+  });
+
+  // 点击候选项 -> 定位并更新导航
+  sugEl?.addEventListener('click', (e) => {
+    const item = e.target.closest('.plate-suggest-item');
+    if (!item) return;
+    const id = item.getAttribute('data-id');
+    focusId = id;
+    hideSuggest();
+    scrollToCardById(id, true);
+    updateWeekLinks();
+    setFocusInUrl(id);
+  });
+
+  // 失焦时关闭候选（留一点延迟给 click）
+  inputEl?.addEventListener('blur', () => setTimeout(hideSuggest, 120));
+
+  // ======= GO/Enter：选择最佳匹配 =======
+  function goByInput() {
+    const q = (inputEl?.value || '').trim();
+    if (!q) { inputEl?.focus(); return; }
+    const list = fuzzyFind(q);
+    if (!list.length) { alert('未找到匹配的車番'); return; }
+    const best = list[0];
+    focusId = best.id;
+    hideSuggest();
+    scrollToCardById(best.id, true);
+    updateWeekLinks();
+    setFocusInUrl(best.id);
+  }
+  btnEl?.addEventListener('click', goByInput);
+  inputEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); goByInput(); }
+  });
+
+  // ======= 首次载入：若 URL 自带 focus，自动定位 =======
+  if (focusId) {
+    scrollToCardById(focusId, false);
+    updateWeekLinks();
+  }
+})();
+</script>
+
 
 <!-- 🚗 模态框结构 -->
 <div class="modal fade" id="carDetailModal" tabindex="-1" aria-hidden="true">

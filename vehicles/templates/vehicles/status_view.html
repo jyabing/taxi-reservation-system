@@ -20,222 +20,400 @@
     font-size: 0.85rem;
     padding: 0.25rem 0.5rem;
   }
-  .gap-1 > * + * {
-    margin-top: 0.4rem;
-  }
-  .alert-warning {
-    font-size: 0.85rem;
-    line-height: 1.4;
-  }
-  .badge.bg-warning {
-    background-color: #ffc107 !important;
-    color: #212529 !important;
-  }
-  .badge.bg-secondary {
-    background-color: #6c757d !important;
-  }
+  .gap-1 > * + * { margin-top: 0.4rem; }
+  .alert-warning { font-size: 0.85rem; line-height: 1.4; }
+  .badge.bg-warning { background-color: #ffc107 !important; color: #212529 !important; }
+  .badge.bg-secondary { background-color: #6c757d !important; }
+
+  /* Mobile cards */
+  .vehicle-card .card-header { padding: .5rem .75rem; }
+  .vehicle-card .card-body { padding: .75rem; }
+  .vehicle-card .kv { display: flex; gap: .5rem; align-items: baseline; }
+  .vehicle-card .kv b { min-width: 4.5rem; }
 </style>
 
 <h4 class="mb-3">🚗 车辆预约状况（{{ selected_date }}）</h4>
 
-<table class="table table-bordered table-sm table-hover shadow-sm">
-  <thead class="table-light text-center small">
-    <tr>
-      <th style="width: 90px;">🔢<br>车牌号</th>
-      <th style="width: 90px;">🚘<br>车型</th>
-      <th style="width: 160px;">📌<br>状态 / 操作</th>
-      <th style="width: 140px;">👤<br>预约者</th>
-      <th style="width: 240px;">📝<br>备注</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for vehicle, info in status_map.items %}
-    <tr>
-      <td>
-        <a href="{% url 'vehicles:vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a><br>
-        <button class="btn btn-sm btn-outline-info mt-1" onclick="openCarModal({{ vehicle.id }})">最近预约</button>
-      </td>
+{# ===================== 桌面端：表格（保持原结构） ===================== #}
+<div class="d-none d-md-block">
+  <table class="table table-bordered table-sm table-hover shadow-sm">
+    <thead class="table-light text-center small">
+      <tr>
+        <th style="width: 90px;">🔢<br>车牌号</th>
+        <th style="width: 90px;">🚘<br>车型</th>
+        <th style="width: 160px;">📌<br>状态 / 操作</th>
+        <th style="width: 140px;">👤<br>预约者</th>
+        <th style="width: 240px;">📝<br>备注</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for vehicle, info in status_map.items %}
+      <tr>
+        <td>
+          <a href="{% url 'vehicles:vehicle_detail' vehicle.id %}">{{ vehicle.license_plate }}</a><br>
+          <button class="btn btn-sm btn-outline-info mt-1" onclick="openCarModal({{ vehicle.id }})">最近预约</button>
+        </td>
 
-      <td>{{ vehicle.model }}</td>
+        <td>{{ vehicle.model }}</td>
 
-      <td class="text-center align-middle">
-        <div class="d-flex flex-column align-items-start gap-1">
+        <td class="text-center align-middle">
+          <div class="d-flex flex-column align-items-start gap-1">
+            {% include "partials/_car_status_badge.html" with car=vehicle %}
 
-          {# ✅ 显示车辆状态（使用中、出库中、维修中等） #}
-          {% include "partials/_car_status_badge.html" with car=vehicle %}
+            {% if info.reservable and not info.has_reservation and not info.is_repair %}
+              <a href="{% url 'vehicles:make_reservation' vehicle.id %}"
+                 class="badge d-inline-flex align-items-center gap-1 bg-danger text-white px-2 py-1 rounded-pill">
+                 🟥 可预约（点击预约）
+              </a>
+            {% endif %}
 
-          {# ✅ 如果当前可预约，显示“可预约”按钮 #}
-          {% if info.reservable and not info.has_reservation and not info.is_repair %}
-            <a href="{% url 'vehicles:make_reservation' vehicle.id %}"
-              class="badge d-inline-flex align-items-center gap-1 bg-danger text-white px-2 py-1 rounded-pill">
-              🟥 可预约（点击预约）
-            </a>
-          {% endif %}
+            {% if info.has_reservation %}
+              {% if info.reservation and info.reservation.actual_departure and not info.reservation.actual_return %}
+                <span class="badge d-inline-flex align-items-center gap-1 bg-warning text-dark px-2 py-1 rounded-pill">
+                  🚗 已出库（未入库）
+                </span>
+              {% elif info.reservation and info.reservation.actual_return %}
+                <span class="badge d-inline-flex align-items-center gap-1 bg-secondary text-white px-2 py-1 rounded-pill">
+                  ✅ 已完成
+                </span>
+              {% else %}
+                <span class="badge d-inline-flex align-items-center gap-1 bg-primary text-white px-2 py-1 rounded-pill">
+                  📅 有预约（未出库）
+                </span>
+              {% endif %}
+            {% endif %}
 
-          {# ✅ 如果当前有预约（不论是谁），显示预约状态 #}
-          {% if info.has_reservation %}
-          {% if info.reservation and info.reservation.actual_departure and not info.reservation.actual_return %}
-            <span class="badge d-inline-flex align-items-center gap-1 bg-warning text-dark px-2 py-1 rounded-pill">
-              🚗 已出库（未入库）
-            </span>
-          {% elif info.reservation and info.reservation.actual_return %}
-            <span class="badge d-inline-flex align-items-center gap-1 bg-secondary text-white px-2 py-1 rounded-pill">
-              ✅ 已完成
-            </span>
+            {% if vehicle.id == driver_today_vehicle_id %}
+              <div class="alert alert-warning py-1 px-2 mb-0 small">
+                🚗 你已预约该车：
+                {{ info.user_reservation.start_time|time:"H:i" }}〜{{ info.user_reservation.end_time|time:"H:i" }}
+                （状态：{{ info.user_reservation.get_status_display }}），本日将跳过显示。
+              </div>
+
+              {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
+                <button class="btn btn-sm btn-success mt-1"
+                        onclick="showDepartureModal(this)"
+                        data-id="{{ info.user_reservation.id }}"
+                        data-last-return="{{ info.last_return|date:'Y-m-d H:i' }}">
+                  🚗 出庫
+                </button>
+              {% elif info.user_reservation.status == 'reserved'
+                    and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
+                <button class="btn btn-sm btn-warning mt-1" onclick="showReturnModal({{ info.user_reservation.id }})">
+                  🅿️ 入庫
+                </button>
+              {% endif %}
+            {% endif %}
+          </div>
+        </td>
+
+        <td>
+          {% if info.reserver_name %}
+            {{ info.reserver_name|safe }}
           {% else %}
-            <span class="badge d-inline-flex align-items-center gap-1 bg-primary text-white px-2 py-1 rounded-pill">
-              📅 有预约（未出库）
-            </span>
+            <span class="text-muted">—</span>
           {% endif %}
-        {% endif %}
+        </td>
 
-          {# ✅ 如果是当前用户预约的车，提示出库或入库按钮 #}
+        <td data-vehicle-id="{{ vehicle.id }}">
+          <div id="note-display-{{ vehicle.id }}">
+            {% if vehicle.has_etc == 'yes' %}
+              <div>✅ <span class="text-success">ETC有</span></div>
+            {% elif vehicle.has_etc == 'no' %}
+              <div>❌ <span class="text-secondary">ETC無</span></div>
+            {% elif vehicle.has_etc == 'self' %}
+              <div>🧳 ETC自備</div>
+            {% endif %}
+
+            {% if vehicle.has_oil_card == 'yes' %}
+              <div>✅ <span class="text-success">油卡有</span></div>
+            {% elif vehicle.has_oil_card == 'no' %}
+              <div>❌ <span class="text-secondary">油卡無</span></div>
+            {% elif vehicle.has_oil_card == 'self' %}
+              <div>🧳 油卡自備</div>
+            {% endif %}
+
+            {% if vehicle.has_terminal == 'yes' %}
+              <div>✅ <span class="text-success">刷卡機有</span></div>
+            {% elif vehicle.has_terminal == 'no' %}
+              <div>❌ <span class="text-secondary">刷卡機無</span></div>
+            {% endif %}
+
+            {% if vehicle.has_didi == 'yes' %}
+              <div>✅ <span class="text-success">Didi有</span></div>
+            {% elif vehicle.has_didi == 'no' %}
+              <div>❌ <span class="text-secondary">Didi無</span></div>
+            {% elif vehicle.has_didi == 'self' %}
+              <div>🧳 Didi自備</div>
+            {% endif %}
+
+            {% if vehicle.has_uber == 'yes' %}
+              <div>✅ <span class="text-success">Uber有</span></div>
+            {% elif vehicle.has_uber == 'no' %}
+              <div>❌ <span class="text-secondary">Uber無</span></div>
+            {% elif vehicle.has_uber == 'self' %}
+              <div>🧳 Uber自備</div>
+            {% endif %}
+
+            {% if vehicle.can_enter_hachioji %}
+              <div>✅ <span class="text-primary">可进入八条口</span></div>
+            {% endif %}
+
+            {% if vehicle.notes %}
+              <div>📝 {{ vehicle.notes|linebreaksbr }}</div>
+            {% endif %}
+          </div>
+
+          <div id="note-edit-{{ vehicle.id }}" class="d-none">
+            {% with vehicle_form=vehicle_forms|get_item:vehicle.id note_form=note_forms|get_item:vehicle.id %}
+              {% if note_form and note_form.instance.id %}
+                <form method="post" action="{% url 'vehicles:save_vehicle_note' note_form.instance.id %}">
+                  {% csrf_token %}
+                  <div class="row g-1 align-items-end">
+                    <div class="col-md-4">
+                      <label class="form-label form-label-sm">ETC</label>
+                      {{ vehicle_form.has_etc }}
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label form-label-sm">油卡</label>
+                      {{ vehicle_form.has_oil_card }}
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label form-label-sm">刷卡机</label>
+                      {{ vehicle_form.has_terminal }}
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label form-label-sm">Didi</label>
+                      {{ vehicle_form.has_didi }}
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label form-label-sm">Uber</label>
+                      {{ vehicle_form.has_uber }}
+                    </div>
+                    <div class="col-md-4">
+                      <div class="form-check mt-3">
+                        {{ vehicle_form.can_enter_hachioji }}
+                        <label class="form-check-label small">可进入八条口</label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mt-2">
+                    <label class="form-label form-label-sm">备注说明</label>
+                    {{ note_form.notes }}
+
+                    {% if note_form.errors %}
+                      <div class="alert alert-danger mt-2 small">
+                        {{ note_form.errors.notes }}
+                      </div>
+                    {% endif %}
+                  </div>
+
+                  <div class="d-flex gap-1 mt-2">
+                    <button type="submit" class="btn btn-sm btn-primary">💾 保存</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEdit({{ vehicle.id }})">取消</button>
+                  </div>
+                </form>
+              {% else %}
+                <div class="text-danger small">⚠️ 无法加载表单</div>
+              {% endif %}
+            {% endwith %}
+          </div>
+
           {% if vehicle.id == driver_today_vehicle_id %}
-            <div class="alert alert-warning py-1 px-2 mb-0 small">
-              🚗 你已预约该车：
-              {{ info.user_reservation.start_time|time:"H:i" }}〜{{ info.user_reservation.end_time|time:"H:i" }}
-              （状态：{{ info.user_reservation.get_status_display }}），本日将跳过显示。
-            </div>
-
-            {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
-              <button class="btn btn-sm btn-success mt-1" 
-                      onclick="showDepartureModal(this)" 
-                      data-id="{{ info.user_reservation.id }}" 
-                      data-last-return="{{ info.last_return|date:'Y-m-d H:i' }}">
-                🚗 出庫
-              </button>
-            {% elif info.user_reservation.status == 'reserved' and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
-              <button class="btn btn-sm btn-warning mt-1" onclick="showReturnModal({{ info.user_reservation.id }})">
-                🅿️ 入庫
-              </button>
-            {% endif %}
+            <button class="btn btn-sm btn-outline-secondary mt-1" onclick="startEdit({{ vehicle.id }})">📝 编辑备注</button>
           {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
-        </div>
-      </td>
+{# ===================== 手机端：卡片 ===================== #}
+<div class="d-md-none">
+  {% for vehicle, info in status_map.items %}
+  <div class="card vehicle-card mb-3 shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="d-flex flex-column">
+        <a href="{% url 'vehicles:vehicle_detail' vehicle.id %}" class="text-decoration-none">
+          <b>🔢 {{ vehicle.license_plate }}</b>
+        </a>
+        <small class="text-muted">🚘 {{ vehicle.model }}</small>
+      </div>
+      <button class="btn btn-sm btn-outline-info" onclick="openCarModal({{ vehicle.id }})">最近预约</button>
+    </div>
+    <div class="card-body">
+      <!-- 状态 / 操作 -->
+      <div class="mb-2 d-flex flex-column gap-1">
+        {% include "partials/_car_status_badge.html" with car=vehicle %}
 
-      <td>
-        {% if info.reserver_name %}
-          {{ info.reserver_name|safe }}
-        {% else %}
-          <span class="text-muted">—</span>
+        {% if info.reservable and not info.has_reservation and not info.is_repair %}
+          <a href="{% url 'vehicles:make_reservation' vehicle.id %}"
+             class="badge bg-danger text-white align-self-start">🟥 可预约（点击预约）</a>
         {% endif %}
-      </td>
 
-      <td data-vehicle-id="{{ vehicle.id }}">
-        <div id="note-display-{{ vehicle.id }}">
-          {% if vehicle.has_etc == 'yes' %}
-            <div>✅ <span class="text-success">ETC有</span></div>
-          {% elif vehicle.has_etc == 'no' %}
-            <div>❌ <span class="text-secondary">ETC無</span></div>
-          {% elif vehicle.has_etc == 'self' %}
-            <div>🧳 ETC自備</div>
+        {% if info.has_reservation %}
+          {% if info.reservation and info.reservation.actual_departure and not info.reservation.actual_return %}
+            <span class="badge bg-warning text-dark align-self-start">🚗 已出库（未入库）</span>
+          {% elif info.reservation and info.reservation.actual_return %}
+            <span class="badge bg-secondary text-white align-self-start">✅ 已完成</span>
+          {% else %}
+            <span class="badge bg-primary text-white align-self-start">📅 有预约（未出库）</span>
           {% endif %}
-
-          {% if vehicle.has_oil_card == 'yes' %}
-            <div>✅ <span class="text-success">油卡有</span></div>
-          {% elif vehicle.has_oil_card == 'no' %}
-            <div>❌ <span class="text-secondary">油卡無</span></div>
-          {% elif vehicle.has_oil_card == 'self' %}
-            <div>🧳 油卡自備</div>
-          {% endif %}
-
-          {% if vehicle.has_terminal == 'yes' %}
-            <div>✅ <span class="text-success">刷卡機有</span></div>
-          {% elif vehicle.has_terminal == 'no' %}
-            <div>❌ <span class="text-secondary">刷卡機無</span></div>
-          {% endif %}
-
-          {% if vehicle.has_didi == 'yes' %}
-            <div>✅ <span class="text-success">Didi有</span></div>
-          {% elif vehicle.has_didi == 'no' %}
-            <div>❌ <span class="text-secondary">Didi無</span></div>
-          {% elif vehicle.has_didi == 'self' %}
-            <div>🧳 Didi自備</div>
-          {% endif %}
-
-          {% if vehicle.has_uber == 'yes' %}
-            <div>✅ <span class="text-success">Uber有</span></div>
-          {% elif vehicle.has_uber == 'no' %}
-            <div>❌ <span class="text-secondary">Uber無</span></div>
-          {% elif vehicle.has_uber == 'self' %}
-            <div>🧳 Uber自備</div>
-          {% endif %}
-
-          {% if vehicle.can_enter_hachioji %}
-            <div>✅ <span class="text-primary">可进入八条口</span></div>
-          {% endif %}
-
-          {% if vehicle.notes %}
-            <div>📝 {{ vehicle.notes|linebreaksbr }}</div>
-          {% endif %}
-        </div>
-
-        <div id="note-edit-{{ vehicle.id }}" class="d-none">
-          {% with vehicle_form=vehicle_forms|get_item:vehicle.id note_form=note_forms|get_item:vehicle.id %}
-            {% if note_form and note_form.instance.id %}
-              <form method="post" action="{% url 'vehicles:save_vehicle_note' note_form.instance.id %}">
-                {% csrf_token %}
-
-                <div class="row g-1 align-items-end">
-                  <div class="col-md-4">
-                    <label class="form-label form-label-sm">ETC</label>
-                    {{ vehicle_form.has_etc }}
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label form-label-sm">油卡</label>
-                    {{ vehicle_form.has_oil_card }}
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label form-label-sm">刷卡机</label>
-                    {{ vehicle_form.has_terminal }}
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label form-label-sm">Didi</label>
-                    {{ vehicle_form.has_didi }}
-                  </div>
-                  <div class="col-md-4">
-                    <label class="form-label form-label-sm">Uber</label>
-                    {{ vehicle_form.has_uber }}
-                  </div>
-                  <div class="col-md-4">
-                    <div class="form-check mt-3">
-                      {{ vehicle_form.can_enter_hachioji }}
-                      <label class="form-check-label small">可进入八条口</label>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="mt-2">
-                  <label class="form-label form-label-sm">备注说明</label>
-                  {{ note_form.notes }}
-                  
-                  {% if note_form.errors %}
-                    <div class="alert alert-danger mt-2 small">
-                      {{ note_form.errors.notes }}
-                    </div>
-                  {% endif %}
-                </div>
-
-                <div class="d-flex gap-1 mt-2">
-                  <button type="submit" class="btn btn-sm btn-primary">💾 保存</button>
-                  <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEdit({{ vehicle.id }})">取消</button>
-                </div>
-              </form>
-            {% else %}
-              <div class="text-danger small">⚠️ 无法加载表单</div>
-            {% endif %}
-          {% endwith %}
-        </div>
+        {% endif %}
 
         {% if vehicle.id == driver_today_vehicle_id %}
-          <button class="btn btn-sm btn-outline-secondary mt-1" onclick="startEdit({{ vehicle.id }})">📝 编辑备注</button>
+          <div class="alert alert-warning py-1 px-2 mb-0 small">
+            🚗 你已预约该车：
+            {{ info.user_reservation.start_time|time:"H:i" }}〜{{ info.user_reservation.end_time|time:"H:i" }}
+            （状态：{{ info.user_reservation.get_status_display }}），本日将跳过显示。
+          </div>
+
+          {% if info.user_reservation.status == 'reserved' and not info.user_reservation.actual_departure %}
+            <button class="btn btn-sm btn-success mt-1"
+                    onclick="showDepartureModal(this)"
+                    data-id="{{ info.user_reservation.id }}"
+                    data-last-return="{{ info.last_return|date:'Y-m-d H:i' }}">
+              🚗 出庫
+            </button>
+          {% elif info.user_reservation.status == 'reserved'
+                and info.user_reservation.actual_departure and not info.user_reservation.actual_return %}
+            <button class="btn btn-sm btn-warning mt-1" onclick="showReturnModal({{ info.user_reservation.id }})">
+              🅿️ 入庫
+            </button>
+          {% endif %}
         {% endif %}
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+      </div>
+
+      <!-- 预约者 -->
+      <div class="kv mb-2">
+        <b>👤 预约者</b>
+        <span>
+          {% if info.reserver_name %}
+            {{ info.reserver_name|safe }}
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </span>
+      </div>
+
+      <!-- 备注显示 -->
+      <div id="note-display-m-{{ vehicle.id }}" class="small">
+        {% if vehicle.has_etc == 'yes' %}
+          <div>✅ <span class="text-success">ETC有</span></div>
+        {% elif vehicle.has_etc == 'no' %}
+          <div>❌ <span class="text-secondary">ETC無</span></div>
+        {% elif vehicle.has_etc == 'self' %}
+          <div>🧳 ETC自備</div>
+        {% endif %}
+
+        {% if vehicle.has_oil_card == 'yes' %}
+          <div>✅ <span class="text-success">油卡有</span></div>
+        {% elif vehicle.has_oil_card == 'no' %}
+          <div>❌ <span class="text-secondary">油卡無</span></div>
+        {% elif vehicle.has_oil_card == 'self' %}
+          <div>🧳 油卡自備</div>
+        {% endif %}
+
+        {% if vehicle.has_terminal == 'yes' %}
+          <div>✅ <span class="text-success">刷卡機有</span></div>
+        {% elif vehicle.has_terminal == 'no' %}
+          <div>❌ <span class="text-secondary">刷卡機無</span></div>
+        {% endif %}
+
+        {% if vehicle.has_didi == 'yes' %}
+          <div>✅ <span class="text-success">Didi有</span></div>
+        {% elif vehicle.has_didi == 'no' %}
+          <div>❌ <span class="text-secondary">Didi無</span></div>
+        {% elif vehicle.has_didi == 'self' %}
+          <div>🧳 Didi自備</div>
+        {% endif %}
+
+        {% if vehicle.has_uber == 'yes' %}
+          <div>✅ <span class="text-success">Uber有</span></div>
+        {% elif vehicle.has_uber == 'no' %}
+          <div>❌ <span class="text-secondary">Uber無</span></div>
+        {% elif vehicle.has_uber == 'self' %}
+          <div>🧳 Uber自備</div>
+        {% endif %}
+
+        {% if vehicle.can_enter_hachioji %}
+          <div>✅ <span class="text-primary">可进入八条口</span></div>
+        {% endif %}
+
+        {% if vehicle.notes %}
+          <div>📝 {{ vehicle.notes|linebreaksbr }}</div>
+        {% endif %}
+      </div>
+
+      <!-- 备注编辑（手机端独立表单，避免ID冲突） -->
+      <div id="note-edit-m-{{ vehicle.id }}" class="d-none">
+        {% with vehicle_form=vehicle_forms|get_item:vehicle.id note_form=note_forms|get_item:vehicle.id %}
+          {% if note_form and note_form.instance.id %}
+            <form method="post" action="{% url 'vehicles:save_vehicle_note' note_form.instance.id %}">
+              {% csrf_token %}
+              <div class="row g-2 align-items-end">
+                <div class="col-6">
+                  <label class="form-label form-label-sm">ETC</label>
+                  {{ vehicle_form.has_etc }}
+                </div>
+                <div class="col-6">
+                  <label class="form-label form-label-sm">油卡</label>
+                  {{ vehicle_form.has_oil_card }}
+                </div>
+                <div class="col-6">
+                  <label class="form-label form-label-sm">刷卡机</label>
+                  {{ vehicle_form.has_terminal }}
+                </div>
+                <div class="col-6">
+                  <label class="form-label form-label-sm">Didi</label>
+                  {{ vehicle_form.has_didi }}
+                </div>
+                <div class="col-6">
+                  <label class="form-label form-label-sm">Uber</label>
+                  {{ vehicle_form.has_uber }}
+                </div>
+                <div class="col-6">
+                  <div class="form-check mt-3">
+                    {{ vehicle_form.can_enter_hachioji }}
+                    <label class="form-check-label small">可进入八条口</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-2">
+                <label class="form-label form-label-sm">备注说明</label>
+                {{ note_form.notes }}
+
+                {% if note_form.errors %}
+                  <div class="alert alert-danger mt-2 small">
+                    {{ note_form.errors.notes }}
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="d-flex gap-1 mt-2">
+                <button type="submit" class="btn btn-sm btn-primary">💾 保存</button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="cancelEditMobile({{ vehicle.id }})">取消</button>
+              </div>
+            </form>
+          {% else %}
+            <div class="text-danger small">⚠️ 无法加载表单</div>
+          {% endif %}
+        {% endwith %}
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="mt-2">
+        {% if vehicle.id == driver_today_vehicle_id %}
+          <button class="btn btn-sm btn-outline-secondary" onclick="startEditMobile({{ vehicle.id }})">📝 编辑备注</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
 
 <!-- 最近预约模态框 -->
 <div class="modal fade" id="carModal" tabindex="-1">
@@ -256,14 +434,26 @@
       });
   }
 
+  // 桌面端切换（保留原有）
   function startEdit(id) {
     document.getElementById('note-display-' + id).classList.add('d-none');
     document.getElementById('note-edit-' + id).classList.remove('d-none');
   }
-
   function cancelEdit(id) {
     document.getElementById('note-edit-' + id).classList.add('d-none');
     document.getElementById('note-display-' + id).classList.remove('d-none');
+  }
+
+  // 手机端切换（独立，避免与桌面端ID冲突）
+  function startEditMobile(id) {
+    const d = document.getElementById('note-display-m-' + id);
+    const e = document.getElementById('note-edit-m-' + id);
+    if (d && e) { d.classList.add('d-none'); e.classList.remove('d-none'); }
+  }
+  function cancelEditMobile(id) {
+    const d = document.getElementById('note-display-m-' + id);
+    const e = document.getElementById('note-edit-m-' + id);
+    if (d && e) { e.classList.add('d-none'); d.classList.remove('d-none'); }
   }
 </script>
 {% endblock %}
