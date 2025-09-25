@@ -11,6 +11,8 @@ from .models import (
 from collections import defaultdict
 from dailyreport.views import _totals_of
 
+from itertools import groupby
+
 from django import forms
 from decimal import Decimal, ROUND_HALF_UP
 from accounts.utils import check_module_permission
@@ -1894,6 +1896,33 @@ def my_daily_report_detail(request, report_id):
 
     # ✅ 排序
     items = sorted(items_raw, key=parse_ride_datetime)
+
+        # === [同一时间 ↳ 标记 BEGIN] ===
+    # 规则：按当前 items 顺序（已按时间排好），若与上一条时间字符串完全一致，
+    #       则将 item._is_same_time_child = True（从第2条开始为 True）
+    last_time_str = None
+    for it in items:
+        rt = getattr(it, "ride_time", None)
+        if rt is None:
+            cur = ""
+        elif isinstance(rt, str):
+            cur = rt.strip()
+        else:
+            try:
+                cur = rt.strftime("%H:%M")
+            except Exception:
+                cur = str(rt)
+
+        is_child = (last_time_str is not None and cur == last_time_str and cur != "")
+
+        # 兼容旧代码（如果 Python 里有人用到“私有名”）
+        setattr(it, "_is_same_time_child", is_child)
+        # 提供模板可用的“公开名”
+        setattr(it, "is_same_time_child", is_child)
+
+        last_time_str = cur
+    # === [同一时间 ↳ 标记 END] ===
+
 
     # ✅ 金额统计 —— 先用统一口径拿合计
     totals = _totals_of(items)  # items 是我们已排序/去重后的列表

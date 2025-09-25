@@ -89,6 +89,55 @@ function updateRowNumbersAndIndexes() {
   rows.forEach((row, i) => { row.querySelector(".row-number")?.replaceChildren(document.createTextNode(i+1)); });
 }
 
+/* === [SameTime grouping BEGIN] 新增：同一时间从第2行开始加“↳”并缩进 === */
+function updateSameTimeGrouping() {
+  const { dataTb } = getFormScope();
+  if (!dataTb) return;
+
+  // 1) 收集所有可见行，按时间字符串分组（例如 "10:00"）
+  const rows = $all("tr.report-item-row", dataTb).filter(r => r.style.display !== "none");
+  const groups = Object.create(null);
+
+  rows.forEach(row => {
+    const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
+    const t = (timeInput ? String(timeInput.value).trim() : "");
+    const key = t || "__EMPTY__";          // 空时间也分到一组，但不会加箭头
+    (groups[key] ||= []).push(row);
+  });
+
+  // 2) 遍历组：每组的第1条正常、从第2条开始加前缀与类
+  Object.entries(groups).forEach(([key, arr]) => {
+    // 先把这一组里所有行恢复为“无前缀”的状态
+    arr.forEach(row => {
+      row.classList.remove("same-time-child");
+      const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
+      const cell = timeInput?.closest("td");
+      if (!cell) return;
+      const pref = cell.querySelector(".same-time-prefix");
+      if (pref) pref.remove(); // 清理老前缀
+    });
+
+    if (key === "__EMPTY__") return; // 时间为空的不做箭头逻辑
+
+    // 从第2条开始加“↳ ”
+    if (arr.length > 1) {
+      arr.forEach((row, idx) => {
+        if (idx === 0) return; // 第一条不加
+        row.classList.add("same-time-child");
+        const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
+        const cell = timeInput?.closest("td");
+        if (!cell) return;
+        const span = document.createElement("span");
+        span.className = "same-time-prefix";
+        span.textContent = "↳ ";
+        // 把箭头插在时间 input 前面
+        cell.insertBefore(span, timeInput);
+      });
+    }
+  });
+}
+/* === [SameTime grouping END] === */
+
 // ============ 行事件绑定 ============
 function bindRowEvents(row) {
   // time picker on row fields (if flatpickr present)
@@ -107,6 +156,7 @@ function bindRowEvents(row) {
         cb.checked = true;
         row.style.display = "none";
         updateRowNumbersAndIndexes();
+        updateSameTimeGrouping(); // <<< 新增：删除后同步组样式
         updateTotals();
         updateSmartHintPanel?.();
         if (ENABLE_LIVE_SORT) window.__resortByTime?.(); // >>> 追加：删除后也重排
@@ -126,6 +176,7 @@ function bindRowEvents(row) {
         row.remove();
       }
       updateRowNumbersAndIndexes();
+      updateSameTimeGrouping(); // <<< 新增
       updateTotals();
       updateSmartHintPanel?.();
       if (ENABLE_LIVE_SORT) window.__resortByTime?.(); // >>> 追加
@@ -150,11 +201,19 @@ function bindRowEvents(row) {
   if (amountInput)  amountInput.addEventListener("input",  () => { updateTotals(); updateSmartHintPanel(); });
   if (methodSelect) methodSelect.addEventListener("change", () => { updateTotals(); updateSmartHintPanel(); });
 
-  // >>> 追加: 调整“时间”即重排
+  // >>> 追加: 调整“时间”即重排 + 重新分组
   const rideTimeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
   if (rideTimeInput) {
-    rideTimeInput.addEventListener("change", () => { if (ENABLE_LIVE_SORT) window.__resortByTime?.(); updateRowNumbersAndIndexes(); });
-    rideTimeInput.addEventListener("input",  () => { if (ENABLE_LIVE_SORT) window.__resortByTime?.(); updateRowNumbersAndIndexes(); });
+    rideTimeInput.addEventListener("change", () => {
+      if (ENABLE_LIVE_SORT) window.__resortByTime?.();
+      updateRowNumbersAndIndexes();
+      updateSameTimeGrouping(); // <<< 新增：时间变化后刷新组
+    });
+    rideTimeInput.addEventListener("input",  () => {
+      if (ENABLE_LIVE_SORT) window.__resortByTime?.();
+      updateRowNumbersAndIndexes();
+      updateSameTimeGrouping(); // <<< 新增
+    });
   }
   // <<< 追加 end
 
@@ -169,6 +228,7 @@ function bindRowEvents(row) {
   if (charterAmountInput) charterAmountInput.addEventListener("input", updateSmartHintPanel);
   if (charterCheckbox)    charterCheckbox.addEventListener("change", updateSmartHintPanel);
 }
+
 
 // ============ 模板克隆 & 插入 ============
 function cloneRowFromTemplate() {
@@ -196,6 +256,7 @@ function addRowToEnd() {
   dataTb.appendChild(tr);
   bindRowEvents(tr);
   updateRowNumbersAndIndexes();
+  updateSameTimeGrouping(); // <<< 新增：新增行后刷新组
   updateTotals();
   updateSmartHintPanel();
   window.__resortByTime?.(); // >>> 追加：新增后重排
@@ -221,6 +282,7 @@ function insertRowAfter(indexOneBased) {
   }
   bindRowEvents(tr);
   updateRowNumbersAndIndexes();
+  updateSameTimeGrouping(); // <<< 新增
   updateTotals();
   updateSmartHintPanel();
   window.__resortByTime?.(); // >>> 追加：按指定行插入后重排
@@ -512,7 +574,7 @@ function applyCharterState(row, isCharter) {
   const charterPaymentSelect = row.querySelector(".charter-payment-method-select");
   if (meterInput) {
     meterInput.removeAttribute('disabled');
-    if (!meterInput.dataset.originalValue) meterInput.dataset.originalValue = meterInput.value || "";
+    if (!meterInput.dataset.originalValue) meterInput.dataset.originalValue = meterInput.value || ""
     if (isCharter) {
       meterInput.setAttribute('readonly','readonly');
       meterInput.classList.add('readonly');
@@ -592,12 +654,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) fns.forEach(fn => el.addEventListener("input", fn));
   });
 
-  // 6) 初始执行
+  // 6) 初始执行（顺序：时长→ETC→编号→同时间分组→合计→提示→貸切状态）
   updateDuration();
   updateEtcDifference();
   updateEtcShortage();
   updateEtcInclusionWarning();
   updateRowNumbersAndIndexes();
+  updateSameTimeGrouping(); // <<< 新增：页面初次渲染后做一次分组
   updateTotals();
   updateSmartHintPanel();
   hydrateAllCharterRows();
@@ -633,6 +696,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     pairs.sort((a, b) => a.key - b.key).forEach(p => dataTb.appendChild(p.row));
     let idx = 1; pairs.forEach(p => { const num = p.row.querySelector(".row-number"); if (num) num.textContent = idx++; });
+    // —— 排序后做一次“同时间分组”以保持箭头和缩进正确 ——
+    if (typeof updateSameTimeGrouping === "function") updateSameTimeGrouping();
   }
 
   // >>> 追加: 暴露排序函数，供其它事件实时调用
@@ -644,6 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('submit', () => {
       sortRowsByTime();
       if (typeof updateRowNumbersAndIndexes === 'function') updateRowNumbersAndIndexes();
+      if (typeof updateSameTimeGrouping === 'function') updateSameTimeGrouping();
     });
     // 页面加载完成先排一次，确保初始顺序正确
     sortRowsByTime(); // >>> 追加

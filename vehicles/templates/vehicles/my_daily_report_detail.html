@@ -107,7 +107,15 @@
         <tbody>
           {% for item in items %}
             <tr class="{% if item.note or item.is_flagged %}table-warning{% endif %}">
-              <td>{{ item.ride_time }}</td>
+              <!-- === [同一时间 ↳ 渲染 BEGIN] === -->
+              <td class="{% if item.is_same_time_child %}same-time-child{% endif %}">
+                {% if item.is_same_time_child %}
+                  <span class="same-time-prefix">↳</span> {{ item.ride_time }}
+                {% else %}
+                  {{ item.ride_time }}
+                {% endif %}
+              </td>
+              <!-- === [同一时间 ↳ 渲染 END] === -->
               <td>{{ item.ride_from }}</td>
               <td>{{ item.meter_fee }}</td>
               <td>{{ item.get_payment_method_display }}</td>
@@ -128,4 +136,11 @@
 <p class="mt-4">
   <a href="{% url 'vehicles:my_dailyreports' %}" class="btn btn-outline-secondary btn-sm">← 返回日报列表</a>
 </p>
+
+<style>
+  .same-time-child { color: #555; }
+  .same-time-prefix { display:inline-block; width:1.25em; margin-right:.25em; color:#6c757d; }
+</style>
+
+
 {% endblock %}
