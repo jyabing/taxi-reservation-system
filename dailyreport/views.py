@@ -718,12 +718,30 @@ def export_dailyreports_excel(request, year, month):
         charter_uncol = 0
         amt = {"kyokushin": 0, "omron": 0, "kyotoshi": 0, "uber": 0, "credit": 0, "paypay": 0, "didi": 0}
 
+         # ➕ 新增：三项 Uber 合计（本月“金额”合计）
+        uber_resv = 0
+        uber_tip = 0
+        uber_promo = 0
+
+
         for it in r.items.all():
             is_charter = bool(getattr(it, "is_charter", False))
             pm = norm(getattr(it, "payment_method", None))
             cpm = norm(getattr(it, "charter_payment_method", None))
             meter_fee = int(getattr(it, "meter_fee", 0) or 0)
             charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
+
+            # === 这里是 NameError 的修正点：拿到“本条明细”的注释文本
+            note_text = (getattr(it, "note", "") or "").lower()
+
+            # === 命中关键词就按是否貸切累加到三项 Uber 合计
+            val_for_this = charter_jpy if is_charter else meter_fee
+            if any(k in note_text for k in ["uber予約", "予約", "reservation"]):
+                uber_resv += val_for_this
+            if any(k in note_text for k in ["uberチップ", "チップ", "tip"]):
+                uber_tip += val_for_this
+            if any(k in note_text for k in ["uberプロモーション", "プロモ", "promotion"]):
+                uber_promo += val_for_this
 
             if not is_charter:
                 meter_only += meter_fee
@@ -749,6 +767,8 @@ def export_dailyreports_excel(request, year, month):
                 elif cpm in {"credit", "credit_card"}: amt["credit"] += charter_jpy
                 elif cpm in {"qr", "scanpay"}:         amt["paypay"] += charter_jpy
                 elif cpm == "didi":    amt["didi"] += charter_jpy
+
+            
 
         fee_calc = lambda x: int((Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if x else 0
         uber_fee, credit_fee, paypay_fee, didi_fee = map(fee_calc, [amt["uber"], amt["credit"], amt["paypay"], amt["didi"]])
@@ -785,6 +805,11 @@ def export_dailyreports_excel(request, year, month):
             "water_total": int(water_total), "tax_ex": tax_ex, "tax": tax,
             "gas_l": float(r.gas_volume or 0), "km": float(r.mileage or 0),
             "deposit_diff": int(deposit_diff),
+
+            # ➕ 新增：把三项 Uber 合计返回，供写 Excel 用
+            "uber_resv": int(uber_resv),
+            "uber_tip": int(uber_tip),
+            "uber_promo": int(uber_promo),
         }
 
     output = BytesIO()
@@ -813,7 +838,9 @@ def export_dailyreports_excel(request, year, month):
         "7.Uber売上","", "8.クレジット売上","", "9.PayPay売上","", "10.DiDi売上","",
         "未収合計","手数料合計",
         "水揚合計","税抜収入","消費税",
-        "11.ガソリン(L)","12.距離(KM)","過不足"
+        "11.ガソリン(L)","12.距離(KM)","過不足",
+        # === 追加在末尾 ===
+        "13.Uber予約","14.Uberチップ","15.Uberプロモーション",
     ]
     row2 = ["","","","",
             "","",
@@ -823,7 +850,9 @@ def export_dailyreports_excel(request, year, month):
             "","",
             "","","",
             "","",
-            ""]
+            "",
+            # === 与 row1 对齐，末尾补空 ===
+            "","",""]
 
     def write_headers(ws):
         ws.write_row(0, 0, row1, fmt_header)
@@ -844,7 +873,7 @@ def export_dailyreports_excel(request, year, month):
         for c, w in col_widths.items():
             ws.set_column(c, c, w)
 
-    MONEY_COLS = {4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27}
+    MONEY_COLS = {4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27,28,29,30}
     TWO_DEC_COLS = {25, 26}
 
     def write_mixed_row(ws, r, values, is_total=False):
@@ -895,6 +924,8 @@ def export_dailyreports_excel(request, year, month):
                 data["water_total"], data["tax_ex"], data["tax"],
                 data["gas_l"], data["km"],
                 data["deposit_diff"],
+                # === 追加在末尾 ===
+                data["uber_resv"], data["uber_tip"], data["uber_promo"],
             ]
             write_mixed_row(ws, r, row_vals, is_total=False)
             for k, v in data.items():
@@ -915,6 +946,8 @@ def export_dailyreports_excel(request, year, month):
             int(totals["water_total"]), int(totals["tax_ex"]), int(totals["tax"]),
             float(totals["gas_l"]), float(totals["km"]),
             int(totals["deposit_diff"]),
+            # === 追加在末尾 ===
+            int(totals["uber_resv"]), int(totals["uber_tip"]), int(totals["uber_promo"]),
         ]
         write_mixed_row(ws, r, total_vals, is_total=True)
 
@@ -967,6 +1000,8 @@ def export_dailyreports_excel(request, year, month):
                 "water_total":0,"tax_ex":0,"tax":0,
                 "gas_l":Decimal("0"),"km":Decimal("0"),
                 "deposit_diff":0,
+                # === 追加 ===
+                "uber_resv":0,"uber_tip":0,"uber_promo":0,
             }
         row = per_driver[did]
         row["days"] += 1
@@ -987,7 +1022,9 @@ def export_dailyreports_excel(request, year, month):
             "nagashi_cash","charter_cash","etc_ride_total","etc_empty_total","charter_uncol",
             "kyokushin","omron","kyotoshi","uber","uber_fee","credit","credit_fee",
             "paypay","paypay_fee","didi","didi_fee",
-            "uncol_total","fee_total","water_total","tax_ex","tax","deposit_diff"
+            "uncol_total","fee_total","water_total","tax_ex","tax","deposit_diff",
+            # === 追加 ===
+            "uber_resv","uber_tip","uber_promo",
         ]:
             row[k] += int(data[k])
         row["gas_l"] += Decimal(str(data["gas_l"]))
@@ -1017,6 +1054,8 @@ def export_dailyreports_excel(request, year, month):
             row["water_total"], row["tax_ex"], row["tax"],
             float(row["gas_l"]), float(row["km"]),
             row["deposit_diff"],
+            # === 末尾追加 ===
+            row["uber_resv"], row["uber_tip"], row["uber_promo"],
         ]
         write_mixed_row(summary_ws, r, sum_vals, is_total=False)
         summary_ws.write_number(r, 3, float(hours_2d), fmt_num_2d)
@@ -1042,6 +1081,8 @@ def export_dailyreports_excel(request, year, month):
         int(totals_sum["water_total"]), int(totals_sum["tax_ex"]), int(totals_sum["tax"]),
         float(totals_sum["gas_l"]), float(totals_sum["km"]),
         int(totals_sum["deposit_diff"]),
+        # === 末尾追加 ===
+        int(totals_sum["uber_resv"]), int(totals_sum["uber_tip"]), int(totals_sum["uber_promo"]),
     ]
     write_mixed_row(summary_ws, r, sum_total_vals, is_total=True)
     summary_ws.write_number(r, 3, float(hours_total_2d), fmt_num_2d_t)
@@ -1990,6 +2031,32 @@ def dailyreport_overview(request):
 
     totals = defaultdict(Decimal)
     counts = defaultdict(int)
+
+    # === Uber 派生：予約 / チップ / プロモーション ===
+    def _sum_amount_by_is_charter(qs):
+        # 非貸切 → meter_fee；貸切 → charter_amount_jpy（极少见，但做兼容）
+        non_charter = qs.filter(is_charter=False).aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
+        charter     = qs.filter(is_charter=True ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
+        return non_charter + charter
+
+    # 关键词尽量覆盖：全角/片假名/英文
+    _qs_resv = items_all.filter(
+        Q(note__icontains='Uber予約') | Q(note__icontains='予約') | Q(note__icontains='reservation')
+    )
+    _qs_tip  = items_all.filter(
+        Q(note__icontains='Uberチップ') | Q(note__icontains='チップ') | Q(note__icontains='tip')
+    )
+    _qs_promo = items_all.filter(
+        Q(note__icontains='Uberプロモーション') | Q(note__icontains='プロモ') | Q(note__icontains='promotion')
+    )
+
+    totals['uber_reservation_total'] = _sum_amount_by_is_charter(_qs_resv)
+    totals['uber_tip_total']         = _sum_amount_by_is_charter(_qs_tip)
+    totals['uber_promotion_total']   = _sum_amount_by_is_charter(_qs_promo)
+
+    counts['uber_reservation'] = _qs_resv.count()
+    counts['uber_tip']         = _qs_tip.count()
+    counts['uber_promotion']   = _qs_promo.count()
 
     meter_sum_non_charter = items_norm.filter(is_charter=False)\
         .aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
