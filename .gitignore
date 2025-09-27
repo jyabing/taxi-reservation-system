@@ -41,6 +41,16 @@ Thumbs.db
 *.bak
 *.tmp
 *.orig
-*.bak
 scan_deps.py
 requirements_suspects.txt
+
+# ---- Django collectstatic 输出 ----
+staticfiles/
+
+# ---- 构建产物 ----
+*.gz
+*.map
+
+# ---- 本地开发脚本（不提交到仓库） ----
+check_requirements.py
+init_dev.sh
