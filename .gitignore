@@ -42,3 +42,5 @@ Thumbs.db
 *.tmp
 *.orig
 *.bak
+scan_deps.py
+requirements_suspects.txt
