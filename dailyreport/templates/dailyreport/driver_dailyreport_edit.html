@@ -355,9 +355,10 @@ input[type=number] {
       </div>
 
       <!-- 🔒 隐藏“ETC 未收=空車合計（円）”；仍参与提交（值由 JS 自动回填） -->
-      <div class="d-none">
+      <!-- 这块删掉，避免重复 -->
+      <!-- <div class="d-none">
         {{ form.etc_uncollected }}
-      </div>
+      </div> -->
 
 
       <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
@@ -371,7 +372,8 @@ input[type=number] {
           <div class="col-6">
             <label for="id_etc_uncollected" class="form-label small">空車ETC 金額（円）</label>
             <input type="number" class="form-control form-control-sm text-end js-empty-etc-amount"
-                  id="id_etc_uncollected" name="etc_uncollected" min="0" step="1" value="">
+                  id="id_etc_uncollected" name="etc_uncollected" min="0" step="1"
+                  value="{% firstof form.etc_uncollected.value report.etc_uncollected 0 %}" inputmode="numeric" pattern="[0-9]*">
           </div>
           <!-- 回程费受领额 -->
           <div class="col-6">

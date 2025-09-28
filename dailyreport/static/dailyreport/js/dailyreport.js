@@ -402,40 +402,62 @@ function updateTotals() {
     || document.getElementById("shortage-diff");
   if (diffEl) diffEl.textContent = shortage.toLocaleString();
 
-  // ==== [ETC LOGIC PATCH START @ 2025-09-14] ====
+  // ==== [ETC LOGIC PATCH START @ 2025-09-14 Final] ====
+  // 工具
   function _yen(v){ if(v==null) return 0; const n=Number(String(v).replace(/[,，\s]/g,'')); return isFinite(n)?n:0; }
 
-  const rideEtc = _yen(document.querySelector('#id_ride_etc_total, .js-ride-etc-total')?.value);
-  const rideMeth = (document.querySelector('#id_ride_etc_payment_method, .js-ride-etc-method')?.value||'').trim();
+  // 乘車ETC：你模板里是 {{ form.etc_collected }} -> #id_etc_collected
+  const rideEtc  = _yen(document.querySelector('#id_etc_collected')?.value);
+  // 乘車ETC 支付方式：你模板里是 {{ form.etc_payment_method }} -> #id_etc_payment_method
+  const rideMeth = (document.querySelector('#id_etc_payment_method, .js-ride-etc-method')?.value || '').trim();
 
-  const emptyEtc   = _yen(document.querySelector('#id_etc_uncollected, .js-empty-etc-amount')?.value);
-  const emptyCard  = (document.querySelector('#id_etc_empty_card, .js-empty-etc-card')?.value||'').trim();
-  const retClaimed = _yen(document.querySelector('#id_etc_return_fee_claimed, .js-return-fee-claimed')?.value);
-  const retMethod  = (document.querySelector('#id_etc_return_fee_method, .js-return-fee-method')?.value||'').trim();
+  // 空車ETC 金額：优先**可见输入**（.js-empty-etc-amount），避免命中隐藏控件
+  const emptyEtcInput = document.querySelector('.js-empty-etc-amount') || document.querySelector('#id_etc_uncollected');
+  let emptyEtc = _yen(emptyEtcInput?.value);
+  if (!emptyEtc) {
+    const txt = document.querySelector("div[style*='ui-monospace']")?.textContent || "";
+    // 支持 “空車ETC 500円” 的格式
+    const m = txt.match(/空車ETC\s*([0-9,]+)/);
+    if (m) emptyEtc = _yen(m[1]);
+  }
 
-  // 1) ETC 应收合计
+  // 空車ETC 卡/回程費（都用你的真实 id）
+  const emptyCard  = (document.querySelector('#id_etc_empty_card')?.value || '').trim();         // 'company' | 'own'
+  const retClaimed = _yen(document.querySelector('#id_etc_return_fee_claimed')?.value);
+  const retMethod  = (document.querySelector('#id_etc_return_fee_method')?.value || '').trim();   // 'none' | 'app_ticket' | 'cash_to_driver'
+
+  // 1) ETC 应收合计 = 乗車ETC + 空車ETC
   const etcReceivable = rideEtc + emptyEtc;
   const etcReceivableEl = document.querySelector('#etc-expected-output, .js-etc-receivable');
   if (etcReceivableEl) etcReceivableEl.value = etcReceivable.toLocaleString();
 
-  // 2) 空车ETC → 司机负担 / 未収ETC
+  // 2) 空車ETC → 司机负担 / 未収ETC（仅公司卡参与）
   let driverBurden = 0;
   let uncollectedEtc = 0;
   if (emptyCard === 'company') {
     if (retMethod === 'app_ticket') {
       const cover = Math.min(retClaimed, emptyEtc);
-      driverBurden = Math.max(emptyEtc - cover, 0);
+      driverBurden   = Math.max(emptyEtc - cover, 0);
       uncollectedEtc = Math.max(retClaimed - emptyEtc, 0);
     } else {
       driverBurden = emptyEtc;
     }
   }
-  const driverBurdenEl = document.querySelector('.js-driver-burden');
-  if (driverBurdenEl) driverBurdenEl.textContent = `司机负担：${driverBurden.toLocaleString()}円`;
-  const uncollectedEl = document.querySelector('.js-uncollected-etc');
-  if (uncollectedEl) uncollectedEl.textContent = `未収ETC：${uncollectedEtc.toLocaleString()}円；`;
 
-  // 3) 過不足：加上自分ETC卡
+  // 蓝色框同步（你模板里的 #etc-diff-display）
+  const diffBox = document.getElementById('etc-diff-display');
+  if (diffBox) {
+    diffBox.className = (driverBurden > 0 || uncollectedEtc > 0) ? 'alert alert-warning small py-1 px-2 mt-1'
+                                                                : 'alert alert-info small py-1 px-2 mt-1';
+    diffBox.innerText = `未收 ETC：${uncollectedEtc.toLocaleString()} 円；司机负担：${driverBurden.toLocaleString()} 円`;
+  }
+
+  // 如仍保留隐藏的 etc_uncollected（方案B），同步它的值，避免提交旧值
+  document.querySelectorAll('#id_etc_uncollected, #id_etc_uncollected_hidden').forEach(el => {
+    if (el) el.value = String(emptyEtc);
+  });
+
+  // 3) 過不足：自分ETC卡计入
   const income      = _yen(document.querySelector('#id_income, .income-input')?.value);
   const cashNagashi = _yen(document.querySelector('#id_cash_nagashi, .cash-nagashi-input')?.value);
   const charterCash = _yen(document.querySelector('#id_charter_cash, .charter-cash-input')?.value);
@@ -448,7 +470,7 @@ function updateTotals() {
     if ('value' in imbalanceEl) imbalanceEl.value = imbalance.toLocaleString();
     else imbalanceEl.textContent = imbalance.toLocaleString();
   }
-  // ==== [ETC LOGIC PATCH END @ 2025-09-14] ====
+  // ==== [ETC LOGIC PATCH END @ 2025-09-14 Final] ====
 }
 
 
@@ -505,31 +527,48 @@ function updateSmartHintPanel() {
 function readIntById(id, fallback=0){ const el=document.getElementById(id); if(!el) return fallback; const raw=el.value??el.textContent??`${fallback}`; return toInt(raw,fallback); }
 function updateEtcDifference() {
   const rideTotal = readIntById('id_etc_collected', 0);
+
+  // 有可编辑的“空車ETC 金額”输入框
   const hasNewEmpty = !!document.getElementById('id_etc_uncollected');
   let emptyAmount = hasNewEmpty ? readIntById('id_etc_uncollected', 0) : 0;
+
+  // 回程費
   const returnFee = hasNewEmpty ? readIntById('id_etc_return_fee_claimed', 0) : 0;
   const returnFeeMethod = hasNewEmpty ? (document.getElementById('id_etc_return_fee_method')?.value || 'none') : 'none';
   const emptyCardRaw = hasNewEmpty ? (document.getElementById('id_etc_empty_card')?.value || 'company') : 'company';
   const emptyCard = (emptyCardRaw === 'company') ? 'company_card' : 'personal_card';
   const coveredByCustomer = (returnFeeMethod === 'app_ticket') ? returnFee : 0;
 
+  
   let etcUncollected = 0, etcDriverBurden = 0;
+
+
   if (hasNewEmpty) {
+    // 仅公司卡参与覆盖/负担；自己卡只做记录
     if (emptyCard === 'company_card' || emptyCard === '') {
       etcUncollected  = Math.max(0, coveredByCustomer - emptyAmount);
       etcDriverBurden = Math.max(0, emptyAmount - coveredByCustomer);
     }
   } else {
+    // 老页面兜底（几乎不会走到）
     etcUncollected  = readIntById('id_etc_uncollected', 0);
     etcDriverBurden = readIntById('id_etc_shortage', 0);
   }
 
+  // 蓝框展示
   const display = document.getElementById('etc-diff-display');
   if (display) {
     display.className = (etcDriverBurden > 0 || etcUncollected > 0) ? 'alert alert-warning' : 'alert alert-info';
     display.innerText = `未收ETC：${etcUncollected.toLocaleString()} 円；司机负担：${etcDriverBurden.toLocaleString()} 円`;
   }
-  if (document.getElementById('id_etc_uncollected')) document.getElementById('id_etc_uncollected').value = etcUncollected;
+  // ⛔ 这行会把“空車ETC 金額”输入框写回计算值，导致无法输入
+  // if (document.getElementById('id_etc_uncollected')) document.getElementById('id_etc_uncollected').value = etcUncollected;
+
+  // 可选：有隐藏字段就把“未收ETC”写进去，便于提交存档
+  const hiddenUncol = document.getElementById('id_etc_uncollected_hidden');
+  if (hiddenUncol) hiddenUncol.value = etcUncollected;
+
+  // 司机负担写回（你的原逻辑）
   if (document.getElementById('id_etc_shortage')) {
     const el = document.getElementById('id_etc_shortage');
     el.value = etcDriverBurden;
@@ -537,8 +576,8 @@ function updateEtcDifference() {
     el.classList.toggle('fw-bold', etcDriverBurden > 0);
   }
 
-  const etcExpected = (toInt(document.getElementById('id_etc_collected')?.value, 0) || 0)
-                    + (toInt(document.getElementById('id_etc_uncollected')?.value, 0) || 0);
+  // 这里又从 DOM 读 #id_etc_uncollected 参与应收合计应收合计直接用“乘车ETC + 空车ETC金额（用户输入）”
+  const etcExpected = (rideTotal || 0) + (emptyAmount || 0);
   const expectedDisplay = document.getElementById('etc-expected-output');
   if (expectedDisplay) expectedDisplay.value = etcExpected.toLocaleString();
   const hiddenExpected = document.getElementById('id_etc_expected');
@@ -640,19 +679,44 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 5) 其他输入监听
+  // ==== [ETC BIND PATCH START @ 2025-09-14] ====
   [
-    ['id_etc_collected_cash', [updateEtcDifference, updateEtcShortage]],
-    ['id_etc_uncollected',    [updateEtcDifference, updateEtcShortage]],
-    ['id_etc_collected',      [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
-    ['id_deposit_amount',     [updateEtcDifference, updateEtcInclusionWarning]],
-    ['clock_in',              [updateDuration]],
-    ['clock_out',             [updateDuration]],
-    ['break-time-input',      [updateDuration]],
-    ['id_etc_empty_card',     [updateTotals]],
+    // 乘車ETC 现金（保持原样）
+    ['id_etc_collected_cash',   [updateEtcDifference, updateEtcShortage]],
+
+    // 空車ETC 金額：输入会影响“应收合计/司机负担/未収ETC” → 追加 updateTotals
+    ['id_etc_uncollected',      [updateEtcDifference, updateEtcShortage, updateTotals]],
+
+    // 乘車ETC 合计：也会影响“应收合计/過不足” → 保持并触发 updateTotals
+    ['id_etc_collected',        [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
+
+    // 入金：影响差额提示
+    ['id_deposit_amount',       [updateEtcDifference, updateEtcInclusionWarning]],
+
+    // 工时
+    ['clock_in',                [updateDuration]],
+    ['clock_out',               [updateDuration]],
+    ['break-time-input',        [updateDuration]],
+
+    // 空車ETC 卡别：公司/自己卡切换影响“司机负担/未収ETC/应收合计”
+    ['id_etc_empty_card',       [updateTotals]],
+
+    // ↓↓↓ 新增：回程费覆盖相关 & 乘車ETC 支付方式（自分卡影响過不足）
+    ['id_etc_return_fee_method',[updateTotals]],
+    ['id_etc_return_fee_claimed',[updateTotals]],
+    ['id_etc_payment_method',   [updateTotals]],
   ].forEach(([id, fns]) => {
     const el = document.getElementById(id);
-    if (el) fns.forEach(fn => el.addEventListener("input", fn));
+    if (el) {
+      // 输入型控件
+      fns.forEach(fn => el.addEventListener("input", fn));
+      // 选择型控件（select）用 change 更稳
+      if (el.tagName === 'SELECT') {
+        fns.forEach(fn => el.addEventListener("change", fn));
+      }
+    }
   });
+  // ==== [ETC BIND PATCH END @ 2025-09-14] ====
 
   // 6) 初始执行（顺序：时长→ETC→编号→同时间分组→合计→提示→貸切状态）
   updateDuration();
