@@ -252,6 +252,17 @@
           <label class="form-label">结束日期</label>
           <input type="date" class="form-control" id="exportTo" inputmode="numeric" pattern="\d{4}-\d{2}-\d{2}">
         </div>
+
+        <!-- 新增：选择司机 -->
+        <div class="mb-3">
+          <label class="form-label">选择司机</label>
+          <select id="exportDriver" class="form-select form-select-sm">
+            <option value="">全部司机</option>
+            {% for d in drivers %}
+              <option value="{{ d.id }}">{{ d.display_name|default:d.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
         <!-- ==== END patch: native date inputs ==== -->
         <div class="small text-muted">
           不填或清空日期时，可直接点击「按当前月份导出」导出 {{ current_year }} 年 {{ current_month }} 月全量数据。
@@ -277,15 +288,12 @@
 {# ==== BEGIN: 导出区间 JS（dailyreport_overview.html 内） ==== #}
 <script>
 (function() {
-  console.log('export-range JS loaded');   // ✅ 顶部调试标记
+  console.log('export-range JS loaded');
 
+  // 触发弹窗的按钮（页面已有）：需带 data-export-url / data-year / data-month
   const btn = document.getElementById('btn-export-excel');
   const modalEl = document.getElementById('exportRangeModal');
   if (!btn || !modalEl) return;
-
-  // ⚠️ 这里不再手动 new bootstrap.Modal().show()
-  // 因为按钮已用 data-bs-toggle="modal" 交给 Bootstrap 自动弹出
-  // 我们只负责 inside modal 的取值与跳转
 
   const exportUrlBase = btn.getAttribute('data-export-url');
   const YEAR  = parseInt(btn.getAttribute('data-year'), 10);
@@ -294,9 +302,10 @@
   const fromInput = document.getElementById('exportFrom');
   const toInput   = document.getElementById('exportTo');
   const errBox    = document.getElementById('exportErr');
+  const driverSel = document.getElementById('exportDriver'); // 新增
 
   function monthFirstLast(y, m) {
-    const first = new Date(y, m-1, 1);
+    const first = new Date(y, m - 1, 1);
     const last  = new Date(y, m, 0);
     const pad = n => String(n).padStart(2, '0');
     return {
@@ -304,11 +313,14 @@
       lastStr:  `${last.getFullYear()}-${pad(last.getMonth()+1)}-${pad(last.getDate())}`,
     };
   }
+
   function fillThisMonth() {
     const { firstStr, lastStr } = monthFirstLast(YEAR, MONTH);
     fromInput.value = firstStr;
     toInput.value   = lastStr;
   }
+
+  // 仅负责组装 from/to
   function buildRangeUrl() {
     const from = (fromInput.value || '').trim();
     const to   = (toInput.value || '').trim();
@@ -332,27 +344,38 @@
     return `${exportUrlBase}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
   }
 
-  // 👉 下面几个按钮都是 Modal 内部的点击行为
+  // 新增：拼接 driver_id
+  function driverQuery() {
+    const v = driverSel ? (driverSel.value || '').trim() : '';
+    return v ? `&driver_id=${encodeURIComponent(v)}` : '';
+  }
+
+  // 交互
   document.getElementById('btnFillThisMonth').addEventListener('click', fillThisMonth);
   document.getElementById('btnClearRange').addEventListener('click', () => {
-    fromInput.value = ''; toInput.value = '';
+    fromInput.value = '';
+    toInput.value   = '';
     errBox.classList.add('d-none');
   });
+
+  // 按月份导出：仅基准 URL + driver
   document.getElementById('btnExportMonth').addEventListener('click', () => {
-    window.location.href = exportUrlBase;
-  });
-  document.getElementById('btnExportRange').addEventListener('click', () => {
-    const url = buildRangeUrl();
-    if (url) window.location.href = url;
+    window.location.href = exportUrlBase + driverQuery();
   });
 
-  // 如果页面有 flatpickr，则增强日期输入
+  // 区间导出：区间 URL + driver
+  document.getElementById('btnExportRange').addEventListener('click', () => {
+    const url = buildRangeUrl();
+    if (url) window.location.href = url + driverQuery();
+  });
+
+  // 若页面引入了 flatpickr，则增强
   try {
     if (window.flatpickr) {
       flatpickr(fromInput, { dateFormat: 'Y-m-d' });
       flatpickr(toInput,   { dateFormat: 'Y-m-d' });
     }
-  } catch(e) {}
+  } catch (e) {}
 })();
 </script>
 {# ==== END: 导出区间 JS ==== #}

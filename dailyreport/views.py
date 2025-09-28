@@ -488,7 +488,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.contrib import messages
 # 如果上面没引入 user_passes_test / 模型，也一并确认
 from django.contrib.auth.decorators import user_passes_test
-from .models import DriverDailyReportItem
+from .models import DriverDailyReportItem, Driver
 @user_passes_test(is_dailyreport_admin)
 @require_POST
 def dailyreport_item_delete(request, item_id):
@@ -628,6 +628,30 @@ def dailyreport_list(request):
 #    return response
 
 # ========= 导出：每日/集计（xlsxwriter） =========
+
+def _filter_by_driver_id(qs, request):
+    """
+    若 GET 里带了 ?driver_id=XX，则按司机过滤 QuerySet。
+    兼容空/非法输入（直接忽略）。
+    """
+    driver_id = (request.GET.get("driver_id") or "").strip()
+    if not driver_id:
+        return qs, None
+    try:
+        did = int(driver_id)
+    except (TypeError, ValueError):
+        return qs, None
+
+    qs = qs.filter(driver_id=did)
+
+    # 为了在文件名里显示司机名，尽量取一个 Driver 对象（失败就返回 None）
+    try:
+        from staffbook.models import Driver
+        d = Driver.objects.only("id", "name", "driver_code").get(id=did)
+    except Exception:
+        d = None
+    return qs, d
+
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_excel(request, year, month):
     try:
@@ -689,11 +713,19 @@ def export_dailyreports_excel(request, year, month):
         output_field=DateField(),
     )
 
-    base_qs = (DriverDailyReport.objects
-               .annotate(work_date=work_date_expr)
-               .select_related("driver")
-               .prefetch_related("items"))
+    # 1) 先定义 base_qs（一定要在本函数里先赋值）
+    base_qs = (
+        DriverDailyReport.objects
+        .annotate(work_date=work_date_expr)
+        .select_related("driver")
+        .prefetch_related("items")
+    )
 
+    # 2) 再按 driver_id 过滤（这里会基于已经定义好的 base_qs）
+    selected_driver = None
+    base_qs, selected_driver = _filter_by_driver_id(base_qs, request)
+
+    # 3) 最后在此基础上做区间/月份过滤
     if date_range:
         # 区间模式也用 work_date 做区间（含头含尾）
         reports = base_qs.filter(work_date__range=date_range).order_by("work_date", "driver__name")
@@ -709,32 +741,56 @@ def export_dailyreports_excel(request, year, month):
         key_date = getattr(r, "work_date", None) or r.date
         by_date[key_date].append(r)
 
+    # ===== 新增：支付方式别名归一（插入此函数） =====
+    def _pm_alias_for_export(v: str) -> str:
+        """导出用：把支付方式别名归一到 canonical 值"""
+        if not v:
+            return ""
+        s = str(v).strip().lower()
+        aliases = {
+            # 现金
+            "現金": "cash", "现金": "cash", "cash(現金)": "cash",
+            # 扫码
+            "バーコード": "qr", "barcode": "qr", "bar_code": "qr", "qr_code": "qr",
+            # 信用卡
+            "company card": "credit", "company_card": "credit",
+            "credit card": "credit", "会社カード": "credit",
+            # 现金细分（应用内有时会出现）
+            "uber現金": "uber_cash", "didi現金": "didi_cash", "go現金": "go_cash",
+        }
+        return aliases.get(s, s)
 
+    # ===== 留存后续：compute_row（这里开始） =====
     def compute_row(r):
         def norm(s): return str(s).strip().lower() if s else ""
+
         meter_only = 0
         nagashi_cash = 0
         charter_cash = 0
         charter_uncol = 0
         amt = {"kyokushin": 0, "omron": 0, "kyotoshi": 0, "uber": 0, "credit": 0, "paypay": 0, "didi": 0}
 
-         # ➕ 新增：三项 Uber 合计（本月“金额”合计）
+        # ➕ 新增：三项 Uber 合计（本月“金额”合计）
         uber_resv = 0
         uber_tip = 0
         uber_promo = 0
 
-
         for it in r.items.all():
             is_charter = bool(getattr(it, "is_charter", False))
-            pm = norm(getattr(it, "payment_method", None))
-            cpm = norm(getattr(it, "charter_payment_method", None))
-            meter_fee = int(getattr(it, "meter_fee", 0) or 0)
+
+            # --- 留存代码（取原值） ---
+            pm_raw  = getattr(it, "payment_method", None)
+            cpm_raw = getattr(it, "charter_payment_method", None)
+
+            # ✅ 新：归一化别名，防止“現金/现金/cash(現金)”等漏算
+            pm  = _pm_alias_for_export(norm(pm_raw))
+            cpm = _pm_alias_for_export(norm(cpm_raw))
+
+            meter_fee   = int(getattr(it, "meter_fee", 0) or 0)
             charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
 
-            # === 这里是 NameError 的修正点：拿到“本条明细”的注释文本
+            # 留存：备注解析（用于 Uber 予約/チップ/プロモーション）
             note_text = (getattr(it, "note", "") or "").lower()
-
-            # === 命中关键词就按是否貸切累加到三项 Uber 合计
             val_for_this = charter_jpy if is_charter else meter_fee
             if any(k in note_text for k in ["uber予約", "予約", "reservation"]):
                 uber_resv += val_for_this
@@ -743,6 +799,7 @@ def export_dailyreports_excel(request, year, month):
             if any(k in note_text for k in ["uberプロモーション", "プロモ", "promotion"]):
                 uber_promo += val_for_this
 
+            # 留存：按是否貸切分别累加
             if not is_charter:
                 meter_only += meter_fee
                 if pm in CASH_METHODS:
@@ -768,8 +825,7 @@ def export_dailyreports_excel(request, year, month):
                 elif cpm in {"qr", "scanpay"}:         amt["paypay"] += charter_jpy
                 elif cpm == "didi":    amt["didi"] += charter_jpy
 
-            
-
+        # ===== 留存：后续计算与返回（保持不动） =====
         fee_calc = lambda x: int((Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if x else 0
         uber_fee, credit_fee, paypay_fee, didi_fee = map(fee_calc, [amt["uber"], amt["credit"], amt["paypay"], amt["didi"]])
 
@@ -805,7 +861,6 @@ def export_dailyreports_excel(request, year, month):
             "water_total": int(water_total), "tax_ex": tax_ex, "tax": tax,
             "gas_l": float(r.gas_volume or 0), "km": float(r.mileage or 0),
             "deposit_diff": int(deposit_diff),
-
             # ➕ 新增：把三项 Uber 合计返回，供写 Excel 用
             "uber_resv": int(uber_resv),
             "uber_tip": int(uber_tip),
@@ -1095,7 +1150,15 @@ def export_dailyreports_excel(request, year, month):
     wb.close()
     output.seek(0)
 
-    # === 改动点：文件名按是否区间生成 ===
+    # === 改动点：文件名按是否区间 + 是否选司机生成 ===
+    if 'selected_driver' in locals() and selected_driver:
+        code = (getattr(selected_driver, "driver_code", "") or "").strip()
+        name = getattr(selected_driver, "name", "") or ""
+        dlabel = f"{code}_{name}" if code else name
+    else:
+        dlabel = "全員"
+
+
     if date_range:
         filename = f"{date_from.strftime('%Y%m%d')}-{date_to.strftime('%Y%m%d')}_全員毎日集計.xlsx"
     else:
