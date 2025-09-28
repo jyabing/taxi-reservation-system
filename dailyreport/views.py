@@ -735,28 +735,29 @@ def export_dailyreports_excel(request, year, month):
         ).order_by("work_date", "driver__name")
     # ========== [END   新：按“勤務開始日(work_date)”过滤] ==========
 
+    # ……在 by_date 分组之后
     by_date = defaultdict(list)
     for r in reports:
-        # 用 work_date 分组；若注解不存在则退回 r.date（向后兼容）
         key_date = getattr(r, "work_date", None) or r.date
         by_date[key_date].append(r)
 
-    # ===== 新增：支付方式别名归一（插入此函数） =====
+    # ✅ 新增：导出用支付方式别名归一
     def _pm_alias_for_export(v: str) -> str:
         """导出用：把支付方式别名归一到 canonical 值"""
         if not v:
             return ""
         s = str(v).strip().lower()
         aliases = {
-            # 现金
+            # 现金（ながし）
             "現金": "cash", "现金": "cash", "cash(現金)": "cash",
+            # 平台现金细分
+            "uber現金": "uber_cash", "didi現金": "didi_cash", "go現金": "go_cash",
             # 扫码
             "バーコード": "qr", "barcode": "qr", "bar_code": "qr", "qr_code": "qr",
             # 信用卡
-            "company card": "credit", "company_card": "credit",
-            "credit card": "credit", "会社カード": "credit",
-            # 现金细分（应用内有时会出现）
-            "uber現金": "uber_cash", "didi現金": "didi_cash", "go現金": "go_cash",
+            "company card": "credit", "company_card": "credit", "credit card": "credit", "会社カード": "credit",
+            # 👉 关键：貸切現金里常见的写法
+            "jp_cash": "jpy_cash", "jpy cash": "jpy_cash", "jpy-cash": "jpy_cash",
         }
         return aliases.get(s, s)
 
@@ -778,18 +779,16 @@ def export_dailyreports_excel(request, year, month):
         for it in r.items.all():
             is_charter = bool(getattr(it, "is_charter", False))
 
-            # --- 留存代码（取原值） ---
             pm_raw  = getattr(it, "payment_method", None)
             cpm_raw = getattr(it, "charter_payment_method", None)
 
-            # ✅ 新：归一化别名，防止“現金/现金/cash(現金)”等漏算
-            pm  = _pm_alias_for_export(norm(pm_raw))
-            cpm = _pm_alias_for_export(norm(cpm_raw))
+            # ✅ 归一化（关键点）
+            pm  = _pm_alias_for_export((str(pm_raw or "").strip().lower()))
+            cpm = _pm_alias_for_export((str(cpm_raw or "").strip().lower()))
 
             meter_fee   = int(getattr(it, "meter_fee", 0) or 0)
             charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
 
-            # 留存：备注解析（用于 Uber 予約/チップ/プロモーション）
             note_text = (getattr(it, "note", "") or "").lower()
             val_for_this = charter_jpy if is_charter else meter_fee
             if any(k in note_text for k in ["uber予約", "予約", "reservation"]):
@@ -799,10 +798,14 @@ def export_dailyreports_excel(request, year, month):
             if any(k in note_text for k in ["uberプロモーション", "プロモ", "promotion"]):
                 uber_promo += val_for_this
 
-            # 留存：按是否貸切分别累加
+            # ⛑ 兜底：把常见的貸切现金别名都视为“現金”
+            CHARTER_CASH_KEYS_SAFE = set(CHARTER_CASH_KEYS) | {
+                "cash", "jpy_cash", "jp_cash", "rmb_cash", "self_wechat", "boss_wechat"
+            }
+
             if not is_charter:
                 meter_only += meter_fee
-                if pm in CASH_METHODS:
+                if pm in {"cash", "uber_cash", "didi_cash", "go_cash"}:
                     nagashi_cash += meter_fee
                 if pm == "kyokushin": amt["kyokushin"] += meter_fee
                 elif pm == "omron":   amt["omron"] += meter_fee
@@ -812,7 +815,7 @@ def export_dailyreports_excel(request, year, month):
                 elif pm in {"qr", "scanpay"}:         amt["paypay"] += meter_fee
                 elif pm == "didi":    amt["didi"] += meter_fee
             else:
-                if cpm in CHARTER_CASH_KEYS:
+                if cpm in CHARTER_CASH_KEYS_SAFE:
                     charter_cash += charter_jpy
                 else:
                     charter_uncol += charter_jpy
@@ -909,6 +912,28 @@ def export_dailyreports_excel(request, year, month):
             # === 与 row1 对齐，末尾补空 ===
             "","",""]
 
+    # >>> DEBUG 插入开始：创建 DEBUG-raw 工作表（可选）
+    debug_mode = (request.GET.get("debug") == "1")
+
+    if debug_mode:
+        dbg = wb.add_worksheet("DEBUG-raw")
+        dbg.write_row(0, 0, [
+            "work_date", "report_id", "driver_id", "driver_name",
+            "item_id", "is_charter",
+            "pm_raw", "pm_canon", "cpm_raw", "cpm_canon",
+            "meter_fee", "charter_amount", "note"
+        ], fmt_header)
+        dbg.freeze_panes(1, 0)
+        dbg.set_column(0, 0, 12)
+        dbg.set_column(1, 1, 10)
+        dbg.set_column(2, 3, 14)
+        dbg.set_column(4, 5, 10)
+        dbg.set_column(6, 9, 16)
+        dbg.set_column(10, 11, 12)
+        dbg.set_column(12, 12, 40)
+        rr_dbg = 1
+    # <<< DEBUG 插入结束
+
     def write_headers(ws):
         ws.write_row(0, 0, row1, fmt_header)
         ws.write_row(1, 0, row2, fmt_header)
@@ -965,6 +990,31 @@ def export_dailyreports_excel(request, year, month):
         totals = defaultdict(Decimal)
 
         for rep in day_reports:
+
+            # >>> DEBUG 插入开始：把本日报每条 item 的原始/归一支付方式写入 DEBUG-raw
+            if debug_mode:
+                for it in rep.items.all():
+                    pm_raw  = getattr(it, "payment_method", None)
+                    cpm_raw = getattr(it, "charter_payment_method", None)
+                    pm  = _pm_alias_for_export((str(pm_raw or "").strip().lower()))
+                    cpm = _pm_alias_for_export((str(cpm_raw or "").strip().lower()))
+                    dbg.write_row(rr_dbg, 0, [
+                        d.strftime("%Y-%m-%d"),
+                        rep.id,
+                        getattr(rep.driver, "id", None),
+                        rep.driver.name if rep.driver else "",
+                        getattr(it, "id", None),
+                        bool(getattr(it, "is_charter", False)),
+                        str(pm_raw or ""), pm,
+                        str(cpm_raw or ""), cpm,
+                        int(getattr(it, "meter_fee", 0) or 0),
+                        int(getattr(it, "charter_amount_jpy", 0) or 0),
+                        (getattr(it, "note", "") or "")
+                    ], fmt_border)
+                    rr_dbg += 1
+            # <<< DEBUG 插入结束
+
+            
             data = compute_row(rep)
             row_vals = [
                 data["driver_code"], data["driver"], data["clock_in"], data["clock_out"],
@@ -1146,6 +1196,13 @@ def export_dailyreports_excel(request, year, month):
         summary_ws.conditional_format(2, 27, r-1, 27, {
             'type': 'cell', 'criteria': '<', 'value': 0, 'format': wb.add_format({'font_color': '#CC0000'})
         })
+
+    # >>> DEBUG 插入开始：给 DEBUG-raw 加筛选（如果有数据）
+    if debug_mode and 'rr_dbg' in locals() and rr_dbg > 1:
+        dbg.autofilter(0, 0, rr_dbg - 1, 12)
+    # <<< DEBUG 插入结束
+
+    
 
     wb.close()
     output.seek(0)
