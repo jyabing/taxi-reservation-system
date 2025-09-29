@@ -99,6 +99,40 @@ def _as_aware_dt(val, base_date):
     return None
 # =================================================
 
+# === Uber 别名 & 关键词：统一口径（导出/总览共用） ===
+import re as _re
+
+TIP_PAT   = _re.compile(r'(チップ|tip|小费|ﾁｯﾌﾟ)', _re.IGNORECASE)
+RESV_PAT  = _re.compile(r'(予約|reservation)', _re.IGNORECASE)
+PROMO_PAT = _re.compile(r'(プロモ|promotion)', _re.IGNORECASE)
+
+UBER_TIP_ALIASES   = {'uber_tip', 'uber tip', 'ubertip'}
+UBER_RESV_ALIASES  = {'uber_reservation', 'uber_resv', 'uber予約'}
+UBER_PROMO_ALIASES = {'uber_promo', 'uber_promotion', 'uberプロモーション'}
+
+def is_uber_tip(pm_alias: str, cpm_alias: str, note: str, comment: str) -> bool:
+    text = f"{note or ''} {comment or ''}"
+    has_uber = ('uber' in (pm_alias or '')) or ('uber' in (cpm_alias or ''))
+    if (pm_alias in UBER_TIP_ALIASES) or (cpm_alias in UBER_TIP_ALIASES):
+        return True
+    return has_uber and bool(TIP_PAT.search(text))
+
+def is_uber_resv(pm_alias: str, cpm_alias: str, note: str, comment: str) -> bool:
+    text = f"{note or ''} {comment or ''}"
+    has_uber = ('uber' in (pm_alias or '')) or ('uber' in (cpm_alias or ''))
+    if (pm_alias in UBER_RESV_ALIASES) or (cpm_alias in UBER_RESV_ALIASES):
+        return True
+    return has_uber and bool(RESV_PAT.search(text))
+
+def is_uber_promo(pm_alias: str, cpm_alias: str, note: str, comment: str) -> bool:
+    text = f"{note or ''} {comment or ''}"
+    has_uber = ('uber' in (pm_alias or '')) or ('uber' in (cpm_alias or ''))
+    if (pm_alias in UBER_PROMO_ALIASES) or (cpm_alias in UBER_PROMO_ALIASES):
+        return True
+    return has_uber and bool(PROMO_PAT.search(text))
+
+
+
 # ========= 软预填（不落库，仅用于渲染初值） =========
 def _safe_as_time(val):
     try:
@@ -775,6 +809,7 @@ def export_dailyreports_excel(request, year, month):
         uber_resv = 0
         uber_tip = 0
         uber_promo = 0
+        uber_tip_cnt = 0   # 新增：件数
 
         for it in r.items.all():
             is_charter = bool(getattr(it, "is_charter", False))
@@ -789,14 +824,22 @@ def export_dailyreports_excel(request, year, month):
             meter_fee   = int(getattr(it, "meter_fee", 0) or 0)
             charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
 
-            note_text = (getattr(it, "note", "") or "").lower()
+            note_text = (getattr(it, "note", "") or "")
+            cmt_text  = (getattr(it, "comment", "") or "")
             val_for_this = charter_jpy if is_charter else meter_fee
-            if any(k in note_text for k in ["uber予約", "予約", "reservation"]):
-                uber_resv += val_for_this
-            if any(k in note_text for k in ["uberチップ", "チップ", "tip"]):
+
+            # --- 共用口径：显式字段 + 关键词兜底（与月度总览一致）
+            if is_uber_tip(pm, cpm, note_text, cmt_text):
                 uber_tip += val_for_this
-            if any(k in note_text for k in ["uberプロモーション", "プロモ", "promotion"]):
+                # 若你希望“Uber合计”不再重复计入这笔，打开下一行：
+                # continue
+            elif is_uber_resv(pm, cpm, note_text, cmt_text):
+                uber_resv += val_for_this
+                # continue
+            elif is_uber_promo(pm, cpm, note_text, cmt_text):
                 uber_promo += val_for_this
+                # continue
+
 
             # ⛑ 兜底：把常见的貸切现金别名都视为“現金”
             CHARTER_CASH_KEYS_SAFE = set(CHARTER_CASH_KEYS) | {
@@ -2159,16 +2202,29 @@ def dailyreport_overview(request):
         charter     = qs.filter(is_charter=True ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
         return non_charter + charter
 
-    # 关键词尽量覆盖：全角/片假名/英文
-    _qs_resv = items_all.filter(
-        Q(note__icontains='Uber予約') | Q(note__icontains='予約') | Q(note__icontains='reservation')
-    )
-    _qs_tip  = items_all.filter(
-        Q(note__icontains='Uberチップ') | Q(note__icontains='チップ') | Q(note__icontains='tip')
-    )
-    _qs_promo = items_all.filter(
-        Q(note__icontains='Uberプロモーション') | Q(note__icontains='プロモ') | Q(note__icontains='promotion')
-    )
+    # 显式字段别名（payment_method 归一后；你上面已对 items_norm 做了 Lower/Trim）
+    UBER_RESV_ALIASES  = {'uber_reservation', 'uber_resv', 'uber予約'}
+    UBER_TIP_ALIASES   = {'uber_tip', 'uber tip', 'ubertip'}
+    UBER_PROMO_ALIASES = {'uber_promo', 'uber_promotion', 'uberプロモーション'}
+
+    # 关键词兜底（注：模板录入里习惯写在 note/comment）
+    # 你的 items_norm 目前只 annotate 了 pm/cpm，note/comment 直接用原字段就行
+    _kw_resv  = Q(note__icontains='Uber予約') | Q(note__icontains='予約') | Q(note__icontains='reservation') \
+                | Q(comment__icontains='Uber予約') | Q(comment__icontains='予約') | Q(comment__icontains='reservation')
+    _kw_tip   = Q(note__icontains='Uberチップ') | Q(note__icontains='チップ') | Q(note__icontains='tip') \
+                | Q(comment__icontains='Uberチップ') | Q(comment__icontains='チップ') | Q(comment__icontains='tip')
+    _kw_promo = Q(note__icontains='Uberプロモーション') | Q(note__icontains='プロモ') | Q(note__icontains='promotion') \
+                | Q(comment__icontains='Uberプロモーション') | Q(comment__icontains='プロモ') | Q(comment__icontains='promotion')
+
+    # “显式字段 ∪ 关键词兜底”——同时覆盖非貸切 pm 与 貸切 cpm 两个维度
+    _q_resv  = Q(pm__in=UBER_RESV_ALIASES)  | Q(cpm__in=UBER_RESV_ALIASES)  | (Q(pm__contains='uber') | Q(cpm__contains='uber')) & _kw_resv
+    _q_tip   = Q(pm__in=UBER_TIP_ALIASES)   | Q(cpm__in=UBER_TIP_ALIASES)   | (Q(pm__contains='uber') | Q(cpm__contains='uber')) & _kw_tip
+    _q_promo = Q(pm__in=UBER_PROMO_ALIASES) | Q(cpm__in=UBER_PROMO_ALIASES) | (Q(pm__contains='uber') | Q(cpm__contains='uber')) & _kw_promo
+
+    # 用 items_norm（已经 Lower/Trim）做筛选与聚合
+    _qs_resv  = items_norm.filter(_q_resv)
+    _qs_tip   = items_norm.filter(_q_tip)
+    _qs_promo = items_norm.filter(_q_promo)
 
     totals['uber_reservation_total'] = _sum_amount_by_is_charter(_qs_resv)
     totals['uber_tip_total']         = _sum_amount_by_is_charter(_qs_tip)
