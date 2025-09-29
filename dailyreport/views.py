@@ -714,26 +714,7 @@ def export_dailyreports_excel(request, year, month):
             return HttpResponse("日期格式应为 YYYY-MM-DD", status=400)
     # ==== END: 支持区间导出（from/to） ====
 
-    # ========== [BEGIN 保留：原来的“按业务日期”过滤] ==========
-    # if date_range:
-    #     reports = (
-    #         DriverDailyReport.objects
-    #         .filter(date__range=date_range)
-    #         .select_related("driver")
-    #         .prefetch_related("items")
-    #         .order_by("date", "driver__name")
-    #     )
-    # else:
-    #     reports = (
-    #         DriverDailyReport.objects
-    #         .filter(date__year=year, date__month=month)
-    #         .select_related("driver")
-    #         .prefetch_related("items")
-    #         .order_by("date", "driver__name")
-    #     )
-    # ========== [END   保留：原来的“按业务日期”过滤] ==========
-
-    # ========== [BEGIN 新：按“勤務開始日(work_date)”过滤] ==========
+    # ========== [BEGIN 新：按“勤務開始日(work_date)”/业务日期(date) 过滤] ==========
     from datetime import time as dtime, timedelta
     from django.db.models import Case, When, F, ExpressionWrapper, DateField
 
@@ -747,7 +728,7 @@ def export_dailyreports_excel(request, year, month):
         output_field=DateField(),
     )
 
-    # 1) 先定义 base_qs（一定要在本函数里先赋值）
+    # 1) 先定义 base_qs
     base_qs = (
         DriverDailyReport.objects
         .annotate(work_date=work_date_expr)
@@ -755,93 +736,86 @@ def export_dailyreports_excel(request, year, month):
         .prefetch_related("items")
     )
 
-    # 2) 再按 driver_id 过滤（这里会基于已经定义好的 base_qs）
+    # 2) 司机过滤
     selected_driver = None
     base_qs, selected_driver = _filter_by_driver_id(base_qs, request)
 
-    # 3) 最后在此基础上做区间/月份过滤
+    # 3) 过滤 & 排序（区间=用 date；整月=用 work_date）
     if date_range:
-        # 区间模式也用 work_date 做区间（含头含尾）
-        reports = base_qs.filter(work_date__range=date_range).order_by("work_date", "driver__name")
+        reports = base_qs.filter(date__range=date_range).order_by("date", "driver__name")
     else:
         reports = base_qs.filter(
             work_date__year=year, work_date__month=month
         ).order_by("work_date", "driver__name")
-    # ========== [END   新：按“勤務開始日(work_date)”过滤] ==========
+    # ========== [END   新：按“勤務開始日(work_date)”/业务日期(date) 过滤] ==========
 
-    # ……在 by_date 分组之后
+    # 分组：区间=按 date；整月=按 work_date（无则退回 date）
     by_date = defaultdict(list)
     for r in reports:
-        key_date = getattr(r, "work_date", None) or r.date
+        key_date = (r.date if date_range else (getattr(r, "work_date", None) or r.date))
         by_date[key_date].append(r)
 
-    # ✅ 新增：导出用支付方式别名归一
+    # ✅ 导出用支付方式别名归一
     def _pm_alias_for_export(v: str) -> str:
-        """导出用：把支付方式别名归一到 canonical 值"""
         if not v:
             return ""
         s = str(v).strip().lower()
         aliases = {
-            # 现金（ながし）
             "現金": "cash", "现金": "cash", "cash(現金)": "cash",
-            # 平台现金细分
             "uber現金": "uber_cash", "didi現金": "didi_cash", "go現金": "go_cash",
-            # 扫码
             "バーコード": "qr", "barcode": "qr", "bar_code": "qr", "qr_code": "qr",
-            # 信用卡
             "company card": "credit", "company_card": "credit", "credit card": "credit", "会社カード": "credit",
-            # 👉 关键：貸切現金里常见的写法
             "jp_cash": "jpy_cash", "jpy cash": "jpy_cash", "jpy-cash": "jpy_cash",
         }
         return aliases.get(s, s)
 
-    # ===== 留存后续：compute_row（这里开始） =====
-    def compute_row(r):
-        def norm(s): return str(s).strip().lower() if s else ""
+    # ===== compute_row（含 Uber 予約/チップ/プロモ 识别） =====
+    import re
+    TIP_PAT = re.compile(r'(チップ|tip|小费|ﾁｯﾌﾟ)', re.IGNORECASE)
 
+    def compute_row(r):
         meter_only = 0
         nagashi_cash = 0
         charter_cash = 0
         charter_uncol = 0
         amt = {"kyokushin": 0, "omron": 0, "kyotoshi": 0, "uber": 0, "credit": 0, "paypay": 0, "didi": 0}
 
-        # ➕ 新增：三项 Uber 合计（本月“金额”合计）
         uber_resv = 0
         uber_tip = 0
         uber_promo = 0
-        uber_tip_cnt = 0   # 新增：件数
 
         for it in r.items.all():
             is_charter = bool(getattr(it, "is_charter", False))
 
-            pm_raw  = getattr(it, "payment_method", None)
-            cpm_raw = getattr(it, "charter_payment_method", None)
-
-            # ✅ 归一化（关键点）
-            pm  = _pm_alias_for_export((str(pm_raw or "").strip().lower()))
-            cpm = _pm_alias_for_export((str(cpm_raw or "").strip().lower()))
+            pm  = _pm_alias_for_export((str(getattr(it, "payment_method", None) or "").strip().lower()))
+            cpm = _pm_alias_for_export((str(getattr(it, "charter_payment_method", None) or "").strip().lower()))
 
             meter_fee   = int(getattr(it, "meter_fee", 0) or 0)
             charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
 
-            note_text = (getattr(it, "note", "") or "")
-            cmt_text  = (getattr(it, "comment", "") or "")
+            note_text = (getattr(it, "note", "") or "").lower()
             val_for_this = charter_jpy if is_charter else meter_fee
 
-            # --- 共用口径：显式字段 + 关键词兜底（与月度总览一致）
-            if is_uber_tip(pm, cpm, note_text, cmt_text):
-                uber_tip += val_for_this
-                # 若你希望“Uber合计”不再重复计入这笔，打开下一行：
-                # continue
-            elif is_uber_resv(pm, cpm, note_text, cmt_text):
-                uber_resv += val_for_this
-                # continue
-            elif is_uber_promo(pm, cpm, note_text, cmt_text):
-                uber_promo += val_for_this
-                # continue
+            # —— Uber 予約 / チップ / プロモ（显式字段优先，其次关键词；三者择一）
+            UBER_TIP_ALIASES   = {"uber_tip", "uber tip", "ubertip"}
+            UBER_RESV_ALIASES  = {"uber_reservation", "uber_resv", "uber予約"}
+            UBER_PROMO_ALIASES = {"uber_promo", "uber_promotion", "uberプロモーション"}
 
+            has_uber_pm = ("uber" in pm) or (is_charter and "uber" in cpm)
+            tip_kw   = any(k in note_text for k in ["uberチップ", "チップ", "tip"])
+            res_kw   = any(k in note_text for k in ["uber予約", "予約", "reservation"])
+            promo_kw = any(k in note_text for k in ["uberプロモーション", "プロモ", "promotion"])
 
-            # ⛑ 兜底：把常见的貸切现金别名都视为“現金”
+            matched = False
+            if (pm in UBER_TIP_ALIASES) or (is_charter and cpm in UBER_TIP_ALIASES) or (has_uber_pm and tip_kw):
+                uber_tip += val_for_this; matched = True
+            elif (pm in UBER_RESV_ALIASES) or (is_charter and cpm in UBER_RESV_ALIASES) or (has_uber_pm and res_kw):
+                uber_resv += val_for_this; matched = True
+            elif (pm in UBER_PROMO_ALIASES) or (is_charter and cpm in UBER_PROMO_ALIASES) or (has_uber_pm and promo_kw):
+                uber_promo += val_for_this; matched = True
+            # 若不希望重复计入方式合计，可在 matched 时 continue
+            # if matched: continue
+
             CHARTER_CASH_KEYS_SAFE = set(CHARTER_CASH_KEYS) | {
                 "cash", "jpy_cash", "jp_cash", "rmb_cash", "self_wechat", "boss_wechat"
             }
@@ -871,7 +845,6 @@ def export_dailyreports_excel(request, year, month):
                 elif cpm in {"qr", "scanpay"}:         amt["paypay"] += charter_jpy
                 elif cpm == "didi":    amt["didi"] += charter_jpy
 
-        # ===== 留存：后续计算与返回（保持不动） =====
         fee_calc = lambda x: int((Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if x else 0
         uber_fee, credit_fee, paypay_fee, didi_fee = map(fee_calc, [amt["uber"], amt["credit"], amt["paypay"], amt["didi"]])
 
@@ -907,12 +880,12 @@ def export_dailyreports_excel(request, year, month):
             "water_total": int(water_total), "tax_ex": tax_ex, "tax": tax,
             "gas_l": float(r.gas_volume or 0), "km": float(r.mileage or 0),
             "deposit_diff": int(deposit_diff),
-            # ➕ 新增：把三项 Uber 合计返回，供写 Excel 用
             "uber_resv": int(uber_resv),
             "uber_tip": int(uber_tip),
             "uber_promo": int(uber_promo),
         }
 
+    # ==== 写 Excel ====
     output = BytesIO()
     wb = xlsxwriter.Workbook(output, {'in_memory': True, 'constant_memory': True})
 
@@ -920,8 +893,6 @@ def export_dailyreports_excel(request, year, month):
     fmt_subheader_red = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'font_color': '#CC0000'})
     fmt_border = wb.add_format({'border': 1})
     fmt_total_base = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right'})
-    fmt_neg_red = wb.add_format({'font_color': '#CC0000'})
-
     fmt_yen     = wb.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '¥#,##0'})
     fmt_yen_tot = wb.add_format({'bold': True, 'bg_color': '#FFF2CC', 'border': 1, 'align': 'right', 'num_format': '¥#,##0'})
     fmt_num_2d   = wb.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '#,##0.00'})
@@ -940,7 +911,6 @@ def export_dailyreports_excel(request, year, month):
         "未収合計","手数料合計",
         "水揚合計","税抜収入","消費税",
         "11.ガソリン(L)","12.距離(KM)","過不足",
-        # === 追加在末尾 ===
         "13.Uber予約","14.Uberチップ","15.Uberプロモーション",
     ]
     row2 = ["","","","",
@@ -952,30 +922,22 @@ def export_dailyreports_excel(request, year, month):
             "","","",
             "","",
             "",
-            # === 与 row1 对齐，末尾补空 ===
             "","",""]
 
-    # >>> DEBUG 插入开始：创建 DEBUG-raw 工作表（可选）
+    # DEBUG-raw（可选）
     debug_mode = (request.GET.get("debug") == "1")
-
     if debug_mode:
         dbg = wb.add_worksheet("DEBUG-raw")
         dbg.write_row(0, 0, [
-            "work_date", "report_id", "driver_id", "driver_name",
+            "date_or_work_date", "report_id", "driver_id", "driver_name",
             "item_id", "is_charter",
             "pm_raw", "pm_canon", "cpm_raw", "cpm_canon",
             "meter_fee", "charter_amount", "note"
         ], fmt_header)
         dbg.freeze_panes(1, 0)
-        dbg.set_column(0, 0, 12)
-        dbg.set_column(1, 1, 10)
-        dbg.set_column(2, 3, 14)
-        dbg.set_column(4, 5, 10)
-        dbg.set_column(6, 9, 16)
-        dbg.set_column(10, 11, 12)
-        dbg.set_column(12, 12, 40)
+        dbg.set_column(0, 0, 14); dbg.set_column(1, 1, 10); dbg.set_column(2, 3, 14)
+        dbg.set_column(4, 5, 10); dbg.set_column(6, 9, 16); dbg.set_column(10, 11, 12); dbg.set_column(12, 12, 40)
         rr_dbg = 1
-    # <<< DEBUG 插入结束
 
     def write_headers(ws):
         ws.write_row(0, 0, row1, fmt_header)
@@ -1010,6 +972,7 @@ def export_dailyreports_excel(request, year, month):
             else:
                 ws.write(r, c, v, fmt_total_base if is_total else fmt_border)
 
+    # 索引表
     idx_ws = wb.add_worksheet("索引")
     idx_ws.write_row(0, 0, ["日付", "件数"], fmt_header)
     rr = 1
@@ -1019,6 +982,7 @@ def export_dailyreports_excel(request, year, month):
     idx_ws.set_column(0, 0, 14); idx_ws.set_column(1, 1, 8)
     idx_ws.freeze_panes(1, 0)
 
+    # 每日 sheet
     for d, day_reports in sorted(by_date.items()):
         def _code_key(rep):
             code = getattr(rep.driver, "driver_code", "") if rep.driver else ""
@@ -1034,7 +998,7 @@ def export_dailyreports_excel(request, year, month):
 
         for rep in day_reports:
 
-            # >>> DEBUG 插入开始：把本日报每条 item 的原始/归一支付方式写入 DEBUG-raw
+            # DEBUG-raw：写原始/归一支付方式
             if debug_mode:
                 for it in rep.items.all():
                     pm_raw  = getattr(it, "payment_method", None)
@@ -1055,9 +1019,7 @@ def export_dailyreports_excel(request, year, month):
                         (getattr(it, "note", "") or "")
                     ], fmt_border)
                     rr_dbg += 1
-            # <<< DEBUG 插入结束
 
-            
             data = compute_row(rep)
             row_vals = [
                 data["driver_code"], data["driver"], data["clock_in"], data["clock_out"],
@@ -1072,7 +1034,6 @@ def export_dailyreports_excel(request, year, month):
                 data["water_total"], data["tax_ex"], data["tax"],
                 data["gas_l"], data["km"],
                 data["deposit_diff"],
-                # === 追加在末尾 ===
                 data["uber_resv"], data["uber_tip"], data["uber_promo"],
             ]
             write_mixed_row(ws, r, row_vals, is_total=False)
@@ -1094,7 +1055,6 @@ def export_dailyreports_excel(request, year, month):
             int(totals["water_total"]), int(totals["tax_ex"]), int(totals["tax"]),
             float(totals["gas_l"]), float(totals["km"]),
             int(totals["deposit_diff"]),
-            # === 追加在末尾 ===
             int(totals["uber_resv"]), int(totals["uber_tip"]), int(totals["uber_promo"]),
         ]
         write_mixed_row(ws, r, total_vals, is_total=True)
@@ -1104,11 +1064,10 @@ def export_dailyreports_excel(request, year, month):
                 'type': 'cell', 'criteria': '<', 'value': 0, 'format': wb.add_format({'font_color': '#CC0000'})
             })
 
-    # === 改动点：汇总sheet标题在区间模式下更友好 ===
+    # 汇总 Sheet（标题：区间更友好）
     summary_title = (
-        f"{date_from:%Y-%m-%d}~{date_to:%Y-%m-%d}(集計)"
-        if date_range else
-        f"{year}-{int(month):02d} 月度(集計)"
+        f"{date_from:%Y-%m-%d}~{date_to:%Y-%m-%d}(集計)" if date_range
+        else f"{year}-{int(month):02d} 月度(集計)"
     )
     summary_ws = wb.add_worksheet(summary_title)
     summary_ws.write_row(0, 0, row1, fmt_header)
@@ -1128,6 +1087,7 @@ def export_dailyreports_excel(request, year, month):
         summary_ws.set_column(c, c, w)
     summary_ws.freeze_panes(2, 2)
 
+    # 按司机聚合（逐日报行已按区间/月份正确选取）
     per_driver = {}
     def add_to_driver(rep, data):
         if not rep.driver:
@@ -1148,7 +1108,6 @@ def export_dailyreports_excel(request, year, month):
                 "water_total":0,"tax_ex":0,"tax":0,
                 "gas_l":Decimal("0"),"km":Decimal("0"),
                 "deposit_diff":0,
-                # === 追加 ===
                 "uber_resv":0,"uber_tip":0,"uber_promo":0,
             }
         row = per_driver[did]
@@ -1171,7 +1130,6 @@ def export_dailyreports_excel(request, year, month):
             "kyokushin","omron","kyotoshi","uber","uber_fee","credit","credit_fee",
             "paypay","paypay_fee","didi","didi_fee",
             "uncol_total","fee_total","water_total","tax_ex","tax","deposit_diff",
-            # === 追加 ===
             "uber_resv","uber_tip","uber_promo",
         ]:
             row[k] += int(data[k])
@@ -1187,7 +1145,7 @@ def export_dailyreports_excel(request, year, month):
 
     r = 2
     totals_sum = defaultdict(Decimal)
-    for _, row in sorted(per_driver.items(), key=lambda kv: _sort_key(kv[1]["code"], kv[1]["name"])):
+    for _, row in sorted(per_driver.items(), key=lambda kv: _sort_key(kv[1]["code"], kv[1]["name"])):  # noqa
         hours_2d = row["hours"].quantize(Decimal("0.01"))
         sum_vals = [
             row["code"], row["name"], row["days"], float(hours_2d),
@@ -1202,7 +1160,6 @@ def export_dailyreports_excel(request, year, month):
             row["water_total"], row["tax_ex"], row["tax"],
             float(row["gas_l"]), float(row["km"]),
             row["deposit_diff"],
-            # === 末尾追加 ===
             row["uber_resv"], row["uber_tip"], row["uber_promo"],
         ]
         write_mixed_row(summary_ws, r, sum_vals, is_total=False)
@@ -1229,7 +1186,6 @@ def export_dailyreports_excel(request, year, month):
         int(totals_sum["water_total"]), int(totals_sum["tax_ex"]), int(totals_sum["tax"]),
         float(totals_sum["gas_l"]), float(totals_sum["km"]),
         int(totals_sum["deposit_diff"]),
-        # === 末尾追加 ===
         int(totals_sum["uber_resv"]), int(totals_sum["uber_tip"]), int(totals_sum["uber_promo"]),
     ]
     write_mixed_row(summary_ws, r, sum_total_vals, is_total=True)
@@ -1240,24 +1196,20 @@ def export_dailyreports_excel(request, year, month):
             'type': 'cell', 'criteria': '<', 'value': 0, 'format': wb.add_format({'font_color': '#CC0000'})
         })
 
-    # >>> DEBUG 插入开始：给 DEBUG-raw 加筛选（如果有数据）
+    # DEBUG-raw 加筛选
     if debug_mode and 'rr_dbg' in locals() and rr_dbg > 1:
         dbg.autofilter(0, 0, rr_dbg - 1, 12)
-    # <<< DEBUG 插入结束
-
-    
 
     wb.close()
     output.seek(0)
 
-    # === 改动点：文件名按是否区间 + 是否选司机生成 ===
+    # 文件名
     if 'selected_driver' in locals() and selected_driver:
         code = (getattr(selected_driver, "driver_code", "") or "").strip()
         name = getattr(selected_driver, "name", "") or ""
         dlabel = f"{code}_{name}" if code else name
     else:
         dlabel = "全員"
-
 
     if date_range:
         filename = f"{date_from.strftime('%Y%m%d')}-{date_to.strftime('%Y%m%d')}_全員毎日集計.xlsx"
@@ -1270,6 +1222,7 @@ def export_dailyreports_excel(request, year, month):
         filename=quote(filename),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 # ========= 合计辅助 =========
