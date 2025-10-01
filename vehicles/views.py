@@ -58,8 +58,6 @@ from dailyreport.models import Driver, DriverDailyReport, DriverDailyReportItem
 from vehicles.models import Reservation, Tip
 from vehicles.forms import VehicleNoteForm
 from staffbook.models import Driver
-from vehicles.utils_reservation import has_conflict, lock_vehicle_reservations
-
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
@@ -340,17 +338,17 @@ def reserve_vehicle_view(request, car_id):
         ]
 
         if form.is_valid() and selected_dates:
-            cleaned    = form.cleaned_data
+            cleaned = form.cleaned_data
             start_time = cleaned['start_time']
-            end_time   = cleaned['end_time']
-            purpose    = cleaned['purpose']
+            end_time = cleaned['end_time']
+            purpose = cleaned['purpose']
 
             created_count = 0
 
             for date_str in selected_dates:
                 try:
                     start_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                    start_dt   = datetime.combine(start_date, start_time)
+                    start_dt = datetime.combine(start_date, start_time)
 
                     # 跨日判断
                     if end_time <= start_time:
@@ -371,76 +369,84 @@ def reserve_vehicle_view(request, car_id):
                             messages.error(request, f"⚠️ {start_date} 的跨日预约时间段非法。夜班必须 12:00 后开始，次日 12:00 前结束。")
                             continue
 
-                    # ✅ 统一行级锁 + 冲突检查
-                    with lock_vehicle_reservations(car):
+                    # 重复预约（当前用户，同车，同时间段，检查有效状态）
+                    duplicate_by_same_user = Reservation.objects.filter(
+                        vehicle=car,
+                        driver=request.user,
+                        date__lte=end_dt.date(),
+                        end_date__gte=start_dt.date(),
+                        status__in=[ReservationStatus.PENDING, ReservationStatus.BOOKED, ReservationStatus.OUT],
+                    ).filter(
+                        Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
+                    ).exists()
+                    if duplicate_by_same_user:
+                        messages.warning(request, f"{start_date} 你已预约该车，已跳过。")
+                        continue
 
-                        # 重复预约（当前用户，同车，同时间段）
-                        duplicate = Reservation.objects.filter(
-                            vehicle=car,
-                            driver=request.user,
-                            date__lte=end_date,
-                            end_date__gte=start_date,
-                            status__in=[ReservationStatus.PENDING, ReservationStatus.BOOKED, ReservationStatus.OUT],
-                        ).filter(
-                            Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
-                        ).exists()
-                        if duplicate:
-                            messages.warning(request, f"{start_date} 你已预约该车，已跳过。")
-                            continue
+                    # 10 小时间隔（同车、同用户）
+                    recent_same_vehicle_reservations = Reservation.objects.filter(
+                        vehicle=car,
+                        driver=request.user,
+                    ).only('date', 'start_time').order_by('-date', '-start_time')
 
-                        # 统一冲突检测（含他人预约）
-                        if has_conflict(car, start_date, end_date, start_time, end_time):
-                            messages.warning(request, f"{start_date} 存在预约冲突，已跳过。")
-                            continue
+                    too_close = False
+                    for prev in recent_same_vehicle_reservations:
+                        prev_start_dt = datetime.combine(prev.date, prev.start_time)
+                        if abs((start_dt - prev_start_dt).total_seconds()) < 36000:
+                            too_close = True
+                            break
+                    if too_close:
+                        messages.warning(request, f"⚠️ {start_date} 的预约时间与之前预约相隔不足10小时，已跳过。")
+                        continue
 
-                        # 10 小时间隔（同车、同用户）
-                        recent_qs = Reservation.objects.filter(
-                            vehicle=car,
-                            driver=request.user,
-                        ).only('date', 'start_time').order_by('-date', '-start_time')
+                    # 与其他人冲突
+                    conflict_exists = Reservation.objects.filter(
+                        vehicle=car,
+                        date__lte=end_dt.date(),
+                        end_date__gte=start_dt.date(),
+                        status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT],
+                    ).filter(
+                        Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
+                    ).exclude(driver=request.user).exists()
+                    if conflict_exists:
+                        messages.warning(request, f"{start_date} 存在预约冲突，已跳过。")
+                        continue
 
-                        too_close = False
-                        for prev in recent_qs:
-                            prev_start_dt = datetime.combine(prev.date, prev.start_time)
-                            if abs((start_dt - prev_start_dt).total_seconds()) < 36000:
-                                too_close = True
-                                break
-                        if too_close:
-                            messages.warning(request, f"⚠️ {start_date} 的预约时间与之前预约相隔不足10小时，已跳过。")
-                            continue
+                    # 创建预约（默认 PENDING）
+                    new_res = Reservation.objects.create(
+                        driver=request.user,
+                        vehicle=car,
+                        date=start_date,
+                        end_date=end_date,
+                        start_time=start_time,
+                        end_time=end_time,
+                        purpose=purpose,
+                        status=ReservationStatus.PENDING,
+                    )
 
-                        # ✅ 创建预约（默认 PENDING）
-                        new_res = Reservation.objects.create(
-                            driver=request.user,
-                            vehicle=car,
-                            date=start_date,
-                            end_date=end_date,
-                            start_time=start_time,
-                            end_time=end_time,
-                            purpose=purpose,
-                            status=ReservationStatus.PENDING,
-                        )
-                        created_count += 1
+                    created_count += 1
 
-                        # 这里沿用你原来的通知逻辑（保留即可）
-                        subject = "【新预约通知】车辆预约提交"
-                        plain_message = (
-                            f"预约人：{request.user.get_full_name() or request.user.username}\n"
-                            f"车辆：{car.license_plate}（{getattr(car, 'model', '未登记型号')}）\n"
-                            f"日期：{start_date} ~ {end_date}  {start_time} - {end_time}\n"
-                            f"用途：{purpose}"
-                        )
-                        html_message = f"""
-                        <p>有新的车辆预约提交：</p>
-                        <ul>
-                            <li><strong>预约人：</strong> {request.user.get_full_name() or request.user.username}</li>
-                            <li><strong>车辆：</strong> {car.license_plate}（{getattr(car, 'model', '未登记型号')}）</li>
-                            <li><strong>日期：</strong> {start_date} ~ {end_date}</li>
-                            <li><strong>时间：</strong> {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}</li>
-                            <li><strong>用途：</strong> {purpose}</li>
-                        </ul>
-                        """
-                        send_notification(subject, plain_message, ['jiabing.msn@gmail.com'], html_message)
+                    # 通知（略）
+                    subject = "【新预约通知】车辆预约提交"
+                    plain_message = (
+                        f"预约人：{request.user.get_full_name() or request.user.username}\n"
+                        f"车辆：{car.license_plate}（{getattr(car, 'model', '未登记型号')}）\n"
+                        f"日期：{start_date} ~ {end_date}  {start_time} - {end_time}\n"
+                        f"用途：{purpose}"
+                    )
+                    html_message = f"""
+                    <p>有新的车辆预约提交：</p>
+                    <ul>
+                        <li><strong>预约人：</strong> {request.user.get_full_name() or request.user.username}</li>
+                        <li><strong>车辆：</strong> {car.license_plate}（{getattr(car, 'model', '未登记型号')}）</li>
+                        <li><strong>日期：</strong> {start_date} ~ {end_date}</li>
+                        <li><strong>时间：</strong> {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}</li>
+                        <li><strong>用途：</strong> {purpose}</li>
+                    </ul>
+                    """
+                    send_notification(subject, plain_message, ['jiabing.msn@gmail.com'], html_message)
+
+                    print(f"✅ 创建成功: {car.license_plate} @ {start_dt} ~ {end_dt}")
 
                 except ValueError as e:
                     print(f"❌ 日期转换错误: {e}")
@@ -1095,38 +1101,15 @@ def reservation_approval_list(request):
 @staff_member_required
 def approve_reservation(request, pk):
     reservation = get_object_or_404(Reservation, pk=pk)
-
-    start_date = reservation.date
-    end_date   = reservation.end_date
-    start_time = reservation.start_time
-    end_time   = reservation.end_time
-
-    with lock_vehicle_reservations(reservation.vehicle):
-        # 审批阶段：仅与 BOOKED / OUT 冲突即拒绝
-        if has_conflict(
-            reservation.vehicle,
-            start_date, end_date,
-            start_time, end_time,
-            exclude_id=reservation.id,
-            status_scope=[ReservationStatus.BOOKED, ReservationStatus.OUT],
-        ):
-            messages.error(
-                request,
-                f"❌ 审批失败：{reservation.vehicle} 在 {start_date} {start_time}~{end_time} 已有冲突预约。"
-            )
-            return redirect('vehicles:reservation_approval_list')
-
-        reservation.status = ReservationStatus.BOOKED
-        if hasattr(reservation, 'approved_by'):
-            reservation.approved_by = request.user
-        if hasattr(reservation, 'approved_at'):
-            reservation.approved_at = timezone.now()
-        reservation.save()
-
+    reservation.status = 'booked'   # ← 不要再用 'reserved'
+    if hasattr(reservation, 'approved_by'):
+        reservation.approved_by = request.user
+    if hasattr(reservation, 'approved_at'):
+        reservation.approved_at = timezone.now()
+    reservation.save()
     notify_driver_reservation_approved(reservation)
     messages.success(request, f"✅ 预约 ID {pk} 已成功审批，并已通知司机。")
     return redirect('vehicles:reservation_approval_list')
-
 
 @login_required
 def reservation_detail_view(request, reservation_id):
@@ -1722,60 +1705,45 @@ def create_reservation(request, vehicle_id):
     if request.method == "POST":
         try:
             # 获取 POST 字段
-            date_list_raw = request.POST.get("selected_dates")  # "2025-07-07,2025-07-08"
-            start_time_str = request.POST.get("start_time")     # "09:00"
-            end_time_str   = request.POST.get("end_time")       # "21:00"
-            purpose        = request.POST.get("purpose")
+            date_list_raw = request.POST.get("selected_dates")  # 字符串："2025-07-07,2025-07-08"
+            start_time_str = request.POST.get("start_time")  # "09:00"
+            end_time_str = request.POST.get("end_time")      # "21:00"
+            purpose = request.POST.get("purpose")
 
             if not date_list_raw or not start_time_str or not end_time_str:
                 messages.error(request, "请输入完整预约信息。")
                 return redirect(request.path)
 
-            date_list  = [d.strip() for d in date_list_raw.split(",") if d.strip()]
+            date_list = [d.strip() for d in date_list_raw.split(",")]
             start_time = datetime.strptime(start_time_str, "%H:%M").time()
-            end_time   = datetime.strptime(end_time_str, "%H:%M").time()
+            end_time = datetime.strptime(end_time_str, "%H:%M").time()
 
-            # 校验时间段不超过13小时（同日口径；如需跨日时段，这里按你另一处的口径处理）
-            duration_hours = (
+            # 校验时间段不超过13小时
+            duration = (
                 datetime.combine(datetime.today(), end_time) -
                 datetime.combine(datetime.today(), start_time)
             ).total_seconds() / 3600
-            if duration_hours > 13:
+
+            if duration > 13:
                 messages.error(request, "预约时段不能超过13小时。")
                 return redirect(request.path)
 
-            created_count = 0
-
+            # 循环创建多条预约记录
             for date_str in date_list:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
 
-                # 如果支持“起早于止”视为跨天，这里可自行扩展 end_date
-                end_date = date_obj  # 与原函数一致：本入口按同日处理
+                start_dt = make_aware(datetime.combine(date_obj, start_time))
+                end_dt = make_aware(datetime.combine(date_obj, end_time))
 
-                with lock_vehicle_reservations(vehicle):
-                    # 统一冲突检测（含 PENDING/BOOKED/OUT）
-                    if has_conflict(vehicle, date_obj, end_date, start_time, end_time):
-                        messages.error(request, f"{date_str} 已存在预约冲突，请选择其他时间。")
-                        continue
+                Reservation.objects.create(
+                    user=request.user,
+                    vehicle=vehicle,
+                    start_datetime=start_dt,
+                    end_datetime=end_dt,
+                    purpose=purpose,
+                )
 
-                    # ✅ 创建预约（默认 PENDING）
-                    Reservation.objects.create(
-                        driver=request.user,
-                        vehicle=vehicle,
-                        date=date_obj,
-                        end_date=end_date,
-                        start_time=start_time,
-                        end_time=end_time,
-                        purpose=purpose,
-                        status=ReservationStatus.PENDING,
-                    )
-                    created_count += 1
-
-            if created_count > 0:
-                messages.success(request, f"✅ 成功创建 {created_count} 条预约记录！")
-            else:
-                messages.warning(request, "⚠️ 没有创建任何预约，请检查冲突或输入是否正确。")
-
+            messages.success(request, f"成功创建 {len(date_list)} 条预约记录！")
             return redirect('vehicles:vehicle_status')
 
         except Exception as e:

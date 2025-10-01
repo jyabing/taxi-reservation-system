@@ -1,3 +1,4 @@
+<!-- 原来的代码
 {# templates/partials/_messages.html #}
 {% if messages %}
   <div class="mb-3">
@@ -13,4 +14,40 @@
       </div>
     {% endfor %}
   </div>
+{% endif %}
+ -->
+
+{# templates/partials/_messages.html #}
+{% if messages %}
+<div class="modal fade" id="globalNoticeModal" tabindex="-1"
+     data-bs-backdrop="static" data-bs-keyboard="false" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <div class="modal-header">
+        <h5 class="modal-title">系统提示</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        {% for message in messages %}
+          <div class="fs-5 mb-2 text-{{ message.tags|default:'info' }}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function(){
+  var el = document.getElementById('globalNoticeModal');
+  if(el){
+    var modal = new bootstrap.Modal(el, {backdrop:'static', keyboard:false});
+    modal.show();
+  }
+});
+</script>
 {% endif %}
