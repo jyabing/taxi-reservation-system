@@ -39,7 +39,7 @@
     <li><a role="menuitem" href="{% url 'vehicles:reservation_dashboard' %}">🚖 配车系统</a></li>
 
     {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
-      <li><a role="menuitem" href="{% url 'staffbook:dashboard' %}">📒 社員台帳</a></li>
+      <li><a role="menuitem" href="{% url 'staffbook:driver_list' %}">📒 社員台帳</a></li>
     {% endif %}
 
     {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
