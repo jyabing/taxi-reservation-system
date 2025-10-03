@@ -11,23 +11,22 @@
 })();
 
 // ============ 工具函数（全局可用） ============
-// >>> 追加: 排序开关（仅提交时排序）
 const ENABLE_LIVE_SORT = false;
-// <<< 追加 end
 function $(sel, root){ return (root||document).querySelector(sel); }
 function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
 function getRow(el){ return el?.closest("tr.report-item-row") || el?.closest("tr"); }
 function toInt(v, fallback=0){ const n=parseInt(String(v??"").replace(/[^\d-]/g,""),10); return Number.isFinite(n)?n:fallback; }
+function _yen(v){ if(v==null) return 0; const n=Number(String(v).replace(/[,，\s]/g,'')); return isFinite(n)?n:0; }
 
-// ============ 作用域获取（基于按钮所在的 form） ============
+// ============ 作用域获取 ============
 function getFormScope() {
   const btn = document.getElementById('insert-at-btn') || document.getElementById('add-row-btn') || document.querySelector('table.report-table');
   const form = btn ? (btn.closest('form') || document) : document;
   const table = form.querySelector('table.report-table') || form.querySelector('table');
-  const tpl = form.querySelector('#empty-form-template'); // 模板 tbody
+  const tpl = form.querySelector('#empty-form-template');
   let bodies = [];
   if (table) bodies = Array.from(table.tBodies || table.querySelectorAll('tbody'));
-  const dataTb = bodies.find(b => b !== tpl) || bodies[0] || null; // 数据 tbody
+  const dataTb = bodies.find(b => b !== tpl) || bodies[0] || null;
   const total = form.querySelector("input[name$='-TOTAL_FORMS']");
   return { form, table, tpl, dataTb, total };
 }
@@ -35,12 +34,9 @@ function getFormScope() {
 // ============ 时间/工时 ============
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof flatpickr === 'function') {
-    flatpickr(".time-input", {
-      enableTime:true, noCalendar:true, dateFormat:"H:i", time_24hr:true, locale:"ja"
-    });
+    flatpickr(".time-input", { enableTime:true, noCalendar:true, dateFormat:"H:i", time_24hr:true, locale:"ja" });
   }
 });
-
 function updateDuration() {
   const form = getFormScope().form;
   const inEl  = $("input[name='clock_in']", form);
@@ -89,65 +85,48 @@ function updateRowNumbersAndIndexes() {
   rows.forEach((row, i) => { row.querySelector(".row-number")?.replaceChildren(document.createTextNode(i+1)); });
 }
 
-/* === [SameTime grouping BEGIN] 新增：同一时间从第2行开始加“↳”并缩进 === */
+// ============ 同时刻缩进 ============
 function updateSameTimeGrouping() {
   const { dataTb } = getFormScope();
   if (!dataTb) return;
-
-  // 1) 收集所有可见行，按时间字符串分组（例如 "10:00"）
   const rows = $all("tr.report-item-row", dataTb).filter(r => r.style.display !== "none");
   const groups = Object.create(null);
-
   rows.forEach(row => {
     const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
     const t = (timeInput ? String(timeInput.value).trim() : "");
-    const key = t || "__EMPTY__";          // 空时间也分到一组，但不会加箭头
+    const key = t || "__EMPTY__";
     (groups[key] ||= []).push(row);
   });
-
-  // 2) 遍历组：每组的第1条正常、从第2条开始加前缀与类
   Object.entries(groups).forEach(([key, arr]) => {
-    // 先把这一组里所有行恢复为“无前缀”的状态
     arr.forEach(row => {
       row.classList.remove("same-time-child");
       const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
       const cell = timeInput?.closest("td");
       if (!cell) return;
-      const pref = cell.querySelector(".same-time-prefix");
-      if (pref) pref.remove(); // 清理老前缀
+      const pref = cell.querySelector(".same-time-prefix"); if (pref) pref.remove();
     });
-
-    if (key === "__EMPTY__") return; // 时间为空的不做箭头逻辑
-
-    // 从第2条开始加“↳ ”
+    if (key === "__EMPTY__") return;
     if (arr.length > 1) {
       arr.forEach((row, idx) => {
-        if (idx === 0) return; // 第一条不加
+        if (idx === 0) return;
         row.classList.add("same-time-child");
         const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
-        const cell = timeInput?.closest("td");
-        if (!cell) return;
+        const cell = timeInput?.closest("td"); if (!cell) return;
         const span = document.createElement("span");
-        span.className = "same-time-prefix";
-        span.textContent = "↳ ";
-        // 把箭头插在时间 input 前面
+        span.className = "same-time-prefix"; span.textContent = "↳ ";
         cell.insertBefore(span, timeInput);
       });
     }
   });
 }
-/* === [SameTime grouping END] === */
 
 // ============ 行事件绑定 ============
 function bindRowEvents(row) {
-  // time picker on row fields (if flatpickr present)
   if (typeof flatpickr === 'function') {
     $all(".time-input", row).forEach(el => {
       flatpickr(el, { enableTime:true, noCalendar:true, dateFormat:"H:i", time_24hr:true, locale:"ja" });
     });
   }
-
-  // 删除（已有行）
   $all(".delete-row", row).forEach(btn => {
     btn.addEventListener("click", () => {
       if (!confirm("确定删除此行？")) return;
@@ -156,41 +135,27 @@ function bindRowEvents(row) {
         cb.checked = true;
         row.style.display = "none";
         updateRowNumbersAndIndexes();
-        updateSameTimeGrouping(); // <<< 新增：删除后同步组样式
+        updateSameTimeGrouping();
         updateTotals();
         updateSmartHintPanel?.();
-        if (ENABLE_LIVE_SORT) window.__resortByTime?.(); // >>> 追加：删除后也重排
+        if (ENABLE_LIVE_SORT) window.__resortByTime?.();
       }
     });
   });
-
-  // 移除（新建行）
   $all(".remove-row", row).forEach(btn => {
     btn.addEventListener("click", () => {
       if (!confirm("确定移除此行？")) return;
       const cb = row.querySelector("input[name$='-DELETE']");
-      if (cb) {
-        cb.checked = true;
-        row.style.display = "none";
-      } else {
-        row.remove();
-      }
+      if (cb) { cb.checked = true; row.style.display = "none"; }
+      else { row.remove(); }
       updateRowNumbersAndIndexes();
-      updateSameTimeGrouping(); // <<< 新增
+      updateSameTimeGrouping();
       updateTotals();
       updateSmartHintPanel?.();
-      if (ENABLE_LIVE_SORT) window.__resortByTime?.(); // >>> 追加
+      if (ENABLE_LIVE_SORT) window.__resortByTime?.();
     });
   });
 
-  // 标记/待入 UI
-  const checkbox = row.querySelector(".mark-checkbox");
-  if (checkbox) {
-    row.classList.toggle("has-note", checkbox.checked);
-    checkbox.addEventListener("change", () => row.classList.toggle("has-note", checkbox.checked));
-  }
-
-  // 合计、智能提示联动
   const amountInput = row.querySelector("input[name$='-meter_fee']");
   const methodSelect= row.querySelector("select[name$='-payment_method']");
   const pendingCb   = row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox");
@@ -201,34 +166,29 @@ function bindRowEvents(row) {
   if (amountInput)  amountInput.addEventListener("input",  () => { updateTotals(); updateSmartHintPanel(); });
   if (methodSelect) methodSelect.addEventListener("change", () => { updateTotals(); updateSmartHintPanel(); });
 
-  // >>> 追加: 调整“时间”即重排 + 重新分组
   const rideTimeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
   if (rideTimeInput) {
     rideTimeInput.addEventListener("change", () => {
       if (ENABLE_LIVE_SORT) window.__resortByTime?.();
-      updateRowNumbersAndIndexes();
-      updateSameTimeGrouping(); // <<< 新增：时间变化后刷新组
+      updateRowNumbersAndIndexes(); updateSameTimeGrouping();
     });
     rideTimeInput.addEventListener("input",  () => {
       if (ENABLE_LIVE_SORT) window.__resortByTime?.();
-      updateRowNumbersAndIndexes();
-      updateSameTimeGrouping(); // <<< 新增
+      updateRowNumbersAndIndexes(); updateSameTimeGrouping();
     });
   }
-  // <<< 追加 end
 
   if (pendingCb) {
     pendingCb.addEventListener("change", () => {
       updateTotals(); updateSmartHintPanel();
       if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
-      if (ENABLE_LIVE_SORT) window.__resortByTime?.();// 待入状态变化也重排（可选）
+      if (ENABLE_LIVE_SORT) window.__resortByTime?.();
     });
     if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
   }
   if (charterAmountInput) charterAmountInput.addEventListener("input", updateSmartHintPanel);
   if (charterCheckbox)    charterCheckbox.addEventListener("change", updateSmartHintPanel);
 }
-
 
 // ============ 模板克隆 & 插入 ============
 function cloneRowFromTemplate() {
@@ -237,55 +197,36 @@ function cloneRowFromTemplate() {
   const count = parseInt(total.value || '0', 10) || 0;
   const tmp = document.createElement('tbody');
   tmp.innerHTML = tpl.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count+1);
-  const tr = tmp.querySelector('tr');
-  if (!tr) return null;
-  // 解除隐藏/禁用
+  const tr = tmp.querySelector('tr'); if (!tr) return null;
   tr.classList.remove('d-none','hidden','invisible','template-row');
   tr.style.removeProperty('display'); tr.removeAttribute('aria-hidden');
   tr.querySelectorAll('input,select,textarea,button').forEach(el=>{ el.disabled=false; el.removeAttribute('disabled'); });
-  // 递增 TOTAL_FORMS
   total.value = String(count + 1);
   return tr;
 }
-
 function addRowToEnd() {
-  const { dataTb } = getFormScope();
-  if (!dataTb) return false;
-  const tr = cloneRowFromTemplate();
-  if (!tr) return false;
-  dataTb.appendChild(tr);
-  bindRowEvents(tr);
-  updateRowNumbersAndIndexes();
-  updateSameTimeGrouping(); // <<< 新增：新增行后刷新组
-  updateTotals();
-  updateSmartHintPanel();
-  window.__resortByTime?.(); // >>> 追加：新增后重排
+  const { dataTb } = getFormScope(); if (!dataTb) return false;
+  const tr = cloneRowFromTemplate(); if (!tr) return false;
+  dataTb.appendChild(tr); bindRowEvents(tr);
+  updateRowNumbersAndIndexes(); updateSameTimeGrouping(); updateTotals(); updateSmartHintPanel();
+  window.__resortByTime?.();
   try { tr.scrollIntoView({behavior:'smooth', block:'center'});}catch(e){}
   (tr.querySelector('.time-input')||tr.querySelector('input,select'))?.focus?.();
   return true;
 }
-
 function insertRowAfter(indexOneBased) {
-  const { dataTb } = getFormScope();
-  if (!dataTb) return false;
-  const tr = cloneRowFromTemplate();
-  if (!tr) return false;
-
+  const { dataTb } = getFormScope(); if (!dataTb) return false;
+  const tr = cloneRowFromTemplate(); if (!tr) return false;
   const rows = $all("tr.report-item-row", dataTb);
   const all  = rows.length ? rows : $all("tr", dataTb);
-  if (all.length === 0) {
-    dataTb.appendChild(tr);
-  } else {
+  if (all.length === 0) dataTb.appendChild(tr);
+  else {
     const n = Math.min(Math.max(1, indexOneBased||1), all.length);
-    const anchor = all[n-1];
-    (anchor.parentNode || dataTb).insertBefore(tr, anchor.nextSibling);
+    const anchor = all[n-1]; (anchor.parentNode || dataTb).insertBefore(tr, anchor.nextSibling);
   }
   bindRowEvents(tr);
-  updateRowNumbersAndIndexes();
-  updateSameTimeGrouping(); // <<< 新增
-  updateTotals();
-  updateSmartHintPanel();
-  window.__resortByTime?.(); // >>> 追加：按指定行插入后重排
+  updateRowNumbersAndIndexes(); updateSameTimeGrouping(); updateTotals(); updateSmartHintPanel();
+  window.__resortByTime?.();
   try { tr.scrollIntoView({behavior:'smooth', block:'center'});}catch(e){}
   (tr.querySelector('.time-input')||tr.querySelector('input,select'))?.focus?.();
   return true;
@@ -315,6 +256,7 @@ function resolveJsPaymentMethod(raw) {
   return val;
 }
 
+// ============ 合计主函数（含 ETC 口径） ============
 function updateTotals() {
   const { dataTb } = getFormScope();
   if (!dataTb) return;
@@ -322,17 +264,15 @@ function updateTotals() {
   const totalMap = { cash:0, uber:0, didi:0, go:0, credit:0, kyokushin:0, omron:0, kyotoshi:0, qr:0 };
   let meterSum=0, charterCashTotal=0, charterUncollectedTotal=0;
 
-  // >>> 追加: 三类 Uber 的独立合计
+  // Uber 三类
   let uberReservationTotal = 0, uberReservationCount = 0;
   let uberTipTotal         = 0, uberTipCount         = 0;
   let uberPromotionTotal   = 0, uberPromotionCount   = 0;
   let specialUberSum = 0;
-  // <<< 追加结束
 
   $all(".report-item-row", dataTb).forEach(row => {
     const delFlag = row.querySelector("input[name$='-DELETE']");
     if ((delFlag && delFlag.checked) || row.style.display === "none") return;
-
     const isPending = (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
     if (isPending) return;
 
@@ -342,7 +282,6 @@ function updateTotals() {
     const charterAmount = toInt(row.querySelector(".charter-amount-input")?.value, 0);
     const charterPayMethod = row.querySelector(".charter-payment-method-select")?.value || "";
 
-    // >>> 修改: 非貸切时，三类 Uber（予約/チップ/プロモ）只计入売上合計，不进入 meterSum
     if (!isCharter) {
       if (fee > 0) {
         const raw = payment;
@@ -350,7 +289,6 @@ function updateTotals() {
         const isUberTip         = raw === 'uber_tip';
         const isUberPromotion   = raw === 'uber_promotion';
         const isSpecialUber     = isUberReservation || isUberTip || isUberPromotion;
-
         if (isSpecialUber) {
           specialUberSum += fee;
           if (isUberReservation) { uberReservationTotal += fee; uberReservationCount += 1; }
@@ -368,25 +306,18 @@ function updateTotals() {
       if (CASH.includes(charterPayMethod)) charterCashTotal += charterAmount;
       else if (UNCOLLECTED.includes(charterPayMethod)) charterUncollectedTotal += charterAmount;
     }
-    // <<< 修改结束
   });
 
-  // >>> 修改: 売上合計 = meterSum（不含三类 Uber）+ specialUberSum + 貸切現金 + 貸切未収
   const salesTotal = meterSum + specialUberSum + charterCashTotal + charterUncollectedTotal;
-  // <<< 修改结束
 
   const idText = (id, n) => { const el=document.getElementById(id); if (el) el.textContent = Number(n||0).toLocaleString(); };
   idText("total_meter_only", meterSum);
-
-  // >>> 追加: 写回三类 Uber 的合计与件数
   idText("uber-reservation-total", uberReservationTotal);
   idText("uber-reservation-count", uberReservationCount);
   idText("uber-tip-total",         uberTipTotal);
   idText("uber-tip-count",         uberTipCount);
   idText("uber-promotion-total",   uberPromotionTotal);
   idText("uber-promotion-count",   uberPromotionCount);
-  // <<< 追加结束
-
   idText("total_meter", salesTotal);
   idText("sales-total", salesTotal);
   idText("total_cash", totalMap.cash);
@@ -395,89 +326,61 @@ function updateTotals() {
   idText("charter-uncollected-total", charterUncollectedTotal);
   Object.entries(totalMap).forEach(([k,v]) => idText(`total_${k}`, v));
 
-  const depositInput = toInt(document.getElementById("deposit-input")?.value, 0);
-  const shortage = depositInput - totalMap.cash - charterCashTotal;
-  const diffEl = document.getElementById("difference-output")
-    || document.getElementById("deposit-difference")
-    || document.getElementById("shortage-diff");
-  if (diffEl) diffEl.textContent = shortage.toLocaleString();
+  // ==== ETC 统一口径 ====
+  const rideEtc     = _yen(document.querySelector('#id_etc_collected')?.value);
+  const riderPayer  = (document.querySelector('#id_etc_rider_payer, .js-etc-rider-payer')?.value || 'company').trim();
 
-  // ==== [ETC LOGIC PATCH START @ 2025-09-14 Final] ====
-  // 工具
-  function _yen(v){ if(v==null) return 0; const n=Number(String(v).replace(/[,，\s]/g,'')); return isFinite(n)?n:0; }
-
-  // 乘車ETC：你模板里是 {{ form.etc_collected }} -> #id_etc_collected
-  const rideEtc  = _yen(document.querySelector('#id_etc_collected')?.value);
-  // 乘車ETC 支付方式：你模板里是 {{ form.etc_payment_method }} -> #id_etc_payment_method
-  const rideMeth = (document.querySelector('#id_etc_payment_method, .js-ride-etc-method')?.value || '').trim();
-
-  // 空車ETC 金額：优先**可见输入**（.js-empty-etc-amount），避免命中隐藏控件
   const emptyEtcInput = document.querySelector('.js-empty-etc-amount') || document.querySelector('#id_etc_uncollected');
   let emptyEtc = _yen(emptyEtcInput?.value);
   if (!emptyEtc) {
     const txt = document.querySelector("div[style*='ui-monospace']")?.textContent || "";
-    // 支持 “空車ETC 500円” 的格式
     const m = txt.match(/空車ETC\s*([0-9,]+)/);
     if (m) emptyEtc = _yen(m[1]);
   }
-
-  // 空車ETC 卡/回程費（都用你的真实 id）
   const emptyCard  = (document.querySelector('#id_etc_empty_card')?.value || '').trim();         // 'company' | 'own'
   const retClaimed = _yen(document.querySelector('#id_etc_return_fee_claimed')?.value);
-  const retMethod  = (document.querySelector('#id_etc_return_fee_method')?.value || '').trim();   // 'none' | 'app_ticket' | 'cash_to_driver'
+  const retMethod  = (document.querySelector('#id_etc_return_fee_method')?.value || '').trim();  // 'none' | 'app_ticket' | 'cash_to_driver'
 
-  // 1) ETC 应收合计 = 乗車ETC + 空車ETC
-  const etcReceivable = rideEtc + emptyEtc;
+  // 应收：公司承担的才计入（乗車=会社カード，空車=会社カード）
+  let etcReceivableRidePart = (riderPayer === 'company') ? rideEtc : 0;
+  let emptyEtcReceivable    = (emptyCard === 'company')  ? emptyEtc : 0;
+  const etcReceivable = etcReceivableRidePart + emptyEtcReceivable;
+
   const etcReceivableEl = document.querySelector('#etc-expected-output, .js-etc-receivable');
   if (etcReceivableEl) etcReceivableEl.value = etcReceivable.toLocaleString();
+  const hiddenExpected = document.getElementById('id_etc_expected');
+  if (hiddenExpected) hiddenExpected.value = etcReceivable;
 
-  // 2) 空車ETC → 司机负担 / 未収ETC（仅公司卡参与）
-  let driverBurden = 0;
-  let uncollectedEtc = 0;
-  if (emptyCard === 'company') {
-    if (retMethod === 'app_ticket') {
-      const cover = Math.min(retClaimed, emptyEtc);
-      driverBurden   = Math.max(emptyEtc - cover, 0);
-      uncollectedEtc = Math.max(retClaimed - emptyEtc, 0);
-    } else {
-      driverBurden = emptyEtc;
-    }
-  }
-
-  // 蓝色框同步（你模板里的 #etc-diff-display）
-  const diffBox = document.getElementById('etc-diff-display');
-  if (diffBox) {
-    diffBox.className = (driverBurden > 0 || uncollectedEtc > 0) ? 'alert alert-warning small py-1 px-2 mt-1'
-                                                                : 'alert alert-info small py-1 px-2 mt-1';
-    diffBox.innerText = `未收 ETC：${uncollectedEtc.toLocaleString()} 円；司机负担：${driverBurden.toLocaleString()} 円`;
-  }
-
-  // 如仍保留隐藏的 etc_uncollected（方案B），同步它的值，避免提交旧值
-  document.querySelectorAll('#id_etc_uncollected, #id_etc_uncollected_hidden').forEach(el => {
-    if (el) el.value = String(emptyEtc);
-  });
-
-  // 3) 過不足：自分ETC卡计入
-  const income      = _yen(document.querySelector('#id_income, .income-input')?.value);
-  const cashNagashi = _yen(document.querySelector('#id_cash_nagashi, .cash-nagashi-input')?.value);
-  const charterCash = _yen(document.querySelector('#id_charter_cash, .charter-cash-input')?.value);
+  // —— 過不足（最终口径）——
+  // 基础：入金 - 現金(ながし) - 貸切現金
+  const income      = _yen(document.getElementById('deposit-input')?.value);
+  const cashNagashi = totalMap.cash;
+  const charterCash = charterCashTotal;
   let imbalance = income - cashNagashi - charterCash;
-  if (rideMeth === 'self') {
-    imbalance += rideEtc;
-  }
+
+  // 乘車ETC = 自己カード → 公司月后返还给司机 => 计入“過不足（+）”
+  if (riderPayer === 'own') imbalance += rideEtc;
+
+  // 空車ETC = 自己カード：
+  //  - 若回程費=アプリ/チケット：双方抵销为 0，不影响公司应收与過不足
+  //  - 若非一体结算：这部分也不属于公司侧收支，不计入公司過不足
+  // => 因此这里对空車“自己卡”不做任何加减
+
+  const diffEl = document.getElementById("difference-output")
+              || document.getElementById("deposit-difference")
+              || document.getElementById("shortage-diff");
+  if (diffEl) diffEl.textContent = Number(imbalance||0).toLocaleString();
+
   const imbalanceEl = document.querySelector('#id_imbalance, .imbalance-total');
   if (imbalanceEl) {
     if ('value' in imbalanceEl) imbalanceEl.value = imbalance.toLocaleString();
     else imbalanceEl.textContent = imbalance.toLocaleString();
   }
-  // ==== [ETC LOGIC PATCH END @ 2025-09-14 Final] ====
 }
-
 
 // ============ 智能提示面板 ============
 function updateSmartHintPanel() {
   const panel = document.querySelector("#smart-hint-panel"); if (!panel) return;
-
   const cashTotal     = toInt(document.querySelector("#total_cash")?.textContent, 0);
   const etcCollected  = toInt(document.querySelector("#id_etc_collected")?.value, 0);
   const etcUncollected= toInt(document.querySelector("#id_etc_uncollected")?.value, 0);
@@ -523,68 +426,59 @@ function updateSmartHintPanel() {
   panel.innerHTML = html;
 }
 
-// ============ ETC 相关 ============
-function readIntById(id, fallback=0){ const el=document.getElementById(id); if(!el) return fallback; const raw=el.value??el.textContent??`${fallback}`; return toInt(raw,fallback); }
-function updateEtcDifference() {
-  const rideTotal = readIntById('id_etc_collected', 0);
+// ============ ETC 相关（仅黄框/司机负担，不再改应收） ============
+function readIntById(id, fallback=0){
+  const el=document.getElementById(id);
+  if(!el) return fallback;
+  const raw=el.value??el.textContent??`${fallback}`;
+  return toInt(raw,fallback);
+}
 
-  // 有可编辑的“空車ETC 金額”输入框
+function updateEtcDifference() {
   const hasNewEmpty = !!document.getElementById('id_etc_uncollected');
   let emptyAmount = hasNewEmpty ? readIntById('id_etc_uncollected', 0) : 0;
 
-  // 回程費
   const returnFee = hasNewEmpty ? readIntById('id_etc_return_fee_claimed', 0) : 0;
   const returnFeeMethod = hasNewEmpty ? (document.getElementById('id_etc_return_fee_method')?.value || 'none') : 'none';
   const emptyCardRaw = hasNewEmpty ? (document.getElementById('id_etc_empty_card')?.value || 'company') : 'company';
   const emptyCard = (emptyCardRaw === 'company') ? 'company_card' : 'personal_card';
   const coveredByCustomer = (returnFeeMethod === 'app_ticket') ? returnFee : 0;
 
-  
   let etcUncollected = 0, etcDriverBurden = 0;
 
-
   if (hasNewEmpty) {
-    // 仅公司卡参与覆盖/负担；自己卡只做记录
     if (emptyCard === 'company_card' || emptyCard === '') {
+      const cover = Math.min(coveredByCustomer, emptyAmount);
+      etcDriverBurden = Math.max(0, emptyAmount - cover);
       etcUncollected  = Math.max(0, coveredByCustomer - emptyAmount);
-      etcDriverBurden = Math.max(0, emptyAmount - coveredByCustomer);
+    } else {
+      // 自己卡：一体结算互抵为 0；非一体也不计公司侧未收/负担
+      etcUncollected = 0; etcDriverBurden = 0;
     }
   } else {
-    // 老页面兜底（几乎不会走到）
     etcUncollected  = readIntById('id_etc_uncollected', 0);
     etcDriverBurden = readIntById('id_etc_shortage', 0);
   }
 
-  // 蓝框展示
   const display = document.getElementById('etc-diff-display');
   if (display) {
-    display.className = (etcDriverBurden > 0 || etcUncollected > 0) ? 'alert alert-warning' : 'alert alert-info';
-    display.innerText = `未收ETC：${etcUncollected.toLocaleString()} 円；司机负担：${etcDriverBurden.toLocaleString()} 円`;
+    display.className = (etcDriverBurden > 0 || etcUncollected > 0) ? 'alert alert-warning small py-1 px-2 mt-1'
+                                                                    : 'alert alert-info small py-1 px-2 mt-1';
+    display.innerText = `未收 ETC：${etcUncollected.toLocaleString()} 円；司机负担：${etcDriverBurden.toLocaleString()} 円`;
   }
-  // ⛔ 这行会把“空車ETC 金額”输入框写回计算值，导致无法输入
-  // if (document.getElementById('id_etc_uncollected')) document.getElementById('id_etc_uncollected').value = etcUncollected;
 
-  // 可选：有隐藏字段就把“未收ETC”写进去，便于提交存档
   const hiddenUncol = document.getElementById('id_etc_uncollected_hidden');
   if (hiddenUncol) hiddenUncol.value = etcUncollected;
 
-  // 司机负担写回（你的原逻辑）
-  if (document.getElementById('id_etc_shortage')) {
-    const el = document.getElementById('id_etc_shortage');
-    el.value = etcDriverBurden;
-    el.classList.toggle('text-danger', etcDriverBurden > 0);
-    el.classList.toggle('fw-bold', etcDriverBurden > 0);
+  const etcShortEl = document.getElementById('id_etc_shortage');
+  if (etcShortEl) {
+    etcShortEl.value = etcDriverBurden;
+    etcShortEl.classList.toggle('text-danger', etcDriverBurden > 0);
+    etcShortEl.classList.toggle('fw-bold', etcDriverBurden > 0);
   }
-
-  // 这里又从 DOM 读 #id_etc_uncollected 参与应收合计应收合计直接用“乘车ETC + 空车ETC金额（用户输入）”
-  const etcExpected = (rideTotal || 0) + (emptyAmount || 0);
-  const expectedDisplay = document.getElementById('etc-expected-output');
-  if (expectedDisplay) expectedDisplay.value = etcExpected.toLocaleString();
-  const hiddenExpected = document.getElementById('id_etc_expected');
-  if (hiddenExpected) hiddenExpected.value = etcExpected;
 }
-
 function updateEtcShortage(){ updateEtcDifference(); }
+
 function updateEtcInclusionWarning() {
   const deposit = readIntById('id_deposit_amount', readIntById('deposit-input', 0));
   const cashNagashi = readIntById('total_cash', 0);
@@ -605,7 +499,7 @@ function updateEtcInclusionWarning() {
   }
 }
 
-// ============ 貸切：行状态控制 ============
+// ============ 貸切：行状态 ============
 function applyCharterState(row, isCharter) {
   if (!row) return;
   const meterInput           = row.querySelector(".meter-fee-input");
@@ -636,17 +530,14 @@ function applyCharterState(row, isCharter) {
   }
   updateTotals();
 }
-
 function hydrateAllCharterRows() {
   $all("input[type='checkbox'][name$='-is_charter']").forEach(chk => applyCharterState(getRow(chk), chk.checked));
 }
 
 // ============ 页面主绑定 ============
 document.addEventListener('DOMContentLoaded', () => {
-  // 1) 首屏为所有现有行绑事件
   $all("tr.report-item-row").forEach(bindRowEvents);
 
-  // 2) 列表内“向下插入”按钮（**只在表格内委托一次，避免递归/重复绑定**）
   const { dataTb } = getFormScope();
   if (dataTb) {
     dataTb.addEventListener("click", (e) => {
@@ -655,18 +546,14 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       const row = getRow(btn);
       const index = row ? ( ($all("tr.report-item-row", dataTb).indexOf ? $all("tr.report-item-row", dataTb).indexOf(row) : $all("tr.report-item-row", dataTb).findIndex(r=>r===row)) + 1 ) : 1;
-      insertRowAfter(index); // 在当前行之后插入
+      insertRowAfter(index);
     });
   }
-
-  // 3) 末行新增
   const addBtn = document.getElementById('add-row-btn');
   if (addBtn && !addBtn.dataset.boundOnce) {
     addBtn.dataset.boundOnce = "1";
     addBtn.addEventListener('click', (e) => { e.preventDefault(); addRowToEnd(); });
   }
-
-  // 4) 指定行插入（**唯一入口**）
   const idxBtn   = document.getElementById('insert-at-btn');
   const idxInput = document.getElementById('insert-index-input');
   if (idxBtn && idxInput && !idxBtn.dataset.boundOnce) {
@@ -674,63 +561,44 @@ document.addEventListener('DOMContentLoaded', () => {
     idxBtn.addEventListener('click', (e) => {
       e.preventDefault();
       const v = parseInt(idxInput.value, 10) || 1;
-      insertRowAfter(v); // 在第 v 行之后插入
+      insertRowAfter(v);
     });
   }
 
-  // 5) 其他输入监听
-  // ==== [ETC BIND PATCH START @ 2025-09-14] ====
+  // 监听（含 rider payer）
   [
-    // 乘車ETC 现金（保持原样）
-    ['id_etc_collected_cash',   [updateEtcDifference, updateEtcShortage]],
-
-    // 空車ETC 金額：输入会影响“应收合计/司机负担/未収ETC” → 追加 updateTotals
-    ['id_etc_uncollected',      [updateEtcDifference, updateEtcShortage, updateTotals]],
-
-    // 乘車ETC 合计：也会影响“应收合计/過不足” → 保持并触发 updateTotals
-    ['id_etc_collected',        [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
-
-    // 入金：影响差额提示
-    ['id_deposit_amount',       [updateEtcDifference, updateEtcInclusionWarning]],
-
-    // 工时
-    ['clock_in',                [updateDuration]],
-    ['clock_out',               [updateDuration]],
-    ['break-time-input',        [updateDuration]],
-
-    // 空車ETC 卡别：公司/自己卡切换影响“司机负担/未収ETC/应收合计”
-    ['id_etc_empty_card',       [updateTotals]],
-
-    // ↓↓↓ 新增：回程费覆盖相关 & 乘車ETC 支付方式（自分卡影响過不足）
-    ['id_etc_return_fee_method',[updateTotals]],
-    ['id_etc_return_fee_claimed',[updateTotals]],
-    ['id_etc_payment_method',   [updateTotals]],
+    ['id_etc_collected_cash',    [updateEtcDifference, updateEtcShortage]],
+    ['id_etc_uncollected',       [updateEtcDifference, updateEtcShortage, updateTotals]],
+    ['id_etc_collected',         [updateEtcInclusionWarning, updateEtcShortage, updateTotals]],
+    ['id_etc_rider_payer',       [updateTotals]],
+    ['id_deposit_amount',        [updateEtcDifference, updateEtcInclusionWarning]],
+    ['clock_in',                 [updateDuration]],
+    ['clock_out',                [updateDuration]],
+    ['break-time-input',         [updateDuration]],
+    ['id_etc_empty_card',        [updateEtcDifference, updateTotals]],
+    ['id_etc_return_fee_method', [updateEtcDifference, updateTotals]],
+    ['id_etc_return_fee_claimed',[updateEtcDifference, updateTotals]],
+    ['id_etc_payment_method',    [updateTotals]],
   ].forEach(([id, fns]) => {
     const el = document.getElementById(id);
     if (el) {
-      // 输入型控件
       fns.forEach(fn => el.addEventListener("input", fn));
-      // 选择型控件（select）用 change 更稳
-      if (el.tagName === 'SELECT') {
-        fns.forEach(fn => el.addEventListener("change", fn));
-      }
+      if (el.tagName === 'SELECT') fns.forEach(fn => el.addEventListener("change", fn));
     }
   });
-  // ==== [ETC BIND PATCH END @ 2025-09-14] ====
 
-  // 6) 初始执行（顺序：时长→ETC→编号→同时间分组→合计→提示→貸切状态）
   updateDuration();
   updateEtcDifference();
   updateEtcShortage();
   updateEtcInclusionWarning();
   updateRowNumbersAndIndexes();
-  updateSameTimeGrouping(); // <<< 新增：页面初次渲染后做一次分组
+  updateSameTimeGrouping();
   updateTotals();
   updateSmartHintPanel();
   hydrateAllCharterRows();
 });
 
-// ============ 夜班排序（提交前 DOM 排序，不改 name/index） ============
+// ============ 夜班排序 ============
 (function () {
   function parseHHMM(str) {
     if (!str) return null;
@@ -760,14 +628,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     pairs.sort((a, b) => a.key - b.key).forEach(p => dataTb.appendChild(p.row));
     let idx = 1; pairs.forEach(p => { const num = p.row.querySelector(".row-number"); if (num) num.textContent = idx++; });
-    // —— 排序后做一次“同时间分组”以保持箭头和缩进正确 ——
     if (typeof updateSameTimeGrouping === "function") updateSameTimeGrouping();
   }
-
-  // >>> 追加: 暴露排序函数，供其它事件实时调用
   window.__resortByTime = sortRowsByTime;
-  // <<< 追加 end
-
   window.addEventListener("DOMContentLoaded", () => {
     const form = document.querySelector('form[method="post"]'); if (!form) return;
     form.addEventListener('submit', () => {
@@ -775,8 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (typeof updateRowNumbersAndIndexes === 'function') updateRowNumbersAndIndexes();
       if (typeof updateSameTimeGrouping === 'function') updateSameTimeGrouping();
     });
-    // 页面加载完成先排一次，确保初始顺序正确
-    sortRowsByTime(); // >>> 追加
+    sortRowsByTime();
   });
 })();
 
@@ -797,5 +659,53 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 })();
 
-// 调试辅助（可在控制台调用）
+
+// ==== Persist user's selections to avoid being reset by confirmations ====
+(function persistUserSelections(){
+  // 想持久化的控件（按 id 选择器）
+  const PERSIST_IDS = [
+    '#id_etc_rider_payer',        // 乗車ETC の支払者
+    '#id_etc_payment_method',     // 乗車ETC 支付方式
+    '#id_etc_empty_card',         // 空車ETC カード
+    '#id_etc_return_fee_method',  // 回程費 支払方法
+  ];
+  // 也可把金额类做一下（可选）
+  const PERSIST_INPUT_IDS = [
+    '#id_etc_uncollected',        // 空車ETC 金額
+    '#id_etc_return_fee_claimed', // 回程費 受領額
+    '#deposit-input',             // 入金額
+  ];
+
+  function keyFor(sel){ return 'dr_persist:' + sel; }
+
+  function restoreOne(sel){
+    const el = document.querySelector(sel);
+    if (!el) return;
+    const saved = localStorage.getItem(keyFor(sel));
+    if (saved == null) return;
+    // 只在值真的不同时写回，避免触发不必要事件
+    if (String(el.value) !== saved) {
+      el.value = saved;
+      el.dispatchEvent(new Event('change', {bubbles:true}));
+      el.dispatchEvent(new Event('input',  {bubbles:true}));
+    }
+  }
+
+  function bindSave(sel){
+    const el = document.querySelector(sel);
+    if (!el) return;
+    const save = () => localStorage.setItem(keyFor(sel), String(el.value ?? ''));
+    el.addEventListener('change', save);
+    el.addEventListener('input',  save);
+  }
+
+  // 等 DOM 可用后恢复 + 绑定
+  document.addEventListener('DOMContentLoaded', () => {
+    [...PERSIST_IDS, ...PERSIST_INPUT_IDS].forEach(restoreOne);
+    [...PERSIST_IDS, ...PERSIST_INPUT_IDS].forEach(bindSave);
+  });
+})();
+
+
+// 调试辅助
 window.__insertRowDebug__ = function(){ return insertRowAfter(1); };
