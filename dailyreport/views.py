@@ -774,52 +774,56 @@ def export_dailyreports_excel(request, year, month):
     TIP_PAT = re.compile(r'(チップ|tip|小费|ﾁｯﾌﾟ)', re.IGNORECASE)
 
     def compute_row(r):
-        meter_only = 0
+        meter_only   = 0
         nagashi_cash = 0
         charter_cash = 0
         charter_uncol = 0
         amt = {"kyokushin": 0, "omron": 0, "kyotoshi": 0, "uber": 0, "credit": 0, "paypay": 0, "didi": 0}
 
+        # 这三列（预约/チップ/プロモ）只按别名“精确匹配”，不再看 note/comment 关键词
+        UBER_RESV_ALIASES  = {"uber_reservation", "uber_resv", "uber予約"}
+        UBER_TIP_ALIASES   = {"uber_tip", "uber tip", "ubertip"}
+        UBER_PROMO_ALIASES = {"uber_promo", "uber_promotion", "uberプロモーション"}
+
         uber_resv = 0
-        uber_tip = 0
+        uber_tip  = 0
         uber_promo = 0
 
         for it in r.items.all():
             is_charter = bool(getattr(it, "is_charter", False))
 
-            pm  = _pm_alias_for_export((str(getattr(it, "payment_method", None) or "").strip().lower()))
-            cpm = _pm_alias_for_export((str(getattr(it, "charter_payment_method", None) or "").strip().lower()))
+            # 归一化支付方式（与原函数一致）
+            def _canon(v: str) -> str:
+                s = (str(v or "").strip().lower())
+                aliases = {
+                    "現金":"cash","现金":"cash","cash(現金)":"cash",
+                    "uber現金":"uber_cash","didi現金":"didi_cash","go現金":"go_cash",
+                    "バーコード":"qr","barcode":"qr","bar_code":"qr","qr_code":"qr",
+                    "company card":"credit","company_card":"credit","credit card":"credit","会社カード":"credit",
+                    "jp_cash":"jpy_cash","jpy cash":"jpy_cash","jpy-cash":"jpy_cash",
+                }
+                return aliases.get(s, s)
+
+            pm  = _canon(getattr(it, "payment_method", None))
+            cpm = _canon(getattr(it, "charter_payment_method", None))
 
             meter_fee   = int(getattr(it, "meter_fee", 0) or 0)
             charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
-
-            note_text = (getattr(it, "note", "") or "").lower()
             val_for_this = charter_jpy if is_charter else meter_fee
 
-            # —— Uber 予約 / チップ / プロモ（显式字段优先，其次关键词；三者择一）
-            UBER_TIP_ALIASES   = {"uber_tip", "uber tip", "ubertip"}
-            UBER_RESV_ALIASES  = {"uber_reservation", "uber_resv", "uber予約"}
-            UBER_PROMO_ALIASES = {"uber_promo", "uber_promotion", "uberプロモーション"}
-
-            has_uber_pm = ("uber" in pm) or (is_charter and "uber" in cpm)
-            tip_kw   = any(k in note_text for k in ["uberチップ", "チップ", "tip"])
-            res_kw   = any(k in note_text for k in ["uber予約", "予約", "reservation"])
-            promo_kw = any(k in note_text for k in ["uberプロモーション", "プロモ", "promotion"])
-
+            # —— 只按“精确别名”判定三类 Uber（不使用任何关键词）
             matched = False
-            if (pm in UBER_TIP_ALIASES) or (is_charter and cpm in UBER_TIP_ALIASES) or (has_uber_pm and tip_kw):
+            if (pm in UBER_TIP_ALIASES) or (is_charter and cpm in UBER_TIP_ALIASES):
                 uber_tip += val_for_this; matched = True
-            elif (pm in UBER_RESV_ALIASES) or (is_charter and cpm in UBER_RESV_ALIASES) or (has_uber_pm and res_kw):
+            elif (pm in UBER_RESV_ALIASES) or (is_charter and cpm in UBER_RESV_ALIASES):
                 uber_resv += val_for_this; matched = True
-            elif (pm in UBER_PROMO_ALIASES) or (is_charter and cpm in UBER_PROMO_ALIASES) or (has_uber_pm and promo_kw):
+            elif (pm in UBER_PROMO_ALIASES) or (is_charter and cpm in UBER_PROMO_ALIASES):
                 uber_promo += val_for_this; matched = True
-            # 若不希望重复计入方式合计，可在 matched 时 continue
+
+            # ⚠ 如不想把“预约/チップ/プロモ”再计入普通方式合计，请解开下一行的 continue（默认保持与你现有逻辑一致：不剔重）
             # if matched: continue
 
-            CHARTER_CASH_KEYS_SAFE = set(CHARTER_CASH_KEYS) | {
-                "cash", "jpy_cash", "jp_cash", "rmb_cash", "self_wechat", "boss_wechat"
-            }
-
+            # —— 常规合计
             if not is_charter:
                 meter_only += meter_fee
                 if pm in {"cash", "uber_cash", "didi_cash", "go_cash"}:
@@ -832,6 +836,7 @@ def export_dailyreports_excel(request, year, month):
                 elif pm in {"qr", "scanpay"}:         amt["paypay"] += meter_fee
                 elif pm == "didi":    amt["didi"] += meter_fee
             else:
+                CHARTER_CASH_KEYS_SAFE = {"cash","jpy_cash","jp_cash","rmb_cash","self_wechat","boss_wechat"}
                 if cpm in CHARTER_CASH_KEYS_SAFE:
                     charter_cash += charter_jpy
                 else:
@@ -845,6 +850,8 @@ def export_dailyreports_excel(request, year, month):
                 elif cpm in {"qr", "scanpay"}:         amt["paypay"] += charter_jpy
                 elif cpm == "didi":    amt["didi"] += charter_jpy
 
+        # 手数料等计算（保持原样）
+        FEE_RATE = Decimal("0.05")
         fee_calc = lambda x: int((Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if x else 0
         uber_fee, credit_fee, paypay_fee, didi_fee = map(fee_calc, [amt["uber"], amt["credit"], amt["paypay"], amt["didi"]])
 
@@ -884,6 +891,7 @@ def export_dailyreports_excel(request, year, month):
             "uber_tip": int(uber_tip),
             "uber_promo": int(uber_promo),
         }
+
 
     # ==== 写 Excel ====
     output = BytesIO()
@@ -2148,36 +2156,26 @@ def dailyreport_overview(request):
     totals = defaultdict(Decimal)
     counts = defaultdict(int)
 
-    # === Uber 派生：予約 / チップ / プロモーション ===
-    def _sum_amount_by_is_charter(qs):
-        # 非貸切 → meter_fee；貸切 → charter_amount_jpy（极少见，但做兼容）
-        non_charter = qs.filter(is_charter=False).aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
-        charter     = qs.filter(is_charter=True ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
-        return non_charter + charter
+    # === Uber 派生：予約 / チップ / プロモーション（严格匹配版）===
 
-    # 显式字段别名（payment_method 归一后；你上面已对 items_norm 做了 Lower/Trim）
+    # 显式字段别名（你上面已对 items_norm 做了 Lower/Trim）
     UBER_RESV_ALIASES  = {'uber_reservation', 'uber_resv', 'uber予約'}
     UBER_TIP_ALIASES   = {'uber_tip', 'uber tip', 'ubertip'}
     UBER_PROMO_ALIASES = {'uber_promo', 'uber_promotion', 'uberプロモーション'}
 
-    # 关键词兜底（注：模板录入里习惯写在 note/comment）
-    # 你的 items_norm 目前只 annotate 了 pm/cpm，note/comment 直接用原字段就行
-    _kw_resv  = Q(note__icontains='Uber予約') | Q(note__icontains='予約') | Q(note__icontains='reservation') \
-                | Q(comment__icontains='Uber予約') | Q(comment__icontains='予約') | Q(comment__icontains='reservation')
-    _kw_tip   = Q(note__icontains='Uberチップ') | Q(note__icontains='チップ') | Q(note__icontains='tip') \
-                | Q(comment__icontains='Uberチップ') | Q(comment__icontains='チップ') | Q(comment__icontains='tip')
-    _kw_promo = Q(note__icontains='Uberプロモーション') | Q(note__icontains='プロモ') | Q(note__icontains='promotion') \
-                | Q(comment__icontains='Uberプロモーション') | Q(comment__icontains='プロモ') | Q(comment__icontains='promotion')
+    # 仅精确匹配 payment_method/charter_payment_method；不再使用 note/comment 关键词
+    _q_resv  = Q(pm__in=UBER_RESV_ALIASES)  | Q(cpm__in=UBER_RESV_ALIASES)
+    _q_tip   = Q(pm__in=UBER_TIP_ALIASES)   | Q(cpm__in=UBER_TIP_ALIASES)
+    _q_promo = Q(pm__in=UBER_PROMO_ALIASES) | Q(cpm__in=UBER_PROMO_ALIASES)
 
-    # “显式字段 ∪ 关键词兜底”——同时覆盖非貸切 pm 与 貸切 cpm 两个维度
-    _q_resv  = Q(pm__in=UBER_RESV_ALIASES)  | Q(cpm__in=UBER_RESV_ALIASES)  | (Q(pm__contains='uber') | Q(cpm__contains='uber')) & _kw_resv
-    _q_tip   = Q(pm__in=UBER_TIP_ALIASES)   | Q(cpm__in=UBER_TIP_ALIASES)   | (Q(pm__contains='uber') | Q(cpm__contains='uber')) & _kw_tip
-    _q_promo = Q(pm__in=UBER_PROMO_ALIASES) | Q(cpm__in=UBER_PROMO_ALIASES) | (Q(pm__contains='uber') | Q(cpm__contains='uber')) & _kw_promo
-
-    # 用 items_norm（已经 Lower/Trim）做筛选与聚合
     _qs_resv  = items_norm.filter(_q_resv)
     _qs_tip   = items_norm.filter(_q_tip)
     _qs_promo = items_norm.filter(_q_promo)
+
+    def _sum_amount_by_is_charter(qs):
+        non_charter = qs.filter(is_charter=False).aggregate(x=Sum('meter_fee'))['x'] or Decimal('0')
+        charter     = qs.filter(is_charter=True ).aggregate(x=Sum('charter_amount_jpy'))['x'] or Decimal('0')
+        return non_charter + charter
 
     totals['uber_reservation_total'] = _sum_amount_by_is_charter(_qs_resv)
     totals['uber_tip_total']         = _sum_amount_by_is_charter(_qs_tip)
