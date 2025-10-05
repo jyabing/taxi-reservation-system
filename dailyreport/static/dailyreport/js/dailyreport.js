@@ -336,11 +336,15 @@ function updateTotals() {
   const riderPayer  = (document.querySelector('#id_etc_rider_payer, .js-etc-rider-payer')?.value || 'company').trim();
 
   const emptyEtcInput = document.querySelector('.js-empty-etc-amount') || document.querySelector('#id_etc_uncollected');
-  let emptyEtc = _yen(emptyEtcInput?.value);
-  if (!emptyEtc) {
-    const txt = document.querySelector("div[style*='ui-monospace']")?.textContent || "";
-    const m = txt.match(/空車ETC\s*([0-9,]+)/); if (m) emptyEtc = _yen(m[1]);
-  }
+  // let emptyEtc = _yen(emptyEtcInput?.value);
+  // // if (!emptyEtc) {
+  // //   const txt = document.querySelector("div[style*='ui-monospace']")?.textContent || "";
+  // //   const m = txt.match(/空車ETC\s*([0-9,]+)/);
+  // //   if (m) emptyEtc = _yen(m[1]);
+  // // }
+
+  let emptyEtc = _yen(emptyEtcInput?.value);   // 只信输入框
+  
   const emptyCard  = (document.querySelector('#id_etc_empty_card')?.value || '').trim();         // 'company' | 'own'
   const retClaimed = _yen(document.querySelector('#id_etc_return_fee_claimed')?.value);
   const retMethod  = (document.querySelector('#id_etc_return_fee_method')?.value || '').trim();  // 'none' | 'app_ticket' | 'cash_to_driver'
@@ -752,8 +756,18 @@ function buildReceiptNotes() {
   const PERSIST_INPUT_IDS = [
     '#id_etc_uncollected',        // 空車ETC 金額
     '#id_etc_return_fee_claimed', // 回程費 受領額
-    '#deposit-input',             // 入金額
+    // ❌ 不要持久化入金：'#deposit-input''#deposit-input',             // 入金額
   ];
+
+
+   // （可选）按“编辑页”才启用恢复：有 report-id 才恢复
+   const HAS_REPORT_ID = !!document.querySelector('input[name="report"][type="hidden"], input[name="report_id"], input[name="vehicle"]');
+   function shouldRestore(sel){
+     // 选择/金额都可以；但新建页（没有 report id）不恢复任何值
+     return HAS_REPORT_ID;
+   }
+
+
 
   function keyFor(sel){ return 'dr_persist:' + sel; }
 
@@ -761,7 +775,7 @@ function buildReceiptNotes() {
     const el = document.querySelector(sel);
     if (!el) return;
     const saved = localStorage.getItem(keyFor(sel));
-    if (saved == null) return;
+    if (saved == null || !shouldRestore(sel)) return;
     // 只在值真的不同时写回，避免触发不必要事件
     if (String(el.value) !== saved) {
       el.value = saved;
