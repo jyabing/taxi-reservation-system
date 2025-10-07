@@ -1078,8 +1078,15 @@ def export_dailyreports_excel(request, year, month):
         else f"{year}-{int(month):02d} 月度(集計)"
     )
     summary_ws = wb.add_worksheet(summary_title)
-    summary_ws.write_row(0, 0, row1, fmt_header)
+
+    # —— 仅用于“集計”Sheet 的表头：把 出勤時刻/退勤時刻 → 総出勤日数/総出勤時間
+    row1_summary = list(row1)  # 基于原 row1 复制
+    row1_summary[2] = "総出勤日数"
+    row1_summary[3] = "総出勤時間"
+
+    summary_ws.write_row(0, 0, row1_summary, fmt_header)
     summary_ws.write_row(1, 0, row2, fmt_header)
+
     merges = [
         (0,0,1,0),(0,1,1,1),(0,2,1,2),(0,3,1,3),
         (0,4,1,4),(0,5,1,5),
@@ -1090,10 +1097,14 @@ def export_dailyreports_excel(request, year, month):
         (0,27,1,27),
     ]
     for r1_, c1_, r2_, c2_ in merges:
-        summary_ws.merge_range(r1_, c1_, r2_, c2_, row1[c1_], fmt_header)
+        # 这里用 row1_summary[c1_]，确保合并标题也用改后的文案
+        summary_ws.merge_range(r1_, c1_, r2_, c2_, row1_summary[c1_], fmt_header)
+
     for c, w in col_widths.items():
         summary_ws.set_column(c, c, w)
     summary_ws.freeze_panes(2, 2)
+    summary_ws.set_column(2, 2, max(col_widths.get(2, 9), 12))
+    summary_ws.set_column(3, 3, max(col_widths.get(3, 9), 12))
 
     # 按司机聚合（逐日报行已按区间/月份正确选取）
     per_driver = {}
