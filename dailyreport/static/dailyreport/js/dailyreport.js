@@ -342,6 +342,38 @@ function updateTotals() {
   const retClaimed = _yen(document.querySelector('#id_etc_return_fee_claimed')?.value);
   const retMethod  = (document.querySelector('#id_etc_return_fee_method')?.value || '').trim();  // 'none' | 'app_ticket' | 'cash_to_driver'
 
+  // ===== NEW: 把 ETC 分项写到展示卡片（不改现有口径） =====
+(function showEtcSubtotals(){
+  const setTxt = (sel, n) => {
+    const el = document.querySelector(sel);
+    if (el) el.textContent = Number(n || 0).toLocaleString();
+  };
+
+  // 直接用你当前的聚合输入：乗車ETC = rideEtc，空車ETC = emptyEtc
+  setTxt('#ride-etc-total',  rideEtc);
+  setTxt('#empty-etc-total', emptyEtc);
+
+  // 负担方分类小计（展示用）
+  let etcCustomerTotal = 0, etcCompanyTotal = 0, etcDriverTotal = 0;
+
+  // 乗車ETC：看支払者
+  if (riderPayer === 'customer')      etcCustomerTotal += rideEtc;
+  else if (riderPayer === 'company')  etcCompanyTotal  += rideEtc;
+  else if (riderPayer === 'own')      etcDriverTotal   += rideEtc;
+
+  // 空車ETC：看使用卡
+  if (emptyEtc > 0) {
+    if (emptyCard === 'company') etcCompanyTotal += emptyEtc;
+    else if (emptyCard === 'own') etcDriverTotal += emptyEtc;
+  }
+
+  setTxt('#etc-customer-total', etcCustomerTotal);
+  setTxt('#etc-company-total',  etcCompanyTotal);
+  setTxt('#etc-driver-total',   etcDriverTotal);
+})();
+
+
+
   // 应收（只计公司侧）
   const etcReceivableRidePart   = (riderPayer === 'company') ? rideEtc  : 0;
   const etcReceivableEmptyPart  = (emptyCard  === 'company') ? emptyEtc : 0;

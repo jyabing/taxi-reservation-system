@@ -341,6 +341,24 @@ input[type=number] {
       </div>
       <!-- ✅ 新增区域结束 -->
 
+      <!-- ======= BEGIN NEW: 右侧 ETC 分项小计（仅显示，不改口径） ======= -->
+      <div class="border rounded px-3 py-2 text-start" style="min-width: 220px;">
+        <div class="small text-muted mb-1">ETC 小計（行明細より集計）</div>
+        <div class="d-flex flex-column gap-1 small">
+          <div>乗車ETC 合計：<span id="ride-etc-total">0</span></div>
+          <div>空車ETC 合計：<span id="empty-etc-total">0</span></div>
+          <hr class="my-1">
+          <div>ETC(客払 = 売上候補)：<span id="etc-customer-total">0</span></div>
+          <div>ETC(会社負担)：<span id="etc-company-total">0</span></div>
+          <div>ETC(ドライバー立替)：<span id="etc-driver-total">0</span></div>
+        </div>
+        <div class="form-text mt-1">
+          ※ 現在は表示のみ。売上や過不足の計算口径は従前どおりです。
+        </div>
+      </div>
+      <!-- ======= END NEW ======= -->
+
+
       
       <!-- ✅ ETC 现金收区域 -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
@@ -484,6 +502,11 @@ input[type=number] {
       <th style="white-space: nowrap;">乗車地</th>
       <th style="white-space: nowrap;">料金</th>
       <th style="white-space: nowrap;">支付</th>
+      <!-- ======= BEGIN NEW: 行级ETC 表头三列 ======= -->
+      <th class="text-center" style="white-space: nowrap;">乗車ETC</th>
+      <th class="text-center" style="white-space: nowrap;">空車ETC</th>
+      <th class="text-center" style="white-space: nowrap;">ETC負担</th>
+      <!-- ======= END NEW ======= -->
       <th style="white-space: nowrap;">待入</th>
       <th style="white-space: nowrap;">強調</th>
       <th style="white-space: nowrap;">貸切</th>
@@ -537,6 +560,29 @@ input[type=number] {
           {% endif %}
           {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
         </td>
+
+        <!-- ======= BEGIN NEW: 行级ETC 三列（每行） ======= -->
+        <td class="col-etc-riding" style="min-width: 80px;">
+          {% if form.etc_riding.errors %}
+            <div class="text-danger small">{{ form.etc_riding.errors.0 }}</div>
+          {% endif %}
+          {{ form.etc_riding|add_class:"form-control form-control-sm text-end etc-riding-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
+        </td>
+
+        <td class="col-etc-empty" style="min-width: 80px;">
+          {% if form.etc_empty.errors %}
+            <div class="text-danger small">{{ form.etc_empty.errors.0 }}</div>
+          {% endif %}
+          {{ form.etc_empty|add_class:"form-control form-control-sm text-end etc-empty-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
+        </td>
+
+        <td class="col-etc-charge-type" style="min-width: 110px;">
+          {% if form.etc_charge_type.errors %}
+            <div class="text-danger small">{{ form.etc_charge_type.errors.0 }}</div>
+          {% endif %}
+          {{ form.etc_charge_type|add_class:"form-select form-select-sm etc-charge-type-select" }}
+        </td>
+        <!-- ======= END NEW ======= -->
 
         {# ▼ 待入列 #}
         <td class="text-center">
@@ -627,6 +673,18 @@ input[type=number] {
       <td>
         {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
       </td>
+
+      <!-- ======= BEGIN NEW: 空模板 行级ETC 三列 ======= -->
+      <td>
+        {{ formset.empty_form.etc_riding|add_class:"form-control form-control-sm text-end etc-riding-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
+      </td>
+      <td>
+        {{ formset.empty_form.etc_empty|add_class:"form-control form-control-sm text-end etc-empty-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
+      </td>
+      <td>
+        {{ formset.empty_form.etc_charge_type|add_class:"form-select form-select-sm etc-charge-type-select" }}
+      </td>
+      <!-- ======= END NEW ======= -->
 
       <td class="text-center">
         {{ formset.empty_form.is_pending|add_class:"pending-checkbox" }}

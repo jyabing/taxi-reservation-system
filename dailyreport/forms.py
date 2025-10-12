@@ -52,16 +52,35 @@ class DriverDailyReportForm(forms.ModelForm):
 
 
 # --- 日报明细表单 ---
+# --- 日报明细表单 ---
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReportItem
+        # 保持与你现有实现一致：包含所有字段，避免遗漏
         fields = "__all__"
-        # 你项目里已存在的字段（如 is_charter / charter_amount_jpy / charter_payment_method 等）
-        # 将自动包含在内；需要自定义展示再在此添加 widgets/labels
+
+        # 仅通过 widgets 定义交互样式；不改变任何业务逻辑
         widgets = {
+            # 你原来就有的三个复选框样式
             "is_pending": forms.CheckboxInput(attrs={"class": "pending-checkbox"}),
             "is_charter": forms.CheckboxInput(attrs={"class": "charter-checkbox"}),
             "is_flagged": forms.CheckboxInput(attrs={"class": "mark-checkbox"}),
+
+            # ======= BEGIN NEW (行级ETC：表单控件外观) =======
+            # 行内录入乘车/空车 ETC；使用整数输入框以匹配模型 PositiveIntegerField
+            "etc_riding": forms.NumberInput(attrs={
+                "class": "form-control form-control-sm etc-riding-input",
+                "min": 0, "step": 1, "inputmode": "numeric", "placeholder": "乗車ETC"
+            }),
+            "etc_empty": forms.NumberInput(attrs={
+                "class": "form-control form-control-sm etc-empty-input",
+                "min": 0, "step": 1, "inputmode": "numeric", "placeholder": "空車ETC"
+            }),
+            # 负担类型下拉：公司/司机垫付/客户支付
+            "etc_charge_type": forms.Select(attrs={
+                "class": "form-select form-select-sm etc-charge-type-select"
+            }),
+            # ======= END NEW (行级ETC：表单控件外观) =======
         }
 
     def clean(self):

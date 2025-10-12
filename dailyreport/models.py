@@ -226,7 +226,7 @@ class DriverDailyReportItem(models.Model):
     is_pending = models.BooleanField(default=False, verbose_name="待入")
     # --- 新增结束 ---
 
-     # === ↓↓↓ 包车收款明细字段：用于计算貸切現金/未収合计 ↓↓↓ ===
+     # === ↓↓↓ 包车收款明细字段：用于计算貸切現金/未収合計 ↓↓↓ ===
 
     charter_payment_method = models.CharField(
         max_length=20,
@@ -267,6 +267,23 @@ class DriverDailyReportItem(models.Model):
 
     # === ↑↑↑ 包车字段结束 ↑↑↑ ===
 
+    # ======= BEGIN NEW (ETC 明细化：行级字段) =======
+    etc_riding = models.PositiveIntegerField("乗車ETC（円）", default=0)
+    etc_empty  = models.PositiveIntegerField("空車ETC（円）", default=0)
+
+    ETC_CHARGE_CHOICES = (
+        ("company",  "会社負担"),
+        ("driver",   "ドライバー立替"),
+        ("customer", "お客様支払"),
+    )
+    etc_charge_type = models.CharField(
+        "ETC負担",
+        max_length=20,
+        choices=ETC_CHARGE_CHOICES,
+        default="company",
+    )
+    # ======= END NEW (ETC 明细化：行级字段) =======
+
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)
     is_flagged = models.BooleanField(default=False, verbose_name="标记为重点")
@@ -287,6 +304,7 @@ class DriverDailyReportItem(models.Model):
 
     def __str__(self):
         return f"{self.ride_time} - {self.ride_from}→{self.ride_to} - {self.meter_fee}"
+
 
 
 # 日报图片（不变）
