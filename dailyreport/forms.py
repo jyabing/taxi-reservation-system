@@ -52,44 +52,66 @@ class DriverDailyReportForm(forms.ModelForm):
 
 
 # --- 日报明细表单 ---
-# --- 日报明细表单 ---
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReportItem
-        # 保持与你现有实现一致：包含所有字段，避免遗漏
         fields = "__all__"
-
-        # 仅通过 widgets 定义交互样式；不改变任何业务逻辑
         widgets = {
-            # 你原来就有的三个复选框样式
+            # 你原有的三个复选框样式
             "is_pending": forms.CheckboxInput(attrs={"class": "pending-checkbox"}),
             "is_charter": forms.CheckboxInput(attrs={"class": "charter-checkbox"}),
             "is_flagged": forms.CheckboxInput(attrs={"class": "mark-checkbox"}),
 
-            # ======= BEGIN NEW (行级ETC：表单控件外观) =======
-            # 行内录入乘车/空车 ETC；使用整数输入框以匹配模型 PositiveIntegerField
+            # === 行级ETC：现在改成可见控件（整数 + 下拉） ===
             "etc_riding": forms.NumberInput(attrs={
-                "class": "form-control form-control-sm etc-riding-input",
+                "class": "form-control form-control-sm etc-riding-input text-end",
                 "min": 0, "step": 1, "inputmode": "numeric", "placeholder": "乗車ETC"
             }),
             "etc_empty": forms.NumberInput(attrs={
-                "class": "form-control form-control-sm etc-empty-input",
+                "class": "form-control form-control-sm etc-empty-input text-end",
                 "min": 0, "step": 1, "inputmode": "numeric", "placeholder": "空車ETC"
             }),
-            # 负担类型下拉：公司/司机垫付/客户支付
             "etc_charge_type": forms.Select(attrs={
                 "class": "form-select form-select-sm etc-charge-type-select"
             }),
-            # ======= END NEW (行级ETC：表单控件外观) =======
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 兜底默认，防止 NULL 触发 NOT NULL 约束
+        self.fields["etc_riding"].initial = self.instance.etc_riding or 0
+        self.fields["etc_empty"].initial = self.instance.etc_empty or 0
+        self.fields["etc_charge_type"].initial = self.instance.etc_charge_type or "company"
+
+    # —— 强化校验为非负整数/合法枚举 —— #
+    def clean_etc_riding(self):
+        v = self.cleaned_data.get("etc_riding")
+        try:
+            v = int(v or 0)
+        except Exception:
+            v = 0
+        return max(0, v)
+
+    def clean_etc_empty(self):
+        v = self.cleaned_data.get("etc_empty")
+        try:
+            v = int(v or 0)
+        except Exception:
+            v = 0
+        return max(0, v)
+
+    def clean_etc_charge_type(self):
+        v = (self.cleaned_data.get("etc_charge_type") or "company").strip()
+        if v not in dict(DriverDailyReportItem.ETC_CHARGE_CHOICES):
+            v = "company"
+        return v
 
     def clean(self):
         cleaned = super().clean()
-        # 示例：若存在 charter 字段可做宽松校验（不会抛错）
-        amount = cleaned.get("charter_amount_jpy", None)
+        # 温和一致性处理：若非貸切，清零 charter_amount_jpy（不抛错）
+        amt = cleaned.get("charter_amount_jpy", None)
         is_charter = cleaned.get("is_charter", None)
-        if is_charter is False and amount not in (None, "", 0):
-            # 不强制报错，仅可选清理；如你要强校验可改为 raise forms.ValidationError(...)
+        if is_charter is False and amt not in (None, "", 0):
             try:
                 cleaned["charter_amount_jpy"] = 0
             except Exception:

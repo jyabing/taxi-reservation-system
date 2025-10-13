@@ -494,28 +494,37 @@ input[type=number] {
 
     </div>
 
+    <!-- ====== BEGIN PATCH: ETC 显示开关（默认隐藏列） ====== -->
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="toggle-etc-cols">
+        <label class="form-check-label" for="toggle-etc-cols">显示 ETC 明细（乗車/空車/負担）</label>
+      </div>
+    </div>
+    <!-- ====== END PATCH ====== -->
+
     <table class="table table-bordered table-sm report-table">
-  <thead class="table-light">
-    <tr>
-      <th class="row-number-header">#</th>
-      <th style="white-space: nowrap;">時間</th>
-      <th style="white-space: nowrap;">乗車地</th>
-      <th style="white-space: nowrap;">料金</th>
-      <th style="white-space: nowrap;">支付</th>
-      <!-- ======= BEGIN NEW: 行级ETC 表头三列 ======= -->
-      <th class="text-center" style="white-space: nowrap;">乗車ETC</th>
-      <th class="text-center" style="white-space: nowrap;">空車ETC</th>
-      <th class="text-center" style="white-space: nowrap;">ETC負担</th>
-      <!-- ======= END NEW ======= -->
-      <th style="white-space: nowrap;">待入</th>
-      <th style="white-space: nowrap;">強調</th>
-      <th style="white-space: nowrap;">貸切</th>
-      <th style="white-space: nowrap;">貸切金額</th>
-      <th style="white-space: nowrap;">貸切支払</th>
-      <th>注釈</th>
-      <th style="white-space: nowrap;">操作</th>
-    </tr>
-  </thead>
+      <thead class="table-light">
+        <tr>
+          <th class="row-number-header">#</th>
+          <th style="white-space: nowrap;">時間</th>
+          <th style="white-space: nowrap;">乗車地</th>
+          <th style="white-space: nowrap;">料金</th>
+          <th style="white-space: nowrap;">支付</th>
+          <!-- ======= BEGIN FIXED: 行级ETC 表头三列（加 class，便于显隐） ======= -->
+          <th class="text-center col-etc-riding" style="white-space: nowrap;">乗車ETC</th>
+          <th class="text-center col-etc-empty"  style="white-space: nowrap;">空車ETC</th>
+          <th class="text-center col-etc-charge-type" style="white-space: nowrap;">ETC負担</th>
+          <!-- ======= END FIXED ======= -->
+          <th style="white-space: nowrap;">待入</th>
+          <th style="white-space: nowrap;">強調</th>
+          <th style="white-space: nowrap;">貸切</th>
+          <th style="white-space: nowrap;">貸切金額</th>
+          <th style="white-space: nowrap;">貸切支払</th>
+          <th>注釈</th>
+          <th style="white-space: nowrap;">操作</th>
+        </tr>
+      </thead>
 
   <tbody>
     {{ formset.management_form }}
@@ -753,11 +762,28 @@ input[type=number] {
     table.table tr.has-note {
       background-color: #fff8b3 !important;
     }
-  /* === 强制显示数据区行；仅隐藏模板区 === */
-  table.report-table tbody:not(#empty-form-template) tr {
-    display: table-row !important; visibility: visible !important; opacity: 1 !important;
-  }
-  #empty-form-template tr { display: none !important; visibility: hidden !important; }
+
+    /* === 强制显示数据区行；仅隐藏模板区 === */
+    table.report-table tbody:not(#empty-form-template) tr {
+      display: table-row !important; visibility: visible !important; opacity: 1 !important;
+    }
+
+    /* ====== BEGIN PATCH: ETC 列显隐（默认通过给整表加类来隐藏） ====== */
+    /* 当表格元素拥有 .etc-cols-hidden 类时，隐藏三列 */
+    table.report-table.etc-cols-hidden th.col-etc-riding,
+    table.report-table.etc-cols-hidden td.col-etc-riding,
+    table.report-table.etc-cols-hidden th.col-etc-empty,
+    table.report-table.etc-cols-hidden td.col-etc-empty,
+    table.report-table.etc-cols-hidden th.col-etc-charge-type,
+    table.report-table.etc-cols-hidden td.col-etc-charge-type {
+      display: none !important;
+    }
+    /* 输入控件的宽度微调（不影响提交） */
+    .etc-riding-input, .etc-empty-input { max-width: 90px; }
+    .etc-charge-type-select { max-width: 140px; }
+    /* ====== END PATCH: ETC 列显隐 ====== */
+
+    #empty-form-template tr { display: none !important; visibility: hidden !important; }
   </style>
 
   <script>
@@ -823,6 +849,38 @@ input[type=number] {
     .same-time-child td { padding-left: 1.25rem; color:#6c757d; }
     .same-time-prefix { display:inline-block; width:1.25rem; margin-right:.25rem; color:#6c757d; }
   </style>
+
+<script>
+  // ===== Toggle ETC 三列显隐（持久化到 localStorage） =====
+  (function(){
+    const key = 'dr_toggle_etc_cols_visible';
+    function getTable(){ return document.querySelector('table.report-table'); }
+    function getSwitch(){ return document.getElementById('toggle-etc-cols'); }
+    function applyState(show){
+      const tb = getTable(); if (!tb) return;
+      tb.classList.toggle('etc-cols-hidden', !show);
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const sw = getSwitch(); const tb = getTable();
+      if (!sw || !tb) return;
+
+      // 初始：默认隐藏；如有历史记录则按历史
+      const saved = localStorage.getItem(key);
+      const show = saved === null ? false : (saved === '1');
+      sw.checked = show;
+      applyState(show);
+
+      // 绑定切换
+      sw.addEventListener('change', () => {
+        const on = !!sw.checked;
+        applyState(on);
+        localStorage.setItem(key, on ? '1' : '0');
+      });
+    });
+  })();
+</script>
+
+
 
 
 {% endblock %}
