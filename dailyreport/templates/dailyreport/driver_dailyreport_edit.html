@@ -360,31 +360,48 @@ input[type=number] {
 
 
       
-      <!-- ✅ ETC 现金收区域 -->
-      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-        <label class="small text-muted">ETC 收取=乗車合計（円）</label>
-        {{ form.etc_collected|add_class:"form-control form-control-sm text-end" }}
+      <!-- ======= BEGIN 折叠版：ETC 收取＝乗車合計（円） ======= -->
+      <div class="border rounded mb-2" id="ride-etc-card" data-collapse-key="ride-etc">
+        <!-- 头部行：标题 + 收起/展开按钮 -->
+        <div class="d-flex align-items-center justify-content-between px-3 py-2">
+          <div class="fw-semibold">ETC 收取＝乗車合計（円）</div>
+          <button type="button"
+                  class="btn btn-sm btn-outline-secondary js-collapse-toggle"
+                  data-target="#ride-etc-body">收起/展开</button>
+        </div>
 
-      <!-- ✅ 追加：乘車ETC の 支払者（単選） -->
-      <label class="small text-muted mt-2 d-block">乗車ETC の支払者</label>
-      <select id="id_etc_rider_payer" name="etc_rider_payer" class="form-select form-select-sm js-etc-rider-payer">
-        <option value="company">会社カード</option>
-        <option value="own">自己カード</option>
-        <option value="customer">お客様カード</option>
-      </select>
-      <div class="form-text small">
-        ・会社カード：ETC 应收合计に加算（空車ETCは従来どおりのロジック）<br>
-        ・<span class="bg-warning px-1">自己カード：会社が下月工资で返す → 过不足に計上</span><br>
-        ・お客様カード：会社の应收・过不足ともに影響なし（備查のみ）
+        <!-- 可折叠的主体内容：把你原来的内容放在这里 -->
+        <div id="ride-etc-body" class="px-3 pb-3">
+          <!-- ✅ ETC 现金收区域（原样保留） -->
+          <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+            <label class="small text-muted">ETC 收取=乗車合計（円）</label>
+            {{ form.etc_collected|add_class:"form-control form-control-sm text-end" }}
+
+            <!-- ✅ 追加：乘車ETC の 支払者（単選） -->
+            <label class="small text-muted mt-2 d-block">乗車ETC の支払者</label>
+            <select id="id_etc_rider_payer"
+                    name="etc_rider_payer"
+                    class="form-select form-select-sm js-etc-rider-payer">
+              <option value="company">会社カード</option>
+              <option value="own">自己カード</option>
+              <option value="customer">お客様カード</option>
+            </select>
+
+            <div class="form-text small text-start mt-2">
+              ・会社カード：ETC 应收合计に加算（空車ETCは従来どおりのロジック）<br>
+              ・<span class="bg-warning px-1">自己カード：会社が下月工资で返す → 过不足に計上</span><br>
+              ・お客様カード：会社の应收・过不足ともに影響なし（備查のみ）
+            </div>
+
+            <label class="small text-muted mt-2 d-block">支付方式</label>
+            {{ form.etc_payment_method|add_class:"form-select form-select-sm" }}
+
+            <label class="small text-muted mt-2 d-block">貸切の場合、お客様が乗って高速道路をご利用したので、</label>
+            <label class="small text-muted mt-2 d-block">日計で空車合計でも、乗車合計に記入ください</label>
+          </div>
+        </div>
       </div>
-
-
-        <label class="small text-muted mt-2 d-block">支付方式</label>
-        {{ form.etc_payment_method|add_class:"form-select form-select-sm" }}
-
-        <label class="small text-muted mt-2 d-block">貸切の場合、お客様が乗って高速道路をご利用したので、</label>
-        <label class="small text-muted mt-2 d-block">日計で空車合計でも、乗車合計に記入ください</label>
-      </div>
+      <!-- ======= END 折叠版 ======= -->
 
       <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
       <div id="empty-etc-detail-card" class="border rounded px-3 py-2" style="min-width: 280px;">
@@ -875,6 +892,47 @@ input[type=number] {
   })();
 </script>
 
+<script>
+/* 折叠控制（记住展开/收起状态） */
+(function setupCollapsers(){
+  const LS_KEY_PREFIX = 'dr_collapse:';
+  const getKey = el => LS_KEY_PREFIX + (el?.dataset?.collapseKey || '');
+
+  function saveOpenState(el, isOpen){
+    try{ localStorage.setItem(getKey(el), isOpen?'1':'0'); }catch(e){}
+  }
+  function readOpenState(el){
+    try{
+      const v = localStorage.getItem(getKey(el));
+      return v === null ? true : (v === '1');  // 默认展开
+    }catch(e){ return true; }
+  }
+
+  [['ride-etc-card','#ride-etc-body']].forEach(([outerId, bodySel])=>{
+    const outer = document.getElementById(outerId); if (!outer) return;
+    const body  = outer.querySelector(bodySel);    if (!body)  return;
+
+    // 初始：按记忆展开/收起
+    body.style.display = readOpenState(outer) ? '' : 'none';
+
+    // 按钮切换
+    outer.querySelectorAll('.js-collapse-toggle').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : '';
+        saveOpenState(outer, !isOpen);
+      });
+    });
+  });
+
+  // 对外暴露一个“强制展开”的方法（其他逻辑需要时可调用）
+  window.__openCollapseCard = function(outerId, bodySel){
+    const outer = document.getElementById(outerId);
+    const body  = outer?.querySelector(bodySel);
+    if (body){ body.style.display=''; saveOpenState(outer, true); }
+  };
+})();
+</script>
 
 
 
