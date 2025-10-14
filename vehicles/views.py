@@ -470,7 +470,7 @@ def reserve_vehicle_view(request, car_id):
             else:
                 messages.warning(request, "⚠️ 没有成功预约任何日期，请检查冲突或重复预约情况。")
 
-            return redirect('vehicles:vehicle_status')
+            return redirect('vehicles:weekly_overview')
 
         else:
             messages.error(request, "请填写所有字段，并选择预约日期（最多7天）")
