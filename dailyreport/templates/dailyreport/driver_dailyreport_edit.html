@@ -677,17 +677,18 @@ input[type=number] {
         {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
       </td>
 
-      <!-- ======= BEGIN NEW: 空模板 行级ETC 三列 ======= -->
-      <td>
+      <!-- ======= BEGIN NEW: 空模板 行级ETC 三列（必须加类名） ======= -->
+      <td class="col-etc-riding">
         {{ formset.empty_form.etc_riding|add_class:"form-control form-control-sm text-end etc-riding-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
       </td>
-      <td>
+      <td class="col-etc-empty">
         {{ formset.empty_form.etc_empty|add_class:"form-control form-control-sm text-end etc-empty-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
       </td>
-      <td>
+      <td class="col-etc-charge-type">
         {{ formset.empty_form.etc_charge_type|add_class:"form-select form-select-sm etc-charge-type-select" }}
       </td>
       <!-- ======= END NEW ======= -->
+
 
       <td class="text-center">
         {{ formset.empty_form.is_pending|add_class:"pending-checkbox" }}

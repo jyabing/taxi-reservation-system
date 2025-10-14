@@ -552,7 +552,8 @@ document.addEventListener('DOMContentLoaded', () => {
       updateRowNumbersAndIndexes();
       updateSameTimeGrouping();
       updateTotals();
-      evaluateEmptyEtcDetailVisibility();  // ★ 新增：插入行后判断是否显示空車ETC卡片
+      evaluateEmptyEtcDetailVisibility();  // 插入行后判断是否显示空車ETC卡片
+      syncEtcColVisibility();  // ✅ 新增：保持新行的列显隐一致
     });
   }
 
