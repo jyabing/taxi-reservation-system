@@ -1,0 +1,55 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <h1>{{ title }}</h1>
+
+  <p>
+    发现冲突对数：<strong>{{ result.conflicts }}</strong><br>
+    {% if committed %}
+      已取消条数：<strong>{{ result.fixed }}</strong>
+    {% else %}
+      当前为 <b>预览模式</b>，未修改数据库。
+    {% endif %}
+  </p>
+
+  {% if result.samples %}
+  <table class="listing" style="margin-top:20px;">
+    <thead>
+      <tr>
+        <th>车辆</th>
+        <th>日期</th>
+        <th>司机1</th>
+        <th>司机2</th>
+        <th>时间</th>
+        <th>保留ID</th>
+        <th>取消ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in result.samples %}
+      <tr>
+        <td>{{ s.vehicle }}</td>
+        <td>{{ s.date }}</td>
+        <td>{{ s.driver1 }}</td>
+        <td>{{ s.driver2 }}</td>
+        <td>{{ s.time }}</td>
+        <td>{{ s.winner_id }}</td>
+        <td>{{ s.canceled_id|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>没有检测到冲突。</p>
+  {% endif %}
+
+  <div class="submit-row" style="margin-top: 20px;">
+    {% if not committed and result.conflicts %}
+      <form method="post">{% csrf_token %}
+        <button type="submit" class="default">
+          ✅ 确认执行清理（取消较晚创建的预约）
+        </button>
+      </form>
+    {% endif %}
+    <a class="button" href="{% url 'admin:vehicles_reservation_changelist' %}">返回列表</a>
+  </div>
+{% endblock %}

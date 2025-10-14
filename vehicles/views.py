@@ -25,7 +25,7 @@ from django.utils.timezone import now, make_aware, localdate, is_naive
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models.functions import Cast
-from django.db.models import TimeField, F, Q
+
 from django.db import transaction
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
@@ -43,7 +43,7 @@ from carinfo.services.car_access import (
     is_admin_only,  # ✅ 没问题了
 )
 
-from django.db.models import F, ExpressionWrapper, DurationField, Sum
+from django.db.models import F, ExpressionWrapper, DurationField, Sum, TimeField, F, Q
 from django.views.decorators.csrf import csrf_exempt
 from carinfo.models import Car
 
@@ -96,6 +96,19 @@ def _parse_dt_local(s: str):
         dt = timezone.make_aware(dt, timezone.get_current_timezone())
     return dt
 
+# ---- 时间段重叠判断助手（支持 date/end_date + start_time/end_time）----
+def overlap_q(start_date, start_time, end_date, end_time):
+    """
+    返回一个 Q，用于匹配与 [start_date start_time, end_date end_time) 有重叠的记录。
+    注：半开区间，结束等于开始不算重叠。
+    """
+    return (
+        Q(date__lte=end_date) & Q(end_date__gte=start_date) &
+        Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
+    )
+
+# 有效会参与冲突判断的状态（按你系统语义可调整）
+CONFLICT_STATUSES = [ReservationStatus.PENDING, ReservationStatus.BOOKED, ReservationStatus.OUT]
 
 @login_required
 def recent_reservations_view(request, car_id):
@@ -399,15 +412,15 @@ def reserve_vehicle_view(request, car_id):
                         messages.warning(request, f"⚠️ {start_date} 的预约时间与之前预约相隔不足10小时，已跳过。")
                         continue
 
-                    # 与其他人冲突
-                    conflict_exists = Reservation.objects.filter(
-                        vehicle=car,
-                        date__lte=end_dt.date(),
-                        end_date__gte=start_dt.date(),
-                        status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT],
-                    ).filter(
-                        Q(start_time__lt=end_time) & Q(end_time__gt=start_time)
-                    ).exclude(driver=request.user).exists()
+                    # 与他人冲突（含 PENDING，防止两个待审一起过）
+                    conflict_exists = (
+                        Reservation.objects
+                        .filter(vehicle=car, status__in=CONFLICT_STATUSES)
+                        .filter(overlap_q(start_dt.date(), start_time, end_dt.date(), end_time))
+                        .exclude(driver=request.user)
+                        .exists()
+                    )
+
                     if conflict_exists:
                         messages.warning(request, f"{start_date} 存在预约冲突，已跳过。")
                         continue
@@ -753,9 +766,6 @@ def vehicle_monthly_gantt_view(request, vehicle_id):
         'is_admin': request.user.is_staff,
     })
 
-from django.utils import timezone
-from django.db.models import Q
-from django.shortcuts import render
 
 def vehicle_weekly_gantt_view(request):
     """
@@ -1100,13 +1110,41 @@ def reservation_approval_list(request):
 
 @staff_member_required
 def approve_reservation(request, pk):
-    reservation = get_object_or_404(Reservation, pk=pk)
-    reservation.status = 'booked'   # ← 不要再用 'reserved'
-    if hasattr(reservation, 'approved_by'):
-        reservation.approved_by = request.user
-    if hasattr(reservation, 'approved_at'):
-        reservation.approved_at = timezone.now()
-    reservation.save()
+    with transaction.atomic():
+        reservation = (
+            Reservation.objects
+            .select_for_update()           # 锁当前行
+            .select_related('vehicle', 'driver')
+            .get(pk=pk)
+        )
+
+        if reservation.status != ReservationStatus.PENDING:
+            messages.warning(request, "当前状态不可审批。")
+            return redirect('vehicles:reservation_approval_list')
+
+        # 二次冲突校验：同车、时间段重叠、有效状态（含 PENDING/BOOKED/OUT）
+        conflict_exists = (
+            Reservation.objects
+            .select_for_update()           # 锁潜在对手行，避免并发穿透
+            .filter(vehicle=reservation.vehicle, status__in=CONFLICT_STATUSES)
+            .filter(overlap_q(reservation.date, reservation.start_time,
+                              reservation.end_date, reservation.end_time))
+            .exclude(id=reservation.id)
+            .exists()
+        )
+        if conflict_exists:
+            messages.error(request, "审批失败：与现有预约冲突。")
+            return redirect('vehicles:reservation_approval_list')
+
+        reservation.status = ReservationStatus.BOOKED
+        if hasattr(reservation, 'approved_by'):
+            reservation.approved_by = request.user
+        if hasattr(reservation, 'approved_at'):
+            reservation.approved_at = timezone.now()
+        reservation.save(update_fields=['status', 'approved_by', 'approved_at']
+                         if hasattr(reservation, 'approved_by') and hasattr(reservation, 'approved_at')
+                         else ['status'])
+
     notify_driver_reservation_approved(reservation)
     messages.success(request, f"✅ 预约 ID {pk} 已成功审批，并已通知司机。")
     return redirect('vehicles:reservation_approval_list')
@@ -1728,20 +1766,62 @@ def create_reservation(request, vehicle_id):
                 messages.error(request, "预约时段不能超过13小时。")
                 return redirect(request.path)
 
-            # 循环创建多条预约记录
+            # 循环创建多条预约记录（含冲突校验 + 字段统一）
             for date_str in date_list:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
 
-                start_dt = make_aware(datetime.combine(date_obj, start_time))
-                end_dt = make_aware(datetime.combine(date_obj, end_time))
+                # 支持跨日：结束时间 <= 开始时间 → 次日
+                end_date = date_obj if end_time > start_time else (date_obj + timedelta(days=1))
 
-                Reservation.objects.create(
-                    user=request.user,
-                    vehicle=vehicle,
-                    start_datetime=start_dt,
-                    end_datetime=end_dt,
-                    purpose=purpose,
+                # 与他人冲突（含 PENDING/BOOKED/OUT）
+                conflict_exists = (
+                    Reservation.objects
+                    .filter(vehicle=vehicle, status__in=CONFLICT_STATUSES)
+                    .filter(overlap_q(date_obj, start_time, end_date, end_time))
+                    .exclude(driver=request.user)
+                    .exists()
                 )
+                if conflict_exists:
+                    messages.warning(request, f"{date_obj} 与他人预约冲突，已跳过。")
+                    continue
+
+                # 同一司机重复/重叠（可选，建议保留）
+                dup_exists = (
+                    Reservation.objects
+                    .filter(vehicle=vehicle, driver=request.user, status__in=CONFLICT_STATUSES)
+                    .filter(overlap_q(date_obj, start_time, end_date, end_time))
+                    .exists()
+                )
+                if dup_exists:
+                    messages.warning(request, f"{date_obj} 你已预约该车，已跳过。")
+                    continue
+
+                # 创建统一字段（其余代码依赖这些字段）
+                res = Reservation.objects.create(
+                    driver=request.user,             # ← 用 driver 字段
+                    vehicle=vehicle,
+                    date=date_obj,
+                    end_date=end_date,
+                    start_time=start_time,
+                    end_time=end_time,
+                    purpose=purpose,
+                    status=ReservationStatus.PENDING,
+                )
+
+                # 兼容：如果模型也有 start_datetime/end_datetime，就一并写入（有则写，无则忽略）
+                try:
+                    sdt = make_aware(datetime.combine(date_obj, start_time))
+                    edt = make_aware(datetime.combine(end_date, end_time))
+                    if hasattr(res, "start_datetime"):
+                        res.start_datetime = sdt
+                    if hasattr(res, "end_datetime"):
+                        res.end_datetime = edt
+                    if hasattr(res, "start_datetime") or hasattr(res, "end_datetime"):
+                        res.save(update_fields=[f for f in ("start_datetime", "end_datetime")
+                                                if hasattr(res, f)])
+                except Exception:
+                    pass
+
 
             messages.success(request, f"成功创建 {len(date_list)} 条预约记录！")
             return redirect('vehicles:vehicle_status')

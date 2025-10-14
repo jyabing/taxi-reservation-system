@@ -386,15 +386,8 @@ input[type=number] {
         <label class="small text-muted mt-2 d-block">日計で空車合計でも、乗車合計に記入ください</label>
       </div>
 
-      <!-- 🔒 隐藏“ETC 未收=空車合計（円）”；仍参与提交（值由 JS 自动回填） -->
-      <!-- 这块删掉，避免重复 -->
-      <!-- <div class="d-none">
-        {{ form.etc_uncollected }}
-      </div> -->
-
-
       <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
-      <div class="border rounded px-3 py-2" style="min-width: 280px;">
+      <div id="empty-etc-detail-card" class="border rounded px-3 py-2" style="min-width: 280px;">
         <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
         <div class="small text-muted">🧾 メータ小票 記載用：</div>
 
@@ -441,6 +434,7 @@ input[type=number] {
         </div>
       </div>
       <!-- === 追加结束 === -->
+
 
       <!-- ✅ ETC 应收合计（只读） -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
