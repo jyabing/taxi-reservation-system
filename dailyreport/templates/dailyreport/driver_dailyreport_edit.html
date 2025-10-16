@@ -76,6 +76,23 @@ input[type=number] {
     display: table-row !important; visibility: visible !important; opacity: 1 !important;
   }
   #empty-form-template tr { display: none !important; visibility: hidden !important; }
+
+  /* 過不足 内訳样式 */
+  .ob-line{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+  .ob-line+.ob-line{margin-top:.25rem}
+  .ob-label{color:#6c757d}
+  .ob-mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+  .ob-chip{display:inline-block;padding:0 .4rem;border-radius:.5rem;font-size:.75rem;line-height:1.4;background:#f1f3f5;color:#495057;border:1px solid #e9ecef}
+  .ob-pos{color:#198754} /* 公司→司机（司机应收） */
+  .ob-neg{color:#dc3545} /* 司机→公司（司机应付） */
+  .ob-total{font-weight:600}
+  /* === END === */
+
+  /* 仅当 difference-breakdown 仍带 text-muted 时需要 */
+  
+  #difference-breakdown .ob-label { color: var(--bs-secondary-color, #6c757d); }
+  #difference-breakdown .ob-mono { color: inherit; }
+
 </style>
 
 {% endblock %}
@@ -316,30 +333,40 @@ input[type=number] {
       
       <!-- ✅ 入金 + ETC 综合区域 -->
       <div class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
-      <!-- ✅ 新增区域开始 -->
-      <div class="border rounded px-3 py-2 text-center" style="min-width: 80px;">
-        <label class="small text-muted">入金額</label>
-        {{ form.deposit_amount|add_class:"form-control form-control-sm text-end"|attr:"id:deposit-input"|attr:"style:min-width:80px;"|attr:"placeholder:0" }}
+        <!-- ✅ 入金/過不足 卡片 -->
+        <div class="border rounded px-3 py-2 text-center" style="min-width: 80px;">
+          <label class="small text-muted">入金額</label>
+          {{ form.deposit_amount|add_class:"form-control form-control-sm text-end"|attr:"id:deposit-input"|attr:"style:min-width:80px;"|attr:"placeholder:0" }}
 
-        <!-- ✅ ETC 包含判断提示（JS 动态修改） -->
-        <div id="etc-included-warning" class="small mt-1"></div>
+          <!-- ✅ ETC 包含判断提示（JS 动态修改） -->
+          <div id="etc-included-warning" class="small mt-1"></div>
 
-        <!-- ✅ ETC 包含判断提示 -->
-        {% if report.etc_collected and report.deposit_amount %}
-          {% if report.is_etc_included_in_deposit %}
-            <div class="small text-success mt-1">✔️ 含 ETC</div>
-          {% else %}
-            <div class="small text-danger mt-1">⚠️ 未含 ETC，请确认</div>
+          {% if report.etc_collected and report.deposit_amount %}
+            {% if report.is_etc_included_in_deposit %}
+              <div class="small text-success mt-1">✔️ 含 ETC</div>
+            {% else %}
+              <div class="small text-danger mt-1">⚠️ 未含 ETC，请确认</div>
+            {% endif %}
           {% endif %}
-        {% endif %}
 
-        <label class="small text-muted mt-2 d-block">過不足（入金 - 現金(ながし)  - 貸切現金）</label>
-        <div id="difference-output" class="form-control-plaintext text-end small text-muted" style="min-height: 1.5em;">
-          {{ form.deposit_difference.value|default:"--" }}
+          {# ✅ 新定义：包含実際ETC（会社⇄運転手の返還差引） #}
+          <label class="small text-muted mt-2 d-block">
+            過不足（入金 − 現金(ながし) − 貸切現金 ＋ 実際ETC）
+          </label>
+
+          <div id="difference-output"
+              class="form-control-plaintext text-end small"
+              style="min-height: 1.5em;"
+              title="基本過不足に実際ETC（会社⇄運転手の返還差引）を加味">
+            {{ form.deposit_difference.value|default:"--" }}
+          </div>
+
+          <!-- ✅ 內訳（JS 动态写入） -->
+          <div id="difference-breakdown" class="form-text small"></div>
         </div>
-
+        <!-- …其余卡片保持原样… -->
       </div>
-      <!-- ✅ 新增区域结束 -->
+      <!-- ✅ 入金 + ETC 综合区域 结束-->
 
       <!-- ======= BEGIN NEW: 右侧 ETC 分项小计（仅显示，不改口径） ======= -->
       <div class="border rounded px-3 py-2 text-start" style="min-width: 220px;">
@@ -350,15 +377,13 @@ input[type=number] {
           <hr class="my-1">
           <div>ETC(客払 = 売上候補)：<span id="etc-customer-total">0</span></div>
           <div>ETC(会社負担)：<span id="etc-company-total">0</span></div>
-          <div>ETC(ドライバー立替)：<span id="etc-driver-total">0</span></div>
+          <div>ETC(ドライバー立替)：<span id="etc-driver-total" data-role="etc-paid-driver">0</span></div>
         </div>
         <div class="form-text mt-1">
           ※ 現在は表示のみ。売上や過不足の計算口径は従前どおりです。
         </div>
       </div>
       <!-- ======= END NEW ======= -->
-
-
       
       <!-- ======= BEGIN 折叠版：ETC 收取＝乗車合計（円） ======= -->
       <div class="border rounded mb-2" id="ride-etc-card" data-collapse-key="ride-etc">
@@ -375,17 +400,11 @@ input[type=number] {
           <!-- ✅ ETC 现金收区域（原样保留） -->
           <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
             <label class="small text-muted">ETC 收取=乗車合計（円）</label>
-            {{ form.etc_collected|add_class:"form-control form-control-sm text-end" }}
+            {{ form.etc_collected|add_class:"form-control form-control-sm text-end"|attr:"data-role:etc-collected-passenger" }}
 
             <!-- ✅ 追加：乘車ETC の 支払者（単選） -->
             <label class="small text-muted mt-2 d-block">乗車ETC の支払者</label>
-            <select id="id_etc_rider_payer"
-                    name="etc_rider_payer"
-                    class="form-select form-select-sm js-etc-rider-payer">
-              <option value="company">会社カード</option>
-              <option value="own">自己カード</option>
-              <option value="customer">お客様カード</option>
-            </select>
+            {{ form.etc_rider_payer|add_class:"form-select form-select-sm js-etc-rider-payer" }}
 
             <div class="form-text small text-start mt-2">
               ・会社カード：ETC 应收合计に加算（空車ETCは従来どおりのロジック）<br>
@@ -437,11 +456,8 @@ input[type=number] {
           <!-- 空車ETC 使用卡 -->
           <div class="col-6">
             <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
-            <select id="id_etc_empty_card" name="etc_empty_card"
-                    class="form-select form-select-sm js-empty-etc-card">
-              <option value="company">会社カード</option>
-              <option value="own">自己カード</option>
-            </select>
+            {{ form.etc_empty_card|add_class:"form-select form-select-sm js-empty-etc-card" }}
+
           </div>
         </div>
         <div class="form-text mt-2">
@@ -452,16 +468,6 @@ input[type=number] {
         </div>
       </div>
       <!-- === 追加结束 === -->
-
-
-      <!-- ✅ ETC 应收合计（只读） -->
-      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-        <label class="small text-muted">ETC 应收合计（円）</label>
-        <input type="text" id="etc-expected-output"
-              class="form-control form-control-sm text-end bg-light js-etc-receivable" readonly
-              value="{{ report.etc_expected|default_if_none:'0' }}">
-        <label class="small text-muted mt-2 d-block">乗車ETC合計＋空車ETC金额</label>
-      </div>
 
       <!-- ✅ ETC 不足额（保持你原逻辑，只读展示） -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">

@@ -97,8 +97,35 @@ class DriverDailyReport(models.Model):
     # ✅ 请在这里插入新字段
     etc_collected_cash = models.PositiveIntegerField("ETC現金收取（円）", null=True, blank=True)
     etc_collected_app = models.PositiveIntegerField("ETCアプリ収取（円）", null=True, blank=True)
+
+    # ====== [BEGIN add] 乘車ETC の支払者 ======
+    ETC_RIDER_CHOICES = (
+        ("company",  "会社カード"),
+        ("own",      "自己カード"),
+        ("customer", "お客様カード"),
+    )
+    etc_rider_payer = models.CharField(
+        "乗車ETC の支払者",
+        max_length=16,
+        choices=ETC_RIDER_CHOICES,
+        default="company",
+    )
+    # ====== [END   add] ======
     
     etc_uncollected = models.PositiveIntegerField("ETC未收金额（円）", null=True, blank=True, help_text="日计账单中“空车合计”")
+
+    # ✅ 新增：空車ETC 使用卡（会社/自己）
+    ETC_EMPTY_CARD_CHOICES = [
+        ("company", "会社カード"),
+        ("own",     "自己カード"),
+    ]
+    etc_empty_card = models.CharField(
+        "空車ETC カード",
+        max_length=16,
+        choices=ETC_EMPTY_CARD_CHOICES,
+        default="company",
+        blank=True,
+    )
     
     # ✅ 新增字段：ETC不足部分（多跑未补收）
     etc_shortage = models.PositiveIntegerField(default=0, verbose_name="ETC不足额", help_text="ETC使用金额超过应收金额的部分，将从工资中扣除")
@@ -204,6 +231,33 @@ class DriverDailyReport(models.Model):
         self.休憩時間 = break_duration
         self.実働時間 = actual_duration
         self.残業時間 = overtime
+
+
+    # （可选）把“过不足”里公司卡空車ETC计为应返公司
+    def recompute_deposit_difference(self):
+        """
+        统一计算：过不足 = 入金 − ながし現金 − 貸切現金 − [公司卡空車ETC]
+        """
+        deposit = int(self.deposit_amount or 0)
+
+        # ながし現金：行明细中，非貸切 且 支払方法属于现金系
+        CASH_METHODS = {"cash", "uber_cash", "didi_cash", "go_cash"}
+        cash_nagashi = sum(int(i.meter_fee or 0)
+                        for i in self.items.all()
+                        if not i.is_charter and i.payment_method in CASH_METHODS)
+
+        # 貸切現金：行明细中，貸切 且 支払方法属于现金或个人收款渠道
+        CHARTER_CASH = {"jpy_cash", "rmb_cash", "self_wechat", "boss_wechat"}
+        charter_cash = sum(int(i.charter_amount_jpy or 0)
+                        for i in self.items.all()
+                        if i.is_charter and i.charter_payment_method in CHARTER_CASH)
+
+        # 公司卡的空车ETC要算入“司机应返”
+        etc_company_empty = int(self.etc_uncollected or 0) if self.etc_empty_card == "company" else 0
+
+        # 综合结果
+        self.deposit_difference = deposit - cash_nagashi - charter_cash - etc_company_empty
+
 
 # 乘务日报明细，一天可有多条，归属于DriverDailyReport
 class DriverDailyReportItem(models.Model):

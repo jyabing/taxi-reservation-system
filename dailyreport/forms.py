@@ -39,8 +39,15 @@ class DriverDailyReportForm(forms.ModelForm):
 
     class Meta:
         model = DriverDailyReport
-        exclude = ["driver"]
-        fields = "__all__"   # 保持你的原样
+        # ⚠️ Django 不允许同时设置 fields="__all__" 和 exclude
+        # 二选一；如果想排除 driver：
+        exclude = ["driver"]          # ✅ 推荐只保留这个
+        # fields = "__all__"
+
+        widgets = {
+            "etc_rider_payer": forms.Select(attrs={"class": "form-select form-select-sm js-etc-rider-payer"}),
+            "etc_empty_card": forms.Select(attrs={"class": "form-select form-select-sm js-empty-etc-card"}),  # ✅ 新增
+        }
 
     def clean(self):
         cleaned = super().clean()

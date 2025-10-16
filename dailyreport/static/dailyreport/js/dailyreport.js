@@ -1,7 +1,7 @@
 /* -------------------------------------------------------
- * Driver Daily Report (stable) 
+ * Driver Daily Report (stable)
  * - 保留既有功能
- * - 新增行级ETC三字段(乘車/空車/負担)的小计聚合与开关
+ * - 行级ETC(乗車/空車/負担) 聚合 + 过不足含「実際ETC」
  * -----------------------------------------------------*/
 
 // ===== 页面闸门：只在“司机日報编辑页”生效 =====
@@ -21,57 +21,60 @@ const ENABLE_LIVE_SORT = false;  // 是否启用“同一时间点自动排序�
 function $(sel, root) { return (root || document).querySelector(sel); }
 function $all(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
 function getRow(el) { return el?.closest("tr.report-item-row") || el?.closest("tr"); }
-function toInt(v, fallback = 0) { const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10); return Number.isFinite(n) ? n : fallback; }
+function toInt(v, fb = 0) { const n = parseInt(String(v ?? "").replace(/[^\d-]/g, ""), 10); return Number.isFinite(n) ? n : fb; }
 function _yen(v) { if (v == null) return 0; const n = Number(String(v).replace(/[,，\s]/g, "")); return isFinite(n) ? n : 0; }
 function idText(id, n) { const el = document.getElementById(id); if (el) el.textContent = Number(n || 0).toLocaleString(); }
 
-// ====== flatpickr 初始化（仅一次） ======
-function initFlatpickr(root) {
-  if (typeof flatpickr === 'function') {
-    flatpickr($all(".time-input", root), {
-      enableTime: true, noCalendar: true, dateFormat: "H:i",
-      time_24hr: true, locale: "ja"
-    });
-  }
-}
-
-// ====== 保底：时间控件初始化（确保 .time-input 都挂上 flatpickr） ======
+// ====== flatpickr 初始化（仅一次，带兜底） ======
 function initFlatpickr(root) {
   try {
     if (typeof flatpickr === 'function') {
       flatpickr((root || document).querySelectorAll(".time-input"), {
-        enableTime: true,
-        noCalendar: true,
-        dateFormat: "H:i",
-        time_24hr: true,
-        locale: "ja"
+        enableTime: true, noCalendar: true, dateFormat: "H:i",
+        time_24hr: true, locale: "ja"
       });
     }
-  } catch (e) {
-    // 静默失败，防止影响其他逻辑
+  } catch (e) {}
+}
+
+/* =========================
+ * ETC 结算口径配置
+ * ========================= */
+const ETC_COVERAGE = {
+  // 当“空車ETCカード=自己カード”时，哪些“回程費 支払方法”用于覆盖司机立替
+  coverReturnMethods: new Set(["cash_to_driver", "app_ticket"]),
+};
+
+/**
+ * 计算“実際ETC”净额用于过不足：
+ * 返回值：正数=公司需返给司机；负数=司机需返给公司；0=互不影响
+ *
+ * 口径：
+ * - 司机立替 = 明细里 etc_charge_type=="driver" 的 (乗車ETC+空車ETC) 合计；
+ * - 乘客承担 = 明细里 etc_charge_type=="customer" 的 (乗車ETC+空車ETC) 合计；
+ * - 若 空車ETCカード=自己カード && 回程費 支払方法 ∈ ETC_COVERAGE.coverReturnMethods
+ *   则 司机立替 -= 回程費 受領額；
+ * - 净额 = 司机立替(经覆盖) − 乘客承担；
+ */
+function __calcEtcDueForOverShort() {
+  // 从小计面板读取（由 updateTotals() 已写回）
+  let driverPaid = toInt(document.getElementById("etc-driver-total")?.textContent, 0);
+  let passengerCollected = toInt(document.getElementById("etc-customer-total")?.textContent, 0);
+  // 兜底：若面板还没渲染，用输入框（模板 data-role）
+  if (!passengerCollected) {
+    passengerCollected = toInt(document.querySelector('[data-role="etc-collected-passenger"]')?.value, 0);
   }
+  // 回程费覆盖：仅当 空車ETC カード=自己カード
+  const emptyCard = (document.getElementById("id_etc_empty_card")?.value || "company").trim();
+  const returnMethod = (document.getElementById("id_etc_return_fee_method")?.value || "none").trim();
+  const returnClaimed = toInt(document.getElementById("id_etc_return_fee_claimed")?.value, 0);
+  if (emptyCard === "own" && ETC_COVERAGE.coverReturnMethods.has(returnMethod)) {
+    driverPaid = Math.max(0, driverPaid - returnClaimed);
+  }
+  // 正=返司机；负=返公司
+  return driverPaid - passengerCollected;
 }
-
-// ====== 空車ETC（回程）詳細卡片的显隐判断 ======
-// 规则：当“行级空車ETC”总和 > 0 时显示，否则隐藏。
-// 注意：只统计未被 DELETE 且非待入(is_pending)的行。
-function evaluateEmptyEtcDetailVisibility() {
-  const card = document.getElementById('empty-etc-detail-card'); // ← 模板会加这个 id
-  if (!card) return;
-
-  let emptySum = 0;
-  $all("tr.report-item-row").forEach(row => {
-    const delFlag = row.querySelector("input[name$='-DELETE']");
-    if ((delFlag && delFlag.checked) || row.style.display === "none") return;
-    const isPending = (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
-    if (isPending) return;
-    const emptyEtc = toInt(row.querySelector(".etc-empty-input")?.value, 0);
-    if (emptyEtc > 0) emptySum += emptyEtc;
-  });
-
-  card.style.display = emptySum > 0 ? '' : 'none';
-}
-
+window.__calcEtcDueForOverShort = __calcEtcDueForOverShort;
 
 // ====== 工时计算 ======
 function updateDuration() {
@@ -114,14 +117,12 @@ function updateDuration() {
   if (breakTimeHidden) breakTimeHidden.value = toHM(realBreak);
 }
 
-// ====== 行号刷新 ======
+// ====== 行号刷新 / 同时刻缩进 ======
 function updateRowNumbersAndIndexes() {
   const table = document.querySelector('table.report-table');
   const rows = $all("tr.report-item-row", table).filter(r => r.style.display !== "none");
   rows.forEach((row, i) => { row.querySelector(".row-number")?.replaceChildren(document.createTextNode(i + 1)); });
 }
-
-// ====== 同时刻缩进 ======
 function updateSameTimeGrouping() {
   const table = document.querySelector('table.report-table');
   const rows = $all("tr.report-item-row", table).filter(r => r.style.display !== "none");
@@ -186,7 +187,7 @@ function applyCharterState(row, isCharter) {
   }
 }
 
-// ====== 行事件绑定（保留旧功能 + 新增ETC联动） ======
+// ====== 行事件绑定（含ETC联动） ======
 function bindRowEvents(row) {
   initFlatpickr(row);
 
@@ -201,7 +202,7 @@ function bindRowEvents(row) {
         updateRowNumbersAndIndexes();
         updateSameTimeGrouping();
         updateTotals();
-        evaluateEmptyEtcDetailVisibility();   // ★ 新增：删行后重新判断是否显示空車ETC卡片
+        evaluateEmptyEtcDetailVisibility();
       }
     });
   });
@@ -216,7 +217,7 @@ function bindRowEvents(row) {
       updateRowNumbersAndIndexes();
       updateSameTimeGrouping();
       updateTotals();
-      evaluateEmptyEtcDetailVisibility();     // ★ 新增
+      evaluateEmptyEtcDetailVisibility();
     });
   });
 
@@ -228,14 +229,13 @@ function bindRowEvents(row) {
   const charterAmountInput = row.querySelector(".charter-amount-input");
   const charterCheckbox = row.querySelector("input[name$='-is_charter']");
   const rideTimeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
-
   if (amountInput) amountInput.addEventListener("input", () => updateTotals());
   if (methodSelect) methodSelect.addEventListener("change", () => updateTotals());
   if (pendingCb) {
     pendingCb.addEventListener("change", () => {
       if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
       updateTotals();
-      evaluateEmptyEtcDetailVisibility();     // ★ 待入改变也可能影响统计，稳妥起见一起判断
+      evaluateEmptyEtcDetailVisibility();
     });
     if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
   }
@@ -244,7 +244,7 @@ function bindRowEvents(row) {
     charterCheckbox.addEventListener("change", () => {
       applyCharterState(row, charterCheckbox.checked);
       updateTotals();
-      evaluateEmptyEtcDetailVisibility();     // ★ 新增（虽然与ETC无直接关系，但行隐藏/金额变化时更稳妥）
+      evaluateEmptyEtcDetailVisibility();
     });
     applyCharterState(row, charterCheckbox.checked);
   }
@@ -258,19 +258,12 @@ function bindRowEvents(row) {
     rideTimeInput.addEventListener("input", onTimeChanged);
   }
 
-  // ✅ 行级ETC 三字段联动（乘車ETC/空車ETC/負担）
+  // 行级ETC 三字段
   $all(".etc-riding-input, .etc-empty-input, .etc-charge-type-select", row).forEach(el => {
-    el.addEventListener("input", () => { 
-      updateTotals();
-      evaluateEmptyEtcDetailVisibility();     // ★ 核心：ETC字段改动后，立即判断卡片显隐
-    });
-    el.addEventListener("change", () => { 
-      updateTotals();
-      evaluateEmptyEtcDetailVisibility();     // ★ 核心
-    });
+    el.addEventListener("input", () => { updateTotals(); evaluateEmptyEtcDetailVisibility(); });
+    el.addEventListener("change", () => { updateTotals(); evaluateEmptyEtcDetailVisibility(); });
   });
 }
-
 
 // ====== 模板克隆/插入 ======
 function cloneRowFromTemplate() {
@@ -339,9 +332,9 @@ function resolveJsPaymentMethod(raw) {
   return val;
 }
 
-// ====== 合计（保留旧逻辑 + 新增ETC行级聚合显示） ======
+// ====== 合计（旧逻辑 + 新增ETC聚合 + 过不足含実際ETC） ======
 function updateTotals() {
-  const table = document.querySelector('table.report-table');
+  const table = document.querySelector("table.report-table");
   if (!table) return;
 
   // 旧口径
@@ -355,14 +348,13 @@ function updateTotals() {
   // 新增 ETC 行级聚合
   let rideEtcSum = 0;     // 乗車ETC 合计
   let emptyEtcSum = 0;    // 空車ETC 合计
-  let etcCompany = 0;     // ETC(会社負担)
-  let etcDriver = 0;      // ETC(ドライバー立替)
-  let etcCustomer = 0;    // ETC(お客様支払)
+  let etcCompany = 0;     // 会社負担
+  let etcDriver = 0;      // ドライバー立替
+  let etcCustomer = 0;    // お客様支払
 
   $all(".report-item-row", table).forEach(row => {
     const delFlag = row.querySelector("input[name$='-DELETE']");
     if ((delFlag && delFlag.checked) || row.style.display === "none") return;
-
     const isPending = (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
     if (isPending) return;
 
@@ -376,9 +368,9 @@ function updateTotals() {
     if (!isCharter) {
       if (fee > 0) {
         const raw = payment;
-        const isUberReservation = raw === 'uber_reservation';
-        const isUberTip = raw === 'uber_tip';
-        const isUberPromotion = raw === 'uber_promotion';
+        const isUberReservation = raw === "uber_reservation";
+        const isUberTip = raw === "uber_tip";
+        const isUberPromotion = raw === "uber_promotion";
         const isSpecialUber = isUberReservation || isUberTip || isUberPromotion;
         if (isSpecialUber) {
           specialUberSum += fee;
@@ -392,19 +384,21 @@ function updateTotals() {
         }
       }
     } else if (charterAmount > 0) {
-      const CASH = ['jpy_cash', 'rmb_cash', 'self_wechat', 'boss_wechat'];
-      const UNCOLLECTED = ['to_company', 'bank_transfer', ''];
+      const CASH = ["jpy_cash", "rmb_cash", "self_wechat", "boss_wechat"];
+      const UNCOLLECTED = ["to_company", "bank_transfer", ""];
       if (CASH.includes(charterPayMethod)) charterCashTotal += charterAmount;
       else if (UNCOLLECTED.includes(charterPayMethod)) charterUncollectedTotal += charterAmount;
     }
 
-    // ✅ ETC 行级字段：聚合统计（只显示，不改旧口径）
+    // ETC 行级字段：聚合统计
     const rideEtc = toInt(row.querySelector(".etc-riding-input")?.value, 0);
     const emptyEtc = toInt(row.querySelector(".etc-empty-input")?.value, 0);
     const chargeType = (row.querySelector(".etc-charge-type-select")?.value || "company").trim();
+
     const lineTotal = rideEtc + emptyEtc;
     rideEtcSum += rideEtc;
     emptyEtcSum += emptyEtc;
+
     if (chargeType === "company") etcCompany += lineTotal;
     else if (chargeType === "driver") etcDriver += lineTotal;
     else if (chargeType === "customer") etcCustomer += lineTotal;
@@ -426,33 +420,111 @@ function updateTotals() {
   idText("charter-cash-total", charterCashTotal);
   idText("charter-uncollected-total", charterUncollectedTotal);
 
-  // ✅ 回写（新面板：ETC 小计显示）
+  // 回写（ETC 小计显示）
   idText("ride-etc-total", rideEtcSum);
   idText("empty-etc-total", emptyEtcSum);
   idText("etc-company-total", etcCompany);
   idText("etc-driver-total", etcDriver);
   idText("etc-customer-total", etcCustomer);
 
-  // ✅ 补回「过不足」旧口径计算
-  const deposit = _yen(document.getElementById('deposit-input')?.value || 0);
+  // 乘車ETC 收取（乘客承担）联动写回
+  (function syncRideEtcCollected() {
+    const input = document.querySelector('[data-role="etc-collected-passenger"]');
+    if (!input) return;
+    const target = etcCustomer; // 如只算乘車，改为独立累计的 rideEtcSumCustomer
+    const current = toInt(input.value, 0);
+    if (current !== target) {
+      input.value = String(target);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  })();
+
+  // 空車ETC 金額（円）联动写回
+  (function syncEmptyEtcCard() {
+    const input = document.getElementById("id_etc_uncollected");
+    if (!input) return;
+    const current = toInt(input.value, 0);
+    if (current !== emptyEtcSum) {
+      input.value = String(emptyEtcSum);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  })();
+
+  // 过不足（入金 − 現金 − 貸切現金）＋ 实際ETC净额
+  const deposit = _yen(document.getElementById("deposit-input")?.value || 0);
   const cashNagashi = totalMap.cash || 0;
   const charterCash = charterCashTotal || 0;
 
-  let imbalance = deposit - cashNagashi - charterCash;
+  const imbalanceBase = deposit - cashNagashi - charterCash; // 旧口径
+  const etcNet = __calcEtcDueForOverShort();                 // 正=返司机；负=返公司
+  const imbalance = imbalanceBase + etcNet;                  // 新口径
 
-  const diffEl = document.getElementById("difference-output")
-               || document.getElementById("deposit-difference")
-               || document.getElementById("shortage-diff");
+  const diffEl =
+    document.getElementById("difference-output") ||
+    document.getElementById("deposit-difference") ||
+    document.getElementById("shortage-diff");
   if (diffEl) {
     diffEl.textContent = Number.isFinite(imbalance) ? imbalance.toLocaleString() : "--";
+    diffEl.setAttribute("data-base-over-short", String(imbalanceBase));
+    diffEl.setAttribute("data-etc-net", String(etcNet));
   }
-  const hiddenDiff = document.getElementById('id_deposit_difference');
+  const hiddenDiff = document.getElementById("id_deposit_difference");
   if (hiddenDiff) hiddenDiff.value = imbalance;
 
-  // 继续运行智能提示模块（如有）
-  if (typeof updateSmartHintPanel === 'function') {
+  // 過不足の内訳（彩色・分行）
+  (function renderOverShortBreakdown() {
+    const holder = document.getElementById("difference-breakdown");
+    const diffEl =
+      document.getElementById("difference-output") ||
+      document.getElementById("deposit-difference") ||
+      document.getElementById("shortage-diff");
+    if (!holder || !diffEl) return;
+
+    const base   = parseInt(diffEl.getAttribute("data-base-over-short") || "0", 10) || 0;
+    const etcNet = parseInt(diffEl.getAttribute("data-etc-net") || "0", 10) || 0;
+    const total  = base + etcNet;
+
+    const etcAbs = Math.abs(etcNet);
+    const etcDir = etcNet >= 0 ? "会社 → 運転手" : "運転手 → 会社";
+    const etcCls = etcNet >= 0 ? "ob-pos" : "ob-neg";
+
+    holder.innerHTML = `
+      <div class="ob-line">
+        <span class="ob-label">基本（入金 − 現金 − 貸切）</span>
+        <span class="ob-mono">${base.toLocaleString()}</span>
+      </div>
+      <div class="ob-line">
+        <span class="ob-label">実際ETC <span class="ob-chip" title="行明細ETCの合算で動的計算">${etcDir}</span></span>
+        <span class="ob-mono ${etcCls}">${etcNet >= 0 ? "＋" : "－"}${etcAbs.toLocaleString()}</span>
+      </div>
+      <div class="ob-line">
+        <span class="ob-label ob-total">合計</span>
+        <span class="ob-mono ob-total">${total.toLocaleString()}</span>
+      </div>
+    `;
+  })();
+
+  if (typeof updateSmartHintPanel === "function") {
     try { updateSmartHintPanel(); } catch (e) {}
   }
+
+  // 入金框下方提示：基于实时计算的 etcDue
+  (function renderEtcHint(){
+    const warn = document.getElementById('etc-included-warning');
+    if (!warn) return;
+    const etcDue = __calcEtcDueForOverShort();
+    if (etcDue > 0) {
+      warn.className = "small mt-1 text-primary";
+      warn.textContent = `過不足に 実際ETC（返還予定）${etcDue.toLocaleString()} 円 を含めています。`;
+    } else if (etcDue < 0) {
+      warn.className = "small mt-1 text-danger";
+      warn.textContent = `実際ETC（返金予定）${Math.abs(etcDue).toLocaleString()} 円 を控除しています。`;
+    } else {
+      warn.textContent = "";
+    }
+  })();
 }
 
 // ====== 夜班排序（保留，默认关闭） ======
@@ -490,7 +562,7 @@ function updateTotals() {
   window.__resortByTime = sortRowsByTime;
 })();
 
-// ====== 提交前兜底（保留） ======
+// ====== 提交前兜底 ======
 (function () {
   const form = document.querySelector("form"); if (!form) return;
   form.addEventListener("submit", function () {
@@ -507,6 +579,14 @@ function updateTotals() {
   });
 })();
 
+// 让新插入的行马上跟随当前的列显隐状态
+function syncEtcColVisibility(){
+  const table = document.querySelector("table.report-table");
+  const toggle = document.getElementById("toggle-etc-cols");
+  if (!table || !toggle) return;
+  table.classList.toggle('etc-cols-hidden', !toggle.checked);
+}
+
 // ====== ETC 显示开关（默认隐藏/显示由 localStorage 记忆） ======
 (function setupEtcColsToggle() {
   const table = document.querySelector("table.report-table");
@@ -516,119 +596,20 @@ function updateTotals() {
   const KEY = "dr:show_etc_cols";
   function apply() {
     const on = !!(toggle.checked);
-    if (on) {
-      table.classList.remove("etc-cols-hidden");
-    } else {
-      table.classList.add("etc-cols-hidden");
-    }
+    table.classList.toggle("etc-cols-hidden", !on);
     localStorage.setItem(KEY, on ? "1" : "0");
   }
-  // 初始
   const saved = localStorage.getItem(KEY);
   if (saved !== null) toggle.checked = saved === "1";
   apply();
   toggle.addEventListener("change", apply);
 })();
 
-// ====== 页面主绑定（单一处；不重复） ======
-document.addEventListener('DOMContentLoaded', () => {
-  // 1) 行绑定（保持旧功能）
-  $all("tr.report-item-row").forEach(bindRowEvents);
-
-  // 2) “下に挿入”按钮（行内）
-  const table = document.querySelector('table.report-table');
-  if (table) {
-    table.addEventListener("click", (e) => {
-      const btn = e.target.closest(".insert-below");
-      if (!btn) return;
-      e.preventDefault();
-      const row = getRow(btn);
-      const rows = $all("tr.report-item-row", table);
-      const index = row ? (rows.findIndex(r => r === row) + 1) : 1;
-      insertRowAfter(index);
-      // 绑定新行 + 再算一遍
-      const newRow = $all("tr.report-item-row", table)[index]; // 插到 index 之后
-      if (newRow) bindRowEvents(newRow);
-      updateRowNumbersAndIndexes();
-      updateSameTimeGrouping();
-      updateTotals();
-      evaluateEmptyEtcDetailVisibility();  // 插入行后判断是否显示空車ETC卡片
-      syncEtcColVisibility();  // ✅ 新增：保持新行的列显隐一致
-    });
-  }
-
-  // 3) 顶部“尾部追加”/“指定行插入”
-  const addBtn = document.getElementById('add-row-btn');
-  if (addBtn && !addBtn.dataset.boundOnce) {
-    addBtn.dataset.boundOnce = "1";
-    addBtn.addEventListener('click', (e) => { 
-      e.preventDefault(); 
-      addRowToEnd();
-      // 末尾新行再绑定 + 重新计算
-      const rows = $all("tr.report-item-row");
-      const newRow = rows[rows.length - 1];
-      if (newRow) bindRowEvents(newRow);
-      updateRowNumbersAndIndexes();
-      updateSameTimeGrouping();
-      updateTotals();
-      evaluateEmptyEtcDetailVisibility();  // ★ 新增
-    });
-  }
-  const idxBtn = document.getElementById('insert-at-btn');
-  const idxInput = document.getElementById('insert-index-input');
-  if (idxBtn && idxInput && !idxBtn.dataset.boundOnce) {
-    idxBtn.dataset.boundOnce = "1";
-    idxBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const v = parseInt(idxInput.value, 10) || 1;
-      insertRowAfter(v);
-      // 绑定新行 + 再算一遍
-      const rows = $all("tr.report-item-row");
-      const newRow = rows[Math.min(v, rows.length) - 1];
-      if (newRow) bindRowEvents(newRow);
-      updateRowNumbersAndIndexes();
-      updateSameTimeGrouping();
-      updateTotals();
-      evaluateEmptyEtcDetailVisibility();  // ★ 新增
-    });
-  }
-
-  // 4) 退勤勾选状态同步（保留）
-  (function () {
-    var out = document.getElementById("id_clock_out");
-    var chk = document.getElementById("id_unreturned_flag") || document.querySelector('input[name="unreturned_flag"]');
-    var txt = document.getElementById("return-status-text");
-    function sync() {
-      var hasVal = out && out.value.trim() !== "";
-      if (hasVal) {
-        if (chk) chk.checked = false;
-        if (txt) txt.textContent = "已完成";
-      } else {
-        if (txt) txt.textContent = "未完成入库手续";
-      }
-    }
-    if (out) {
-      out.addEventListener("input", sync);
-      window.addEventListener("load", sync);
-    }
-  })();
-
-  // 5) 初始计算 & 初始化（保留 + 新增）
-  initFlatpickr(document);              // ★ 确保时间控件可用
-  updateDuration();
-  updateRowNumbersAndIndexes();
-  updateSameTimeGrouping();
-  updateTotals();
-  evaluateEmptyEtcDetailVisibility();   // ★ 新增：进页面就判断空車ETC卡片显示
-});
-
-
 /* ===== 智能联动：根据明细决定是否显示「空車ETC（回程）詳細」卡片 ===== */
 function evaluateEmptyEtcDetailVisibility() {
   const card = document.getElementById('empty-etc-card');
   if (!card) return;
 
-  // 扫描所有行：累计“空车ETC”金额；判断是否存在需要司机承担的空车ETC
   const rows = document.querySelectorAll('tr.report-item-row');
   let emptySum = 0;
   let needDetail = false;
@@ -640,29 +621,20 @@ function evaluateEmptyEtcDetailVisibility() {
     const isPending = (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
     if (isPending) return;
 
-    const emptyEtc = parseInt((row.querySelector(".etc-empty-input")?.value || "0").replace(/[^\d-]/g, ""), 10) || 0;
+    const emptyEtc = toInt(row.querySelector(".etc-empty-input")?.value, 0);
     const chargeType = (row.querySelector(".etc-charge-type-select")?.value || "company").trim();
 
     emptySum += emptyEtc;
-
-    // 只有“司机立替”的空车ETC，才需要展开“回程詳細”进行报销/结算方式说明
-    if (emptyEtc > 0 && chargeType === "driver") {
-      needDetail = true;
-    }
+    if (emptyEtc > 0 && chargeType === "driver") needDetail = true;
   });
 
   if (needDetail) {
-    // 显示卡片
     card.classList.remove('d-none');
-
-    // 把合计金额（仅在为空时）灌到“空車ETC 金額”输入框，避免重复手填
     const emptyInput = document.getElementById('id_etc_uncollected');
     if (emptyInput && (!emptyInput.value || emptyInput.value === "0")) {
       emptyInput.value = emptySum;
       emptyInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
-
-    // 默认联动：司机卡 + 個別（均可被用户改）
     const cardSel = document.getElementById('id_etc_empty_card');
     if (cardSel && !cardSel.value) {
       cardSel.value = 'own';
@@ -674,24 +646,95 @@ function evaluateEmptyEtcDetailVisibility() {
       methodSel.dispatchEvent(new Event('change', { bubbles: true }));
     }
   } else {
-    // 隐藏卡片
     card.classList.add('d-none');
   }
 }
 
+// 回程费相关控件变化时，重新计算
+["#id_etc_uncollected","#id_etc_return_fee_claimed","#id_etc_return_fee_method","#id_etc_empty_card"]
+  .forEach((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.addEventListener("input", () => updateTotals());
+    el.addEventListener("change", () => updateTotals());
+  });
 
-// —— 进入页面先排一次；提交前再排一次 ——
-// 避免重复绑定：只挂一次
+// ====== 页面主绑定 ======
+document.addEventListener('DOMContentLoaded', () => {
+  // 行绑定
+  $all("tr.report-item-row").forEach(bindRowEvents);
+
+  // “下に挿入”
+  const table = document.querySelector('table.report-table');
+  if (table) {
+    table.addEventListener("click", (e) => {
+      const btn = e.target.closest(".insert-below");
+      if (!btn) return;
+      e.preventDefault();
+      const row = getRow(btn);
+      const rows = $all("tr.report-item-row", table);
+      const index = row ? (rows.findIndex(r => r === row) + 1) : 1;
+      insertRowAfter(index);
+      const newRow = $all("tr.report-item-row", table)[index];
+      if (newRow) bindRowEvents(newRow);
+      updateRowNumbersAndIndexes();
+      updateSameTimeGrouping();
+      updateTotals();
+      evaluateEmptyEtcDetailVisibility();
+      syncEtcColVisibility();
+    });
+  }
+
+  // 顶部“指定行插入”
+  const idxBtn = document.getElementById('insert-at-btn');
+  const idxInput = document.getElementById('insert-index-input');
+  if (idxBtn && idxInput && !idxBtn.dataset.boundOnce) {
+    idxBtn.dataset.boundOnce = "1";
+    idxBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const v = parseInt(idxInput.value, 10) || 1;
+      insertRowAfter(v);
+      const rows = $all("tr.report-item-row");
+      const newRow = rows[Math.min(v, rows.length) - 1];
+      if (newRow) bindRowEvents(newRow);
+      updateRowNumbersAndIndexes();
+      updateSameTimeGrouping();
+      updateTotals();
+      evaluateEmptyEtcDetailVisibility();
+      syncEtcColVisibility();
+    });
+  }
+
+  // 退勤勾选状态同步
+  (function () {
+    var out = document.getElementById("id_clock_out");
+    var chk = document.getElementById("id_unreturned_flag") || document.querySelector('input[name="unreturned_flag"]');
+    var txt = document.getElementById("return-status-text");
+    function sync() {
+      var hasVal = out && out.value.trim() !== "";
+      if (hasVal) { if (chk) chk.checked = false; if (txt) txt.textContent = "已完成"; }
+      else { if (txt) txt.textContent = "未完成入库手续"; }
+    }
+    if (out) { out.addEventListener("input", sync); window.addEventListener("load", sync); }
+  })();
+
+  // 初始计算
+  initFlatpickr(document);
+  updateDuration();
+  updateRowNumbersAndIndexes();
+  updateSameTimeGrouping();
+  updateTotals();
+  evaluateEmptyEtcDetailVisibility();
+});
+
+// —— 进入页面先排一次；提交前再排一次（夜班排序入口） ——
 (function bindNightSortEntrypoints(){
   const onceKey = "__night_sort_bound__";
   if (window[onceKey]) return;
   window[onceKey] = true;
 
   document.addEventListener("DOMContentLoaded", () => {
-    // 初始排序
     if (typeof window.__resortByTime === "function") window.__resortByTime();
-
-    // 提交前兜底排序（确保保存后顺序正确）
     const form = document.querySelector('form[method="post"]');
     if (form) {
       form.addEventListener("submit", () => {
