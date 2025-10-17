@@ -204,3 +204,24 @@ def build_month_aggregates(items_qs):
         "charter_cash_total": charter_cash_total,
         "charter_uncollected_total": charter_uncollected_total,
     }
+
+# === 公共：给模板用的入金摘要 ===
+def compute_deposit_summary_from_report(report):
+    """
+    与编辑页保存口径保持一致：
+    - 应入金 expected = ながし現金(メータ現金=payment_method 归一到 'cash') + 貸切現金
+    - 实入金 deposit = report.deposit_amount
+    - 过不足 diff = deposit - expected
+    """
+    # 直接复用你已实现的实例版统计，确保口径唯一
+    totals = calculate_totals_from_instances(report.items.all())
+    expected = int(totals.get("deposit_total", 0))
+    deposit  = int(getattr(report, "deposit_amount", 0) or 0)
+    diff     = deposit - expected
+    return {
+        "expected_deposit": expected,                 # 应入金
+        "deposit_amount": deposit,                    # 实入金
+        "deposit_difference": diff,                   # 过不足（= 实入 - 应入）
+        "nagashi_cash": int(totals.get("nagashi_cash", {}).get("total", 0)),
+        "charter_cash": int(totals.get("charter_cash_total", 0)),
+    }

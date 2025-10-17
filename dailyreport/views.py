@@ -99,6 +99,24 @@ def _as_aware_dt(val, base_date):
     return None
 # =================================================
 
+# === Deposit summary helper (统一口径：ながし現金 + 貸切現金) ===
+def _build_deposit_summary_from_totals_raw(totals_raw: dict, deposit_amount: int | Decimal | None):
+    """
+    totals_raw: 来自 calculate_totals_from_formset / calculate_totals_from_instances 的原始结构
+      - 貸切現金: totals_raw["charter_cash_total"]
+      - ながし現金: totals_raw["nagashi_cash"]["total"]
+    """
+    charter_cash = int(totals_raw.get("charter_cash_total", 0) or 0)
+    nagashi_cash = int((totals_raw.get("nagashi_cash") or {}).get("total", 0) or 0)
+    expected = charter_cash + nagashi_cash
+    deposit = int(deposit_amount or 0)
+    return {
+        "expected_deposit": expected,         # 应入金 = ながし現金 + 貸切現金
+        "deposit_amount": deposit,            # 实入金（表头的入金）
+        "deposit_difference": deposit - expected,  # 差额 = 实入金 - 应入金
+    }
+
+
 # === Uber 别名 & 关键词：统一口径（导出/总览共用） ===
 import re as _re
 
@@ -1562,7 +1580,9 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         post['clock_out'] = _norm_hhmm(post.get('clock_out'))
 
         form = DriverDailyReportForm(post, instance=report)
-        formset = ReportItemFormSet(post, instance=report)
+
+        # 🔧 修复点：与模板/JS 一致的前缀，避免把旧行当“新增”
+        formset = ReportItemFormSet(post, instance=report, prefix=PREFIX)
 
         if form.is_valid() and formset.is_valid():
             # === 记录保存前的旧值 ===
@@ -1700,11 +1720,15 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
 
             inst.save()
             formset.instance = inst
+            # ✅ 若你需要在 save 前对 item 做额外处理，保留 commit=False；并显式处理删除对象
             items = formset.save(commit=False)
             for item in items:
                 if getattr(item, "is_pending", None) is None:
                     item.is_pending = False
                 item.save()
+            # 🔧 可选修复：确保被勾选 DELETE 的行真实删除
+            for obj in formset.deleted_objects:
+                obj.delete()
 
             # >>> [SYNC-RESERVATION CALL]
             try:
@@ -1727,7 +1751,8 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     else:
         _prefill_report_without_fk(report)
         form = DriverDailyReportForm(instance=report)
-        formset = ReportItemFormSet(instance=report)
+        # 🔧 修复点：GET 也要用相同前缀，确保模板渲染的管理表单名称一致
+        formset = ReportItemFormSet(instance=report, prefix=PREFIX)
 
     # ---------- 预填：尝试从 Reservation 带出车辆与实际出/入库（仅 GET，不写库） ----------
         try:
@@ -1838,6 +1863,13 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
     break_time_m = f"{break_time_m:02d}"
     actual_break_value = f"{actual_break_min // 60}:{actual_break_min % 60:02d}"
 
+    # ✅ 统一口径的入金对比（ながし現金 + 貸切現金）
+    deposit_summary = _build_deposit_summary_from_totals_raw(
+        totals_raw,
+        getattr(report, "deposit_amount", 0),
+    )
+
+
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
         'form': form,
         'formset': formset,
@@ -1849,6 +1881,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         'break_time_h': break_time_h,
         'break_time_m': break_time_m,
         'actual_break_value': actual_break_value,
+        'deposit_summary': deposit_summary,  # 👈 新增这一行
     })
 
 # ========= 未分配账号司机：当天创建 =========

@@ -70,25 +70,59 @@
   </div>
 </div>
 
-<!-- 入金金額 + 過不足 -->
+{% if deposit_summary %}
+<!-- 入金（统一口径） = ながし現金 + 貸切現金 -->
 <div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
   <div class="card-body py-2 px-3">
-    <div class="small text-muted">入金金額</div>
-    <div class="fw-bold">
-      {{ deposit|floatformat:0 }} 円
+    <div class="small text-muted">入金（统一口径）</div>
+
+    <div class="small">
+      <div>ながし現金：¥{{ deposit_summary.nagashi_cash|floatformat:0|intcomma }}</div>
+      <div>貸切現金　：¥{{ deposit_summary.charter_cash|floatformat:0|intcomma }}</div>
+      <div class="mt-1 border-top pt-1">
+        <span class="text-muted">应入金：</span>
+        <span class="fw-bold">¥{{ deposit_summary.expected_deposit|floatformat:0|intcomma }}</span>
+      </div>
+      <div>実入金　　：¥{{ deposit_summary.deposit_amount|floatformat:0|intcomma }}</div>
+      <div>
+        差額　　　：
+        {% with d=deposit_summary.deposit_difference %}
+          {% if d > 0 %}
+            <span class="fw-bold text-primary">+¥{{ d|floatformat:0|intcomma }}</span>
+          {% elif d < 0 %}
+            <span class="fw-bold text-danger">¥{{ d|floatformat:0|intcomma }}</span>
+          {% else %}
+            <span class="fw-bold text-success">¥0</span>
+          {% endif %}
+        {% endwith %}
+      </div>
     </div>
-    <div class="small text-muted mt-1">
-      （入金 − 現金） = 
-      {% if is_deposit_exact %}
-        0 円
-      {% elif deposit_diff > 0 %}
-        +{{ deposit_diff|floatformat:0 }} 円
-      {% else %}
-        {{ deposit_diff|floatformat:0 }} 円
-      {% endif %}
+
+    <div class="small text-muted mt-2">
+      ※ 应入金 ＝ ながし現金（含平台现金别名）＋ 貸切現金
     </div>
   </div>
 </div>
+{% else %}
+  {# 兜底：如果还没传 deposit_summary，就用旧卡片逻辑 #}
+  <div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
+    <div class="card-body py-2 px-3">
+      <div class="small text-muted">入金金額</div>
+      <div class="fw-bold">¥{{ deposit|floatformat:0|intcomma }}</div>
+      <div class="small text-muted mt-1">
+        （入金 − 現金） =
+        {% if is_deposit_exact %}
+          ¥0
+        {% elif deposit_diff > 0 %}
+          +¥{{ deposit_diff|floatformat:0|intcomma }}
+        {% else %}
+          ¥{{ deposit_diff|floatformat:0|intcomma }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
 
 <!-- 明细表 -->
 {% if items %}

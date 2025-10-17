@@ -2056,6 +2056,51 @@ def my_daily_report_detail(request, report_id):
     totals = _totals_of(report.items.all())
     report.meter_only_total = totals.get("meter_only_total", 0)
 
+        # === 统一口径：「应入金 = ながし現金 + 貸切現金」 ===
+    def _canon_pm(v: str) -> str:
+        s = (v or "").strip().lower()
+        aliases = {
+            "現金": "cash", "现金": "cash", "cash(現金)": "cash",
+            "uber現金": "uber_cash", "didi現金": "didi_cash", "go現金": "go_cash",
+            "バーコード":"qr","barcode":"qr","bar_code":"qr","qr_code":"qr",
+            "company card":"credit","company_card":"credit","credit card":"credit","会社カード":"credit",
+            "jp_cash":"jpy_cash","jpy cash":"jpy_cash","jpy-cash":"jpy_cash",
+        }
+        return aliases.get(s, s)
+
+    # 非貸切（メーター）の“ながし現金”口径：含平台现金别名
+    NAGASHI_CASH_KEYS = {"cash", "uber_cash", "didi_cash", "go_cash"}
+
+    # 貸切的“現金”口径：含公司里常见的日元/人民币/微信等
+    CHARTER_CASH_KEYS = {"jpy_cash", "rmb_cash", "self_wechat", "boss_wechat", "cash", "jp_cash"}
+
+    nagashi_cash = sum(
+        int(getattr(it, "meter_fee", 0) or 0)
+        for it in items
+        if not getattr(it, "is_charter", False)
+        and _canon_pm(getattr(it, "payment_method", "")) in NAGASHI_CASH_KEYS
+    )
+
+    charter_cash = sum(
+        int(getattr(it, "charter_amount_jpy", 0) or 0)
+        for it in items
+        if getattr(it, "is_charter", False)
+        and _canon_pm(getattr(it, "charter_payment_method", "")) in CHARTER_CASH_KEYS
+    )
+
+    expected_deposit = nagashi_cash + charter_cash
+    deposit_amount = int(report.deposit_amount or 0)
+    deposit_diff_unified = deposit_amount - expected_deposit
+
+    deposit_summary = {
+        "nagashi_cash": nagashi_cash,            # ながし現金（含平台现金别名）
+        "charter_cash": charter_cash,            # 貸切現金
+        "expected_deposit": expected_deposit,    # 应入金
+        "deposit_amount": deposit_amount,        # 实入金（表头的入金）
+        "deposit_difference": deposit_diff_unified,  # 差額（实入金-应入金）
+    }
+
+
     return render(request, 'vehicles/my_daily_report_detail.html', {
         'report': report,
         'items': items,
@@ -2063,16 +2108,18 @@ def my_daily_report_detail(request, report_id):
         'end_time': end_time,
         'duration': duration,
 
-        # ✅ 传给模板
-        'total_cash': total_cash,
+        'total_cash': total_cash,            # 保留原字段（旧口径）
         'total_sales': total_sales,
         'meter_only_total': meter_only_total,
 
         'deposit': deposit,
-        'deposit_diff': deposit_diff,
+        'deposit_diff': deposit_diff,        # 保留原字段（旧口径）
         'is_deposit_exact': is_deposit_exact,
         'attendance_days': attendance_days,
+
+        'deposit_summary': deposit_summary,  # 👈 新增：统一口径用这个
     })
+
 
 
 # 函数：生成到期提醒文案（提前5天～当天～延后5天）
