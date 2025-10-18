@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from django.views.generic import TemplateView
 #from .views import export_monthly_summary_excel
 
 app_name = "dailyreport"
@@ -24,6 +25,9 @@ urlpatterns = [
 
     # 管理员：编辑/更新日报（旧方式）
     path('dailyreports/<int:pk>/edit/', views.dailyreport_edit, name='dailyreport_edit'),
+
+    # ETC_填报对照表
+    path("help/etc", TemplateView.as_view(template_name="dailyreport/etc_guide.html"), name="etc_help"),
 
     # ---------------------------------------
     # 👨‍✈️ 针对某员工（driver_id）日报管理

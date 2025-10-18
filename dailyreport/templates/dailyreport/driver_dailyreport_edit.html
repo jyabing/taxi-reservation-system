@@ -518,7 +518,11 @@ input[type=number] {
         <input class="form-check-input" type="checkbox" id="toggle-etc-cols">
         <label class="form-check-label" for="toggle-etc-cols">显示 ETC 明细（乗車/空車/負担）</label>
       </div>
+      <a href="{% url 'dailyreport:etc_help' %}" class="btn btn-sm btn-outline-info" target="_blank" rel="noopener">
+        查看填报指南
+      </a>
     </div>
+
     <!-- ====== END PATCH ====== -->
 
     <table class="table table-bordered table-sm report-table">
@@ -530,9 +534,10 @@ input[type=number] {
           <th style="white-space: nowrap;">料金</th>
           <th style="white-space: nowrap;">支付</th>
           <!-- ======= BEGIN FIXED: 行级ETC 表头三列（加 class，便于显隐） ======= -->
-          <th class="text-center col-etc-riding" style="white-space: nowrap;">乗車ETC</th>
-          <th class="text-center col-etc-empty"  style="white-space: nowrap;">空車ETC</th>
-          <th class="text-center col-etc-charge-type" style="white-space: nowrap;">ETC負担</th>
+          <th class="text-center col-etc-riding"         style="white-space: nowrap;">乗車ETC</th>
+          <th class="text-center col-etc-riding-charge"  style="white-space: nowrap;">乗車ETC負担</th>
+          <th class="text-center col-etc-empty"          style="white-space: nowrap;">空車ETC</th>
+          <th class="text-center col-etc-empty-charge"   style="white-space: nowrap;">空車ETC負担</th>
           <!-- ======= END FIXED ======= -->
           <th style="white-space: nowrap;">待入</th>
           <th style="white-space: nowrap;">強調</th>
@@ -588,28 +593,30 @@ input[type=number] {
           {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
         </td>
 
-        <!-- ======= BEGIN NEW: 行级ETC 三列（每行） ======= -->
+        <!-- ======= BEGIN PATCH: 每行的 ETC 4格 ======= -->
         <td class="col-etc-riding" style="min-width: 80px;">
-          {% if form.etc_riding.errors %}
-            <div class="text-danger small">{{ form.etc_riding.errors.0 }}</div>
-          {% endif %}
+          {% if form.etc_riding.errors %}<div class="text-danger small">{{ form.etc_riding.errors.0 }}</div>{% endif %}
           {{ form.etc_riding|add_class:"form-control form-control-sm text-end etc-riding-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
         </td>
 
+        <td class="col-etc-riding-charge" style="min-width: 110px;">
+          {% if form.etc_riding_charge_type.errors %}<div class="text-danger small">{{ form.etc_riding_charge_type.errors.0 }}</div>{% endif %}
+          {{ form.etc_riding_charge_type|add_class:"form-select form-select-sm etc-riding-charge-select" }}
+        </td>
+
         <td class="col-etc-empty" style="min-width: 80px;">
-          {% if form.etc_empty.errors %}
-            <div class="text-danger small">{{ form.etc_empty.errors.0 }}</div>
-          {% endif %}
+          {% if form.etc_empty.errors %}<div class="text-danger small">{{ form.etc_empty.errors.0 }}</div>{% endif %}
           {{ form.etc_empty|add_class:"form-control form-control-sm text-end etc-empty-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
         </td>
 
-        <td class="col-etc-charge-type" style="min-width: 110px;">
-          {% if form.etc_charge_type.errors %}
-            <div class="text-danger small">{{ form.etc_charge_type.errors.0 }}</div>
-          {% endif %}
-          {{ form.etc_charge_type|add_class:"form-select form-select-sm etc-charge-type-select" }}
+        <td class="col-etc-empty-charge" style="min-width: 110px;">
+          {% if form.etc_empty_charge_type.errors %}<div class="text-danger small">{{ form.etc_empty_charge_type.errors.0 }}</div>{% endif %}
+          {{ form.etc_empty_charge_type|add_class:"form-select form-select-sm etc-empty-charge-select" }}
         </td>
-        <!-- ======= END NEW ======= -->
+        <!-- 兼容历史：旧字段保留（HiddenInput，不显示不占位） -->
+        {{ form.etc_charge_type }}
+        <!-- ======= END PATCH ======= -->
+
 
         {# ▼ 待入列 #}
         <td class="text-center">
@@ -701,17 +708,23 @@ input[type=number] {
         {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
       </td>
 
-      <!-- ======= BEGIN NEW: 空模板 行级ETC 三列（必须加类名） ======= -->
+      <!-- ======= BEGIN PATCH: 空模板的 ETC 4格 ======= -->
       <td class="col-etc-riding">
         {{ formset.empty_form.etc_riding|add_class:"form-control form-control-sm text-end etc-riding-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
+      </td>
+      <td class="col-etc-riding-charge">
+        {{ formset.empty_form.etc_riding_charge_type|add_class:"form-select form-select-sm etc-riding-charge-select" }}
       </td>
       <td class="col-etc-empty">
         {{ formset.empty_form.etc_empty|add_class:"form-control form-control-sm text-end etc-empty-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
       </td>
-      <td class="col-etc-charge-type">
-        {{ formset.empty_form.etc_charge_type|add_class:"form-select form-select-sm etc-charge-type-select" }}
+      <td class="col-etc-empty-charge">
+        {{ formset.empty_form.etc_empty_charge_type|add_class:"form-select form-select-sm etc-empty-charge-select" }}
       </td>
-      <!-- ======= END NEW ======= -->
+      <!-- 兼容历史：旧字段保留（HiddenInput） -->
+      {{ formset.empty_form.etc_charge_type }}
+      <!-- ======= END PATCH ======= -->
+
 
 
       <td class="text-center">
@@ -787,20 +800,22 @@ input[type=number] {
       display: table-row !important; visibility: visible !important; opacity: 1 !important;
     }
 
-    /* ====== BEGIN PATCH: ETC 列显隐（默认通过给整表加类来隐藏） ====== */
-    /* 当表格元素拥有 .etc-cols-hidden 类时，隐藏三列 */
+    /* ======= BEGIN PATCH: 列显隐和宽度 ======= */
     table.report-table.etc-cols-hidden th.col-etc-riding,
     table.report-table.etc-cols-hidden td.col-etc-riding,
+    table.report-table.etc-cols-hidden th.col-etc-riding-charge,
+    table.report-table.etc-cols-hidden td.col-etc-riding-charge,
     table.report-table.etc-cols-hidden th.col-etc-empty,
     table.report-table.etc-cols-hidden td.col-etc-empty,
-    table.report-table.etc-cols-hidden th.col-etc-charge-type,
-    table.report-table.etc-cols-hidden td.col-etc-charge-type {
+    table.report-table.etc-cols-hidden th.col-etc-empty-charge,
+    table.report-table.etc-cols-hidden td.col-etc-empty-charge {
       display: none !important;
     }
-    /* 输入控件的宽度微调（不影响提交） */
+
     .etc-riding-input, .etc-empty-input { max-width: 90px; }
-    .etc-charge-type-select { max-width: 140px; }
-    /* ====== END PATCH: ETC 列显隐 ====== */
+    .etc-riding-charge-select, .etc-empty-charge-select { max-width: 140px; }
+    /* ======= END PATCH ======= */
+
 
     #empty-form-template tr { display: none !important; visibility: hidden !important; }
   </style>

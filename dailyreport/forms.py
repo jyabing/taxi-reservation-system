@@ -62,14 +62,13 @@ class DriverDailyReportForm(forms.ModelForm):
 class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReportItem
+        # 最不破坏的方式：全部字段
         fields = "__all__"
         widgets = {
-            # 你原有的三个复选框样式
             "is_pending": forms.CheckboxInput(attrs={"class": "pending-checkbox"}),
             "is_charter": forms.CheckboxInput(attrs={"class": "charter-checkbox"}),
             "is_flagged": forms.CheckboxInput(attrs={"class": "mark-checkbox"}),
 
-            # === 行级ETC：现在改成可见控件（整数 + 下拉） ===
             "etc_riding": forms.NumberInput(attrs={
                 "class": "form-control form-control-sm etc-riding-input text-end",
                 "min": 0, "step": 1, "inputmode": "numeric", "placeholder": "乗車ETC"
@@ -78,19 +77,48 @@ class DriverDailyReportItemForm(forms.ModelForm):
                 "class": "form-control form-control-sm etc-empty-input text-end",
                 "min": 0, "step": 1, "inputmode": "numeric", "placeholder": "空車ETC"
             }),
-            "etc_charge_type": forms.Select(attrs={
-                "class": "form-select form-select-sm etc-charge-type-select"
+
+            "etc_riding_charge_type": forms.Select(attrs={
+                "class": "form-select form-select-sm etc-riding-charge-select"
             }),
+            "etc_empty_charge_type": forms.Select(attrs={
+                "class": "form-select form-select-sm etc-empty-charge-select"
+            }),
+
+            # 旧字段（若模型仍在）继续隐藏，兼容历史
+            "etc_charge_type": forms.HiddenInput(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 兜底默认，防止 NULL 触发 NOT NULL 约束
-        self.fields["etc_riding"].initial = self.instance.etc_riding or 0
-        self.fields["etc_empty"].initial = self.instance.etc_empty or 0
-        self.fields["etc_charge_type"].initial = self.instance.etc_charge_type or "company"
 
-    # —— 强化校验为非负整数/合法枚举 —— #
+        # 两个“负担”字段不是必填
+        for key in ("etc_riding_charge_type", "etc_empty_charge_type"):
+            if key in self.fields:
+                self.fields[key].required = False
+
+        # 金额默认 0
+        self.fields["etc_riding"].initial = getattr(self.instance, "etc_riding", 0) or 0
+        self.fields["etc_empty"].initial  = getattr(self.instance, "etc_empty", 0)  or 0
+
+        # 负担默认：优先实例 → 旧字段 → company
+        default_charge = "company"
+        legacy = getattr(self.instance, "etc_charge_type", None) or default_charge
+
+        if "etc_riding_charge_type" in self.fields:
+            self.fields["etc_riding_charge_type"].initial = (
+                getattr(self.instance, "etc_riding_charge_type", None) or legacy or default_charge
+            )
+        if "etc_empty_charge_type" in self.fields:
+            self.fields["etc_empty_charge_type"].initial = (
+                getattr(self.instance, "etc_empty_charge_type", None) or default_charge
+            )
+
+        # 旧字段隐藏域也给默认（如库里有非空约束）
+        if "etc_charge_type" in self.fields:
+            self.fields["etc_charge_type"].initial = legacy
+
+    # —— 强化校验为非负整数 —— #
     def clean_etc_riding(self):
         v = self.cleaned_data.get("etc_riding")
         try:
@@ -107,23 +135,38 @@ class DriverDailyReportItemForm(forms.ModelForm):
             v = 0
         return max(0, v)
 
-    def clean_etc_charge_type(self):
-        v = (self.cleaned_data.get("etc_charge_type") or "company").strip()
-        if v not in dict(DriverDailyReportItem.ETC_CHARGE_CHOICES):
-            v = "company"
-        return v
+    # —— 两个负担字段：空值自动回落到 'company'，并做枚举校验 —— #
+    def clean_etc_riding_charge_type(self):
+        v = (self.cleaned_data.get("etc_riding_charge_type") or "").strip() or "company"
+        choices = dict(DriverDailyReportItem.ETC_CHARGE_CHOICES)
+        return v if v in choices else "company"
+
+    def clean_etc_empty_charge_type(self):
+        v = (self.cleaned_data.get("etc_empty_charge_type") or "").strip() or "company"
+        choices = dict(DriverDailyReportItem.ETC_CHARGE_CHOICES)
+        return v if v in choices else "company"
 
     def clean(self):
         cleaned = super().clean()
-        # 温和一致性处理：若非貸切，清零 charter_amount_jpy（不抛错）
+
+        # 非貸切 → charter 金额温和清零（不抛错）
         amt = cleaned.get("charter_amount_jpy", None)
-        is_charter = cleaned.get("is_charter", None)
-        if is_charter is False and amt not in (None, "", 0):
-            try:
-                cleaned["charter_amount_jpy"] = 0
-            except Exception:
-                pass
+        if cleaned.get("is_charter") is False and amt not in (None, "", 0):
+            cleaned["charter_amount_jpy"] = 0
+
+        # 兼容：如旧字段仍在，把它同步为“乘车负担”
+        if "etc_charge_type" in self.fields:
+            cleaned["etc_charge_type"] = cleaned.get("etc_riding_charge_type", "company") or "company"
+
+        # （可选）金额为 0 时强制负担回 company，统一口径
+        # if (cleaned.get("etc_riding") or 0) == 0:
+        #     cleaned["etc_riding_charge_type"] = "company"
+        # if (cleaned.get("etc_empty") or 0) == 0:
+        #     cleaned["etc_empty_charge_type"] = "company"
+
         return cleaned
+
+
 
 
 # --- 明细 FormSet（不含任何分段逻辑） ---

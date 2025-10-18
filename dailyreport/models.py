@@ -336,7 +336,22 @@ class DriverDailyReportItem(models.Model):
         choices=ETC_CHARGE_CHOICES,
         default="company",
     )
-    # ======= END NEW (ETC 明细化：行级字段) =======
+
+    # ======= BEGIN NEW (乘车/空车 ETC 负担细分) =======
+    etc_riding_charge_type = models.CharField(
+        "乗車ETC負担",
+        max_length=20,
+        choices=ETC_CHARGE_CHOICES,
+        default="company",
+    )
+
+    etc_empty_charge_type = models.CharField(
+        "空車ETC負担",
+        max_length=20,
+        choices=ETC_CHARGE_CHOICES,
+        default="company",
+    )
+    # ======= END NEW (乘车/空车 ETC 负担细分) =======
 
     note = models.CharField("备注", max_length=255, blank=True)
     comment = models.TextField("录入员注释", blank=True)
@@ -344,6 +359,26 @@ class DriverDailyReportItem(models.Model):
     has_issue = models.BooleanField("是否异常", default=False)
 
     combined_group = models.CharField("合算グループ", max_length=100, blank=True, null=True)
+
+    # >>>>>>>>>>>>>>>>>>>>>>> 在这里插入属性方法（字段下面，save/__str__ 上面） <<<<<<<<<<<<<<<<<<<<
+    @property
+    def resolved_riding_burden(self):
+        """
+        乘车ETC的负担者：优先用 etc_riding_charge_type；
+        没有该字段或值为空时回退到 etc_charge_type；再没有就默认 company。
+        """
+        val = getattr(self, 'etc_riding_charge_type', '') or self.etc_charge_type
+        return val or 'company'
+
+    @property
+    def resolved_empty_burden(self):
+        """
+        空车ETC的负担者：优先用 etc_empty_charge_type；
+        没有该字段或值为空时回退到 etc_charge_type；再没有就默认 company。
+        """
+        val = getattr(self, 'etc_empty_charge_type', '') or self.etc_charge_type
+        return val or 'company'
+    # >>>>>>>>>>>>>>>>>>>>>>> 属性方法结束 <<<<<<<<<<<<<<<<<<<<
 
     def save(self, *args, **kwargs):
         # ✅ 已有逻辑：如果 comment 不为空就设为有异常
