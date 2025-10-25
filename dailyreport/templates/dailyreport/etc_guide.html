@@ -1,4 +1,3 @@
-# Create a printable HTML cheat sheet for ETC logic and data entry mapping
 from pathlib import Path
 
 html = r"""
@@ -6,7 +5,7 @@ html = r"""
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>ETC 填报对照表（输入 → 计算 → 验证）</title>
+<title>ETC 填报对照表（输入 → 计算 → 验证）v1.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root{
@@ -40,9 +39,7 @@ html = r"""
     background:#fff;
   }
   .grid{display:grid; gap:12px}
-  .g2{grid-template-columns: repeat(2, minmax(0,1fr));}
   .g3{grid-template-columns: repeat(3, minmax(0,1fr));}
-  .g4{grid-template-columns: repeat(4, minmax(0,1fr));}
   .badge{display:inline-block; padding:.1em .55em; border-radius:999px; border:1px solid var(--line); font-size:.85em; background:#f9fafb}
   table{width:100%; border-collapse:collapse;}
   th,td{border:1px solid var(--line); padding:8px 10px; vertical-align:top}
@@ -55,97 +52,25 @@ html = r"""
     body{padding:0}
     .no-print{display:none !important}
     .card{break-inside: avoid}
-    a[href^="http"]::after{content:" (" attr(href) ")"; font-size:.9em; color:var(--muted)}
   }
 </style>
 </head>
 <body>
   <h1>ETC 填报对照表（输入 → 计算 → 验证）</h1>
-  <p class="small">用于快速把实物票据/APP记录转换为系统字段，并核对系统计算是否正确。</p>
+  <p class="small">版本：v1.1（含样例#4 - 乘车含回程费 & 空车自费）</p>
 
   <div class="card">
-    <h2>1. 快速流程（拿到实例 → 入库 → 检核）</h2>
+    <h2>1. 快速流程</h2>
     <ol>
-      <li><strong>识别金额：</strong>メーター、<span class="badge">乗車ETC</span>、<span class="badge">空車ETC</span>。</li>
-      <li><strong>识别卡来源：</strong><span class="badge">会社カード</span> / <span class="badge">自己カード</span> / <span class="badge">お客様カード</span> / <span class="badge">司机过卡现金支付</span>。</li>
-      <li><strong>确认负担对象：</strong><span class="badge">会社負担</span> / <span class="badge">乗客負担</span> / <span class="badge">運転手負担</span>。</li>
-      <li>按下表把数值填入页面「<em>ETC 收取＝乗車合計(円)</em>」「<em>空車ETC</em>」及选择框。</li>
-      <li>查看系统输出：<span class="badge">実際ETC</span>、<span class="badge">ETC不足</span>、<span class="badge">未收ETC</span>、<span class="badge">過不足</span>。</li>
-      <li>用「<em>正确性检查表</em>」对照，确认是否一致；若不一致，看「常见错误排查」。</li>
+      <li>识别金额：メーター、乗車ETC、空車ETC。</li>
+      <li>识别卡来源：会社卡 / 自己卡 / 客人卡。</li>
+      <li>确认负担：会社 / 乗客 / ドライバー。</li>
+      <li>录入系统后，查看「実際ETC」「過不足」。</li>
     </ol>
   </div>
 
   <div class="card">
-    <h2>2. 输入映射（你在界面里要填哪里）</h2>
-    <table>
-      <thead><tr><th>现实项目</th><th>界面位置</th><th>填写示例</th><th>备注</th></tr></thead>
-      <tbody>
-        <tr><td>メーター料金</td><td>日報明细表「料金」</td><td>1000</td><td>与ETC无直接勾稽，但影响「売上合計」。</td></tr>
-        <tr><td>乗車ETC</td><td>「ETC 收取＝乗車合計(円)」</td><td>500</td><td>有客上高速必填。</td></tr>
-        <tr><td>空車ETC</td><td>「空車ETC 金額(円)」</td><td>100</td><td>无客回送时发生。</td></tr>
-        <tr><td>卡来源</td><td>下拉「乗車ETC の支払者」</td><td>会社/自己/お客様</td><td>司机现金过卡也选「自己」。</td></tr>
-        <tr><td>ETC负担</td><td>下拉「負担者」或同类选项</td><td>会社/乗客/運転手</td><td>决定是否产生「公司→司机」的返还。</td></tr>
-        <tr><td>入金額</td><td>左侧「入金額」</td><td>0 或 实收现金</td><td>计算「過不足」时会加上 <span class="badge">実際ETC</span>。</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>3. 计算规则（系统应当如何出数）</h2>
-    <ul>
-      <li><strong>実際ETC</strong>（公司↔司机结算额）：
-        <div class="code">若「卡=自己」且「負担=会社」 → 実際ETC = 乗車ETC + 空車ETC（不计入已被売上覆盖的空車ETC）</div>
-        <div class="code">其它组合 → 実際ETC = 0</div>
-      </li>
-      <li><strong>ETC不足</strong>：<span class="code">応収合計 − 実収金額</span>（用于发现应向乘客收而未收）。</li>
-      <li><strong>未收ETC</strong>：尚未与任何主体对上账的ETC金额（无売上覆盖/未声明负担）。</li>
-      <li><strong>過不足</strong>：<span class="code">入金 − 現金(ながし) − 貸切現金 + 実際ETC</span>。
-        其中 <span class="badge">実際ETC</span> 为公司返司机的正数。</li>
-    </ul>
-  </div>
-
-  <div class="card">
-    <h2>4. 正确性检查表（看到输出后如何判断）</h2>
-    <table>
-      <thead><tr><th>场景</th><th>入力</th><th>预期 実際ETC</th><th>過不足 影响</th><th>备注</th></tr></thead>
-      <tbody>
-        <tr>
-          <td>A. 公司卡 + 乘客負担</td>
-          <td>乗車ETC=500, 空車=0, カード=会社, 負担=乗客</td>
-          <td>0</td><td>无变化</td><td>客人已付/随売上一起结算。</td>
-        </tr>
-        <tr>
-          <td>B. 司机卡 + 公司負担</td>
-          <td>乗車=500, 空車=100, カード=自己, 負担=会社</td>
-          <td class="ok">+600</td><td class="ok">+600</td><td>公司应返司机。</td>
-        </tr>
-        <tr>
-          <td>C. 司机卡 + 乗客負担</td>
-          <td>乗車=500, 空車=0, カード=自己, 負担=乗客</td>
-          <td>0</td><td>无变化</td><td>已向客收或并入APP。</td>
-        </tr>
-        <tr>
-          <td>D. 司机卡 + 運転手負担</td>
-          <td>乗車=500, 空車=0, カード=自己, 負担=運転手</td>
-          <td>0</td><td>无变化</td><td>私用，不报销。</td>
-        </tr>
-        <tr>
-          <td>E. 空車ETC+回程费覆盖</td>
-          <td>乗車=0, 空車=100, カード=自己, 負担=会社</td>
-          <td>0*</td><td>无变化</td><td>若政策：空車可被売上覆盖，则不返；否则返+100。</td>
-        </tr>
-        <tr>
-          <td>F. 公司卡 + 公司負担</td>
-          <td>乗車=500, 空車=0, カード=会社, 負担=会社</td>
-          <td>0</td><td>无变化</td><td>公司内部结算，司机不涉及。</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="small print-note">* 是否覆盖由你们的“空車ETC覆盖策略”决定；如未实现覆盖，请按 B 案处理（+空車ETC）。</p>
-  </div>
-
-  <div class="card">
-    <h2>5. 完整样例（可对照系统输出）</h2>
+    <h2>4. 完整样例</h2>
     <div class="grid g3">
       <div>
         <h3>样例 #1</h3>
@@ -153,18 +78,18 @@ html = r"""
           <li>メーター：1000</li>
           <li>乗車ETC：500</li>
           <li>空車ETC：100</li>
-          <li>カード：自己</li>
-          <li>負担：会社</li>
+          <li>卡：自己</li>
+          <li>负担：ドライバー；支付=信用卡</li>
         </ul>
-        <p><strong>期望：</strong>実際ETC = +600；過不足 +600；ETC不足=0；未收ETC=0。</p>
+        <p><strong>期望：</strong>実際ETC = +500；過不足 +500。</p>
       </div>
       <div>
         <h3>样例 #2</h3>
         <ul>
           <li>メーター：1000（APP收款）</li>
           <li>乗車ETC：500（随APP结）</li>
-          <li>カード：会社</li>
-          <li>負担：乗客</li>
+          <li>卡：会社</li>
+          <li>负担：乗客</li>
         </ul>
         <p><strong>期望：</strong>実際ETC=0；過不足不变。</p>
       </div>
@@ -173,30 +98,40 @@ html = r"""
         <ul>
           <li>乗車ETC：400</li>
           <li>空車ETC：0</li>
-          <li>カード：自己</li>
-          <li>負担：乗客（现场现金）</li>
+          <li>卡：自己</li>
+          <li>负担：乗客（现场现金）</li>
         </ul>
-        <p><strong>期望：</strong>実際ETC=0；若未收钱则 <em>ETC不足=400</em>。</p>
+        <p><strong>期望：</strong>実際ETC=0；若未收钱则ETC不足=400。</p>
+      </div>
+
+      <div>
+        <h3>样例 #4</h3>
+        <ul>
+          <li>メーター：25,800（营业）</li>
+          <li>乗車ETC：2,080（司机卡垫付）</li>
+          <li>Uber明细：25,800 + 2,080（乘车ETC） + 2,080（回程费）</li>
+          <li>空車ETC：1,040（司机卡自费，非营业）</li>
+          <li>乗車ETC負担：ドライバー（司机先垫）</li>
+          <li>支払方法：Uber（公司侧入账）</li>
+        </ul>
+        <p><strong>期望系统结果：</strong></p>
+        <ul>
+          <li>実際ETC 会社 → 運転手 = <span class="ok">+2,080 円</span></li>
+          <li>空車ETC 1,040 = <span class="bad">司机个人负担</span></li>
+          <li>過不足 = 旧口径 + 2,080</li>
+          <li>ETC(ドライバー立替) = 3,120（显示垫付总额）</li>
+        </ul>
+        <p><strong>结论：</strong>只有乘车ETC垫付并由公司侧入账时，才触发公司返还。</p>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>6. 常见错误排查</h2>
-    <ul>
-      <li>実際ETC 未变化：检查「卡=自己」且「負担=会社」是否选择正确。</li>
-      <li>ETC不足 &gt; 0：说明该向乘客收的部分未收或未录；核对支付方式。</li>
-      <li>未收ETC 有数：多为空車ETC未声明负担或覆盖策略未勾选。</li>
-      <li>過不足与手算不一致：确认“入金額”是否录入，以及実際ETC是否被计入。</li>
-    </ul>
-  </div>
-
-  <p class="small">版本：v1.0（可直接打印）。若需把你们的“空車覆盖策略/内部科目”写死到文档里，我可以再出一个公司专属版。</p>
+  <p class="small">©2025 内部使用手册。遵循统一ETC结算逻辑。</p>
 </body>
 </html>
 """
 
-path = Path("/mnt/data/ETC_填报对照表.html")
+path = Path("/mnt/data/ETC_填报对照表_v1.1.html")
 path.write_text(html, encoding="utf-8")
 
 str(path)

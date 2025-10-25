@@ -258,6 +258,34 @@ function bindRowEvents(row) {
     rideTimeInput.addEventListener("input", onTimeChanged);
   }
 
+  // === 「乗車ETC負担」「空車ETC負担」行内提示 ===
+  (function attachChargeHints(){
+    const rideSel  = row.querySelector('.etc-riding-charge-select');
+    const emptySel = row.querySelector('.etc-empty-charge-select');
+    const rideHint = row.querySelector('.js-ride-charge-hint');
+    const emptyHint= row.querySelector('.js-empty-charge-hint');
+
+    function textRide(v){
+      if (v === 'driver')   return '司机垫付：若本行款项进公司，将返还司机（仅对乘车有效）';
+      if (v === 'company')  return '公司承担：不计入返还';
+      if (v === 'customer') return '客人承担：已由客人结算';
+      return '';
+    }
+    function textEmpty(v){
+      if (v === 'driver')   return '司机自付：可按回程政策判断是否覆盖/报销';
+      if (v === 'company')  return '公司承担';
+      if (v === 'customer') return '（通常不选）';
+      return '';
+    }
+    function sync(){
+      if (rideHint && rideSel)  rideHint.textContent  = textRide(rideSel.value);
+      if (emptyHint && emptySel) emptyHint.textContent = textEmpty(emptySel.value);
+    }
+    if (rideSel)  rideSel.addEventListener('change', sync);
+    if (emptySel) emptySel.addEventListener('change', sync);
+    sync(); // 初始渲染一次
+  })();
+
   // 行级ETC 三字段
   $all(".etc-riding-input, .etc-empty-input, .etc-charge-type-select", row).forEach(el => {
     el.addEventListener("input", () => { updateTotals(); evaluateEmptyEtcDetailVisibility(); });
@@ -332,12 +360,13 @@ function resolveJsPaymentMethod(raw) {
   return val;
 }
 
-// ====== 合计（旧逻辑 + 新增ETC聚合 + 过不足含実際ETC） ======
+// ====== 合计（旧逻辑 + 行级ETC聚合 + 過不足含「実際ETC 会社→運転手」） ======
+/* ====== REPLACE FROM HERE: updateTotals() ====== */
 function updateTotals() {
   const table = document.querySelector("table.report-table");
   if (!table) return;
 
-  // 旧口径
+  // —— 旧口径：按支付方式聚合（保持你原有统计口径）——
   const totalMap = { cash: 0, uber: 0, didi: 0, go: 0, credit: 0, kyokushin: 0, omron: 0, kyotoshi: 0, qr: 0 };
   let meterSum = 0, charterCashTotal = 0, charterUncollectedTotal = 0;
   let uberReservationTotal = 0, uberReservationCount = 0;
@@ -345,12 +374,15 @@ function updateTotals() {
   let uberPromotionTotal = 0, uberPromotionCount = 0;
   let specialUberSum = 0;
 
-  // 新增 ETC 行级聚合
+  // —— 行级ETC聚合 —— 
   let rideEtcSum = 0;     // 乗車ETC 合计
   let emptyEtcSum = 0;    // 空車ETC 合计
   let etcCompany = 0;     // 会社負担
-  let etcDriver = 0;      // ドライバー立替
-  let etcCustomer = 0;    // お客様支払
+  let etcDriver  = 0;     // ドライバー立替
+  let etcCustomer= 0;     // お客様支払
+  let actualEtcCompanyToDriver = 0; // ✅ 实際ETC（会社→運転手）
+
+  const COMPANY_SIDE = new Set(["uber","didi","go","credit","kyokushin","omron","kyotoshi","qr"]);
 
   $all(".report-item-row", table).forEach(row => {
     const delFlag = row.querySelector("input[name$='-DELETE']");
@@ -358,27 +390,27 @@ function updateTotals() {
     const isPending = (row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox"))?.checked;
     if (isPending) return;
 
-    // 旧计费逻辑
+    // ===== 旧计费逻辑（非貸切） =====
     const fee = toInt(row.querySelector(".meter-fee-input")?.value, 0);
-    const payment = row.querySelector("select[name$='-payment_method']")?.value || "";
+    const paymentRaw = row.querySelector("select[name$='-payment_method']")?.value || "";
     const isCharter = row.querySelector("input[name$='-is_charter']")?.checked;
     const charterAmount = toInt(row.querySelector(".charter-amount-input")?.value, 0);
     const charterPayMethod = row.querySelector(".charter-payment-method-select")?.value || "";
 
     if (!isCharter) {
       if (fee > 0) {
-        const raw = payment;
-        const isUberReservation = raw === "uber_reservation";
-        const isUberTip = raw === "uber_tip";
-        const isUberPromotion = raw === "uber_promotion";
-        const isSpecialUber = isUberReservation || isUberTip || isUberPromotion;
+        const isUberReservation = paymentRaw === "uber_reservation";
+        const isUberTip        = paymentRaw === "uber_tip";
+        const isUberPromotion  = paymentRaw === "uber_promotion";
+        const isSpecialUber    = isUberReservation || isUberTip || isUberPromotion;
+
         if (isSpecialUber) {
           specialUberSum += fee;
           if (isUberReservation) { uberReservationTotal += fee; uberReservationCount += 1; }
-          else if (isUberTip) { uberTipTotal += fee; uberTipCount += 1; }
+          else if (isUberTip)    { uberTipTotal        += fee; uberTipCount        += 1; }
           else if (isUberPromotion) { uberPromotionTotal += fee; uberPromotionCount += 1; }
         } else {
-          const method = resolveJsPaymentMethod(payment);
+          const method = resolveJsPaymentMethod(paymentRaw);
           meterSum += fee;
           if (Object.hasOwn(totalMap, method)) totalMap[method] += fee;
         }
@@ -390,48 +422,67 @@ function updateTotals() {
       else if (UNCOLLECTED.includes(charterPayMethod)) charterUncollectedTotal += charterAmount;
     }
 
-    // ETC 行级字段：聚合统计
-    const rideEtc = toInt(row.querySelector(".etc-riding-input")?.value, 0);
+    // ===== 行级 ETC 字段 =====
+    const rideEtc  = toInt(row.querySelector(".etc-riding-input")?.value, 0);
     const emptyEtc = toInt(row.querySelector(".etc-empty-input")?.value, 0);
-    const chargeType = (row.querySelector(".etc-charge-type-select")?.value || "company").trim();
+    const rideCharge  = (row.querySelector(".etc-riding-charge-select")?.value  || "company").trim();
+    const emptyCharge = (row.querySelector(".etc-empty-charge-select")?.value || "company").trim();
 
-    const lineTotal = rideEtc + emptyEtc;
-    rideEtcSum += rideEtc;
+    rideEtcSum  += rideEtc;
     emptyEtcSum += emptyEtc;
 
-    if (chargeType === "company") etcCompany += lineTotal;
-    else if (chargeType === "driver") etcDriver += lineTotal;
-    else if (chargeType === "customer") etcCustomer += lineTotal;
+    if (rideEtc > 0) {
+      if (rideCharge === "company")  etcCompany  += rideEtc;
+      else if (rideCharge === "driver")   etcDriver   += rideEtc;
+      else if (rideCharge === "customer") etcCustomer += rideEtc;
+    }
+    if (emptyEtc > 0) {
+      if (emptyCharge === "company")  etcCompany  += emptyEtc;
+      else if (emptyCharge === "driver")   etcDriver   += emptyEtc;
+      else if (emptyCharge === "customer") etcCustomer += emptyEtc;
+    }
+
+    // ✅ 实際ETC（会社→運転手）：仅统计 “乗車ETC > 0 & 乗車ETC負担=ドライバー & 支払=公司侧”
+    if (rideEtc > 0) {
+      const payResolved = resolveJsPaymentMethod(paymentRaw); // -> "credit","uber","didi","go","qr",...
+      if (rideCharge === "driver" && COMPANY_SIDE.has(payResolved)) {
+        actualEtcCompanyToDriver += rideEtc;
+      }
+    }
   });
 
+  // ===== 写回旧口径统计 =====
   const salesTotal = meterSum + specialUberSum + charterCashTotal + charterUncollectedTotal;
-
-  // 回写（旧口径）
   idText("total_meter_only", meterSum);
   idText("uber-reservation-total", uberReservationTotal);
   idText("uber-reservation-count", uberReservationCount);
-  idText("uber-tip-total", uberTipTotal);
-  idText("uber-tip-count", uberTipCount);
-  idText("uber-promotion-total", uberPromotionTotal);
-  idText("uber-promotion-count", uberPromotionCount);
-  idText("total_meter", salesTotal);
-  idText("sales-total", salesTotal);
+  idText("uber-tip-total",         uberTipTotal);
+  idText("uber-tip-count",         uberTipCount);
+  idText("uber-promotion-total",   uberPromotionTotal);
+  idText("uber-promotion-count",   uberPromotionCount);
+  idText("total_meter",            salesTotal);
+  idText("sales-total",            salesTotal);
   Object.entries(totalMap).forEach(([k, v]) => idText(`total_${k}`, v));
-  idText("charter-cash-total", charterCashTotal);
-  idText("charter-uncollected-total", charterUncollectedTotal);
+  idText("charter-cash-total",       charterCashTotal);
+  idText("charter-uncollected-total",charterUncollectedTotal);
 
-  // 回写（ETC 小计显示）
-  idText("ride-etc-total", rideEtcSum);
-  idText("empty-etc-total", emptyEtcSum);
-  idText("etc-company-total", etcCompany);
+  // ===== 写回 ETC 小计看板 =====
+  idText("ride-etc-total",   rideEtcSum);
+  idText("empty-etc-total",  emptyEtcSum);
+  idText("etc-company-total",etcCompany);
   idText("etc-driver-total", etcDriver);
-  idText("etc-customer-total", etcCustomer);
+  idText("etc-customer-total",etcCustomer);
 
-  // 乘車ETC 收取（乘客承担）联动写回
+  // ===== 入金额卡片：実際ETC 会社 → 運転手 =====
+  idText("actual_etc_company_to_driver_view", actualEtcCompanyToDriver);
+  const actualHidden = document.getElementById("actual_etc_company_to_driver");
+  if (actualHidden) actualHidden.value = actualEtcCompanyToDriver;
+
+  // ===== 同步“ETC 收取=乗車合計（円）”：把「お客様支払」的 ETC 写回输入框（显示用）
   (function syncRideEtcCollected() {
     const input = document.querySelector('[data-role="etc-collected-passenger"]');
     if (!input) return;
-    const target = etcCustomer; // 如只算乘車，改为独立累计的 rideEtcSumCustomer
+    const target = etcCustomer; // 乘客承担的 ETC
     const current = toInt(input.value, 0);
     if (current !== target) {
       input.value = String(target);
@@ -440,7 +491,7 @@ function updateTotals() {
     }
   })();
 
-  // 空車ETC 金額（円）联动写回
+  // ===== 同步“空車ETC 金額（円）”卡片输入：展示用途
   (function syncEmptyEtcCard() {
     const input = document.getElementById("id_etc_uncollected");
     if (!input) return;
@@ -452,14 +503,13 @@ function updateTotals() {
     }
   })();
 
-  // 过不足（入金 − 現金 − 貸切現金）＋ 实際ETC净额
-  const deposit = _yen(document.getElementById("deposit-input")?.value || 0);
-  const cashNagashi = totalMap.cash || 0;
-  const charterCash = charterCashTotal || 0;
-
-  const imbalanceBase = deposit - cashNagashi - charterCash; // 旧口径
-  const etcNet = __calcEtcDueForOverShort();                 // 正=返司机；负=返公司
-  const imbalance = imbalanceBase + etcNet;                  // 新口径
+  // ===== 过不足：旧口径 + 実際ETC（会社→運転手）
+  const deposit      = _yen(document.getElementById("deposit-input")?.value || 0);
+  const cashNagashi  = totalMap.cash || 0;
+  const charterCash  = charterCashTotal || 0;
+  const imbalanceBase= deposit - cashNagashi - charterCash;          // 旧口径
+  const etcNet       = actualEtcCompanyToDriver;                     // 返司机的 ETC
+  const imbalance    = imbalanceBase + etcNet;                       // 新口径
 
   const diffEl =
     document.getElementById("difference-output") ||
@@ -468,27 +518,22 @@ function updateTotals() {
   if (diffEl) {
     diffEl.textContent = Number.isFinite(imbalance) ? imbalance.toLocaleString() : "--";
     diffEl.setAttribute("data-base-over-short", String(imbalanceBase));
-    diffEl.setAttribute("data-etc-net", String(etcNet));
+    diffEl.setAttribute("data-etc-net",         String(etcNet));
   }
   const hiddenDiff = document.getElementById("id_deposit_difference");
   if (hiddenDiff) hiddenDiff.value = imbalance;
 
-  // 過不足の内訳（彩色・分行）
+  // 內訳（展示）
   (function renderOverShortBreakdown() {
     const holder = document.getElementById("difference-breakdown");
-    const diffEl =
-      document.getElementById("difference-output") ||
-      document.getElementById("deposit-difference") ||
-      document.getElementById("shortage-diff");
     if (!holder || !diffEl) return;
-
     const base   = parseInt(diffEl.getAttribute("data-base-over-short") || "0", 10) || 0;
-    const etcNet = parseInt(diffEl.getAttribute("data-etc-net") || "0", 10) || 0;
-    const total  = base + etcNet;
+    const etc    = parseInt(diffEl.getAttribute("data-etc-net") || "0", 10) || 0;
+    const total  = base + etc;
 
-    const etcAbs = Math.abs(etcNet);
-    const etcDir = etcNet >= 0 ? "会社 → 運転手" : "運転手 → 会社";
-    const etcCls = etcNet >= 0 ? "ob-pos" : "ob-neg";
+    const etcAbs = Math.abs(etc);
+    const etcDir = etc >= 0 ? "会社 → 運転手" : "運転手 → 会社";
+    const etcCls = etc >= 0 ? "ob-pos" : "ob-neg";
 
     holder.innerHTML = `
       <div class="ob-line">
@@ -497,7 +542,7 @@ function updateTotals() {
       </div>
       <div class="ob-line">
         <span class="ob-label">実際ETC <span class="ob-chip" title="行明細ETCの合算で動的計算">${etcDir}</span></span>
-        <span class="ob-mono ${etcCls}">${etcNet >= 0 ? "＋" : "－"}${etcAbs.toLocaleString()}</span>
+        <span class="ob-mono ${etcCls}">${etc >= 0 ? "＋" : "－"}${etcAbs.toLocaleString()}</span>
       </div>
       <div class="ob-line">
         <span class="ob-label ob-total">合計</span>
@@ -506,26 +551,29 @@ function updateTotals() {
     `;
   })();
 
-  if (typeof updateSmartHintPanel === "function") {
-    try { updateSmartHintPanel(); } catch (e) {}
-  }
-
-  // 入金框下方提示：基于实时计算的 etcDue
+  // 入金下方提示
   (function renderEtcHint(){
     const warn = document.getElementById('etc-included-warning');
     if (!warn) return;
-    const etcDue = __calcEtcDueForOverShort();
-    if (etcDue > 0) {
+    if (etcNet > 0) {
       warn.className = "small mt-1 text-primary";
-      warn.textContent = `過不足に 実際ETC（返還予定）${etcDue.toLocaleString()} 円 を含めています。`;
-    } else if (etcDue < 0) {
-      warn.className = "small mt-1 text-danger";
-      warn.textContent = `実際ETC（返金予定）${Math.abs(etcDue).toLocaleString()} 円 を控除しています。`;
+      warn.textContent = `過不足に 実際ETC（会社→運転手 返還）${etcNet.toLocaleString()} 円 を加算しています。`;
     } else {
       warn.textContent = "";
     }
   })();
+
+  // 智能联动：是否显示 “空車ETC（回程）詳細” 卡片
+  if (typeof evaluateEmptyEtcDetailVisibility === "function") {
+    try { evaluateEmptyEtcDetailVisibility(); } catch (_) {}
+  }
+
+  // 智能提示面板（若有）
+  if (typeof updateSmartHintPanel === "function") {
+    try { updateSmartHintPanel(); } catch (_) {}
+  }
 }
+/* ====== REPLACE TO HERE ====== */
 
 // ====== 夜班排序（保留，默认关闭） ======
 (function () {
@@ -720,6 +768,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 初始计算
   initFlatpickr(document);
+  // ✅ 新增：若模板里缺少显示行，就自动补上（只加一次）
+  ensureActualEtcIndicator();
+
   updateDuration();
   updateRowNumbersAndIndexes();
   updateSameTimeGrouping();
@@ -743,3 +794,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 })();
+
+
+// === 热修复：若模板里没有“実際ETC 会社 → 運転手”显示行，运行时自动插入 ===
+function ensureActualEtcIndicator(){
+  const depositInput = document.getElementById('deposit-input');
+  if (!depositInput) return;
+
+  // 已有就不重复加
+  if (document.getElementById('actual_etc_company_to_driver_view')) return;
+
+  const holder = depositInput.closest('div'); // 入金额卡片内层 div
+  if (!holder) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'small text-muted mt-1';
+  wrap.innerHTML = '実際ETC 会社 → 運転手：<span id="actual_etc_company_to_driver_view">0</span> 円';
+  holder.appendChild(wrap);
+
+  const hid = document.createElement('input');
+  hid.type = 'hidden';
+  hid.id = 'actual_etc_company_to_driver';
+  hid.name = 'actual_etc_company_to_driver';
+  hid.value = '0';
+  holder.appendChild(hid);
+}
+
+
+// === BEGIN PATCH: 重命名负担选项文字 独立的一小段脚本，不在任何函数里===
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.etc-riding-charge-select,.etc-empty-charge-select')
+    .forEach(sel => {
+      sel.querySelectorAll('option').forEach(op => {
+        const v = (op.value || '').trim();
+        if (v === 'driver')   op.textContent = 'ドライバー（立替→後日返還）';
+        if (v === 'company')  op.textContent = '会社（会社負担）';
+        if (v === 'customer') op.textContent = 'お客様（直接精算）';
+      });
+    });
+});
+// === END PATCH ===

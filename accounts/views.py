@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout, get_user_model
+from django.conf import settings  # [ADD]
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import PasswordChangeView
@@ -17,12 +19,39 @@ OCR_API_KEY = 'K85459002688957'
 
 User = get_user_model()
 
+# ========== [BEGIN INSERT BLOCK A] ==========
+def _is_site_admin(user):
+    """高级管理员判断（容错版）"""
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+    
+    # 下方兼容你现有字段，若不存在不会报错
+    up = getattr(user, "userprofile", None)
+    if up:
+        if getattr(up, "is_system_admin", False):
+            return True
+        if getattr(up, "is_staffbook_admin", False):
+            return True
+
+    return False
+# ========== [END INSERT BLOCK A] ==========
+
 @login_required(login_url='/accounts/login/')
 def home_view(request):
+    # ========== [BEGIN INSERT BLOCK B] ==========
+    if getattr(settings, "SYSTEM_CLOSED", False) and not _is_site_admin(request.user):
+        return redirect("system_closed")
+    ctx = {}
+    if getattr(settings, "SYSTEM_CLOSED", False) and _is_site_admin(request.user):
+        ctx["system_closed_but_admin"] = True
+    # ========== [END INSERT BLOCK B] ==========
+
     user = request.user
 
     if user.is_superuser:
-        return render(request, 'home.html')
+        return render(request, 'home.html', ctx)
     elif hasattr(user, 'staff_profile'):
         return redirect('staff_dashboard')  # ✅ 事务员跳转目标
     elif hasattr(user, 'driver_profile'):
@@ -30,7 +59,7 @@ def home_view(request):
     elif user.is_staff:
         return redirect('admin_dashboard')  # 一般后台账号
     else:
-        return render(request, 'home.html')  # 默认展示页
+        return render(request, 'home.html', ctx)  # 默认展示页
 
 
 def login_view(request):
@@ -221,3 +250,8 @@ def my_profile_view(request):
         'driver': driver,
         'dailyreports': dailyreports,
     })
+
+# ========== [BEGIN INSERT BLOCK C] ==========
+def system_closed(request):
+    return render(request, "system_closed.html")
+# ========== [END INSERT BLOCK C] ==========

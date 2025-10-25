@@ -1,12 +1,13 @@
 from django.contrib import admin
 from django.urls import path, include
-from accounts.views import home_view
+from accounts.views import home_view, system_closed
 
 from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
     path('', home_view, name='home'),  # 主页视图
+    path('closed/', system_closed, name='system_closed'),  # [ADD] 暂停页
     path('admin/', admin.site.urls),
     path('admin/admin_tools/', include('admin_tools.urls', namespace='admin_tools')),  # ✅ 管理工具：数据库备份、日志查看等
     path('accounts/', include('accounts.urls')),

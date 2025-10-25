@@ -191,3 +191,7 @@ LOGGING = {
 # Cloudflare R2 存储（稳定做法）
 # =========================
 from .settings_storage import *  # Cloudflare R2
+
+# --- System Maintenance Switch (ENV-driven) ---
+# 在 .env 里写：SYSTEM_CLOSED=True 或 False
+SYSTEM_CLOSED = os.getenv("SYSTEM_CLOSED", "True") == "True"
