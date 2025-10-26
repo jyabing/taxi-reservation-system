@@ -1,12 +1,9 @@
-from pathlib import Path
-
-html = r"""
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>ETC 填报对照表（输入 → 计算 → 验证）v1.1</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ETC 填报对照表（输入 → 计算 → 验证）</title>
 <style>
   :root{
     --ink:#1f2937;
@@ -24,114 +21,133 @@ html = r"""
     color:var(--ink);
     background:var(--bg);
     margin:0; padding:24px;
-    line-height:1.55;
+    line-height:1.6;
   }
-  h1,h2,h3{line-height:1.2; margin:0 0 .4em}
+  h1,h2,h3{line-height:1.2;margin:0 0 .6em}
   h1{font-size:28px}
-  h2{font-size:21px; margin-top:1.2em}
+  h2{font-size:22px;margin-top:1.2em}
+  h3{font-size:18px;margin-top:.8em}
   p{margin:.4em 0}
-  .small{color:var(--muted); font-size: .92rem}
-  .card{
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:16px;
-    margin:12px 0;
-    background:#fff;
-  }
-  .grid{display:grid; gap:12px}
-  .g3{grid-template-columns: repeat(3, minmax(0,1fr));}
-  .badge{display:inline-block; padding:.1em .55em; border-radius:999px; border:1px solid var(--line); font-size:.85em; background:#f9fafb}
-  table{width:100%; border-collapse:collapse;}
-  th,td{border:1px solid var(--line); padding:8px 10px; vertical-align:top}
-  thead th{background:#f3f4f6; font-weight:600}
-  .code{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:.95em}
+  .small{color:var(--muted); font-size:.92rem}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0;background:#fff}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{border:1px solid var(--line);padding:8px 10px;vertical-align:top}
+  thead th{background:#f3f4f6;font-weight:600}
+  code,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .accent{color:var(--accent)}
   ul{margin:.4em 0 .6em 1.1em}
-  .print-note{border-left:4px solid var(--accent); padding-left:10px}
+  .badge{display:inline-block;padding:.1em .55em;border-radius:999px;border:1px solid var(--line);font-size:.8em;background:#f9fafb}
+  .print-note{border-left:4px solid var(--accent);padding-left:10px}
   @media print{
     body{padding:0}
-    .no-print{display:none !important}
-    .card{break-inside: avoid}
+    .no-print{display:none!important}
+    .card{break-inside:avoid}
   }
 </style>
 </head>
 <body>
   <h1>ETC 填报对照表（输入 → 计算 → 验证）</h1>
-  <p class="small">版本：v1.1（含样例#4 - 乘车含回程费 & 空车自费）</p>
+  <p class="small">用于把现场“メーター/ETC/卡来源/负担”准确映射到系统字段，并核对页面计算是否符合口径。</p>
 
   <div class="card">
-    <h2>1. 快速流程</h2>
+    <h2>统一示例金额</h2>
+    <p>为了便于对照，下表统一使用：<strong>メーター＝25,800 / 乗車ETC＝2,080 / 空車ETC＝1,040</strong>。</p>
+    <p class="small">说明：“公司侧支付”指：クレジ/QR/Uber/DiDi/GO/京交信/オムロン/京都市 等；“现金”仅指【現金】。</p>
+  </div>
+
+  <div class="card">
+    <h2>A–H 场景速查（怎么填 → 页面会显示什么）</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:8ch">场景</th>
+          <th>明细要怎么填（关键字段）</th>
+          <th>入金卡片会出现</th>
+          <th>ETC小计 / 不足 / 未收</th>
+          <th>页面查看位置</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>A</strong><br/>乘车：<br/>公司卡+乘客负担</td>
+          <td>乗車ETC=2080；<br/><span class="mono">乗車ETC 立替者=お客様</span>；<br/>支付=公司侧；空車ETC=0</td>
+          <td>実際ETC=0；過不足不变</td>
+          <td>小计：乘车ETC→“客払”+2080；<br/>不足/未收=0</td>
+          <td>右侧“ETC小計”；<br/>入金卡片下“実際ETC 会社→運転手”保持 0</td>
+        </tr>
+        <tr>
+          <td><strong>B</strong><br/>乘车：<br/>司机卡+公司负担</td>
+          <td>乗車ETC=2080；<br/><span class="mono">乗車ETC 立替者=ドライバー</span>；<br/>支付=公司侧；空車ETC=0</td>
+          <td><span class="ok">実際ETC=+2,080</span>；<br/><span class="ok">過不足 +2,080</span></td>
+          <td>小计：乘车ETC→“ドライバー立替”+2080；<br/>不足/未收=0</td>
+          <td>入金卡片“実際ETC 会社→運転手=2,080”；<br/>“過不足”明细处显示 +2,080</td>
+        </tr>
+        <tr>
+          <td><strong>C</strong><br/>乘车：<br/>司机卡+乘客负担</td>
+          <td>乗車ETC=2080；<br/><span class="mono">乗車ETC 立替者=お客様</span>；<br/>支付（公司侧/现金/APP 任意）；空車ETC=0</td>
+          <td>実際ETC=0；過不足不变</td>
+          <td>小计：乘车ETC→“客払”+2080；<br/>不足/未收=0</td>
+          <td>同 A</td>
+        </tr>
+        <tr>
+          <td><strong>D</strong><br/>乘车：<br/>司机卡+司机负担</td>
+          <td>若为私用切勿计入乘车ETC；<br/>将 <span class="mono">乗車ETC=0</span>，在“注释”说明“私用 ETC 自费”。</td>
+          <td>実際ETC=0；過不足不变</td>
+          <td>小计：无变动；<br/>不足/未收=0</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>E</strong><br/>空车：<br/>公司卡+乘客负担</td>
+          <td>空車ETC=1040；<br/><span class="mono">空車ETC 立替者=会社</span>；<br/>若回程費以 app/ticket 覆盖，则不返司机。</td>
+          <td>実際ETC=0；過不足不变</td>
+          <td>小计：空車ETC→“会社負担”+1040；<br/>不足/未收=0</td>
+          <td>右侧“ETC小計”</td>
+        </tr>
+        <tr>
+          <td><strong>F</strong><br/>空车：<br/>公司卡+公司负担</td>
+          <td>空車ETC=1040；<br/><span class="mono">空車ETC 立替者=会社</span></td>
+          <td>実際ETC=0；過不足不变</td>
+          <td>小计：空車ETC→“会社負担”+1040；<br/>不足/未收=0</td>
+          <td>同 E</td>
+        </tr>
+        <tr>
+          <td><strong>G</strong><br/>空车：<br/>司机卡+乘客负担</td>
+          <td>空車ETC=1040；<br/><span class="mono">空車ETC 立替者=ドライバー（自費・返還なし）</span>；<br/>可录“回程費 受領額/方式”（统计用），<b>不计入実際ETC</b>。</td>
+          <td>実際ETC=0；過不足不变</td>
+          <td>小计：空車ETC→“ドライバー立替(自費)”+1040；<br/>若受领额&gt;空车ETC，按策略可显示“未收ETC”。</td>
+          <td>右侧“ETC小計”；空车卡片“回程費”区域</td>
+        </tr>
+        <tr>
+          <td><strong>H</strong><br/>空车：<br/>未走高速+乘客支付</td>
+          <td>空車ETC=0；<br/>空車ETC 立替者=—</td>
+          <td>実際ETC=0；過不足不变</td>
+          <td>小计：0；不足/未收=0</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>页面组件与口径</h2>
+    <ul>
+      <li><strong>実際ETC 会社→運転手</strong>（入金卡片）：仅在 <b>B</b>（乘车=司机先垫且该行支付为公司侧）时出现正数。</li>
+      <li><strong>過不足</strong>：<span class="mono">入金 − 現金(ながし) − 貸切現金 + 実際ETC</span>。因此 B 场景会 +2,080。</li>
+      <li><strong>ETC 小計</strong>：把行明细的 ETC 归入“客払 / 会社負担 / ドライバー立替(含自费)”三栏合计。</li>
+      <li><strong>ETC 不足</strong>：仅用于“应向乘客收而未收”的情况；上表若支付方式填写正确，一般为 0。</li>
+      <li><strong>未收 ETC</strong>：当回程費受领额 &gt; 空車ETC 且策略开启展示时提示；与実際ETC无关。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>最快验证（以 B 为例）</h2>
     <ol>
-      <li>识别金额：メーター、乗車ETC、空車ETC。</li>
-      <li>识别卡来源：会社卡 / 自己卡 / 客人卡。</li>
-      <li>确认负担：会社 / 乗客 / ドライバー。</li>
-      <li>录入系统后，查看「実際ETC」「過不足」。</li>
+      <li>任一行填：<span class="mono">乗車ETC=2080 / 乗車ETC立替者=ドライバー / 支付=クレジ</span>。</li>
+      <li>入金卡片应显示：<span class="ok">実際ETC=2,080</span>，且 <span class="ok">過不足 +2,080</span>。</li>
+      <li>右侧“ETC小計”中，<span class="mono">ETC(ドライバー立替)=2,080</span>。</li>
     </ol>
   </div>
 
-  <div class="card">
-    <h2>4. 完整样例</h2>
-    <div class="grid g3">
-      <div>
-        <h3>样例 #1</h3>
-        <ul>
-          <li>メーター：1000</li>
-          <li>乗車ETC：500</li>
-          <li>空車ETC：100</li>
-          <li>卡：自己</li>
-          <li>负担：ドライバー；支付=信用卡</li>
-        </ul>
-        <p><strong>期望：</strong>実際ETC = +500；過不足 +500。</p>
-      </div>
-      <div>
-        <h3>样例 #2</h3>
-        <ul>
-          <li>メーター：1000（APP收款）</li>
-          <li>乗車ETC：500（随APP结）</li>
-          <li>卡：会社</li>
-          <li>负担：乗客</li>
-        </ul>
-        <p><strong>期望：</strong>実際ETC=0；過不足不变。</p>
-      </div>
-      <div>
-        <h3>样例 #3</h3>
-        <ul>
-          <li>乗車ETC：400</li>
-          <li>空車ETC：0</li>
-          <li>卡：自己</li>
-          <li>负担：乗客（现场现金）</li>
-        </ul>
-        <p><strong>期望：</strong>実際ETC=0；若未收钱则ETC不足=400。</p>
-      </div>
-
-      <div>
-        <h3>样例 #4</h3>
-        <ul>
-          <li>メーター：25,800（营业）</li>
-          <li>乗車ETC：2,080（司机卡垫付）</li>
-          <li>Uber明细：25,800 + 2,080（乘车ETC） + 2,080（回程费）</li>
-          <li>空車ETC：1,040（司机卡自费，非营业）</li>
-          <li>乗車ETC負担：ドライバー（司机先垫）</li>
-          <li>支払方法：Uber（公司侧入账）</li>
-        </ul>
-        <p><strong>期望系统结果：</strong></p>
-        <ul>
-          <li>実際ETC 会社 → 運転手 = <span class="ok">+2,080 円</span></li>
-          <li>空車ETC 1,040 = <span class="bad">司机个人负担</span></li>
-          <li>過不足 = 旧口径 + 2,080</li>
-          <li>ETC(ドライバー立替) = 3,120（显示垫付总额）</li>
-        </ul>
-        <p><strong>结论：</strong>只有乘车ETC垫付并由公司侧入账时，才触发公司返还。</p>
-      </div>
-    </div>
-  </div>
-
-  <p class="small">©2025 内部使用手册。遵循统一ETC结算逻辑。</p>
+  <p class="small">版本 v1.1 ｜ 这是一份可打印页面（Ctrl/Cmd+P）。如需把公司自己的“回程費覆盖策略”写死到文档里，我可以再出一版。</p>
 </body>
 </html>
-"""
-
-path = Path("/mnt/data/ETC_填报对照表_v1.1.html")
-path.write_text(html, encoding="utf-8")
-
-str(path)

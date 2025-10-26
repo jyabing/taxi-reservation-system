@@ -80,6 +80,9 @@ INSTALLED_APPS = [
     # 新增
     'storages',   # ✅ Cloudflare R2
     "django_extensions",
+    
+    # 新增（放哪都行，建议这里）
+    'analysis',
 ]
 
 ROOT_URLCONF = 'fleet_project.urls'

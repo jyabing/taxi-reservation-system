@@ -1148,7 +1148,21 @@ def export_dailyreports_excel(request, year, month):
                 "uber_resv":0,"uber_tip":0,"uber_promo":0,
             }
         row = per_driver[did]
-        row["days"] += 1
+
+        # ✅ 只有“有明细”的日报才计 1 天出勤
+        def _has_any_item(_rep):
+            try:
+                cache = getattr(_rep, "_prefetched_objects_cache", {})
+                if "items" in cache:
+                    return len(cache["items"]) > 0
+                return _rep.items.exists()
+            except Exception:
+                return False
+
+        if _has_any_item(rep):
+            row["days"] += 1
+
+
         try:
             if rep.clock_in and rep.clock_out and rep.date:
                 dt_in = datetime.combine(rep.date, rep.clock_in)
@@ -1942,7 +1956,11 @@ def my_dailyreports(request):
     # 计算合计
     total_raw = 0
     total_split = 0
-    attendance_days = reports_qs.values("date").distinct().count()
+    # ✅ 只有有关联明细的日报才算出勤 1 天
+    attendance_days = (
+        reports_qs.filter(items__isnull=False)
+                .values("date").distinct().count()
+    )
 
     report_list = []
     for report in reports_qs:

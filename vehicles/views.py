@@ -1611,12 +1611,17 @@ def admin_stats_view(request):
         })
 
     context = {
-        "page_obj": page_obj,
-        "stats_list": stats_list,
-        "month": month_start.strftime("%Y-%m"),
-        "driver_id": driver_id or "all",
-        "drivers": DriverUser.objects.all(),
-    }
+         "page_obj": page_obj,
+         "stats_list": stats_list,
+       # "month": month_start.strftime("%Y-%m"),
+         "month": month_start.strftime("%Y-%m"),
+         "driver_id": driver_id or "all",
+         "drivers": DriverUser.objects.all(),
+         # ✅ 新增：精确月末与统一透传的起止日期
+         "month_end": month_end.strftime("%Y-%m-%d"),
+         "date_from": month_start.strftime("%Y-%m-01"),
+         "date_to": month_end.strftime("%Y-%m-%d"),
+     }
     return render(request, "vehicles/admin_stats.html", context)
 
 @csrf_exempt

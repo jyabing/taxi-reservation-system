@@ -1,0 +1,21 @@
+{# templates/analysis/_analysis_nav.html #}
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  {% if back_url %}
+    <a class="btn btn-light btn-sm" href="{{ back_url }}">← 返回</a>
+  {% endif %}
+
+  <a class="btn btn-sm {% if active_tab == 'vehicle' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'analysis:vehicle_idle' %}?from={{ date_from }}&to={{ date_to }}{% if back_url %}&back_url={{ back_url|urlencode }}{% endif %}">
+    🚗 车辆闲置
+  </a>
+
+  <a class="btn btn-sm {% if active_tab == 'driver' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'analysis:driver_sales' %}?from={{ date_from }}&to={{ date_to }}{% if back_url %}&back_url={{ back_url|urlencode }}{% endif %}">
+    👨‍✈️ 司机売上
+  </a>
+
+  <a class="btn btn-sm {% if active_tab == 'efficiency' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+     href="{% url 'analysis:efficiency' %}?from={{ date_from }}&to={{ date_to }}{% if back_url %}&back_url={{ back_url|urlencode }}{% endif %}">
+    📈 高效利用率
+  </a>
+</div>
