@@ -17,17 +17,21 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MIDDLEWARE = [
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # ✅ 放在最上面！
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # ========== [BEGIN INSERT LINE M2] ==========
+    'common.middleware.SystemClosedMiddleware',     # 🔒 全站拦截（非管理员 → /closed/）
+    # ========== [END INSERT LINE M2] ==========
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'common.middleware.LinkClickTrackerMiddleware', # ✅ 链接点击跟踪
-    'common.middleware.NavigationUsageMiddleware', # ✅ 导航使用情况
+    'common.middleware.LinkClickTrackerMiddleware',
+    'common.middleware.NavigationUsageMiddleware',
 ]
+
 
 # =========================
 # 安全配置
@@ -195,3 +199,17 @@ from .settings_storage import *  # Cloudflare R2
 # --- System Maintenance Switch (ENV-driven) ---
 # 在 .env 里写：SYSTEM_CLOSED=True 或 False
 SYSTEM_CLOSED = os.getenv("SYSTEM_CLOSED", "True") == "True"
+
+# ========== [BEGIN INSERT BLOCK S1] ==========
+# 暂停营业时仍然允许访问的 URL 前缀（未登录用户也放行）
+SYSTEM_CLOSED_ALLOWLIST_PREFIXES = [
+    "/closed/",
+    "/accounts/login/",
+    "/accounts/logout/",
+    "/accounts/password_reset",
+    "/accounts/password_change",
+    STATIC_URL.rstrip("/"),
+    (MEDIA_URL.rstrip("/") if MEDIA_URL else "/media"),
+    "/admin/login/",
+]
+# ========== [END INSERT BLOCK S1] ==========
