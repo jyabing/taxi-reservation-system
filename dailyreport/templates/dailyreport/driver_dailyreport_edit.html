@@ -628,11 +628,14 @@ input[type=number] {
 
         <td style="min-width: 70px;">
           <input
-            type="text"
+            type="number"                                  {# ← 改成 number #}
             name="{{ form.meter_fee.html_name }}"
             id="{{ form.meter_fee.id_for_label }}"
             value="{{ form.meter_fee.value|floatformat:"-0" }}"
-            class="form-control form-control-sm text-end meter-fee-input"
+            class="form-control form-control-sm text-end meter-fee-input fee-input"  {# ← 多加 fee-input #}
+            inputmode="numeric"                            {# ← 手机上用数字键盘 #}
+            pattern="[0-9]*"                               {# ← 只要 0-9 #}
+            min="0"
           >
         </td>
 
@@ -751,7 +754,13 @@ input[type=number] {
       </td>
 
       <td>
-        {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
+        {{ formset.empty_form.meter_fee.as_widget(attrs={
+          'type': 'number',
+          'inputmode': 'numeric',
+          'pattern': '[0-9]*',
+          'min': '0',
+          'class': 'form-control form-control-sm text-end meter-fee-input fee-input'
+        }) }}
       </td>
 
       <td>
@@ -1027,5 +1036,17 @@ input[type=number] {
   };
 })();
 </script>
+
+<script>
+  // 料金栏只允许数字
+  document.addEventListener('input', function (e) {
+    // 专门盯「料金」这一列：fee-input
+    if (e.target.classList && e.target.classList.contains('fee-input')) {
+      // 删除所有非数字
+      e.target.value = e.target.value.replace(/\D/g, '');
+    }
+  });
+</script>
+
 
 {% endblock %}
