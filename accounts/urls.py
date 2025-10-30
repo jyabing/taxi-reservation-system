@@ -21,4 +21,8 @@ urlpatterns = [
     path('daily_reports/', monthly_reports_view, name='my_monthly_reports'),
 
     path('staff/dashboard/', staff_dashboard, name='staff_dashboard'),
+
+    # ======== [BEGIN INSERT LINE A1] ========
+    path('me/', profile_view, name='my_profile'),  # ✅ 已登录普通用户可在关闭期访问
+    # ======== [END INSERT LINE A1] ========
 ]

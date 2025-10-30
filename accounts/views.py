@@ -40,16 +40,24 @@ def _is_site_admin(user):
 
 @login_required(login_url='/accounts/login/')
 def home_view(request):
-    # ========== [BEGIN INSERT BLOCK B] ==========
-    if getattr(settings, "SYSTEM_CLOSED", False) and not _is_site_admin(request.user):
-        return redirect("system_closed")
-    ctx = {}
-    if getattr(settings, "SYSTEM_CLOSED", False) and _is_site_admin(request.user):
-        ctx["system_closed_but_admin"] = True
-    # ========== [END INSERT BLOCK B] ==========
-
     user = request.user
 
+    # ========== [BEGIN REPLACE BLOCK B] ==========
+    # 1️⃣ 系统关闭时 + 非管理员 → 强制进入我的资料
+    if getattr(settings, "SYSTEM_CLOSED", False) and not _is_site_admin(user):
+        return redirect("my_profile")
+
+    # 2️⃣ 系统开启时：普通司机默认跳资料页，staff/admin 进首页
+    if not _is_site_admin(user):
+        return redirect("my_profile")
+
+    # 管理员可以看到系统关闭状态提示
+    ctx = {}
+    if getattr(settings, "SYSTEM_CLOSED", False) and _is_site_admin(user):
+        ctx["system_closed_but_admin"] = True
+    # ========== [END REPLACE BLOCK B] ==========
+
+    # 以下保留你原有逻辑（管理员、事务员、司机）
     if user.is_superuser:
         return render(request, 'home.html', ctx)
     elif hasattr(user, 'staff_profile'):
@@ -60,6 +68,7 @@ def home_view(request):
         return redirect('admin_dashboard')  # 一般后台账号
     else:
         return render(request, 'home.html', ctx)  # 默认展示页
+
 
 
 def login_view(request):
@@ -73,12 +82,20 @@ def login_view(request):
             messages.error(request, "请输入用户名和密码")
         else:
             user = authenticate(request, username=username, password=password)
+
+            # ======== [BEGIN REPLACE BLOCK V-LOGIN] ========
             if user is not None:
                 login(request, user)
-                return redirect('home')  # 让 home_view 负责分流
+                # 管理员 → 系统首页；普通用户 → 我的资料
+                if user.is_superuser or user.is_staff:
+                    return redirect('home')
+                else:
+                    return redirect('my_profile')
             else:
                 messages.error(request, "用户名或密码错误")
+            # ======== [END REPLACE BLOCK V-LOGIN] ========
     return render(request, 'registration/login.html', context)
+
         
 @login_required
 def logout_view(request):
@@ -134,7 +151,7 @@ def staff_driver_documents(request):
 @login_required
 def driver_dashboard(request):
     user = request.user
-    staff_type = "正式员工" if user.is_formal else "临时工" if user.is_temporary else "未知身份"
+    staff_type = "正式员工" if getattr(user, "is_formal", False) else "临时工" if getattr(user, "is_temporary", False) else "未知身份"
     tips = list(Tip.objects.filter(is_active=True).values('content'))
     return render(request, 'accounts/dashboard.html', {
         'user': user,
@@ -157,7 +174,9 @@ def edit_profile(request):
 
 class MyPasswordChangeView(PasswordChangeView):
     template_name = 'registration/password_change_form.html'
-    success_url = reverse_lazy('profile')  # 修改成功后跳回个人资料页
+    # ======== [BEGIN REPLACE R1] ========
+    success_url = reverse_lazy('my_profile')  # 修改成功后跳回“我的资料”（关闭期也放行）
+    # ======== [END REPLACE R1] ========
 
 @login_required
 def login_success_view(request):
@@ -171,6 +190,20 @@ def login_success_view(request):
 
 @login_required
 def profile_view(request):
+    # ======== [BEGIN INSERT BLOCK V1] ========
+    # 关闭期 + 非管理员：如果访问的是 /accounts/profile/ ，统一跳转到 /accounts/me/
+    # （中间件当前不放行 /accounts/profile/，这段是未来你变更白名单时的保险）
+    try:
+        from django.urls import resolve
+        current_name = resolve(request.path_info).url_name
+    except Exception:
+        current_name = None
+
+    if getattr(settings, "SYSTEM_CLOSED", False) and not _is_site_admin(request.user):
+        if current_name == "profile":   # 访问的是 /accounts/profile/
+            return redirect("my_profile")
+    # ======== [END INSERT BLOCK V1] ========
+
     today = localdate()
     driver = getattr(request.user, "driver_profile", None)
     if not driver:

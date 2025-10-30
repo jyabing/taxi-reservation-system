@@ -1,3 +1,6 @@
+{% load static %}
+{% load static custom_filters %}
+
 {# ====== NEW navbar (2025-09-15) —— 桌面=常驻全部；手机=三横线下拉 ====== #}
 <nav class="x-nav" role="navigation" aria-label="Main">
   <!-- ↓↓↓ 新增的内包装，限制宽度并居中 ↓↓↓ -->
@@ -23,8 +26,14 @@
   {# 统一菜单：桌面端常驻；手机端为下拉浮层 #}
   <ul id="xMainMenu" class="x-nav__list" role="menubar">
     {# —— 固定常用 —— #}
-    <li><a role="menuitem" href="{% url 'home' %}">🏠 系统首页</a></li>
-    <li><a role="menuitem" href="{% url 'profile' %}">👤 我的资料</a></li>
+    {# 普通用户：系统首页 → 我的资料；管理员/staff：系统首页 → 真正首页 #}
+    {% if user.is_authenticated and not user.is_superuser and not user.is_staff %}
+      <li><a role="menuitem" href="{% url 'profile' %}">🏠 系统首页</a></li>
+    {% else %}
+      <li><a role="menuitem" href="{% url 'home' %}">🏠 系统首页</a></li>
+    {% endif %}
+
+    <li><a role="menuitem" href="{% url 'my_profile' %}">👤 我的资料</a></li>
     <li><a role="menuitem" href="{% url 'vehicles:vehicle_status' %}">🚗 車両状態</a></li>
 
     {# —— 原“更多”里的全部链接直接平铺到这里 —— #}
@@ -67,6 +76,7 @@
       <li><a role="menuitem" href="{% url 'login' %}">登录</a></li>
     {% endif %}
   </ul>
+
 </nav>
 
 {# ====== scoped styles：全部 .x-nav 前缀，避免影响其它 ====== #}

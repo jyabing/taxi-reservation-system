@@ -147,7 +147,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'accounts.DriverUser'
 
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/accounts/dashboard/'
+# LOGIN_REDIRECT_URL = '/accounts/dashboard/'
+LOGIN_REDIRECT_URL = '/accounts/me/'
 LOGOUT_REDIRECT_URL = '/accounts/login/success/'
 
 # =========================
@@ -197,7 +198,13 @@ LOGGING = {
 # =========================
 # Cloudflare R2 存储（稳定做法）
 # =========================
-from .settings_storage import *  # Cloudflare R2
+# ======== [BEGIN REPLACE BLOCK R2-TRY] ========
+try:
+    from .settings_storage import *  # Cloudflare R2
+except Exception as e:
+    import sys
+    print(f"[WARN] settings_storage import failed: {e}", file=sys.stderr)
+# ======== [END REPLACE BLOCK R2-TRY] ========
 
 # --- System Maintenance Switch (ENV-driven) ---
 # 在 .env 里写：SYSTEM_CLOSED=True 或 False
@@ -210,9 +217,19 @@ SYSTEM_CLOSED_ALLOWLIST_PREFIXES = [
     "/accounts/login/",
     "/accounts/logout/",
     "/accounts/password_reset",
-    "/accounts/password_change",
+    "/accounts/password/change",
     STATIC_URL.rstrip("/"),
     (MEDIA_URL.rstrip("/") if MEDIA_URL else "/media"),
     "/admin/login/",
 ]
 # ========== [END INSERT BLOCK S1] ==========
+
+# ========== [BEGIN INSERT BLOCK S2] ==========
+# 暂停营业时允许访问，但【必须已登录】的 URL 前缀（例如：个人资料）
+SYSTEM_CLOSED_AUTH_ALLOWLIST_PREFIXES = [
+    "/accounts/",        # 个人资料、修改密码、我的资料，我的资料 → ✅
+    "/dailyreport/",     # 日报真正的页面
+    "/vehicles/my_dailyreports/",    # ✅ 我的资料里“查看” → /vehicles/my_dailyreports/ → ✅
+    "/vehicles/my_dailyreport/",  # ✅ 具体某一天的明细（注意没有下划线） 日报目录里每一行的“查看明細” → /vehicles/my_daily_report_detail/ → ✅
+]
+# ========== [END INSERT BLOCK S2] ==========
