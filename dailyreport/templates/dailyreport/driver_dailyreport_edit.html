@@ -754,13 +754,7 @@ input[type=number] {
       </td>
 
       <td>
-        {{ formset.empty_form.meter_fee.as_widget(attrs={
-          'type': 'number',
-          'inputmode': 'numeric',
-          'pattern': '[0-9]*',
-          'min': '0',
-          'class': 'form-control form-control-sm text-end meter-fee-input fee-input'
-        }) }}
+        {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
       </td>
 
       <td>
