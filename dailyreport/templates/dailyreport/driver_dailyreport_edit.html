@@ -116,7 +116,7 @@ input[type=number] {
   {% endif %}
 
   <h4>{% if report %}{{ report.driver.name }}{% else %}{{ driver.name }}{% endif %}- 乗務日報の編集</h4>
-  {{ form.meter_fee|add_class:"form-control" }}
+
   <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
 
   {% if report.pk %}
@@ -754,7 +754,16 @@ input[type=number] {
       </td>
 
       <td>
-        {{ formset.empty_form.meter_fee|add_class:"form-control form-control-sm text-end meter-fee-input" }}
+        <input
+          type="number"
+          name="form-__prefix__-meter_fee"
+          id="id_form-__prefix__-meter_fee"
+          class="form-control form-control-sm text-end meter-fee-input fee-input"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          min="0"
+          value="0"
+        >
       </td>
 
       <td>
