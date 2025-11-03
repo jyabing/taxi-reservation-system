@@ -2,57 +2,66 @@
 {% load static %}
 {% block content %}
 
-<h2 class="mb-4">👤 我的资料</h2>
+<h2 class="mb-4">👤 私のプロフィール</h2>
 
 <div class="card shadow-sm">
   <div class="card-body p-4">
     <table class="table table-bordered align-middle mb-0">
       <tbody>
         <tr>
-          <th style="width: 20%;">用户名</th>
+          <th style="width: 20%;">ユーザー名</th>
           <td style="width: 60%;">{{ request.user.username }}</td>
           <td style="width: 20%;"></td>
         </tr>
         <tr>
-          <th>邮箱</th>
+          <th>メールアドレス</th>
           <td>{{ request.user.email }}</td>
-          <td><a href="{% url 'edit_profile' %}">✏️ 修改邮箱</a></td>
+          <td><a href="{% url 'edit_profile' %}">✏️ メールを変更</a></td>
         </tr>
         <tr>
-          <th>密码</th>
+          <th>パスワード</th>
           <td>********</td>
-          <td><a href="{% url 'change_password' %}">🔐 修改密码</a></td>
+          <td><a href="{% url 'change_password' %}">🔐 パスワードを変更</a></td>
         </tr>
         {% if request.user.is_formal %}
         <tr>
-          <th>员工类型</th>
-          <td>正式司机</td>
+          <th>従業員区分</th>
+          <td>正式ドライバー</td>
           <td></td>
         </tr>
         {% elif request.user.is_temporary %}
         <tr>
-          <th>员工类型</th>
-          <td>临时司机</td>
+          <th>従業員区分</th>
+          <td>臨時ドライバー</td>
           <td></td>
         </tr>
         {% endif %}
         <tr>
-          <th>注册时间</th>
+          <th>登録日時</th>
           <td>{{ request.user.date_joined|date:"Y年n月j日 H:i" }}</td>
           <td></td>
         </tr>
-        <!--tr>
-          <th>月度统计</th>
-          <td><a href="{% url 'vehicles:my_stats' %}">查看</a></td>
-          <td></td>
-        </tr-->
         <tr>
-          <th>日报记录</th>
-          <td><a href="{% url 'vehicles:my_dailyreports' %}">查看</a></td>
+          <th>日報記録</th>
+          <td><a href="{% url 'vehicles:my_dailyreports' %}">📘 確認する</a></td>
           <td></td>
         </tr>
       </tbody>
     </table>
+
+    <!-- 新增两个入口 -->
+    <div class="d-flex flex-wrap gap-3">
+      {# ① 提交希望出勤日表单 —— 就是你那个日历 + 希望车両页面 #}
+      <a href="{% url 'staffbook:schedule_form' %}" class="btn btn-primary">
+        🖊 希望出勤日を提出
+      </a>
+
+      {# ② 只看自己最近的提交 —— 我们刚刚做的 my_reservations #}
+      <a href="{% url 'staffbook:my_reservations' %}" class="btn btn-outline-success">
+        🚕 私のスケジュールを確認
+      </a>
+    </div>
+
   </div>
 </div>
 

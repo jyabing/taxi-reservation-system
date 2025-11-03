@@ -231,5 +231,7 @@ SYSTEM_CLOSED_AUTH_ALLOWLIST_PREFIXES = [
     "/dailyreport/",     # 日报真正的页面
     "/vehicles/my_dailyreports/",    # ✅ 我的资料里“查看” → /vehicles/my_dailyreports/ → ✅
     "/vehicles/my_dailyreport/",  # ✅ 具体某一天的明细（注意没有下划线） 日报目录里每一行的“查看明細” → /vehicles/my_daily_report_detail/ → ✅
+    "/staffbook/schedule/",   # ← 新增：司机填写约日期
+    "/staffbook/my_reservations/",   # ← 新增这一行
 ]
 # ========== [END INSERT BLOCK S2] ==========

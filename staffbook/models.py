@@ -417,3 +417,78 @@ class Vehicle(models.Model):
 
     def __str__(self):
         return f"{self.plate_number}（{self.name}）"
+
+
+
+class DriverSchedule(models.Model):
+    """
+    司机提交的「某一天想怎么排车」的记录
+    - driver: 哪个司机
+    - work_date: 哪一天
+    - is_rest: ①休み
+    - shift: 'day' or 'night' （②のとき必須）
+    - any_car: 任意の車両でもよい
+    - first_choice_car / second_choice_car: 车的外键
+    - note: 备注
+    - status: 管理员审批状态
+    - assigned_car: 管理员最终分配的车辆
+    - admin_note: 管理员备注
+    """
+    driver = models.ForeignKey("staffbook.Driver", on_delete=models.CASCADE, related_name="schedules")
+    work_date = models.DateField()
+    is_rest = models.BooleanField(default=False)
+    shift = models.CharField(max_length=10, blank=True)
+    any_car = models.BooleanField(default=False)
+    first_choice_car = models.ForeignKey(
+        "carinfo.Car",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="schedule_first"
+    )
+    second_choice_car = models.ForeignKey(
+        "carinfo.Car",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="schedule_second"
+    )
+
+    # ====== BEGIN 新增的管理员字段 (保持在这里) ======
+    STATUS_CHOICES = [
+        ("pending",  "未確定"),
+        ("approved", "確定"),
+        ("rejected", "差し戻し"),
+    ]
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default="pending",
+        verbose_name="ステータス"
+    )
+    assigned_car = models.ForeignKey(
+        "carinfo.Car",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="schedule_assigned",
+        verbose_name="会社決定車両"
+    )
+    admin_note = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="管理メモ"
+    )
+    # ====== END 新增的管理员字段 ======
+
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = (("driver", "work_date"),)
+        ordering = ["-work_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.driver} {self.work_date} {'rest' if self.is_rest else 'wish'}"
+
+# ============================================================
+# END: ドライバーの「希望出勤日・車両」スケジュール
+# ============================================================

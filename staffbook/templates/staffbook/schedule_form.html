@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+
+{% include "partials/_messages.html" %}
+<div class="container mt-4">
+
+  <h4 class="mb-3">🗓️ 私のスケジュールを提出</h4>
+
+  <p class="text-muted small mb-4">
+    ログイン中のユーザー：
+    <strong>
+      {% if driver %}{{ driver }}{% else %}{{ request.user.username }}{% endif %}
+    </strong>
+    ／ 本日：{{ today|date:"Y年n月j日 (D)" }}
+  </p>
+
+  {# ================================ #}
+  {# ① 桌面端（md以上）= 表格布局       #}
+  {# ================================ #}
+  <div class="row d-none d-md-flex">
+    <!-- 左側：本物のカレンダー -->
+    <div class="col-md-4 mb-3">
+      <div class="card">
+        <div class="card-header">日付を選択</div>
+        <div class="card-body">
+          <input
+            type="text"
+            id="sidebar-date"
+            class="form-control form-control-sm mb-3"
+            value="{{ work_date|date:'Y-m-d' }}"
+            placeholder="日付を選択してください">
+          <p class="small text-muted mb-2">※ 日付を選ぶと右側の内容がその日に切り替わります。</p>
+
+          <div class="d-grid gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-today">本日</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="1">+1日</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="2">+2日</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- 右侧：填写区域 -->
+    <div class="col-md-8 mb-3">
+      <div class="card">
+        <div class="card-header">スケジュール内容</div>
+        <div class="card-body">
+          <form id="schedule-form-desktop" method="post" novalidate>
+            {% csrf_token %}
+            <table class="table table-sm align-middle mb-0">
+
+
+             <tr>
+              <th style="width: 25%;">日付</th>
+              <td>
+                <input type="text"
+                      class="form-control form-control-sm"
+                      id="work-date"
+                      name="work_date"
+                      value="{{ work_date|date:'Y-m-d' }}"
+                      placeholder="選択してください">
+                <small class="text-muted">※ 日付をクリックして選択します。</small>
+              </td>
+            </tr>
+
+
+
+              <tr>
+                <th style="width: 25%;">区分</th>
+                <td>
+                  <!-- BEGIN: ①休み -->
+                  <div class="form-check">
+                    <input class="form-check-input"
+                          type="radio"
+                          name="mode"
+                          id="mode-rest"
+                          value="rest"
+                          {% if existing and existing.is_rest %}checked{% elif not existing %}checked{% endif %}>
+                    <label class="form-check-label" for="mode-rest">① 休み</label>
+                  </div>
+                  <!-- END: ①休み -->
+
+                  <!-- BEGIN: ②希望提出 -->
+                  <div class="form-check mt-1">
+                    <input class="form-check-input"
+                          type="radio"
+                          name="mode"
+                          id="mode-wish"
+                          value="wish"
+                          {% if existing and not existing.is_rest %}checked{% endif %}>
+                    <label class="form-check-label" for="mode-wish">② 希望車両を提出</label>
+                  </div>
+                  <!-- END: ②希望提出 -->
+                </td>
+              </tr>
+              <tr id="shift-row">
+                <th>シフト</th>
+                <td>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input"
+                          type="radio"
+                          name="shift"
+                          id="shift-day"
+                          value="day"
+                          {% if existing and existing.shift == "day" %}checked{% endif %}>
+                    <label class="form-check-label" for="shift-day">白班</label>
+                  </div>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input"
+                          type="radio"
+                          name="shift"
+                          id="shift-night"
+                          value="night"
+                          {% if existing and existing.shift == "night" %}checked{% endif %}>
+                    <label class="form-check-label" for="shift-night">夜班</label>
+                  </div>
+                  <small class="text-muted d-block mt-1">※ ②を選んだ場合はどちらか必須</small>
+                </td>
+              </tr>
+
+
+              <tr id="wish-row">
+                <th>車両希望</th>
+                <td>
+                  <div class="form-check mb-2">
+                    <input class="form-check-input"
+                          type="checkbox"
+                          id="any-car"
+                          name="any_car"
+                          value="1"
+                          {% if existing and existing.any_car %}checked{% endif %}>
+                    <label class="form-check-label" for="any-car">任意の車両でもよい</label>
+                  </div>
+
+                  <div class="row g-2" id="wish-cars">
+                    <div class="col">
+                      <label class="form-label small">第1希望の車両 <span class="text-danger">*</span></label>
+                      <select class="form-select form-select-sm" id="first-car" name="first_car">
+                        <option value="">-- 選択 --</option>
+                        {% for car in cars %}
+                          <option value="{{ car.id }}"
+                                  {% if existing and existing.first_choice_car and existing.first_choice_car.id == car.id %}selected{% endif %}
+                                  {% if car.is_bad %}disabled data-unavailable="1"{% endif %}>
+                            {{ car.label }}
+                          </option>
+                        {% endfor %}
+                      </select>
+                    </div>
+
+                    <div class="col">
+                      <label class="form-label small">第2希望の車両 <span class="text-danger">*</span></label>
+                      <select class="form-select form-select-sm" id="second-car" name="second_car">
+                        <option value="">-- 選択 --</option>
+                        {% for car in cars %}
+                          <option value="{{ car.id }}"
+                                  {% if existing and existing.second_choice_car and existing.second_choice_car.id == car.id %}selected{% endif %}
+                                  {% if car.is_bad %}disabled data-unavailable="1"{% endif %}>
+                            {{ car.label }}
+                          </option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                  </div>
+
+                  <small class="text-danger d-block mt-1" id="car-dup-msg" style="display:none;">
+                    ※ 第1希望と第2希望は同じ車両にできません。
+                  </small>
+                </td>
+              </tr>
+
+              <tr id="note-row">
+                <th>備考</th>
+                <td>
+                  <input type="text"
+                        class="form-control form-control-sm"
+                        name="note"
+                        placeholder="例）9時以降でお願いします"
+                        value="{% if existing %}{{ existing.note }}{% endif %}">
+                </td>
+              </tr>
+            </table>
+
+            <button type="submit" class="btn btn-primary btn-sm mt-3" id="btn-submit" disabled>
+              この内容で提出
+            </button>
+            <p class="text-muted small mt-2 mb-0">※ このページは“入力ルール確認用”です。保存は次のステップで入れます。</p>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ================================ #}
+  {# ② 手机端（md以下）= 卡片布局       #}
+  {# ================================ #}
+  <div class="d-md-none">
+    <form id="schedule-form-mobile" method="post">
+      {% csrf_token %}
+      <div class="card mb-3">
+        <div class="card-header">日付</div>
+        <div class="card-body">
+          <strong>{{ today|date:"Y-m-d" }}</strong>
+          <p class="small text-muted mb-0">カレンダーは次の段階で実装します。</p>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header">スケジュール内容</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label d-block">区分</label>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="m-mode" id="m-mode-rest" value="rest" checked>
+              <label class="form-check-label" for="m-mode-rest">① 休み</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="m-mode" id="m-mode-wish" value="wish">
+              <label class="form-check-label" for="m-mode-wish">② 希望提出</label>
+            </div>
+          </div>
+
+          <div class="mb-3" id="m-shift-block">
+            <label class="form-label d-block">シフト</label>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="m-shift" id="m-shift-day" value="day">
+              <label class="form-check-label" for="m-shift-day">白</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="m-shift" id="m-shift-night" value="night">
+              <label class="form-check-label" for="m-shift-night">夜</label>
+            </div>
+          </div>
+
+          <div class="mb-3" id="m-wish-block">
+            <label class="form-label d-block">車両希望</label>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="m-any-car" name="m_any_car" value="1">
+              <label class="form-check-label" for="m-any-car">任意の車両</label>
+            </div>
+            <label class="form-label small">第1希望</label>
+            <select class="form-select form-select-sm mb-2" id="m-first-car" name="m_first_car">
+              <option value="">-- 選択 --</option>
+              {% for car in cars %}
+                <option value="{{ car.id }}"
+                        {% if car.is_bad %}disabled data-unavailable="1"{% endif %}>
+                  {{ car.label }}
+                </option>
+              {% endfor %}
+            </select>
+
+            <label class="form-label small">第2希望</label>
+            <select class="form-select form-select-sm" id="m-second-car" name="m_second_car">
+              <option value="">-- 選択 --</option>
+              {% for car in cars %}
+                <option value="{{ car.id }}"
+                        {% if car.is_bad %}disabled data-unavailable="1"{% endif %}>
+                  {{ car.label }}
+                </option>
+              {% endfor %}
+            </select>
+
+            <small class="text-danger d-block mt-1" id="m-car-dup-msg" style="display:none;">※ 同じ車両は選べません。</small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">備考</label>
+            <input type="text" class="form-control form-control-sm" name="m_note" placeholder="メモ">
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-sm" id="m-btn-submit" disabled>
+            提出
+          </button>
+
+        </div>
+      </div>
+    </form>
+  </div>
+
+</div>
+
+
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+
+{# ================================ #}
+{# ③ 前端联动脚本（很短）             #}
+{# ================================ #}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // ====== 共通函数 ======
+  function gotoDate(dateStr) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("work_date", dateStr);
+    window.location.href = url.toString();
+  }
+
+  // ====== 左侧 flatpickr ======
+  flatpickr("#sidebar-date", {
+    locale: "ja",
+    dateFormat: "Y-m-d",
+    minDate: "today",
+    defaultDate: "{{ work_date|date:'Y-m-d' }}",
+    onChange: function(_, dateStr) {
+      if (dateStr) gotoDate(dateStr);
+    }
+  });
+
+  // ====== “本日 / +1日 / +2日” 按钮同步 ======
+  document.querySelectorAll("[data-add-days], #btn-today").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      let baseDate = new Date("{{ work_date|date:'Y-m-d' }}");
+      const add = parseInt(btn.getAttribute("data-add-days") || "0", 10);
+      baseDate.setDate(baseDate.getDate() + add);
+      const y = baseDate.getFullYear();
+      const m = ("0" + (baseDate.getMonth() + 1)).slice(-2);
+      const d = ("0" + baseDate.getDate()).slice(-2);
+      gotoDate(`${y}-${m}-${d}`);
+    });
+  });
+
+  // ====== 右侧 flatpickr 同步 ======
+  flatpickr("#work-date", {
+    locale: "ja",
+    dateFormat: "Y-m-d",
+    minDate: "today",
+    defaultDate: "{{ work_date|date:'Y-m-d' }}",
+    onChange: function(_, dateStr) {
+      if (dateStr) gotoDate(dateStr);
+    }
+  });
+
+  // ====== 业务逻辑部分（保持原来的验证功能） ======
+  const modeRest = document.getElementById("mode-rest");
+  const modeWish = document.getElementById("mode-wish");
+  const shiftRow = document.getElementById("shift-row");
+  const wishRow  = document.getElementById("wish-row");
+  const anyCar   = document.getElementById("any-car");
+  const firstCar = document.getElementById("first-car");
+  const secondCar= document.getElementById("second-car");
+  const dupMsg   = document.getElementById("car-dup-msg");
+  const btnSubmit= document.getElementById("btn-submit");
+
+  function setMode(mode) {
+    if (mode === "rest") {
+      shiftRow.style.display = "none";
+      wishRow.style.display  = "none";
+      btnSubmit.disabled = false;
+    } else {
+      shiftRow.style.display = "";
+      wishRow.style.display  = "";
+      validateDesktop();
+    }
+  }
+
+  function validateDesktop() {
+    if (!modeWish.checked) { btnSubmit.disabled = false; return; }
+    const shiftSelected = document.querySelector('input[name="shift"]:checked');
+    let carOK = true;
+    if (!anyCar.checked) {
+      const f = firstCar.value;
+      const s = secondCar.value;
+      if (!f || !s) carOK = false;
+      if (f && s && f === s) { carOK = false; dupMsg.style.display = ""; }
+      else { dupMsg.style.display = "none"; }
+    } else { dupMsg.style.display = "none"; }
+    btnSubmit.disabled = !(shiftSelected && carOK);
+  }
+
+  modeRest.addEventListener("change", () => setMode("rest"));
+  modeWish.addEventListener("change", () => setMode("wish"));
+  anyCar.addEventListener("change", validateDesktop);
+  firstCar.addEventListener("change", validateDesktop);
+  secondCar.addEventListener("change", validateDesktop);
+  document.querySelectorAll('input[name="shift"]').forEach(el => {
+    el.addEventListener("change", validateDesktop);
+  });
+  setMode(modeRest.checked ? "rest" : "wish");
+});
+</script>
+
+
+<style>
+  select option[disabled][data-unavailable="1"] {
+    color: #999;
+    background: #f3f3f3;
+    font-style: italic;
+  }
+</style>
+
+{% endblock %}

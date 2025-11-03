@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+  <h4 class="mb-3">🚍 私のスケジュールを確認</h4>
+
+  <p class="text-muted small mb-3">
+    {% if driver %}
+      対象ドライバー：<strong>{{ driver }}</strong>
+    {% else %}
+      対応するドライバー情報がありません（管理者に確認してください）
+    {% endif %}
+    {% if today and to_date %}
+      ／ 表示期間：{{ today|date:"Y-m-d" }} 〜 {{ to_date|date:"Y-m-d" }}
+    {% endif %}
+  </p>
+
+  <table class="table table-sm table-bordered align-middle responsive-cards">
+    <thead class="table-light">
+      <tr>
+        <th style="width: 110px;">日付</th>
+        <th style="width: 90px;">区分</th>
+        <th style="width: 90px;">シフト</th>
+        <th>車両希望</th>
+        <th>備考</th>
+        <th style="width: 110px;">状態</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if schedules %}
+        {% for s in schedules %}
+          <tr>
+            <td data-label="日付">{{ s.work_date|date:"Y-m-d (D)" }}</td>
+            <td data-label="区分">
+              {% if s.is_rest %}
+                <span class="badge bg-secondary">休み</span>
+              {% else %}
+                <span class="badge bg-primary">希望</span>
+              {% endif %}
+            </td>
+            <td data-label="シフト">
+              {% if not s.is_rest %}
+                {% if s.shift == "day" %}白{% elif s.shift == "night" %}夜{% else %}-{% endif %}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td data-label="車両希望">
+              {% if s.is_rest %}
+                -
+              {% else %}
+                {% if s.any_car %}
+                  任意の車両で可
+                {% else %}
+                  第1:
+                  {% if s.first_choice_car %}
+                    {{ s.first_choice_car.license_plate|default:s.first_choice_car.registration_number }}
+                    {{ s.first_choice_car.name }}
+                  {% else %}
+                    -
+                  {% endif %}
+                  <br>
+                  第2:
+                  {% if s.second_choice_car %}
+                    {{ s.second_choice_car.license_plate|default:s.second_choice_car.registration_number }}
+                    {{ s.second_choice_car.name }}
+                  {% else %}
+                    -
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            </td>
+
+            <!-- ✅ BEGIN: 新增公司決定列 -->
+            <td data-label="会社決定">
+              {% if s.assigned_car %}
+                <span class="badge bg-success">
+                  {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }}
+                  {{ s.assigned_car.name }}
+                </span>
+              {% elif s.status == "approved" %}
+                <span class="badge bg-info text-dark">会社決定済（車両未指定）</span>
+              {% elif s.status == "rejected" %}
+                <span class="badge bg-danger">差し戻し</span>
+              {% else %}
+                <span class="badge bg-secondary">確認中</span>
+              {% endif %}
+              {% if s.admin_note %}
+                <div class="small text-muted mt-1">{{ s.admin_note }}</div>
+              {% endif %}
+            </td>
+            <!-- ✅ END: 新增公司決定列 -->
+
+            <td data-label="備考">{{ s.note|default:"-" }}</td>
+            <td data-label="状態">
+              <span class="badge bg-light text-muted d-block mb-1">保存済み</span>
+              <span class="text-muted small">{{ s.updated_at|date:"m/d H:i" }}</span>
+            </td>
+
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">
+            まだスケジュールがありません。
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

@@ -1,0 +1,331 @@
+{# taxi_project/staffbook/templates/staffbook/schedule_list.html #}
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+  <h4 class="mb-3">📋 ドライバー提出スケジュール一覧</h4>
+
+  <p class="text-muted small mb-2">
+    表示期間：{{ date_from|date:"Y-m-d" }} 〜 {{ date_to|date:"Y-m-d" }}
+  </p>
+
+  {# ==== 分组切换 tabs ==== #}
+  <div class="mb-3">
+    <a href="?group=date" class="btn btn-sm {% if group == 'date' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+      日付ごとに表示
+    </a>
+    <a href="?group=driver" class="btn btn-sm {% if group == 'driver' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+      ドライバーごとに表示
+    </a>
+  </div>
+
+  {# ====== 日期 + 司机筛选 ====== #}
+  <form method="get" class="d-flex gap-2 ms-auto" style="max-width: 520px;">
+    <input type="hidden" name="group" value="{{ group }}">
+    {% if selected_driver %}
+      <input type="hidden" name="driver" value="{{ selected_driver }}">
+    {% endif %}
+
+    <select name="work_date" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">すべての日付</option>
+      {% for d in date_choices %}
+        <option value="{{ d|date:'Y-m-d' }}" {% if selected_work_date and d == selected_work_date %}selected{% endif %}>
+          {{ d|date:"Y-m-d (D)" }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <select name="driver" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">すべてのドライバー</option>
+      {% for d in all_drivers %}
+        <option value="{{ d.id }}" {% if selected_driver == d.id %}selected{% endif %}>
+          {{ d.driver_code }} {{ d.name }}
+        </option>
+      {% endfor %}
+    </select>
+
+    <noscript><button class="btn btn-sm btn-secondary">表示</button></noscript>
+  </form>
+
+  {# ========== ① 按日期分组 ========== #}
+  {% if group == 'date' %}
+    {% for d, rows in grouped.items %}
+      <h6 class="mt-4 mb-2">{{ d|date:"Y-m-d (D)" }}</h6>
+      <table class="table table-sm table-bordered align-middle responsive-cards">
+        <thead class="table-light">
+          <tr>
+            <th>日付</th>
+            <th>ドライバー</th>
+            <th>区分</th>
+            <th>シフト</th>
+            <th>希望車両</th>
+            <th>会社決定</th>
+            <th>備考</th>
+            <th>更新</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in rows %}
+            <tr>
+              <td data-label="日付">{{ s.work_date|date:"Y-m-d (D)" }}</td>
+              <td data-label="ドライバー">
+                {{ s.driver.driver_code }} {{ s.driver.name }}
+              </td>
+              <td data-label="区分">
+                {% if s.is_rest %}
+                  <span class="badge bg-secondary">休み</span>
+                {% else %}
+                  <span class="badge bg-primary">希望</span>
+                {% endif %}
+              </td>
+              <td data-label="シフト">
+                {% if not s.is_rest %}
+                  {% if s.shift == "day" %}白班{% elif s.shift == "night" %}夜班{% else %}-{% endif %}
+                {% endif %}
+              </td>
+              <td data-label="希望車両">
+                {% if s.is_rest %}
+                  -
+                {% else %}
+                  {% if s.any_car %}
+                    任意の車両で可
+                  {% else %}
+                    第1:
+                    {% if s.first_choice_car %}
+                      {{ s.first_choice_car.license_plate|default:s.first_choice_car.registration_number|default:s.first_choice_car.name }}
+                    {% else %}-{% endif %}
+                    <br>
+                    第2:
+                    {% if s.second_choice_car %}
+                      {{ s.second_choice_car.license_plate|default:s.second_choice_car.registration_number|default:s.second_choice_car.name }}
+                    {% else %}-{% endif %}
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td data-label="会社決定">
+                <form method="post" class="d-flex flex-column gap-1">
+                  {% csrf_token %}
+                  <input type="hidden" name="sched_id" value="{{ s.id }}">
+                  <select name="assigned_car" class="form-select form-select-sm">
+                    <option value="">-- 未決定 --</option>
+                    {% for car in cars %}
+                      <option value="{{ car.id }}" {% if s.assigned_car_id == car.id %}selected{% endif %}>
+                        {{ car.license_plate|default:car.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <select name="status" class="form-select form-select-sm mt-1">
+                    <option value="pending"  {% if s.status == "pending" %}selected{% endif %}>未確定</option>
+                    <option value="approved" {% if s.status == "approved" %}selected{% endif %}>確定</option>
+                    <option value="rejected" {% if s.status == "rejected" %}selected{% endif %}>差し戻し</option>
+                  </select>
+                  <input type="text" name="admin_note" class="form-control form-control-sm mt-1"
+                         value="{{ s.admin_note }}" placeholder="管理メモ">
+                  <button type="submit" class="btn btn-primary btn-sm mt-1">保存</button>
+                </form>
+              </td>
+              <td data-label="備考">{{ s.note|default:"-" }}</td>
+              <td data-label="更新">
+                <span class="text-muted small">{{ s.updated_at|date:"m/d H:i" }}</span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% empty %}
+      <p class="text-muted">まだ提出されたスケジュールはありません。</p>
+    {% endfor %}
+
+  {% else %}
+  {# ========== ② 按司机分组 ========== #}
+    {% for driver_label, rows in grouped.items %}
+      <h6 class="mt-4 mb-2">{{ driver_label }}</h6>
+      <table class="table table-sm table-bordered align-middle responsive-cards">
+        <thead class="table-light">
+          <tr>
+            <th>日付</th>
+            <th>区分</th>
+            <th>シフト</th>
+            <th>希望車両</th>
+            <th>会社決定</th>
+            <th>備考</th>
+            <th>更新</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in rows %}
+            <tr>
+              <td data-label="日付">{{ s.work_date|date:"Y-m-d (D)" }}</td>
+              <td data-label="区分">
+                {% if s.is_rest %}
+                  <span class="badge bg-secondary">休み</span>
+                {% else %}
+                  <span class="badge bg-primary">希望</span>
+                {% endif %}
+              </td>
+              <td data-label="シフト">
+                {% if not s.is_rest %}
+                  {% if s.shift == "day" %}白班{% elif s.shift == "night" %}夜班{% else %}-{% endif %}
+                {% endif %}
+              </td>
+              <td data-label="希望車両">
+                {% if s.is_rest %}
+                  -
+                {% else %}
+                  {% if s.any_car %}
+                    任意の車両で可
+                  {% else %}
+                    第1:
+                    {% if s.first_choice_car %}
+                      {{ s.first_choice_car.license_plate|default:s.first_choice_car.registration_number|default:s.first_choice_car.name }}
+                    {% else %}-{% endif %}
+                    <br>
+                    第2:
+                    {% if s.second_choice_car %}
+                      {{ s.second_choice_car.license_plate|default:s.second_choice_car.registration_number|default:s.second_choice_car.name }}
+                    {% else %}-{% endif %}
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td data-label="会社決定">
+                <form method="post" class="d-flex flex-column gap-1">
+                  {% csrf_token %}
+                  <input type="hidden" name="sched_id" value="{{ s.id }}">
+                  <select name="assigned_car" class="form-select form-select-sm">
+                    <option value="">-- 未決定 --</option>
+                    {% for car in cars %}
+                      <option value="{{ car.id }}" {% if s.assigned_car_id == car.id %}selected{% endif %}>
+                        {{ car.license_plate|default:car.name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <select name="status" class="form-select form-select-sm mt-1">
+                    <option value="pending"  {% if s.status == "pending" %}selected{% endif %}>未確定</option>
+                    <option value="approved" {% if s.status == "approved" %}selected{% endif %}>確定</option>
+                    <option value="rejected" {% if s.status == "rejected" %}selected{% endif %}>差し戻し</option>
+                  </select>
+                  <input type="text" name="admin_note" class="form-control form-control-sm mt-1"
+                         value="{{ s.admin_note }}" placeholder="管理メモ">
+                  <button type="submit" class="btn btn-primary btn-sm mt-1">保存</button>
+                </form>
+              </td>
+              <td data-label="備考">{{ s.note|default:"-" }}</td>
+              <td data-label="更新">
+                <span class="text-muted small">{{ s.updated_at|date:"m/d H:i" }}</span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% empty %}
+      <p class="text-muted">まだ提出されたスケジュールはありません。</p>
+    {% endfor %}
+  {% endif %}
+
+  {# ===== 只读配车表：选了日期才显示 ===== #}
+  {% if selected_work_date %}
+    <div class="dispatch-board mt-4">
+      <div class="dispatch-board__header">
+        {{ selected_work_date|date:"Y年n月j日 (l)" }}
+      </div>
+
+      {% for sec in dispatch_sections %}
+        {% if sec.rows %}
+          <div class="dispatch-board__section">
+            <div class="dispatch-board__title">{{ sec.title }}</div>
+
+            {% for r in sec.rows %}
+              <div class="dispatch-board__row">
+                {% if r.car %}
+                  <span class="dispatch-board__car">
+                    🚕 {{ r.car.license_plate|default:r.car.registration_number|default:r.car.name }}
+                  </span>
+                {% else %}
+                  <span class="dispatch-board__car">🚕 ー</span>
+                {% endif %}
+
+                <span class="dispatch-board__driver">
+                  {% if r.driver %}
+                    {{ r.driver.driver_code }}　{{ r.driver.name }}
+                  {% else %}
+                    （空置中）
+                  {% endif %}
+                </span>
+
+                {% if r.is_rest %}
+                  <span class="dispatch-board__badge dispatch-board__badge--rest">休</span>
+                {% else %}
+                  {% if r.shift == "day" %}
+                    <span class="dispatch-board__badge">白</span>
+                  {% elif r.shift == "night" %}
+                    <span class="dispatch-board__badge dispatch-board__badge--night">夜</span>
+                  {% endif %}
+                {% endif %}
+
+                {# 车的状态：维修中 / 空置中 #}
+                {% if r.car %}
+                  {% if r.car.status == "maintenance" or r.car.is_maintaining %}
+                    <span class="dispatch-board__maint">🛠 修理中</span>
+                  {% elif not r.driver %}
+                    <span class="dispatch-board__maint">空置中</span>
+                  {% endif %}
+                {% endif %}
+
+                {% if r.admin_note %}
+                  <span class="dispatch-board__note text-muted">{{ r.admin_note }}</span>
+                {% elif r.driver_note %}
+                  <span class="dispatch-board__note text-muted">{{ r.driver_note }}</span>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+</div>  {# ← 这里才是真正关 container #}
+
+<style>
+.dispatch-board{
+  background:#19a953;
+  border-radius:16px;
+  padding:18px 18px 10px 18px;
+  color:#000;
+  max-width:480px;
+}
+.dispatch-board__header{
+  font-size:1.3rem;
+  font-weight:600;
+  margin-bottom:14px;
+}
+.dispatch-board__section{ margin-bottom:16px; }
+.dispatch-board__title{ font-size:1.1rem; font-weight:600; margin-bottom:6px; }
+.dispatch-board__row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:3px 0;
+  flex-wrap:wrap;
+}
+.dispatch-board__car{ min-width:85px; font-size:1.05rem; }
+.dispatch-board__driver{ min-width:120px; font-size:1.05rem; }
+.dispatch-board__badge{
+  background:#fff;
+  color:#000;
+  border-radius:999px;
+  padding:2px 10px;
+  font-size:.7rem;
+  font-weight:600;
+}
+.dispatch-board__badge--night{ background:#212529; color:#fff; }
+.dispatch-board__badge--rest{ background:#6c757d; color:#fff; }
+.dispatch-board__maint{ font-size:.8rem; }
+.dispatch-board__note{ font-size:.75rem; }
+@media (max-width: 576px){
+  .dispatch-board{max-width:100%;}
+  .dispatch-board__row{flex-direction:row;}
+}
+</style>
+
+{% endblock %}

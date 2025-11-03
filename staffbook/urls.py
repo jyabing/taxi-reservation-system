@@ -1,3 +1,4 @@
+# taxi_project/staffbook/urls.py
 from django.urls import path
 from . import views
 
@@ -15,8 +16,6 @@ urlpatterns = [
     path('drivers/create/', views.driver_create, name='driver_create'),
     path('drivers/<int:driver_id>/edit/', views.driver_edit, name='driver_edit'),
     
-    
-
     # 👉 基本资料页分组（主页、证件、紧急联系人等）
     path('drivers/<int:driver_id>/basic/', views.driver_basic_info, name='driver_basic_info'),
     path('drivers/<int:driver_id>/basic/edit/', views.driver_basic_edit, name='driver_basic_edit'),
@@ -53,4 +52,16 @@ urlpatterns = [
     path('drivers/<int:driver_id>/employment_insurance/', views.driver_employment_insurance_info, name='driver_employment_insurance_info'),
     path('drivers/<int:driver_id>/tax/', views.driver_tax_info, name='driver_tax_info'),
     path('drivers/<int:driver_id>/salary/', views.driver_salary, name='driver_salary'),
+
+    # ===================================
+    # 🚗 这里开始是我们这次加的“约日期系统”入口
+    # ===================================
+    # 🚗 司机本人填写“出勤日・希望車両”
+    path('schedule/', views.schedule_form_view, name='schedule_form'),
+
+    # 🚗 司机本人查看自己的预约（旧名字保留，别删，页面可能有引用）
+    path('my_reservations/', views.my_reservations_view, name='my_reservations'),
+
+    # ✅ 管理员查看所有司机的预约/希望
+    path("schedule-admin/", views.schedule_list_view, name="schedule_list"),
 ]

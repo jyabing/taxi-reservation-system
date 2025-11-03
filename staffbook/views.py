@@ -4,13 +4,17 @@ from itertools import zip_longest
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import HttpResponse
-from datetime import datetime as DatetimeClass
+from datetime import datetime as DatetimeClass, timedelta, date as _date, datetime as _datetime, datetime as _dt, date 
+
+from django.views.decorators.http import require_http_methods
+
 from django.utils.timezone import make_aware, is_naive
 from collections import defaultdict
 from carinfo.models import Car
 from vehicles.models import Reservation
 from django.forms import inlineformset_factory
 from dailyreport.models import DriverDailyReport, DriverDailyReportItem
+from staffbook.models import Driver  # 你们的司机表
 
 from .permissions import is_staffbook_admin
 from django.contrib import messages
@@ -27,8 +31,9 @@ from dailyreport.forms import (
 from .models import (
     Driver, DrivingExperience, 
     DriverInsurance, FamilyMember, DriverLicense, LicenseType, Qualification, Aptitude,
-    Reward, Accident, Education, Pension, DriverPayrollRecord 
-    )
+    Reward, Accident, Education, Pension, DriverPayrollRecord,
+    DriverSchedule,   # ←← 新增这一行注意：末尾那个逗号要保留，这样排版也一致
+)
 
 from django.db.models import Q, Sum, Case, When, F, DecimalField
 from django.forms import inlineformset_factory, modelformset_factory
@@ -48,6 +53,10 @@ from dailyreport.services.summary import (
     calculate_totals_from_queryset,
     calculate_totals_from_formset,  # 👈 加上这一行
 )
+
+def is_admin_user(user):
+    # "仅允许 is_staff 或 superuser 的用户访问：要么是超级管理员，要么是staff
+    return user.is_superuser or user.is_staff
 
 # ===== 売上に基づく分段控除（給与側の規則）BEGIN =====
 def calc_progressive_fee_by_table(amount_jpy: int | Decimal) -> int:
@@ -93,6 +102,434 @@ def driver_card(request, driver_id):
 @user_passes_test(is_staffbook_admin)
 def staffbook_dashboard(request):
     return render(request, 'staffbook/dashboard.html')
+
+
+# ==============================================================
+# BEGIN: 司机本人填写“约日期”表单页（桌面=表格，手机=卡片）
+# ==============================================================
+
+from django.utils.safestring import mark_safe
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def schedule_form_view(request):
+    """司机本人：提交自己的希望スケジュール"""
+    today = date.today()
+
+    # ① 找到这个登录用户对应的司机
+    try:
+        me = Driver.objects.get(user=request.user)
+    except Driver.DoesNotExist:
+        me = None
+
+    # ② 当前要看的日期（?work_date=...），没有就看今天
+    work_date_str = request.GET.get("work_date") or today.strftime("%Y-%m-%d")
+    try:
+        y, m, d = [int(x) for x in work_date_str.split("-")]
+        work_date = date(y, m, d)
+    except Exception:
+        work_date = today
+
+    # ③ 这一天，这个司机有没有已经填过
+    existing = None
+    if me:
+        existing = DriverSchedule.objects.filter(driver=me, work_date=work_date).first()
+
+    # ④ 车辆：这里“**不要过滤**”，全部给模板
+    #    如果你以后要再限制，再往下挪
+    
+    raw_cars = (
+        Car.objects
+        .exclude(
+            status__in=["scrapped", "retired", "disabled"],  # 完全不要显示的
+            # 如果你模型里有这个字段就保留这行
+            # is_scrapped=True,
+        )
+        .order_by("license_plate", "name", "id")
+    )
+
+    normal_cars = []
+    maint_cars = []
+
+    for c in raw_cars:
+        plate = (
+            getattr(c, "license_plate", None)
+            or getattr(c, "registration_number", None)
+            or ""
+        )
+        car_name = (
+            getattr(c, "name", None)
+            or getattr(c, "model", None)
+            or ""
+        )
+        parts = []
+        if plate:
+            parts.append(str(plate))
+        if car_name:
+            parts.append(str(car_name))
+        base_label = " / ".join(parts) if parts else f"ID:{c.id}"
+
+        status = (getattr(c, "status", "") or "").strip()
+        is_active = getattr(c, "is_active", True)
+        is_maint  = bool(getattr(c, "is_maintaining", False))
+        is_scrapped = bool(getattr(c, "is_scrapped", False))
+
+        # 这里再保险一下：如果真的标了 scrapped，就不要
+        if is_scrapped:
+            continue
+
+        # 是否属于“整備中”这一类
+        is_maint_status = status in ("maintenance", "repair", "fixing") or is_maint
+
+        label = base_label
+        bad = False
+
+        if is_maint_status:
+            label = f"{base_label}（整備中）"
+            bad = True
+            c.label = label
+            c.is_bad = bad
+            maint_cars.append(c)
+            continue
+
+        # 走到这里就是“不是整備中”的车
+        # 如果它 is_active=False，就不要显示
+        if not is_active:
+            continue
+
+        # 正常车
+        c.label = label
+        c.is_bad = False
+        normal_cars.append(c)
+
+    # 顺序：正常车在上 + 整備中在下
+    cars = normal_cars + maint_cars
+
+    # ⑤ POST 保存
+    if request.method == "POST" and me:
+        mode = request.POST.get("mode")  # rest / wish
+        shift = request.POST.get("shift") or ""
+        note = request.POST.get("note") or ""
+        any_car = request.POST.get("any_car") == "1"
+        first_id = request.POST.get("first_car") or None
+        second_id = request.POST.get("second_car") or None
+
+        obj, _ = DriverSchedule.objects.get_or_create(
+            driver=me,
+            work_date=work_date,
+        )
+
+        obj.is_rest = (mode == "rest")
+        obj.note = note
+
+        if obj.is_rest:
+            # 休み
+            obj.shift = ""
+            obj.any_car = False
+            obj.first_choice_car = None
+            obj.second_choice_car = None
+        else:
+            # 希望提出
+            obj.shift = shift
+            obj.any_car = any_car
+
+            fc = Car.objects.filter(pk=first_id).first() if first_id else None
+            sc = Car.objects.filter(pk=second_id).first() if second_id else None
+
+            if fc and sc and fc.id == sc.id:
+                sc = None
+
+            obj.first_choice_car = fc
+            obj.second_choice_car = sc
+
+        obj.save()
+        messages.success(request, "この日のスケジュールを保存しました。")
+
+        return redirect(f"{request.path}?work_date={work_date:%Y-%m-%d}")
+
+    # ⑥ GET 渲染
+    ctx = {
+        "driver": me,
+        "today": today,
+        "work_date": work_date,
+        "existing": existing,
+        "cars": cars,
+    }
+    return render(request, "staffbook/schedule_form.html", ctx)
+# ==============================================================
+# END: 司机本人填写“约日期”表单页（支持保存）
+# ==============================================================
+
+# ==============================================================
+# 司机本人：看自己最近30天内提交的希望/休み
+# ==============================================================
+@login_required
+def schedule_my_list_view(request):
+    """司机本人：看自己最近30天内提交的希望/休み"""
+    # 1. 找到这个登录用户对应的司机
+    try:
+        driver = Driver.objects.get(user=request.user)
+    except Driver.DoesNotExist:
+        driver = None
+
+    # ✅ 用我们在文件头里导入的名字 _date
+    today = _date.today()
+    to_date = today + timedelta(days=30)
+
+    rows = []
+    if driver:
+        rows = (
+            DriverSchedule.objects
+            .filter(driver=driver, work_date__gte=today, work_date__lte=to_date)
+            .order_by("work_date")
+        )
+
+    ctx = {
+        "driver": driver,
+        "rows": rows,
+        "today": today,
+        "to_date": to_date,
+    }
+    return redirect("staffbook:my_reservations")
+
+
+# ==============================================================
+# BEGIN: 司机本人查看「我的预约」页面
+# ==============================================================
+
+@login_required
+def my_reservations_view(request):
+    """
+    当前登录司机查看自己提交的スケジュール
+    """
+    try:
+        driver = Driver.objects.get(user=request.user)
+    except Driver.DoesNotExist:
+        driver = None
+
+    today = _date.today()
+    # 你模板里要显示 “今天 ~ to_date”
+    to_date = today + timedelta(days=14)   # 想 7 天就写 7
+
+    if driver:
+        schedules = (
+            DriverSchedule.objects
+            .filter(driver=driver, work_date__gte=today, work_date__lte=to_date)
+            .order_by("work_date", "-created_at")
+        )
+    else:
+        schedules = []
+
+    ctx = {
+        "driver": driver,
+        "today": today,
+        "to_date": to_date,   # 👈 模板要的
+        "schedules": schedules,
+    }
+    return render(request, "staffbook/my_reservations.html", ctx)
+
+# ==============================================================
+# END: 司机本人查看「我的预约」页面
+# ==============================================================
+
+# ==============================================================
+# 管理员 / 事务员：查看所有司机提交的“日期+希望车両”
+# URL: /staffbook/schedule-list/
+# 模板: staffbook/schedule_list.html
+# ==============================================================
+
+@login_required
+@user_passes_test(is_admin_user)   # 只允许 超管 or staff
+def schedule_list_view(request):
+    """
+    管理者用：全ドライバーの提出スケジュールを見る＆更新する
+    GET パラメータ:
+      ?group=date|driver
+      ?driver=123
+      ?work_date=2025-11-03
+    """
+    today = _date.today()
+    # 看今天到一周后（你想扩大就改这里）
+    date_from = today
+    date_to = today + timedelta(days=7)
+
+    group = request.GET.get("group", "date")      # 按日期 / 按司机
+    driver_id = request.GET.get("driver")         # 司机过滤
+    work_date_str = request.GET.get("work_date")  # 指定日期过滤
+
+    # ① 这一段时间内的全部司机提交
+    qs = (
+        DriverSchedule.objects
+        .select_related("driver", "first_choice_car", "second_choice_car", "assigned_car")
+        .filter(work_date__gte=date_from, work_date__lte=date_to)
+    )
+
+    # ② 如果指定了日，就再缩
+    selected_work_date = None
+    if work_date_str:
+        try:
+            selected_work_date = _date.fromisoformat(work_date_str)
+            qs = qs.filter(work_date=selected_work_date)
+        except ValueError:
+            selected_work_date = None
+
+    # ③ 如果指定了司机，也再缩
+    if driver_id:
+        qs = qs.filter(driver_id=driver_id)
+
+    # 下拉用的车 / 司机 / 日期
+    cars = Car.objects.all().order_by("license_plate", "id")
+    all_drivers = Driver.objects.order_by("driver_code", "name")
+    date_choices = [date_from + timedelta(days=i) for i in range((date_to - date_from).days + 1)]
+
+    # ④ 行内保存
+    if request.method == "POST":
+        sched_id = request.POST.get("sched_id")
+        status = request.POST.get("status") or "pending"
+        assigned_car_id = request.POST.get("assigned_car") or None
+        admin_note = request.POST.get("admin_note", "").strip()
+
+        # 把过滤条件也拿回来，保存后还回到同一筛选
+        post_group = request.POST.get("group", group)
+        post_driver = request.POST.get("driver") or driver_id
+        post_work_date = request.POST.get("work_date") or work_date_str
+
+        obj = DriverSchedule.objects.filter(pk=sched_id).first()
+        if obj:
+            obj.status = status
+            obj.admin_note = admin_note
+            if assigned_car_id:
+                obj.assigned_car_id = assigned_car_id
+            else:
+                obj.assigned_car = None
+            obj.save()
+            messages.success(request, "スケジュールを更新しました。")
+
+        # 回跳 URL
+        redirect_url = f"{reverse('staffbook:schedule_list')}?group={post_group}"
+        if post_driver:
+            redirect_url += f"&driver={post_driver}"
+        if post_work_date:
+            redirect_url += f"&work_date={post_work_date}"
+        return redirect(redirect_url)
+
+    # ⑤ 分组显示（表格）
+    grouped = {}
+    if group == "driver":
+        qs = qs.order_by("driver__driver_code", "work_date")
+        for row in qs:
+            key = f"{row.driver.driver_code} {row.driver.name}"
+            grouped.setdefault(key, []).append(row)
+    else:
+        group = "date"
+        qs = qs.order_by("work_date", "driver__driver_code")
+        for row in qs:
+            key = row.work_date
+            grouped.setdefault(key, []).append(row)
+
+    # ⑥ 只读配车表（就是你要的那个绿色牌子）
+    dispatch_sections = []
+    if selected_work_date:
+        # 1) 这一天真正有记录的（注意这里要用 qs，不是 schedules）
+        day_qs = qs.filter(work_date=selected_work_date)
+
+        assigned_rows = []
+        used_car_ids = set()
+
+        for s in day_qs:
+            car = s.assigned_car or None
+            if car:
+                used_car_ids.add(car.id)
+
+            assigned_rows.append({
+                "car": car,
+                "driver": s.driver,
+                "is_rest": s.is_rest,
+                "shift": s.shift,
+                "admin_note": s.admin_note,
+                "driver_note": s.note,
+            })
+
+        if assigned_rows:
+            dispatch_sections.append({
+                "title": "本日の配車",
+                "rows": assigned_rows,
+            })
+
+        # 2) 把“这一天没用到的车”塞进去，再分成 “整備中/修理中” 和 “空き車両”
+        maint_rows = []
+        free_rows = []
+        for car in cars:
+            status = getattr(car, "status", "")
+            is_scrapped = getattr(car, "is_scrapped", False)
+            is_active = getattr(car, "is_active", True)
+
+            # 报废/不可用直接跳过
+            if is_scrapped:
+                continue
+            if status in ("retired", "disabled", "scrapped"):
+                continue
+            if not is_active:
+                continue
+
+            # 今天已经分配过的，跳过
+            if car.id in used_car_ids:
+                continue
+
+            # 是否维修中
+            is_maint = False
+            if status in ("maintenance", "repair", "fixing"):
+                is_maint = True
+            if getattr(car, "is_maintaining", False):
+                is_maint = True
+
+            row = {
+                "car": car,
+                "driver": None,
+                "is_rest": False,
+                "shift": None,
+                "admin_note": "",
+                "driver_note": "",
+            }
+
+            if is_maint:
+                maint_rows.append(row)
+            else:
+                free_rows.append(row)
+
+        if maint_rows:
+            dispatch_sections.append({
+                "title": "整備中 / 修理中",
+                "rows": maint_rows,
+            })
+
+        if free_rows:
+            dispatch_sections.append({
+                "title": "空き車両",
+                "rows": free_rows,
+            })
+
+    # ⑦ 渲染
+    ctx = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "group": group,
+        "grouped": grouped,
+        "cars": cars,
+        "all_drivers": all_drivers,
+        "date_choices": date_choices,
+        "selected_driver": int(driver_id) if driver_id else None,
+        "selected_work_date": selected_work_date,
+        "dispatch_sections": dispatch_sections,
+    }
+    return render(request, "staffbook/schedule_list.html", ctx)
+
+# ======= staffbook/views.py 替换结束 =======
+
+# ==============================================================
+# END: 管理员 / 事务员：查看所有司机提交的“日期+希望车両”
+# ==============================================================
 
 
 # ✅ 员工列表（管理员）
@@ -1024,7 +1461,7 @@ def driver_salary(request, driver_id):
                     )
 
                     # —— 固定天数（默认=当月工作日 Mon–Fri；若你有公司“固定天数”字段，替换这里即可）——
-                    from datetime import timedelta
+
                     base_days = sum(
                         1 for i in range((end - start).days)
                         if (start + timedelta(days=i)).weekday() < 5
@@ -1082,7 +1519,7 @@ def driver_salary(request, driver_id):
         attendance_days_from_reports = attendance_days
 
         # —— 固定天数（默认=当月工作日 Mon–Fri；如有公司固定天数字段，可替换这里）——
-        from datetime import timedelta
+        
         base_days = sum(
             1 for i in range((end - start).days)
             if (start + timedelta(days=i)).weekday() < 5
@@ -1306,3 +1743,9 @@ def driver_salary(request, driver_id):
 
         **context,
     })
+
+
+
+
+
+
