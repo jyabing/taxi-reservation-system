@@ -109,11 +109,14 @@
                   <select name="assigned_car" class="form-select form-select-sm">
                     <option value="">-- 未決定 --</option>
                     {% for car in cars %}
-                      <option value="{{ car.id }}" {% if s.assigned_car_id == car.id %}selected{% endif %}>
-                        {{ car.license_plate|default:car.name }}
+                      <option value="{{ car.id }}"
+                              {% if s.assigned_car_id == car.id %}selected{% endif %}
+                              {% if car.is_bad %}data-unavailable="1"{% endif %}>
+                        {{ car.label }}
                       </option>
                     {% endfor %}
                   </select>
+
                   <select name="status" class="form-select form-select-sm mt-1">
                     <option value="pending"  {% if s.status == "pending" %}selected{% endif %}>未確定</option>
                     <option value="approved" {% if s.status == "approved" %}selected{% endif %}>確定</option>
@@ -194,8 +197,10 @@
                   <select name="assigned_car" class="form-select form-select-sm">
                     <option value="">-- 未決定 --</option>
                     {% for car in cars %}
-                      <option value="{{ car.id }}" {% if s.assigned_car_id == car.id %}selected{% endif %}>
-                        {{ car.license_plate|default:car.name }}
+                      <option value="{{ car.id }}"
+                              {% if s.assigned_car_id == car.id %}selected{% endif %}
+                              {% if car.is_bad %}data-unavailable="1"{% endif %}>
+                        {{ car.label }}
                       </option>
                     {% endfor %}
                   </select>
@@ -327,5 +332,15 @@
   .dispatch-board__row{flex-direction:row;}
 }
 </style>
+
+<style>
+  /* 灰显“整備中” */
+  select option[data-unavailable="1"] {
+    color: #999;
+    background: #f6f6f6;
+    font-style: italic;
+  }
+</style>
+
 
 {% endblock %}

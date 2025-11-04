@@ -201,8 +201,17 @@
       <div class="card mb-3">
         <div class="card-header">日付</div>
         <div class="card-body">
-          <strong>{{ today|date:"Y-m-d" }}</strong>
-          <p class="small text-muted mb-0">カレンダーは次の段階で実装します。</p>
+          <input
+            type="text"
+            id="m-date"
+            class="form-control form-control-sm mb-2"
+            value="{{ work_date|date:'Y-m-d' }}"
+            placeholder="日付を選択してください">
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm" id="m-today">本日</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="1">+1日</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="2">+2日</button>
+          </div>
         </div>
       </div>
 
@@ -332,6 +341,28 @@ document.addEventListener("DOMContentLoaded", function() {
       if (dateStr) gotoDate(dateStr);
     }
   });
+
+  // ====== 手机端日期 flatpickr（新增）=====
+  const mInput = document.getElementById("m-date");
+  if (mInput) {
+    flatpickr("#m-date", {
+      locale: "ja",
+      dateFormat: "Y-m-d",
+      minDate: "today",
+      defaultDate: "{{ work_date|date:'Y-m-d' }}",
+      onChange: function(_, dateStr) {
+        if (dateStr) gotoDate(dateStr);
+      }
+    });
+
+    const mToday = document.getElementById("m-today");
+    if (mToday) {
+      mToday.addEventListener("click", function () {
+        gotoDate("{{ today|date:'Y-m-d' }}");
+      });
+    }
+  }
+
 
   // ====== 业务逻辑部分（保持原来的验证功能） ======
   const modeRest = document.getElementById("mode-rest");

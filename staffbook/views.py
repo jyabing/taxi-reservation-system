@@ -378,8 +378,60 @@ def schedule_list_view(request):
     if driver_id:
         qs = qs.filter(driver_id=driver_id)
 
-    # 下拉用的车 / 司机 / 日期
-    cars = Car.objects.all().order_by("license_plate", "id")
+    
+    # 下拉用的车（正常在上，整備中在下；廃車/停用不出）
+    raw_cars = (
+        Car.objects
+        .exclude(status__in=["scrapped", "retired", "disabled"])  # 廃車・退役・停用は出さない
+        .order_by("license_plate", "name", "id")
+    )
+
+    normal_cars, maint_cars = [], []
+
+    for c in raw_cars:
+        plate = (
+            getattr(c, "license_plate", None)
+            or getattr(c, "registration_number", None)
+            or ""
+        )
+        car_name = (
+            getattr(c, "name", None)
+            or getattr(c, "model", None)
+            or ""
+        )
+        parts = []
+        if plate:
+            parts.append(str(plate))
+        if car_name:
+            parts.append(str(car_name))
+        base_label = " / ".join(parts) if parts else f"ID:{c.id}"
+
+        status = (getattr(c, "status", "") or "").strip()
+        is_active = getattr(c, "is_active", True)
+        is_maint  = bool(getattr(c, "is_maintaining", False))
+        is_scrapped = bool(getattr(c, "is_scrapped", False))
+
+        if is_scrapped:
+            continue  # 保险再滤一次
+
+        is_maint_status = status in ("maintenance", "repair", "fixing") or is_maint
+
+        if is_maint_status:
+            c.label = f"{base_label}（整備中）"
+            c.is_bad = True
+            maint_cars.append(c)
+            continue
+
+        if not is_active:
+            continue
+
+        c.label = base_label
+        c.is_bad = False
+        normal_cars.append(c)
+
+    cars = normal_cars + maint_cars
+    
+    # 下拉司机 / 日期
     all_drivers = Driver.objects.order_by("driver_code", "name")
     date_choices = [date_from + timedelta(days=i) for i in range((date_to - date_from).days + 1)]
 
