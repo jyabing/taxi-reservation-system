@@ -61,7 +61,9 @@ urlpatterns = [
 
     # 🚗 司机本人查看自己的预约（旧名字保留，别删，页面可能有引用）
     path('my_reservations/', views.my_reservations_view, name='my_reservations'),
+    path("schedule/delete/<int:sched_id>/", views.schedule_delete_view, name="schedule_delete"),
 
     # ✅ 管理员查看所有司机的预约/希望
     path("schedule-admin/", views.schedule_list_view, name="schedule_list"),
+    
 ]

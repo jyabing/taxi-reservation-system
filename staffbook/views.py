@@ -586,6 +586,31 @@ def schedule_list_view(request):
 # ==============================================================
 
 
+@login_required
+def schedule_delete_view(request, sched_id):
+    """
+    司机本人删除自己的提交（POST）
+    """
+    try:
+        me = Driver.objects.get(user=request.user)
+    except Driver.DoesNotExist:
+        me = None
+
+    sched = get_object_or_404(DriverSchedule, pk=sched_id)
+
+    # 只能删自己的
+    if not me or sched.driver_id != me.id:
+        messages.error(request, "このスケジュールを削除する権限がありません。")
+        return redirect("staffbook:my_reservations")  # 或你想回的页面
+
+    if request.method == "POST":
+        wd = sched.work_date
+        sched.delete()
+        messages.success(request, f"{wd:%Y-%m-%d} のスケジュールを削除しました。")
+
+    return redirect("staffbook:my_reservations")  # 你的确认页 url 名称
+
+
 # ✅ 员工列表（管理员）
 @user_passes_test(is_staffbook_admin)
 def driver_list(request):
