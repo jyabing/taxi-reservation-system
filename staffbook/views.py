@@ -208,12 +208,13 @@ def schedule_form_view(request):
 
     # ⑤ POST 保存
     if request.method == "POST" and me:
-        mode = request.POST.get("mode")  # rest / wish
-        shift = request.POST.get("shift") or ""
-        note = request.POST.get("note") or ""
-        any_car = request.POST.get("any_car") == "1"
-        first_id = request.POST.get("first_car") or None
-        second_id = request.POST.get("second_car") or None
+        # 同时兼容桌面端与手机端字段名
+        mode     = request.POST.get("mode")      or request.POST.get("m-mode")
+        shift    = request.POST.get("shift")     or request.POST.get("m-shift") or ""
+        note     = request.POST.get("note")      or request.POST.get("m_note")  or ""
+        any_car  = (request.POST.get("any_car")  or request.POST.get("m_any_car")) == "1"
+        first_id = request.POST.get("first_car") or request.POST.get("m_first_car") or None
+        second_id= request.POST.get("second_car")or request.POST.get("m_second_car") or None
 
         obj, _ = DriverSchedule.objects.get_or_create(
             driver=me,
@@ -246,7 +247,8 @@ def schedule_form_view(request):
         obj.save()
         messages.success(request, "この日のスケジュールを保存しました。")
 
-        return redirect(f"{request.path}?work_date={work_date:%Y-%m-%d}")
+        # return redirect(f"{request.path}?work_date={work_date:%Y-%m-%d}")
+        return redirect("staffbook:my_reservations")
 
     # ⑥ GET 渲染
     ctx = {

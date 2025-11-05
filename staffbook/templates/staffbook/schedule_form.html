@@ -414,6 +414,98 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // ====== 手机端元素（需要模板里有这些 id）======
+  const mModeRest   = document.getElementById("m-mode-rest");
+  const mModeWish   = document.getElementById("m-mode-wish");
+  const mShiftBlock = document.getElementById("m-shift-block");
+  const mWishBlock  = document.getElementById("m-wish-block");
+  const mAnyCar     = document.getElementById("m-any-car");
+  const mFirstCar   = document.getElementById("m-first-car");
+  const mSecondCar  = document.getElementById("m-second-car");
+  const mDupMsg     = document.getElementById("m-car-dup-msg"); // 可选
+  const mBtnSubmit  = document.getElementById("m-btn-submit");
+
+  // 小工具：启/禁一整个容器中的控件，避免误提交
+  function setDisabledIn(container, disabled) {
+    if (!container) return;
+    container.querySelectorAll("input,select,textarea,button").forEach(el => {
+      el.disabled = !!disabled;
+    });
+  }
+
+  // 手机上校验规则：休み可直接提交；希望提出=（白/夜其一 + (任意车 或 第1/第2都选且不同)）
+  function validateMobile() {
+    if (!mBtnSubmit) return;
+
+    if (mModeRest && mModeRest.checked) {
+      if (mDupMsg) mDupMsg.style.display = "none";
+      mBtnSubmit.disabled = false;
+      return;
+    }
+
+    let ok = true;
+    const shiftChosen = document.querySelector('input[name="m-shift"]:checked');
+    if (!shiftChosen) ok = false;
+
+    if (!mAnyCar.checked) {
+      const f = mFirstCar.value;
+      const s = mSecondCar.value;
+      if (!f || !s) ok = false;
+      if (f && s && f === s) ok = false;
+      if (mDupMsg) mDupMsg.style.display = (f && s && f === s) ? "" : "none";
+    } else {
+      if (mDupMsg) mDupMsg.style.display = "none";
+    }
+
+    mBtnSubmit.disabled = !ok;
+  }
+
+  // 切换手机端模式：休み ↔ 希望提出
+  function setMobileMode() {
+    const isRest = mModeRest && mModeRest.checked;
+    if (mShiftBlock) mShiftBlock.style.display = isRest ? "none" : "";
+    if (mWishBlock)  mWishBlock.style.display  = isRest ? "none" : "";
+
+    // 隐藏时禁用内部控件，避免被提交
+    setDisabledIn(mShiftBlock, isRest);
+    setDisabledIn(mWishBlock,  isRest);
+
+    if (isRest) {
+      if (mBtnSubmit) mBtnSubmit.disabled = false;
+      if (mDupMsg) mDupMsg.style.display = "none";
+    } else {
+      validateMobile();
+    }
+  }
+
+  // 任意车勾选时禁用第1/第2希望
+  function toggleMobileAnyCar() {
+    const dis = !!mAnyCar.checked;
+    if (mFirstCar) mFirstCar.disabled = dis;
+    if (mSecondCar) mSecondCar.disabled = dis;
+    validateMobile();
+  }
+
+  // 事件绑定（存在再绑定，不会报错）
+  if (mModeRest) mModeRest.addEventListener("change", setMobileMode);
+  if (mModeWish) mModeWish.addEventListener("change", setMobileMode);
+  if (mAnyCar)   mAnyCar.addEventListener("change", toggleMobileAnyCar);
+  if (mFirstCar) mFirstCar.addEventListener("change", validateMobile);
+  if (mSecondCar)mSecondCar.addEventListener("change", validateMobile);
+  document.querySelectorAll('input[name="m-shift"]').forEach(el => {
+    el.addEventListener("change", validateMobile);
+  });
+
+  // 初始化一次（页面载入时就按选项隐藏/禁用）
+  setMobileMode();
+  toggleMobileAnyCar();
+});
+</script>
+
+
+
 <style>
   select option[disabled][data-unavailable="1"] {
     color: #999;
