@@ -35,7 +35,7 @@ from .models import (
     DriverSchedule,   # ←← 新增这一行注意：末尾那个逗号要保留，这样排版也一致
 )
 
-from django.db.models import Q, Sum, Case, When, F, DecimalField
+from django.db.models import Q, Sum, Case, When, F, DecimalField, Count
 from django.forms import inlineformset_factory, modelformset_factory
 from django.utils import timezone
 from django import forms
@@ -51,7 +51,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from accounts.utils import check_module_permission
 from dailyreport.services.summary import (
     calculate_totals_from_queryset,
-    calculate_totals_from_formset,  # 👈 加上这一行
+    calculate_totals_from_formset, 
 )
 
 def is_admin_user(user):
@@ -94,6 +94,196 @@ def calc_progressive_fee_by_table(amount_jpy: int | Decimal) -> int:
     total_man = base_man + extra_steps * STEP_AFTER_LAST_MAN
     return int(round(total_man * MAN_TO_YEN))
 # ===== 売上に基づく分段控除（黄色列：万円）END =====
+
+
+# ======== Auto-assign: helpers & metrics (place right after imports) ========
+
+# —— 小工具 —— 
+def _safe_date(d, default_future=True):
+    from datetime import date as _d
+    if isinstance(d, _d):
+        return d
+    return _d(2100, 1, 1) if default_future else _d(1970, 1, 1)
+
+def _business_days(d1: date, d2: date) -> int:
+    """[d1, d2) 工作日（周一~周五）个数；至少返回 1 避免除零"""
+    days, cur = 0, d1
+    while cur < d2:
+        if cur.weekday() < 5:
+            days += 1
+        cur += timedelta(days=1)
+    return max(days, 1)
+
+# —— 5 指标 —— 
+def metric_join_date(driver) -> date:
+    """入社越早越好"""
+    return _safe_date(getattr(driver, "join_date", None))
+
+def metric_accident_rate(driver, ref: date) -> float:
+    """近12个月 事故数 ÷ 出勤天数（越低越好）"""
+    cnt = Accident.objects.filter(
+        driver=driver, happened_at__gte=ref - timedelta(days=365), happened_at__lt=ref
+    ).count()
+    attend = (DriverDailyReportItem.objects
+              .filter(report__driver=driver,
+                      report__date__gte=ref - timedelta(days=365),
+                      report__date__lt=ref)
+              .values('report__date').distinct().count())
+    return cnt / max(attend, 1)
+
+def metric_attendance_rate(driver, ref: date) -> float:
+    """近90天 出勤天数 ÷ 工作日天数（越高越好）"""
+    start = ref - timedelta(days=90)
+    attend = (DriverDailyReportItem.objects
+              .filter(report__driver=driver, report__date__gte=start, report__date__lt=ref)
+              .values('report__date').distinct().count())
+    biz = _business_days(start, ref)
+    return attend / biz
+
+def metric_sales_last_month(driver, ref: date) -> float:
+    """上月 不含税売上（越高越好）"""
+    y, m = ref.year, ref.month
+    py, pm = (y, m-1) if m > 1 else (y-1, 12)
+    start, end = date(py, pm, 1), date(y, m, 1)
+    qs = DriverDailyReportItem.objects.filter(
+        report__driver=driver, report__date__gte=start, report__date__lt=end
+    )
+    gross = (qs.aggregate(total=Sum(F('meter_fee') + F('charter_amount_jpy')))['total'] or 0)
+    try:
+        return float(Decimal(gross) / Decimal("1.10"))  # 去税
+    except Exception:
+        return float(gross)
+
+def metric_breach_rate(driver, ref: date) -> float:
+    """近90天 毁约率（越低越好；无数据按 0）"""
+    start = ref - timedelta(days=90)
+    time_field = 'reserved_at' if hasattr(Reservation, 'reserved_at') else (
+        'created_at' if hasattr(Reservation, 'created_at') else None
+    )
+    if not time_field:
+        return 0.0
+    time_filter = {f"{time_field}__gte": start, f"{time_field}__lt": ref}
+    total = Reservation.objects.filter(driver=driver, **time_filter).count()
+    cancel_statuses = ["canceled", "cancelled", "no_show", "rejected"]
+    canceled = Reservation.objects.filter(
+        driver=driver, **time_filter, status__in=cancel_statuses
+    ).count()
+    return canceled / max(total, 1)
+
+def build_ranking_key(driver, ref: date):
+    """
+    1) 入社早 asc
+    2) 事故率低 asc
+    3) 出勤率高 desc
+    4) 上月売上高 desc
+    5) 毁约率低 asc
+    """
+    jd = metric_join_date(driver)
+    ar = metric_accident_rate(driver, ref)
+    at = metric_attendance_rate(driver, ref)
+    sl = metric_sales_last_month(driver, ref)
+    br = metric_breach_rate(driver, ref)
+    return (jd, ar, -at, -sl, br, driver.id)
+
+# —— 主函数：自动配车 —— 
+def auto_assign_for_date(target_date: date) -> dict:
+    """
+    先第1希望（冲突按评分），再第2，希望未中者若 any_car=True 则分配剩余空车。
+    返回 {'first':x,'second':y,'any':z}
+    """
+    scheds = list(
+        DriverSchedule.objects
+        .select_related('driver','first_choice_car','second_choice_car','assigned_car')
+        .filter(work_date=target_date, is_rest=False)
+    )
+
+    used_car_ids = set(s.assigned_car_id for s in scheds if s.assigned_car_id)
+
+    # 可用车辆池
+    raw_cars = Car.objects.exclude(status__in=["scrapped","retired","disabled"]).order_by('id')
+    available = []
+    for c in raw_cars:
+        if getattr(c, "is_scrapped", False):  continue
+        if not getattr(c, "is_active", True): continue
+        st = (getattr(c,'status','') or '').strip().lower()
+        if st in ("maintenance","repair","fixing") or getattr(c, 'is_maintaining', False):
+            continue
+        if c.id in used_car_ids:
+            continue
+        available.append(c.id)
+
+    ref = target_date
+    score_cache = {}
+    def _score(drv):
+        if drv.id not in score_cache:
+            score_cache[drv.id] = build_ranking_key(drv, ref)
+        return score_cache[drv.id]
+
+    assigned = set()
+    first_cnt = 0
+
+    # 第1希望
+    car_to_scheds = {}
+    for s in scheds:
+        if s.first_choice_car_id and s.driver_id not in assigned and not s.assigned_car_id:
+            car_to_scheds.setdefault(s.first_choice_car_id, []).append(s)
+
+    for car_id, rows in car_to_scheds.items():
+        if car_id in used_car_ids:
+            continue
+        rows_sorted = sorted(rows, key=lambda r: _score(r.driver))
+        win = rows_sorted[0]
+        win.assigned_car_id = car_id
+        win.status = "approved"
+        win.save()
+        used_car_ids.add(car_id)
+        assigned.add(win.driver_id)
+        first_cnt += 1
+
+    # 第2希望
+    second_cnt = 0
+    remaining = [s for s in scheds if s.driver_id not in assigned and not s.assigned_car_id]
+    car2_to_scheds = {}
+    for s in remaining:
+        if s.second_choice_car_id:
+            car2_to_scheds.setdefault(s.second_choice_car_id, []).append(s)
+
+    for car_id, rows in car2_to_scheds.items():
+        if car_id in used_car_ids:
+            continue
+        rows_sorted = sorted(rows, key=lambda r: _score(r.driver))
+        win = rows_sorted[0]
+        win.assigned_car_id = car_id
+        win.status = "approved"
+        win.save()
+        used_car_ids.add(car_id)
+        assigned.add(win.driver_id)
+        second_cnt += 1
+
+    # 任意车
+    any_cnt = 0
+    free = [cid for cid in available if cid not in used_car_ids]
+    remain_any = [s for s in scheds if s.driver_id not in assigned and not s.assigned_car_id and s.any_car]
+    remain_any_sorted = sorted(remain_any, key=lambda r: _score(r.driver))
+    idx = 0
+    for s in remain_any_sorted:
+        while idx < len(free) and free[idx] in used_car_ids:
+            idx += 1
+        if idx >= len(free):
+            break
+        cid = free[idx]
+        s.assigned_car_id = cid
+        s.status = "approved"
+        s.save()
+        used_car_ids.add(cid)
+        assigned.add(s.driver_id)
+        any_cnt += 1
+        idx += 1
+
+    return {"first": first_cnt, "second": second_cnt, "any": any_cnt}
+# =================== Auto-assign block END ===================
+
+
 
 def driver_card(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
@@ -245,7 +435,7 @@ def schedule_form_view(request):
             obj.second_choice_car = sc
 
         obj.save()
-        messages.success(request, "この日のスケジュールを保存しました。")
+        messages.success(request, f"{work_date:%Y-%m-%d} のスケジュールを保存しました。")
 
         # return redirect(f"{request.path}?work_date={work_date:%Y-%m-%d}")
         return redirect("staffbook:my_reservations")
@@ -437,6 +627,26 @@ def schedule_list_view(request):
     all_drivers = Driver.objects.order_by("driver_code", "name")
     date_choices = [date_from + timedelta(days=i) for i in range((date_to - date_from).days + 1)]
 
+    # === 自動配車トリガー（※行内保存より前に置く）===
+    if request.POST.get("action") == "auto_assign":
+            auto_date_str = request.POST.get("auto_work_date") or work_date_str
+            try:
+                auto_date = _date.fromisoformat(auto_date_str)
+            except Exception:
+                auto_date = _date.today()
+
+            stat = auto_assign_for_date(auto_date)
+            messages.success(
+                request,
+                f"{auto_date:%Y-%m-%d} の自動配車が完了：第1希望 {stat['first']} 件 / 第2希望 {stat['second']} 件 / 任意 {stat['any']} 件"
+            )
+            redirect_url = f"{reverse('staffbook:schedule_list')}?group={group}"
+            if driver_id:     redirect_url += f"&driver={driver_id}"
+            if auto_date_str: redirect_url += f"&work_date={auto_date_str}"
+            return redirect(redirect_url)    
+        
+
+    
     # ④ 行内保存
     if request.method == "POST":
         sched_id = request.POST.get("sched_id")
@@ -607,6 +817,8 @@ def schedule_delete_view(request, sched_id):
         wd = sched.work_date
         sched.delete()
         messages.success(request, f"{wd:%Y-%m-%d} のスケジュールを削除しました。")
+        # ✅ 删除后回到确认页
+        return redirect("staffbook:my_reservations")
 
     return redirect("staffbook:my_reservations")  # 你的确认页 url 名称
 

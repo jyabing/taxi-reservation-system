@@ -227,6 +227,16 @@
     {% endfor %}
   {% endif %}
 
+  <form method="post" class="mt-2 d-flex align-items-center gap-2">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="auto_assign">
+    <input type="date" name="auto_work_date"
+          class="form-control form-select-sm"
+          value="{{ selected_work_date|date:'Y-m-d' }}"
+          style="max-width: 180px;">
+    <button class="btn btn-sm btn-warning">🚀 この日の希望で自動配車</button>
+  </form>
+
   {# ===== 只读配车表：选了日期才显示 ===== #}
   {% if selected_work_date %}
     <div class="dispatch-board mt-4">
