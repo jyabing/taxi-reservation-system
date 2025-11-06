@@ -478,6 +478,20 @@ class DriverSchedule(models.Model):
     )
     # ====== END 新增的管理员字段 ======
 
+    # ⬇⬇⬇ 新增：自动分配的“来源/理由/时间”
+    assigned_by = models.CharField(
+        max_length=10, blank=True, default="",  # "auto" or "manual"
+        verbose_name="割当方法"
+    )
+    assignment_meta = models.JSONField(
+        default=dict, blank=True, verbose_name="自動配車の理由"
+    )
+    assigned_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="割当日時"
+    )
+    # ⬆⬆⬆
+    
+
     note = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -53,15 +53,18 @@
 
 
              <tr>
-              <th style="width: 25%;">日付</th>
+              <th style="width: 25%;">日付（複数選択可）</th>
               <td>
                 <input type="text"
                       class="form-control form-control-sm"
-                      id="work-date"
-                      name="work_date"
-                      value="{{ work_date|date:'Y-m-d' }}"
-                      placeholder="選択してください">
-                <small class="text-muted">※ 日付をクリックして選択します。</small>
+                      id="work-dates"
+                      name="work_dates"
+                      placeholder="日付を複数選択"
+                      autocomplete="off">
+                <small class="text-muted">
+                  ※ 右のカレンダーは“表示切替”、ここは“提出する日付”。複数月にまたがって選べます。
+                  （選択中：<span id="sel-count">0</span> 日）
+                </small>
               </td>
             </tr>
 
@@ -203,10 +206,12 @@
         <div class="card-body">
           <input
             type="text"
-            id="m-date"
+            id="m-dates"
+            name="work_dates"
             class="form-control form-control-sm mb-2"
-            value="{{ work_date|date:'Y-m-d' }}"
-            placeholder="日付を選択してください">
+            placeholder="日付を複数選択"
+            autocomplete="off">
+          <small class="text-muted">※ 複数日・複数月の選択ができます。</small>
           <div class="d-flex gap-2">
             <button type="button" class="btn btn-outline-primary btn-sm" id="m-today">本日</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="1">+1日</button>
@@ -307,23 +312,22 @@ document.addEventListener("DOMContentLoaded", function() {
     window.location.href = url.toString();
   }
 
-  // ====== 左侧 flatpickr ======
+  // ====== 左侧 flatpickr（仅用于切换显示，单选） ======
   flatpickr("#sidebar-date", {
     locale: "ja",
     dateFormat: "Y-m-d",
     minDate: "today",
     defaultDate: "{{ work_date|date:'Y-m-d' }}",
-    onChange: function(_, dateStr) {
-      if (dateStr) gotoDate(dateStr);
-    }
+    onChange: function(_, dateStr) { if (dateStr) gotoDate(dateStr); }
   });
 
-  // ====== “本日 / +1日 / +2日” 按钮同步 ======
+  // ====== “本日 / +1日 / +2日” 按钮：切换显示 ======
   document.querySelectorAll("[data-add-days], #btn-today").forEach(function(btn) {
     btn.addEventListener("click", function() {
       let baseDate = new Date("{{ work_date|date:'Y-m-d' }}");
       const add = parseInt(btn.getAttribute("data-add-days") || "0", 10);
-      baseDate.setDate(baseDate.getDate() + add);
+      if (btn.id === "btn-today") { baseDate = new Date("{{ today|date:'Y-m-d' }}"); }
+      else { baseDate.setDate(baseDate.getDate() + add); }
       const y = baseDate.getFullYear();
       const m = ("0" + (baseDate.getMonth() + 1)).slice(-2);
       const d = ("0" + baseDate.getDate()).slice(-2);
@@ -331,40 +335,28 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   });
 
-  // ====== 右侧 flatpickr 同步 ======
-  flatpickr("#work-date", {
-    locale: "ja",
-    dateFormat: "Y-m-d",
-    minDate: "today",
-    defaultDate: "{{ work_date|date:'Y-m-d' }}",
-    onChange: function(_, dateStr) {
-      if (dateStr) gotoDate(dateStr);
-    }
-  });
-
-  // ====== 手机端日期 flatpickr（新增）=====
-  const mInput = document.getElementById("m-date");
-  if (mInput) {
-    flatpickr("#m-date", {
+  // ====== 右侧“提交用”多选日期（跨月可选，一次显示两个月） ======
+  // 注意：对应的 input 请使用  id="work-dates"  name="work_dates"
+  const multiDesktop = document.getElementById("work-dates");
+  if (multiDesktop) {
+    const fp = flatpickr(multiDesktop, {
       locale: "ja",
       dateFormat: "Y-m-d",
+      mode: "multiple",
+      conjunction: ",",   // 提交时以逗号拼接
       minDate: "today",
-      defaultDate: "{{ work_date|date:'Y-m-d' }}",
-      onChange: function(_, dateStr) {
-        if (dateStr) gotoDate(dateStr);
+      defaultDate: ["{{ work_date|date:'Y-m-d' }}"],
+      showMonths: 2,      // 一次显示 2 个月
+      onChange(selectedDates) {
+        const cnt = document.getElementById("sel-count");
+        if (cnt) cnt.textContent = selectedDates.length;
       }
     });
-
-    const mToday = document.getElementById("m-today");
-    if (mToday) {
-      mToday.addEventListener("click", function () {
-        gotoDate("{{ today|date:'Y-m-d' }}");
-      });
-    }
+    const cnt = document.getElementById("sel-count");
+    if (cnt) cnt.textContent = fp.selectedDates.length;
   }
 
-
-  // ====== 业务逻辑部分（保持原来的验证功能） ======
+  // ====== 业务逻辑验证（原样保留） ======
   const modeRest = document.getElementById("mode-rest");
   const modeWish = document.getElementById("mode-wish");
   const shiftRow = document.getElementById("shift-row");
@@ -413,10 +405,24 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  // ====== 手机端元素（需要模板里有这些 id）======
+  // ====== 手机端“提交用”多选日期（跨月可选，显示两个月） ======
+  // 注意：对应的 input 请使用  id="m-dates"  name="work_dates"
+  const mDatesInput = document.getElementById("m-dates");
+  if (mDatesInput) {
+    flatpickr(mDatesInput, {
+      locale: "ja",
+      dateFormat: "Y-m-d",
+      mode: "multiple",
+      conjunction: ",",
+      minDate: "today",
+      defaultDate: ["{{ work_date|date:'Y-m-d' }}"],
+      showMonths: 2
+    });
+  }
+
+  // ====== 以下：手机端其它验证（原样保留） ======
   const mModeRest   = document.getElementById("m-mode-rest");
   const mModeWish   = document.getElementById("m-mode-wish");
   const mShiftBlock = document.getElementById("m-shift-block");
@@ -424,10 +430,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const mAnyCar     = document.getElementById("m-any-car");
   const mFirstCar   = document.getElementById("m-first-car");
   const mSecondCar  = document.getElementById("m-second-car");
-  const mDupMsg     = document.getElementById("m-car-dup-msg"); // 可选
+  const mDupMsg     = document.getElementById("m-car-dup-msg");
   const mBtnSubmit  = document.getElementById("m-btn-submit");
 
-  // 小工具：启/禁一整个容器中的控件，避免误提交
   function setDisabledIn(container, disabled) {
     if (!container) return;
     container.querySelectorAll("input,select,textarea,button").forEach(el => {
@@ -435,7 +440,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // 手机上校验规则：休み可直接提交；希望提出=（白/夜其一 + (任意车 或 第1/第2都选且不同)）
   function validateMobile() {
     if (!mBtnSubmit) return;
 
@@ -462,16 +466,12 @@ document.addEventListener("DOMContentLoaded", function () {
     mBtnSubmit.disabled = !ok;
   }
 
-  // 切换手机端模式：休み ↔ 希望提出
   function setMobileMode() {
     const isRest = mModeRest && mModeRest.checked;
     if (mShiftBlock) mShiftBlock.style.display = isRest ? "none" : "";
     if (mWishBlock)  mWishBlock.style.display  = isRest ? "none" : "";
-
-    // 隐藏时禁用内部控件，避免被提交
     setDisabledIn(mShiftBlock, isRest);
     setDisabledIn(mWishBlock,  isRest);
-
     if (isRest) {
       if (mBtnSubmit) mBtnSubmit.disabled = false;
       if (mDupMsg) mDupMsg.style.display = "none";
@@ -480,7 +480,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // 任意车勾选时禁用第1/第2希望
   function toggleMobileAnyCar() {
     const dis = !!mAnyCar.checked;
     if (mFirstCar) mFirstCar.disabled = dis;
@@ -488,7 +487,6 @@ document.addEventListener("DOMContentLoaded", function () {
     validateMobile();
   }
 
-  // 事件绑定（存在再绑定，不会报错）
   if (mModeRest) mModeRest.addEventListener("change", setMobileMode);
   if (mModeWish) mModeWish.addEventListener("change", setMobileMode);
   if (mAnyCar)   mAnyCar.addEventListener("change", toggleMobileAnyCar);
@@ -498,11 +496,11 @@ document.addEventListener("DOMContentLoaded", function () {
     el.addEventListener("change", validateMobile);
   });
 
-  // 初始化一次（页面载入时就按选项隐藏/禁用）
   setMobileMode();
   toggleMobileAnyCar();
 });
 </script>
+
 
 
 

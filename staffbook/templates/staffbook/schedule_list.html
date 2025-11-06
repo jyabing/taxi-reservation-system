@@ -4,6 +4,9 @@
 
 <div class="container mt-4">
   <h4 class="mb-3">📋 ドライバー提出スケジュール一覧</h4>
+  <p class="text-muted small">
+    ルール v1.0：入社早 → 事故率低 → 出勤率高 → 上月売上高 → 毀約率低 → driver_id 昇順
+  </p>
 
   <p class="text-muted small mb-2">
     表示期間：{{ date_from|date:"Y-m-d" }} 〜 {{ date_to|date:"Y-m-d" }}
@@ -126,6 +129,53 @@
                          value="{{ s.admin_note }}" placeholder="管理メモ">
                   <button type="submit" class="btn btn-primary btn-sm mt-1">保存</button>
                 </form>
+                {# 会社決定の表示補足（自動/手動・理由） #}
+                {% if s.assigned_car %}
+                  <div class="mt-1 small">
+                    {% if s.assigned_by == 'auto' %}
+                      <span class="badge bg-success">Auto</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Manual</span>
+                    {% endif %}
+                    {% if s.assigned_at %}
+                      <span class="text-muted ms-1">{{ s.assigned_at|date:"m/d H:i" }}</span>
+                    {% endif %}
+
+                    {# 自動配車の理由を見る（モーダル） #}
+                    {% if s.assigned_by == 'auto' and s.assignment_meta %}
+                      <a class="ms-2 small" href="#" data-bs-toggle="modal" data-bs-target="#why{{ s.id }}">理由</a>
+                      <div class="modal fade" id="why{{ s.id }}" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-lg"><div class="modal-content">
+                          <div class="modal-header">
+                            <h5 class="modal-title">配車の理由（ルール {{ s.assignment_meta.rule_version|default:'v1.0' }}）</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                          </div>
+                          <div class="modal-body">
+                            {% with w=s.assignment_meta.reason %}
+                              {% if w %}
+                                <ul class="small">
+                                  <li>入社日数 / seniority_days：{{ w.seniority_days|default:"-" }}</li>
+                                  <li>事故率（12ヶ月） / accident_rate：{{ w.accident_rate|default:"-" }}</li>
+                                  <li>出勤率（直近90日） / attendance_rate_90：{{ w.attendance_rate_90|default:"-" }}</li>
+                                  <li>上月売上（不含税） / last_month_sales：{{ w.last_month_sales|default:"-" }}</li>
+                                  <li>毀約率 / breach_rate：{{ w.breach_rate|default:"-" }}</li>
+                                  <li class="text-muted">ソートキー：{{ w.sort_key }}</li>
+                                </ul>
+                                {% if w.priority_order %}
+                                  <div class="small text-muted">優先順：
+                                    {{ w.priority_order|join:" → " }}
+                                  </div>
+                                {% endif %}
+                              {% else %}
+                                <pre class="mb-0">{{ s.assignment_meta|safe }}</pre>
+                              {% endif %}
+                            {% endwith %}
+                          </div>
+                        </div></div>
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
               </td>
               <td data-label="備考">{{ s.note|default:"-" }}</td>
               <td data-label="更新">
@@ -213,6 +263,56 @@
                          value="{{ s.admin_note }}" placeholder="管理メモ">
                   <button type="submit" class="btn btn-primary btn-sm mt-1">保存</button>
                 </form>
+
+                {# 会社決定の表示補足（自動/手動・理由） #}
+                {% if s.assigned_car %}
+                  <div class="mt-1 small">
+                    {% if s.assigned_by == 'auto' %}
+                      <span class="badge bg-success">Auto</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Manual</span>
+                    {% endif %}
+                    {% if s.assigned_at %}
+                      <span class="text-muted ms-1">{{ s.assigned_at|date:"m/d H:i" }}</span>
+                    {% endif %}
+
+                    {# 自動配車の理由を見る（モーダル） #}
+                    {% if s.assigned_by == 'auto' and s.assignment_meta %}
+                      <a class="ms-2 small" href="#" data-bs-toggle="modal" data-bs-target="#why{{ s.id }}">理由</a>
+                      <div class="modal fade" id="why{{ s.id }}" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-lg"><div class="modal-content">
+                          <div class="modal-header">
+                            <h5 class="modal-title">配車の理由（ルール {{ s.assignment_meta.rule_version|default:'v1.0' }}）</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                          </div>
+                          <div class="modal-body">
+                            {% with w=s.assignment_meta.reason %}
+                              {% if w %}
+                                <ul class="small">
+                                  <li>入社日数 / seniority_days：{{ w.seniority_days|default:"-" }}</li>
+                                  <li>事故率（12ヶ月） / accident_rate：{{ w.accident_rate|default:"-" }}</li>
+                                  <li>出勤率（直近90日） / attendance_rate_90：{{ w.attendance_rate_90|default:"-" }}</li>
+                                  <li>上月売上（不含税） / last_month_sales：{{ w.last_month_sales|default:"-" }}</li>
+                                  <li>毀約率 / breach_rate：{{ w.breach_rate|default:"-" }}</li>
+                                  <li class="text-muted">ソートキー：{{ w.sort_key }}</li>
+                                </ul>
+                                {% if w.priority_order %}
+                                  <div class="small text-muted">優先順：
+                                    {{ w.priority_order|join:" → " }}
+                                  </div>
+                                {% endif %}
+                              {% else %}
+                                <pre class="mb-0">{{ s.assignment_meta|safe }}</pre>
+                              {% endif %}
+                            {% endwith %}
+                          </div>
+                        </div></div>
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+
+                
               </td>
               <td data-label="備考">{{ s.note|default:"-" }}</td>
               <td data-label="更新">
@@ -300,6 +400,62 @@
   {% endif %}
 
 </div>  {# ← 这里才是真正关 container #}
+
+{% if auto_assign_preview %}
+  <div class="card mt-3 border-warning">
+    <div class="card-header bg-warning-subtle">自動配車の予演（保存されていません）</div>
+    <div class="card-body">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>車両</th>
+            <th>勝者ドライバー</th>
+            <th>根拠（入社日数 / 事故率 / 出勤率 / 上月売上 / 毀約率）</th>
+            <th>敗者と比較</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in auto_assign_preview %}
+          <tr>
+            <td>{{ row.car.label }}</td>
+            <td>{{ row.driver }}</td>
+            <td class="small text-muted">
+              入社日数: {{ row.why.seniority_days }} /
+              事故率: {{ row.why.accident_rate }} /
+              出勤率90: {{ row.why.attendance_rate_90 }} /
+              売上: {{ row.why.last_month_sales }} /
+              毀約率: {{ row.why.breach_rate }}
+            </td>
+            <td>
+              {% if row.others %}
+                <details>
+                  <summary class="small">比較の詳細</summary>
+                  <ul class="small mb-0">
+                    {% for o in row.others %}
+                      <li>
+                        {{ o.driver }}：
+                        事故率={{ o.why.accident_rate }}／出勤率90={{ o.why.attendance_rate_90 }}／
+                        売上={{ o.why.last_month_sales }}／毀約率={{ o.why.breach_rate }}／
+                        キー={{ o.key }}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </details>
+              {% else %}
+                -
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <div class="text-end">
+        <a href="{{ request.get_full_path|add:'&dryrun=1' }}" class="btn btn-outline-secondary btn-sm">予演を再計算</a>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
 
 <style>
 .dispatch-board{

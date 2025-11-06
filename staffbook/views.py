@@ -185,6 +185,65 @@ def build_ranking_key(driver, ref: date):
     br = metric_breach_rate(driver, ref)
     return (jd, ar, -at, -sl, br, driver.id)
 
+def build_priority_tuple_and_reason(d):
+    """
+    d: dict，至少包含
+      join_date, accidents_12m, attend_days_90, workdays_90,
+      last_month_sales, breach_rate
+    返回：(key_tuple, reason_dict)
+    规则优先级（由高到低）：
+      1. 入社更早（早者优先）    -> 用 -入社天数 做键
+      2. 事故率更低              -> accidents_12m / attend_days_90(或出勤天数)；无出勤按大数惩罚
+      3. 出勤率更高（近90天）    -> attend_days_90 / workdays_90
+      4. 上月売上更高（不含税）
+      5. 毁约率更低（缺数据=0）
+    """
+    today = _date.today()
+    # 1) 入社天数（越大越早）→ 排序要“越早越靠前”，所以取负号放在 key 里
+    if d.get("join_date"):
+        senior_days = (today - d["join_date"]).days
+    else:
+        senior_days = 0
+
+    # 2) 事故率（12 个月事故数 / 出勤天数），分母为 0 视为极差（用一个较大的值）
+    accidents = int(d.get("accidents_12m") or 0)
+    attend_12m = int(d.get("attend_days_12m") or 0)  # 更稳：用 12 个月出勤
+    accident_rate = (accidents / attend_12m) if attend_12m > 0 else 9999.0
+
+    # 3) 出勤率（近 90 天）
+    ad90 = int(d.get("attend_days_90") or 0)
+    wd90 = int(d.get("workdays_90") or 0)
+    attend_rate_90 = (ad90 / wd90) if wd90 > 0 else 0.0
+
+    # 4) 上月売上（不含税）
+    sales = int(d.get("last_month_sales") or 0)
+
+    # 5) 毁约率（缺失按 0）
+    breach_rate = float(d.get("breach_rate") or 0.0)
+
+    # —— 排序键（按优先级逐项比较）——
+    key = (
+        -senior_days,               # 入社越早数值越小 → 更优
+        accident_rate,              # 越小越优
+        -attend_rate_90,            # 越大越优 → 取负
+        -sales,                     # 越大越优 → 取负
+        breach_rate,                # 越小越优
+    )
+
+    reason = {
+        "seniority_days": senior_days,
+        "accidents_12m": accidents,
+        "attend_days_12m": attend_12m,
+        "accident_rate": round(accident_rate, 4) if accident_rate != 9999.0 else "NA",
+        "attend_days_90": ad90,
+        "workdays_90": wd90,
+        "attendance_rate_90": round(attend_rate_90, 4),
+        "last_month_sales": sales,
+        "breach_rate": breach_rate,
+        "sort_key": key,
+    }
+    return key, reason
+
 # —— 主函数：自动配车 —— 
 def auto_assign_for_date(target_date: date) -> dict:
     """
@@ -263,7 +322,15 @@ def auto_assign_for_date(target_date: date) -> dict:
     # 任意车
     any_cnt = 0
     free = [cid for cid in available if cid not in used_car_ids]
-    remain_any = [s for s in scheds if s.driver_id not in assigned and not s.assigned_car_id and s.any_car]
+    remain_any = [
+        s for s in scheds
+        if s.driver_id not in assigned
+        and not s.assigned_car_id
+        and (
+            getattr(s, "any_car", False) is True
+            or (not s.first_choice_car_id and not s.second_choice_car_id)
+        )
+    ]
     remain_any_sorted = sorted(remain_any, key=lambda r: _score(r.driver))
     idx = 0
     for s in remain_any_sorted:
@@ -283,16 +350,174 @@ def auto_assign_for_date(target_date: date) -> dict:
     return {"first": first_cnt, "second": second_cnt, "any": any_cnt}
 # =================== Auto-assign block END ===================
 
+# ==== BEGIN INSERT P1: plan-only (dry-run) helper ====
+def auto_assign_plan_for_date(target_date: date):
+    """
+    生成“预演计划”与“落库操作”清单，但不写数据库。
+    返回:
+      {
+        "preview_rows": [...],
+        "assign_ops":   [(sched_id, car_id, why_dict), ...],
+        "counts":       {"first":x,"second":y,"any":z}
+      }
+    """
+    scheds = list(
+        DriverSchedule.objects
+        .select_related('driver','first_choice_car','second_choice_car','assigned_car')
+        .filter(work_date=target_date, is_rest=False)
+    )
 
+    used_car_ids = set(s.assigned_car_id for s in scheds if s.assigned_car_id)
 
-def driver_card(request, driver_id):
-    driver = get_object_or_404(Driver, pk=driver_id)
-    return render(request, "staffbook/driver_basic_info.html", {"driver": driver})
+    raw_cars = Car.objects.exclude(status__in=["scrapped","retired","disabled"]).order_by('id')
+    available = []
+    for c in raw_cars:
+        if getattr(c, "is_scrapped", False):  continue
+        if not getattr(c, "is_active", True): continue
+        st = (getattr(c,'status','') or '').strip().lower()
+        if st in ("maintenance","repair","fixing") or getattr(c, 'is_maintaining', False):
+            continue
+        if c.id in used_car_ids:
+            continue
+        available.append(c.id)
+
+    ref = target_date
+    score_cache, why_cache = {}, {}
+
+    def _score(drv):
+        if drv.id not in score_cache:
+            score_cache[drv.id] = build_ranking_key(drv, ref)
+        return score_cache[drv.id]
+
+    def _why(drv):
+        if drv.id in why_cache:
+            return why_cache[drv.id]
+        jd = metric_join_date(drv)
+        ar = metric_accident_rate(drv, ref)
+        at = metric_attendance_rate(drv, ref)
+        sl = metric_sales_last_month(drv, ref)
+        br = metric_breach_rate(drv, ref)
+
+        a_from = ref - timedelta(days=365)
+        b_from = ref - timedelta(days=90)
+        att_12m = (DriverDailyReportItem.objects
+                   .filter(report__driver=drv, report__date__gte=a_from, report__date__lt=ref)
+                   .values('report__date').distinct().count())
+        wd90 = sum(1 for i in range(90) if (b_from + timedelta(days=i)).weekday() < 5)
+
+        why = {
+            "join_date": None if jd is None else jd.isoformat(),
+            "accidents_12m": Accident.objects.filter(driver=drv, happened_at__gte=a_from, happened_at__lt=ref).count(),
+            "attend_days_12m": att_12m,
+            "attend_days_90": (DriverDailyReportItem.objects
+                               .filter(report__driver=drv, report__date__gte=b_from, report__date__lt=ref)
+                               .values('report__date').distinct().count()),
+            "workdays_90": wd90,
+            "attendance_rate_90": round(at, 4),
+            "last_month_sales": int(sl),
+            "breach_rate": float(br),
+            "sort_key": _score(drv),
+            "priority_order": [
+                "join_date (earlier first)",
+                "accident_rate_12m (lower)",
+                "attendance_rate_90 (higher)",
+                "last_month_sales (higher)",
+                "breach_rate (lower)",
+                "driver_id (asc)",
+            ],
+        }
+        why_cache[drv.id] = why
+        return why
+
+    preview_rows, assign_ops = [], []
+    assigned_drv_ids = set()
+    first_cnt = second_cnt = any_cnt = 0
+
+    # 第1希望
+    car_to_scheds = {}
+    for s in scheds:
+        if s.first_choice_car_id and s.driver_id not in assigned_drv_ids and not s.assigned_car_id:
+            car_to_scheds.setdefault(s.first_choice_car_id, []).append(s)
+
+    for car_id, rows in car_to_scheds.items():
+        if car_id in used_car_ids:
+            continue
+        rows_sorted = sorted(rows, key=lambda r: _score(r.driver))
+        win = rows_sorted[0]
+        assigned_drv_ids.add(win.driver_id)
+        used_car_ids.add(car_id)
+        first_cnt += 1
+        preview_rows.append({
+            "car": win.first_choice_car, "driver": win.driver, "winner": True,
+            "why": _why(win.driver),
+            "others": [{"driver": r.driver, "why": _why(r.driver), "key": _score(r.driver)} for r in rows_sorted[1:]],
+        })
+        assign_ops.append((win.id, car_id, _why(win.driver)))
+
+    # 第2希望
+    remaining = [s for s in scheds if s.driver_id not in assigned_drv_ids and not s.assigned_car_id]
+    car2_to_scheds = {}
+    for s in remaining:
+        if s.second_choice_car_id:
+            car2_to_scheds.setdefault(s.second_choice_car_id, []).append(s)
+
+    for car_id, rows in car2_to_scheds.items():
+        if car_id in used_car_ids:
+            continue
+        rows_sorted = sorted(rows, key=lambda r: _score(r.driver))
+        win = rows_sorted[0]
+        assigned_drv_ids.add(win.driver_id)
+        used_car_ids.add(car_id)
+        second_cnt += 1
+        preview_rows.append({
+            "car": win.second_choice_car, "driver": win.driver, "winner": True,
+            "why": _why(win.driver),
+            "others": [{"driver": r.driver, "why": _why(r.driver), "key": _score(r.driver)} for r in rows_sorted[1:]],
+        })
+        assign_ops.append((win.id, car_id, _why(win.driver)))
+
+    # 任意车
+    free = [cid for cid in available if cid not in used_car_ids]
+    remain_any = [
+        s for s in scheds
+        if s.driver_id not in assigned_drv_ids
+        and not s.assigned_car_id
+        and (
+            getattr(s, "any_car", False) is True
+            or str(getattr(s, "any_car", "")).strip() in ("1", "True", "true", "任意", "任意の車両で可")
+        )
+    ]
+    remain_any_sorted = sorted(remain_any, key=lambda r: _score(r.driver))
+    idx = 0
+    for s in remain_any_sorted:
+        while idx < len(free) and free[idx] in used_car_ids:
+            idx += 1
+        if idx >= len(free):
+            break
+        cid = free[idx]
+        assigned_drv_ids.add(s.driver_id)
+        used_car_ids.add(cid)
+        any_cnt += 1
+        preview_rows.append({
+            "car": next((c for c in raw_cars if c.id == cid), None),
+            "driver": s.driver, "winner": True,
+            "why": _why(s.driver),
+            "others": [],
+        })
+        assign_ops.append((s.id, cid, _why(s.driver)))
+        idx += 1
+
+    return {
+        "preview_rows": preview_rows,
+        "assign_ops": assign_ops,
+        "counts": {"first": first_cnt, "second": second_cnt, "any": any_cnt},
+    }
+# ==== END INSERT P1 ====
+
 
 @user_passes_test(is_staffbook_admin)
 def staffbook_dashboard(request):
     return render(request, 'staffbook/dashboard.html')
-
 
 # ==============================================================
 # BEGIN: 司机本人填写“约日期”表单页（桌面=表格，手机=卡片）
@@ -627,28 +852,87 @@ def schedule_list_view(request):
     all_drivers = Driver.objects.order_by("driver_code", "name")
     date_choices = [date_from + timedelta(days=i) for i in range((date_to - date_from).days + 1)]
 
-    # === 自動配車トリガー（※行内保存より前に置く）===
+    # ==== BEGIN REPLACE V1: 自動配車トリガー（支持 dryrun + assignment_meta）====
     if request.POST.get("action") == "auto_assign":
-            auto_date_str = request.POST.get("auto_work_date") or work_date_str
-            try:
-                auto_date = _date.fromisoformat(auto_date_str)
-            except Exception:
-                auto_date = _date.today()
+        auto_date_str = request.POST.get("auto_work_date") or work_date_str
+        try:
+            auto_date = _date.fromisoformat(auto_date_str)
+        except Exception:
+            auto_date = _date.today()
 
-            stat = auto_assign_for_date(auto_date)
+        plan = auto_assign_plan_for_date(auto_date)
+
+        has_meta = "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}
+
+        for sched_id, car_id, why in plan["assign_ops"]:
+            update = {
+                "assigned_car_id": car_id,
+                "assigned_by": "auto",
+                "assigned_at": now(),
+            }
+            if has_meta:
+                update["assignment_meta"] = {
+                    "rule_version": "v1.0",
+                    "reason": why,  # 里头包含 join_date/事故率/出勤率/上月売上/毁約率/排序key等
+                }
+            DriverSchedule.objects.filter(pk=sched_id).update(**update)
+
+        # dry-run 只做预演，不落库，不统计 tot，不用 redirect_url 外部变量
+        if (request.GET.get("dryrun") or "").strip() == "1":
+            messages.info(request, "これは予演結果（保存されません）です。")
+            setattr(request, "_auto_assign_preview", plan["preview_rows"])
+            # 继续走下面的 GET 渲染（不 return）
+        else:
+            # 真正写入
+            has_meta = "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}
+            for sched_id, car_id, why in plan["assign_ops"]:
+                if has_meta:
+                    DriverSchedule.objects.filter(pk=sched_id).update(
+                        assigned_car_id=car_id,
+                        assignment_meta=why
+                    )
+                else:
+                    DriverSchedule.objects.filter(pk=sched_id).update(
+                        assigned_car_id=car_id
+                    )
+
+            c = plan["counts"]  # 本次“新增”计数
+
+            # === 当日合计（含既存 + 本次）===
+            tot = {"first": 0, "second": 0, "any": 0}
+            day_all = (
+                DriverSchedule.objects
+                .filter(work_date=auto_date, assigned_car__isnull=False)
+                .select_related("first_choice_car", "second_choice_car")
+            )
+
+            for s in day_all:
+                if s.assigned_car_id and s.first_choice_car_id and s.assigned_car_id == s.first_choice_car_id:
+                    tot["first"] += 1
+                elif s.assigned_car_id and s.second_choice_car_id and s.assigned_car_id == s.second_choice_car_id:
+                    tot["second"] += 1
+                elif s.assigned_car_id and bool(getattr(s, "any_car", False)):
+                    tot["any"] += 1
+
             messages.success(
                 request,
-                f"{auto_date:%Y-%m-%d} の自動配車が完了：第1希望 {stat['first']} 件 / 第2希望 {stat['second']} 件 / 任意 {stat['any']} 件"
+                (
+                    f"{auto_date:%Y-%m-%d} の自動配車が完了："
+                    f"（今回新規）第1希望 {c['first']} 件 / 第2希望 {c['second']} 件 / 任意 {c['any']} 件 ｜ "
+                    f"（当日合計・既存含む）第1希望 {tot['first']} 件 / 第2希望 {tot['second']} 件 / 任意 {tot['any']} 件"
+                )
             )
+
+            # 回到当前筛选
             redirect_url = f"{reverse('staffbook:schedule_list')}?group={group}"
             if driver_id:     redirect_url += f"&driver={driver_id}"
             if auto_date_str: redirect_url += f"&work_date={auto_date_str}"
-            return redirect(redirect_url)    
-        
+            return redirect(redirect_url)
+            # ==== END REPLACE V1 ====
 
     
     # ④ 行内保存
-    if request.method == "POST":
+    if request.method == "POST" and request.POST.get("action") != "auto_assign":
         sched_id = request.POST.get("sched_id")
         status = request.POST.get("status") or "pending"
         assigned_car_id = request.POST.get("assigned_car") or None
@@ -786,6 +1070,7 @@ def schedule_list_view(request):
         "selected_driver": int(driver_id) if driver_id else None,
         "selected_work_date": selected_work_date,
         "dispatch_sections": dispatch_sections,
+        "auto_assign_preview": getattr(request, "_auto_assign_preview", None),
     }
     return render(request, "staffbook/schedule_list.html", ctx)
 
