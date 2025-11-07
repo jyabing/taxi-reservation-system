@@ -19,31 +19,9 @@
   {# ① 桌面端（md以上）= 表格布局       #}
   {# ================================ #}
   <div class="row d-none d-md-flex">
-    <!-- 左側：本物のカレンダー -->
-    <div class="col-md-4 mb-3">
-      <div class="card">
-        <div class="card-header">日付を選択</div>
-        <div class="card-body">
-          <input
-            type="text"
-            id="sidebar-date"
-            class="form-control form-control-sm mb-3"
-            value="{{ work_date|date:'Y-m-d' }}"
-            placeholder="日付を選択してください">
-          <p class="small text-muted mb-2">※ 日付を選ぶと右側の内容がその日に切り替わります。</p>
-
-          <div class="d-grid gap-2">
-            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-today">本日</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="1">+1日</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="2">+2日</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
 
     <!-- 右侧：填写区域 -->
-    <div class="col-md-8 mb-3">
+    <div class="col-md-12 mb-3">
       <div class="card">
         <div class="card-header">スケジュール内容</div>
         <div class="card-body">
@@ -56,7 +34,7 @@
               <th style="width: 25%;">日付（複数選択可）</th>
               <td>
                 <input type="text"
-                      class="form-control form-control-sm"
+                      class="form-control form-control-sm" required
                       id="work-dates"
                       name="work_dates"
                       placeholder="日付を複数選択"
@@ -177,7 +155,7 @@
                 <th>備考</th>
                 <td>
                   <input type="text"
-                        class="form-control form-control-sm"
+                        class="form-control form-control-sm" 
                         name="note"
                         placeholder="例）9時以降でお願いします"
                         value="{% if existing %}{{ existing.note }}{% endif %}">
@@ -185,7 +163,7 @@
               </tr>
             </table>
 
-            <button type="submit" class="btn btn-primary btn-sm mt-3" id="btn-submit" disabled>
+            <button type="submit" class="btn btn-primary btn-sm mt-3" id="btn-submit">
               この内容で提出
             </button>
             <p class="text-muted small mt-2 mb-0">※ このページは“入力ルール確認用”です。保存は次のステップで入れます。</p>
@@ -208,15 +186,10 @@
             type="text"
             id="m-dates"
             name="work_dates"
-            class="form-control form-control-sm mb-2"
+            class="form-control form-control-sm mb-2" required
             placeholder="日付を複数選択"
             autocomplete="off">
           <small class="text-muted">※ 複数日・複数月の選択ができます。</small>
-          <div class="d-flex gap-2">
-            <button type="button" class="btn btn-outline-primary btn-sm" id="m-today">本日</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="1">+1日</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-add-days="2">+2日</button>
-          </div>
         </div>
       </div>
 
@@ -226,11 +199,11 @@
           <div class="mb-3">
             <label class="form-label d-block">区分</label>
             <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="m-mode" id="m-mode-rest" value="rest" checked>
+              <input class="form-check-input" type="radio" name="mode" id="m-mode-rest" value="rest" checked>
               <label class="form-check-label" for="m-mode-rest">① 休み</label>
             </div>
             <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="m-mode" id="m-mode-wish" value="wish">
+              <input class="form-check-input" type="radio" name="mode" id="m-mode-wish" value="wish">
               <label class="form-check-label" for="m-mode-wish">② 希望提出</label>
             </div>
           </div>
@@ -238,11 +211,11 @@
           <div class="mb-3" id="m-shift-block">
             <label class="form-label d-block">シフト</label>
             <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="m-shift" id="m-shift-day" value="day">
+              <input class="form-check-input" type="radio" name="shift" id="m-shift-day" value="day">
               <label class="form-check-label" for="m-shift-day">白</label>
             </div>
             <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="m-shift" id="m-shift-night" value="night">
+              <input class="form-check-input" type="radio" name="shift" id="m-shift-night" value="night">
               <label class="form-check-label" for="m-shift-night">夜</label>
             </div>
           </div>
@@ -250,11 +223,11 @@
           <div class="mb-3" id="m-wish-block">
             <label class="form-label d-block">車両希望</label>
             <div class="form-check mb-2">
-              <input class="form-check-input" type="checkbox" id="m-any-car" name="m_any_car" value="1">
+              <input class="form-check-input" type="checkbox" id="m-any-car" name="any_car" value="1">
               <label class="form-check-label" for="m-any-car">任意の車両</label>
             </div>
             <label class="form-label small">第1希望</label>
-            <select class="form-select form-select-sm mb-2" id="m-first-car" name="m_first_car">
+            <select class="form-select form-select-sm mb-2" id="m-first-car" name="first_car">
               <option value="">-- 選択 --</option>
               {% for car in cars %}
                 <option value="{{ car.id }}"
@@ -265,7 +238,7 @@
             </select>
 
             <label class="form-label small">第2希望</label>
-            <select class="form-select form-select-sm" id="m-second-car" name="m_second_car">
+            <select class="form-select form-select-sm" id="m-second-car" name="second_car">
               <option value="">-- 選択 --</option>
               {% for car in cars %}
                 <option value="{{ car.id }}"
@@ -280,10 +253,10 @@
 
           <div class="mb-3">
             <label class="form-label">備考</label>
-            <input type="text" class="form-control form-control-sm" name="m_note" placeholder="メモ">
+            <input type="text" class="form-control form-control-sm" name="note" placeholder="メモ">
           </div>
 
-          <button type="submit" class="btn btn-primary btn-sm" id="m-btn-submit" disabled>
+          <button type="submit" class="btn btn-primary btn-sm" id="m-btn-submit">
             提出
           </button>
 
@@ -300,53 +273,34 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
 
-{# ================================ #}
-{# ③ 前端联动脚本（很短）             #}
-{# ================================ #}
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-  // ====== 共通函数 ======
-  function gotoDate(dateStr) {
-    const url = new URL(window.location.href);
-    url.searchParams.set("work_date", dateStr);
-    window.location.href = url.toString();
+document.addEventListener("DOMContentLoaded", function () {
+  // ====== 共通：工具函数 ======
+  function addError(container, msg) {
+    if (!container) return;
+    const div = document.createElement("div");
+    div.className = "validation-error text-danger small mt-1";
+    div.textContent = msg;
+    container.appendChild(div);
+  }
+  function clearErrors(scope) {
+    (scope ? scope : document).querySelectorAll(".validation-error").forEach(e => e.remove());
+  }
+  function scrollToFirstError() {
+    const e = document.querySelector(".validation-error");
+    if (e) e.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  // ====== 左侧 flatpickr（仅用于切换显示，单选） ======
-  flatpickr("#sidebar-date", {
-    locale: "ja",
-    dateFormat: "Y-m-d",
-    minDate: "today",
-    defaultDate: "{{ work_date|date:'Y-m-d' }}",
-    onChange: function(_, dateStr) { if (dateStr) gotoDate(dateStr); }
-  });
-
-  // ====== “本日 / +1日 / +2日” 按钮：切换显示 ======
-  document.querySelectorAll("[data-add-days], #btn-today").forEach(function(btn) {
-    btn.addEventListener("click", function() {
-      let baseDate = new Date("{{ work_date|date:'Y-m-d' }}");
-      const add = parseInt(btn.getAttribute("data-add-days") || "0", 10);
-      if (btn.id === "btn-today") { baseDate = new Date("{{ today|date:'Y-m-d' }}"); }
-      else { baseDate.setDate(baseDate.getDate() + add); }
-      const y = baseDate.getFullYear();
-      const m = ("0" + (baseDate.getMonth() + 1)).slice(-2);
-      const d = ("0" + baseDate.getDate()).slice(-2);
-      gotoDate(`${y}-${m}-${d}`);
-    });
-  });
-
-  // ====== 右侧“提交用”多选日期（跨月可选，一次显示两个月） ======
-  // 注意：对应的 input 请使用  id="work-dates"  name="work_dates"
-  const multiDesktop = document.getElementById("work-dates");
-  if (multiDesktop) {
-    const fp = flatpickr(multiDesktop, {
+  // ====== 1) 桌面端：日期多选（提交用） ======
+  const desktopDatesInput = document.getElementById("work-dates");
+  if (desktopDatesInput) {
+    const fp = flatpickr(desktopDatesInput, {
       locale: "ja",
       dateFormat: "Y-m-d",
       mode: "multiple",
-      conjunction: ",",   // 提交时以逗号拼接
+      conjunction: ",",
       minDate: "today",
-      defaultDate: ["{{ work_date|date:'Y-m-d' }}"],
-      showMonths: 2,      // 一次显示 2 个月
+      showMonths: 2,
       onChange(selectedDates) {
         const cnt = document.getElementById("sel-count");
         if (cnt) cnt.textContent = selectedDates.length;
@@ -356,160 +310,200 @@ document.addEventListener("DOMContentLoaded", function() {
     if (cnt) cnt.textContent = fp.selectedDates.length;
   }
 
-  // ====== 业务逻辑验证（原样保留） ======
-  const modeRest = document.getElementById("mode-rest");
-  const modeWish = document.getElementById("mode-wish");
-  const shiftRow = document.getElementById("shift-row");
-  const wishRow  = document.getElementById("wish-row");
-  const anyCar   = document.getElementById("any-car");
-  const firstCar = document.getElementById("first-car");
-  const secondCar= document.getElementById("second-car");
-  const dupMsg   = document.getElementById("car-dup-msg");
-  const btnSubmit= document.getElementById("btn-submit");
-
-  function setMode(mode) {
-    if (mode === "rest") {
-      shiftRow.style.display = "none";
-      wishRow.style.display  = "none";
-      btnSubmit.disabled = false;
-    } else {
-      shiftRow.style.display = "";
-      wishRow.style.display  = "";
-      validateDesktop();
-    }
-  }
-
-  function validateDesktop() {
-    if (!modeWish.checked) { btnSubmit.disabled = false; return; }
-    const shiftSelected = document.querySelector('input[name="shift"]:checked');
-    let carOK = true;
-    if (!anyCar.checked) {
-      const f = firstCar.value;
-      const s = secondCar.value;
-      if (!f || !s) carOK = false;
-      if (f && s && f === s) { carOK = false; dupMsg.style.display = ""; }
-      else { dupMsg.style.display = "none"; }
-    } else { dupMsg.style.display = "none"; }
-    btnSubmit.disabled = !(shiftSelected && carOK);
-  }
-
-  modeRest.addEventListener("change", () => setMode("rest"));
-  modeWish.addEventListener("change", () => setMode("wish"));
-  anyCar.addEventListener("change", validateDesktop);
-  firstCar.addEventListener("change", validateDesktop);
-  secondCar.addEventListener("change", validateDesktop);
-  document.querySelectorAll('input[name="shift"]').forEach(el => {
-    el.addEventListener("change", validateDesktop);
-  });
-  setMode(modeRest.checked ? "rest" : "wish");
-});
-</script>
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  // ====== 手机端“提交用”多选日期（跨月可选，显示两个月） ======
-  // 注意：对应的 input 请使用  id="m-dates"  name="work_dates"
-  const mDatesInput = document.getElementById("m-dates");
-  if (mDatesInput) {
-    flatpickr(mDatesInput, {
+  // ====== 2) 手机端：日期多选（提交用） ======
+  const mDates = document.getElementById("m-dates");
+  if (mDates) {
+    flatpickr(mDates, {
       locale: "ja",
       dateFormat: "Y-m-d",
       mode: "multiple",
       conjunction: ",",
       minDate: "today",
-      defaultDate: ["{{ work_date|date:'Y-m-d' }}"],
       showMonths: 2
     });
   }
 
-  // ====== 以下：手机端其它验证（原样保留） ======
-  const mModeRest   = document.getElementById("m-mode-rest");
-  const mModeWish   = document.getElementById("m-mode-wish");
-  const mShiftBlock = document.getElementById("m-shift-block");
-  const mWishBlock  = document.getElementById("m-wish-block");
-  const mAnyCar     = document.getElementById("m-any-car");
-  const mFirstCar   = document.getElementById("m-first-car");
-  const mSecondCar  = document.getElementById("m-second-car");
-  const mDupMsg     = document.getElementById("m-car-dup-msg");
-  const mBtnSubmit  = document.getElementById("m-btn-submit");
+  // ====== 3) 桌面端校验与联动 ======
+  const modeRest   = document.getElementById("mode-rest");
+  const modeWish   = document.getElementById("mode-wish");
+  const shiftRow   = document.getElementById("shift-row");
+  const wishRow    = document.getElementById("wish-row");
+  const anyCar     = document.getElementById("any-car");
+  const firstCar   = document.getElementById("first-car");
+  const secondCar  = document.getElementById("second-car");
+  const dupMsg     = document.getElementById("car-dup-msg");
+  const btnSubmit  = document.getElementById("btn-submit");
+  const desktopForm= document.getElementById("schedule-form-desktop");
 
-  function setDisabledIn(container, disabled) {
-    if (!container) return;
-    container.querySelectorAll("input,select,textarea,button").forEach(el => {
-      el.disabled = !!disabled;
+  function setDesktopMode() {
+    const isRest = modeRest && modeRest.checked;
+    if (shiftRow) shiftRow.style.display = isRest ? "none" : "";
+    if (wishRow)  wishRow.style.display  = isRest ? "none" : "";
+    if (btnSubmit) btnSubmit.disabled = false;
+    clearErrors(desktopForm);
+    if (!isRest) validateDesktop(false);
+  }
+
+  function validateDesktop(showTip = true) {
+    if (!desktopForm) return true;
+    clearErrors(desktopForm);
+    if (!dupMsg) {} else dupMsg.style.display = "none";
+
+    let valid = true;
+
+    // 日付
+    const datesStr = (desktopDatesInput && desktopDatesInput.value || "").trim();
+    if (!datesStr) {
+      valid = false;
+      addError(desktopForm.querySelector('tr:nth-child(1) td') || desktopForm, "※ 日付を選択してください。");
+    }
+
+    // 区分
+    if (modeWish && modeWish.checked) {
+      const shiftChosen = desktopForm.querySelector('input[name="shift"]:checked');
+      if (!shiftChosen) {
+        valid = false;
+        addError(document.querySelector("#shift-row td"), "※ シフト（白 or 夜）を選択してください。");
+      }
+
+      if (!anyCar || !anyCar.checked) {
+        const f = firstCar ? firstCar.value : "";
+        const s = secondCar ? secondCar.value : "";
+        if (!f || !s) {
+          valid = false;
+          addError(document.querySelector("#wish-row td"), "※ 第1希望と第2希望を両方選択してください。");
+        } else if (f === s) {
+          valid = false;
+          if (dupMsg) dupMsg.style.display = "";
+          addError(document.querySelector("#wish-row td"), "※ 第1希望と第2希望は同じ車両にできません。");
+        }
+      }
+    }
+
+    if (btnSubmit) btnSubmit.disabled = !valid;
+    if (!valid && showTip) scrollToFirstError();
+    return valid;
+  }
+
+  if (modeRest)   modeRest.addEventListener("change", setDesktopMode);
+  if (modeWish)   modeWish.addEventListener("change", setDesktopMode);
+  if (anyCar)     anyCar.addEventListener("change", () => validateDesktop());
+  if (firstCar)   firstCar.addEventListener("change", () => validateDesktop());
+  if (secondCar)  secondCar.addEventListener("change", () => validateDesktop());
+  document.querySelectorAll('#schedule-form-desktop input[name="shift"]').forEach(el => {
+    el.addEventListener("change", () => validateDesktop());
+  });
+
+  if (desktopForm) {
+    setDesktopMode();
+    desktopForm.addEventListener("submit", function (e) {
+      if (!validateDesktop(true)) e.preventDefault();
     });
   }
 
-  function validateMobile() {
-    if (!mBtnSubmit) return;
+  // ====== 4) 手机端校验与联动 ======
+  const mForm      = document.getElementById("schedule-form-mobile");
+  const mModeRest  = document.getElementById("m-mode-rest");
+  const mModeWish  = document.getElementById("m-mode-wish");
+  const mShiftBlk  = document.getElementById("m-shift-block");
+  const mWishBlk   = document.getElementById("m-wish-block");
+  const mAnyCar    = document.getElementById("m-any-car");
+  const mFirstCar  = document.getElementById("m-first-car");
+  const mSecondCar = document.getElementById("m-second-car");
+  const mDupMsg    = document.getElementById("m-car-dup-msg");
+  const mBtnSubmit = document.getElementById("m-btn-submit");
 
-    if (mModeRest && mModeRest.checked) {
-      if (mDupMsg) mDupMsg.style.display = "none";
-      mBtnSubmit.disabled = false;
-      return;
-    }
-
-    let ok = true;
-    const shiftChosen = document.querySelector('input[name="m-shift"]:checked');
-    if (!shiftChosen) ok = false;
-
-    if (!mAnyCar.checked) {
-      const f = mFirstCar.value;
-      const s = mSecondCar.value;
-      if (!f || !s) ok = false;
-      if (f && s && f === s) ok = false;
-      if (mDupMsg) mDupMsg.style.display = (f && s && f === s) ? "" : "none";
-    } else {
-      if (mDupMsg) mDupMsg.style.display = "none";
-    }
-
-    mBtnSubmit.disabled = !ok;
+  function setDisabledIn(container, disabled) {
+    if (!container) return;
+    container.querySelectorAll("input,select,textarea,button").forEach(el => el.disabled = !!disabled);
   }
 
   function setMobileMode() {
     const isRest = mModeRest && mModeRest.checked;
-    if (mShiftBlock) mShiftBlock.style.display = isRest ? "none" : "";
-    if (mWishBlock)  mWishBlock.style.display  = isRest ? "none" : "";
-    setDisabledIn(mShiftBlock, isRest);
-    setDisabledIn(mWishBlock,  isRest);
-    if (isRest) {
-      if (mBtnSubmit) mBtnSubmit.disabled = false;
-      if (mDupMsg) mDupMsg.style.display = "none";
-    } else {
-      validateMobile();
+    if (mShiftBlk) mShiftBlk.style.display = isRest ? "none" : "";
+    if (mWishBlk)  mWishBlk.style.display  = isRest ? "none" : "";
+    setDisabledIn(mShiftBlk, isRest);
+    setDisabledIn(mWishBlk,  isRest);
+    clearErrors(mForm);
+    if (mBtnSubmit) mBtnSubmit.disabled = false;
+    if (!isRest) validateMobile(false);
+  }
+
+  function validateMobile(showTip = true) {
+    if (!mForm) return true;
+    clearErrors(mForm);
+    if (mDupMsg) mDupMsg.style.display = "none";
+
+    let valid = true;
+
+    // 日付
+    const datesStr = (mDates && mDates.value || "").trim();
+    if (!datesStr) {
+      valid = false;
+      addError(mForm.querySelector(".card:nth-of-type(1) .card-body") || mForm, "※ 日付を選択してください。");
     }
+
+    if (mModeWish && mModeWish.checked) {
+      // 注意：这里修正为 name="shift"（你的HTML就是这个名字）
+      const shiftChosen = mForm.querySelector('input[name="shift"]:checked');
+      if (!shiftChosen) {
+        valid = false;
+        addError(mShiftBlk, "※ シフト（白 or 夜）を選択してください。");
+      }
+
+      if (!mAnyCar || !mAnyCar.checked) {
+        const f = mFirstCar ? mFirstCar.value : "";
+        const s = mSecondCar ? mSecondCar.value : "";
+        if (!f || !s) {
+          valid = false;
+          addError(mWishBlk, "※ 第1希望と第2希望を両方選択してください。");
+        } else if (f === s) {
+          valid = false;
+          if (mDupMsg) mDupMsg.style.display = "";
+          addError(mWishBlk, "※ 同じ車両は選べません。");
+        }
+      }
+    }
+
+    if (mBtnSubmit) mBtnSubmit.disabled = !valid;
+    if (!valid && showTip) scrollToFirstError();
+    return valid;
   }
 
   function toggleMobileAnyCar() {
-    const dis = !!mAnyCar.checked;
+    const dis = !!(mAnyCar && mAnyCar.checked);
     if (mFirstCar) mFirstCar.disabled = dis;
     if (mSecondCar) mSecondCar.disabled = dis;
-    validateMobile();
+    validateMobile(false);
   }
 
-  if (mModeRest) mModeRest.addEventListener("change", setMobileMode);
-  if (mModeWish) mModeWish.addEventListener("change", setMobileMode);
-  if (mAnyCar)   mAnyCar.addEventListener("change", toggleMobileAnyCar);
-  if (mFirstCar) mFirstCar.addEventListener("change", validateMobile);
-  if (mSecondCar)mSecondCar.addEventListener("change", validateMobile);
-  document.querySelectorAll('input[name="m-shift"]').forEach(el => {
-    el.addEventListener("change", validateMobile);
+  if (mModeRest)  mModeRest.addEventListener("change", setMobileMode);
+  if (mModeWish)  mModeWish.addEventListener("change", setMobileMode);
+  if (mAnyCar)    mAnyCar.addEventListener("change", toggleMobileAnyCar);
+  if (mFirstCar)  mFirstCar.addEventListener("change", () => validateMobile());
+  if (mSecondCar) mSecondCar.addEventListener("change", () => validateMobile());
+  document.querySelectorAll('#schedule-form-mobile input[name="shift"]').forEach(el => {
+    el.addEventListener("change", () => validateMobile());
   });
 
-  setMobileMode();
-  toggleMobileAnyCar();
+  if (mForm) {
+    setMobileMode();
+    toggleMobileAnyCar();
+    mForm.addEventListener("submit", function (e) {
+      if (!validateMobile(true)) e.preventDefault();
+    });
+  }
 });
 </script>
 
-
-
-
 <style>
-  select option[disabled][data-unavailable="1"] {
-    color: #999;
-    background: #f3f3f3;
-    font-style: italic;
-  }
+/* 可视化错误提示 */
+.validation-error { font-size: .85rem; color: #d9534f; }
+/* 把“整備中”等禁用选项做弱化显示 */
+select option[disabled][data-unavailable="1"] {
+  color: #999; background: #f3f3f3; font-style: italic;
+}
 </style>
+
 
 {% endblock %}

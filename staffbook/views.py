@@ -514,6 +514,24 @@ def auto_assign_plan_for_date(target_date: date):
     }
 # ==== END INSERT P1 ====
 
+def _parse_work_dates(raw: str) -> list[_date]:
+    """支持中文/英文逗号、分号、空格分隔；返回去重后的日期列表"""
+    if not raw:
+        return []
+    s = raw.replace("，", ",").replace("；", ";")
+    tokens = re.split(r"[,\s;]+", s.strip())
+    out = []
+    for t in tokens:
+        if not t:
+            continue
+        try:
+            out.append(_date.fromisoformat(t))
+        except Exception:
+            # 忽略解析失败的片段
+            pass
+    # 去重 + 排序
+    return sorted(set(out))
+
 
 @user_passes_test(is_staffbook_admin)
 def staffbook_dashboard(request):
@@ -621,9 +639,35 @@ def schedule_form_view(request):
     # 顺序：正常车在上 + 整備中在下
     cars = normal_cars + maint_cars
 
-    # ⑤ POST 保存
+    # ⑤ POST 保存（支持多日期）
     if request.method == "POST" and me:
-        # 同时兼容桌面端与手机端字段名
+        # —— 1) 取多日：桌面/手机同名 name="work_dates"，逗号分隔 —— #
+        dates_str = (request.POST.get("work_dates") or "").strip()
+        if not dates_str:
+            messages.error(request, "日付を選択してください。")
+            return redirect(request.path)
+
+        # 解析多日
+        dates = []
+        for part in dates_str.split(","):
+            s = part.strip()
+            if not s:
+                continue
+            try:
+                y, m, d = [int(x) for x in s.split("-")]
+                dt = _date(y, m, d)
+                if dt >= _date.today():   # 只允许今天及以后（按需放宽/移除）
+                    dates.append(dt)
+            except Exception:
+                continue
+
+        # 去重 + 排序
+        dates = sorted(set(dates))
+        if not dates:
+            messages.error(request, "有効な日付がありません。")
+            return redirect(request.path)
+
+        # —— 2) 取其余字段（兼容手机端）—— #
         mode     = request.POST.get("mode")      or request.POST.get("m-mode")
         shift    = request.POST.get("shift")     or request.POST.get("m-shift") or ""
         note     = request.POST.get("note")      or request.POST.get("m_note")  or ""
@@ -631,38 +675,49 @@ def schedule_form_view(request):
         first_id = request.POST.get("first_car") or request.POST.get("m_first_car") or None
         second_id= request.POST.get("second_car")or request.POST.get("m_second_car") or None
 
-        obj, _ = DriverSchedule.objects.get_or_create(
-            driver=me,
-            work_date=work_date,
-        )
-
-        obj.is_rest = (mode == "rest")
-        obj.note = note
-
-        if obj.is_rest:
-            # 休み
-            obj.shift = ""
-            obj.any_car = False
-            obj.first_choice_car = None
-            obj.second_choice_car = None
-        else:
+        # —— 3) 服务器端校验（防止JS失效时的脏数据）—— #
+        if mode != "rest":
             # 希望提出
-            obj.shift = shift
-            obj.any_car = any_car
+            if not shift:
+                messages.error(request, "シフトを選択してください。")
+                return redirect(request.path)
+            if not any_car:
+                if not first_id or not second_id:
+                    messages.error(request, "第1希望と第2希望を選択してください。")
+                    return redirect(request.path)
+                if first_id == second_id:
+                    messages.error(request, "第1希望と第2希望は同じ車両にできません。")
+                    return redirect(request.path)
 
-            fc = Car.objects.filter(pk=first_id).first() if first_id else None
-            sc = Car.objects.filter(pk=second_id).first() if second_id else None
+        # —— 4) 逐日保存 —— #
+        saved = 0
+        for wd in dates:
+            obj, _ = DriverSchedule.objects.get_or_create(driver=me, work_date=wd)
+            obj.note = note
 
-            if fc and sc and fc.id == sc.id:
-                sc = None
+            if mode == "rest":
+                obj.is_rest = True
+                obj.shift = ""
+                obj.any_car = False
+                obj.first_choice_car = None
+                obj.second_choice_car = None
+            else:
+                obj.is_rest = False
+                obj.shift = shift
+                obj.any_car = any_car
 
-            obj.first_choice_car = fc
-            obj.second_choice_car = sc
+                fc = Car.objects.filter(pk=first_id).first() if first_id else None
+                sc = Car.objects.filter(pk=second_id).first() if second_id else None
+                if fc and sc and fc.id == sc.id:
+                    sc = None
 
-        obj.save()
-        messages.success(request, f"{work_date:%Y-%m-%d} のスケジュールを保存しました。")
+                obj.first_choice_car = fc
+                obj.second_choice_car = sc
 
-        # return redirect(f"{request.path}?work_date={work_date:%Y-%m-%d}")
+            obj.save()
+            saved += 1
+
+        messages.success(request, f"{saved} 日分のスケジュールを保存しました。")
         return redirect("staffbook:my_reservations")
 
     # ⑥ GET 渲染
