@@ -29,24 +29,21 @@
             {% csrf_token %}
             <table class="table table-sm align-middle mb-0">
 
-
-             <tr>
-              <th style="width: 25%;">日付（複数選択可）</th>
-              <td>
-                <input type="text"
-                      class="form-control form-control-sm" required
-                      id="work-dates"
-                      name="work_dates"
-                      placeholder="日付を複数選択"
-                      autocomplete="off">
-                <small class="text-muted">
-                  ※ 右のカレンダーは“表示切替”、ここは“提出する日付”。複数月にまたがって選べます。
-                  （選択中：<span id="sel-count">0</span> 日）
-                </small>
-              </td>
-            </tr>
-
-
+              <tr>
+                <th style="width: 25%;">日付（複数選択可）</th>
+                <td>
+                  <input type="text"
+                        class="form-control form-control-sm" required
+                        id="work-dates"
+                        name="work_dates"
+                        placeholder="日付を複数選択"
+                        autocomplete="off">
+                  <small class="text-muted">
+                    ※ 右のカレンダーは“表示切替”、ここは“提出する日付”。複数月にまたがって選べます。
+                    （選択中：<span id="sel-count">0</span> 日）
+                  </small>
+                </td>
+              </tr>
 
               <tr>
                 <th style="width: 25%;">区分</th>
@@ -76,6 +73,7 @@
                   <!-- END: ②希望提出 -->
                 </td>
               </tr>
+
               <tr id="shift-row">
                 <th>シフト</th>
                 <td>
@@ -100,7 +98,6 @@
                   <small class="text-muted d-block mt-1">※ ②を選んだ場合はどちらか必須</small>
                 </td>
               </tr>
-
 
               <tr id="wish-row">
                 <th>車両希望</th>
@@ -166,7 +163,7 @@
             <button type="submit" class="btn btn-primary btn-sm mt-3" id="btn-submit">
               この内容で提出
             </button>
-            <p class="text-muted small mt-2 mb-0">※ このページは“入力ルール確認用”です。保存は次のステップで入れます。</p>
+            <p class="text-muted small mt-2 mb-0">※ 入力内容は送信後に保存されます。</p>
           </form>
         </div>
       </div>
@@ -177,7 +174,7 @@
   {# ② 手机端（md以下）= 卡片布局       #}
   {# ================================ #}
   <div class="d-md-none">
-    <form id="schedule-form-mobile" method="post">
+    <form id="schedule-form-mobile" method="post" novalidate>
       {% csrf_token %}
       <div class="card mb-3">
         <div class="card-header">日付</div>
@@ -267,8 +264,6 @@
 
 </div>
 
-
-
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
@@ -304,10 +299,15 @@ document.addEventListener("DOMContentLoaded", function () {
       onChange(selectedDates) {
         const cnt = document.getElementById("sel-count");
         if (cnt) cnt.textContent = selectedDates.length;
+        // ★ 新增：日期变化后重新校验，自动清除红字
+        validateDesktop(false);
       }
     });
     const cnt = document.getElementById("sel-count");
     if (cnt) cnt.textContent = fp.selectedDates.length;
+
+    // 兜底：手动修改 input 时也触发
+    desktopDatesInput.addEventListener("change", () => validateDesktop(false));
   }
 
   // ====== 2) 手机端：日期多选（提交用） ======
@@ -319,8 +319,14 @@ document.addEventListener("DOMContentLoaded", function () {
       mode: "multiple",
       conjunction: ",",
       minDate: "today",
-      showMonths: 2
+      showMonths: 2,
+      onChange() {
+        // ★ 新增：日期变化后重新校验，自动清除红字
+        validateMobile(false);
+      }
     });
+    // 兜底：手动修改 input 时也触发
+    mDates.addEventListener("change", () => validateMobile(false));
   }
 
   // ====== 3) 桌面端校验与联动 ======
@@ -347,7 +353,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function validateDesktop(showTip = true) {
     if (!desktopForm) return true;
     clearErrors(desktopForm);
-    if (!dupMsg) {} else dupMsg.style.display = "none";
+    if (dupMsg) dupMsg.style.display = "none";
 
     let valid = true;
 
@@ -385,9 +391,17 @@ document.addEventListener("DOMContentLoaded", function () {
     return valid;
   }
 
+  // 新增：勾选“任意の車両”时禁用第1/第2希望
+  function toggleDesktopAnyCar() {
+    const dis = !!(anyCar && anyCar.checked);
+    if (firstCar) firstCar.disabled = dis;
+    if (secondCar) secondCar.disabled = dis;
+    validateDesktop(false);
+  }
+
   if (modeRest)   modeRest.addEventListener("change", setDesktopMode);
   if (modeWish)   modeWish.addEventListener("change", setDesktopMode);
-  if (anyCar)     anyCar.addEventListener("change", () => validateDesktop());
+  if (anyCar)     anyCar.addEventListener("change", toggleDesktopAnyCar);
   if (firstCar)   firstCar.addEventListener("change", () => validateDesktop());
   if (secondCar)  secondCar.addEventListener("change", () => validateDesktop());
   document.querySelectorAll('#schedule-form-desktop input[name="shift"]').forEach(el => {
@@ -396,8 +410,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (desktopForm) {
     setDesktopMode();
+    toggleDesktopAnyCar();
     desktopForm.addEventListener("submit", function (e) {
-      if (!validateDesktop(true)) e.preventDefault();
+      if (!validateDesktop(true)) { e.preventDefault(); return; }
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "送信中…";
+      }
     });
   }
 
@@ -444,7 +463,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (mModeWish && mModeWish.checked) {
-      // 注意：这里修正为 name="shift"（你的HTML就是这个名字）
       const shiftChosen = mForm.querySelector('input[name="shift"]:checked');
       if (!shiftChosen) {
         valid = false;
@@ -490,7 +508,11 @@ document.addEventListener("DOMContentLoaded", function () {
     setMobileMode();
     toggleMobileAnyCar();
     mForm.addEventListener("submit", function (e) {
-      if (!validateMobile(true)) e.preventDefault();
+      if (!validateMobile(true)) { e.preventDefault(); return; }
+      if (mBtnSubmit) {
+        mBtnSubmit.disabled = true;
+        mBtnSubmit.textContent = "送信中…";
+      }
     });
   }
 });
@@ -504,6 +526,5 @@ select option[disabled][data-unavailable="1"] {
   color: #999; background: #f3f3f3; font-style: italic;
 }
 </style>
-
 
 {% endblock %}
