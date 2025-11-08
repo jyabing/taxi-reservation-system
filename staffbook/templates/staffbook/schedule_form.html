@@ -77,7 +77,7 @@
                            id="shift-day"
                            value="day"
                            {% if existing and existing.shift == "day" %}checked{% endif %}>
-                    <label class="form-check-label" for="shift-day">白班</label>
+                    <label class="form-check-label" for="shift-day">昼勤</label>
                   </div>
                   <div class="form-check form-check-inline">
                     <input class="form-check-input"
@@ -86,7 +86,7 @@
                            id="shift-night"
                            value="night"
                            {% if existing and existing.shift == "night" %}checked{% endif %}>
-                    <label class="form-check-label" for="shift-night">夜班</label>
+                    <label class="form-check-label" for="shift-night">夜勤</label>
                   </div>
                   <small class="text-muted d-block mt-1">※ ②を選んだ場合はどちらか必須</small>
                 </td>
@@ -202,11 +202,11 @@
             <label class="form-label d-block">シフト</label>
             <div class="form-check form-check-inline">
               <input class="form-check-input" type="radio" name="shift" id="m-shift-day" value="day">
-              <label class="form-check-label" for="m-shift-day">白</label>
+              <label class="form-check-label" for="m-shift-day">昼勤</label>
             </div>
             <div class="form-check form-check-inline">
               <input class="form-check-input" type="radio" name="shift" id="m-shift-night" value="night">
-              <label class="form-check-label" for="m-shift-night">夜</label>
+              <label class="form-check-label" for="m-shift-night">夜勤</label>
             </div>
           </div>
 
@@ -376,12 +376,24 @@ document.addEventListener("DOMContentLoaded", function () {
       addError(desktopForm.querySelector('tr:nth-child(1) td') || desktopForm, "※ 日付を選択してください。");
     }
 
-    // 区分
+    // 区分（桌面端）+ 班别提示
     if (modeWish && modeWish.checked) {
+      const tdShift = document.querySelector("#shift-row td");
+      // 清除旧的提示（避免叠加）
+      if (tdShift) tdShift.querySelectorAll(".shift-note").forEach(n => n.remove());
+
       const shiftChosen = desktopForm.querySelector('input[name="shift"]:checked');
       if (!shiftChosen) {
         valid = false;
-        addError(document.querySelector("#shift-row td"), "※ シフト（白 or 夜）を選択してください。");
+        addError(tdShift || desktopForm, "※ シフト（昼勤 or 夜勤）を選択してください。");
+      } else {
+        // 根据选择添加灰字提示
+        const info = document.createElement("div");
+        info.className = "text-muted small mt-1 shift-note";
+        info.textContent = (shiftChosen.value === "day")
+          ? "※ もし昼勤と夜勤の交代があれば17時厳守。"
+          : "※ もし夜勤と昼勤の交代があれば7時厳守。";
+        tdShift && tdShift.appendChild(info);
       }
 
       if (!anyCar || !anyCar.checked) {
@@ -397,6 +409,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
     }
+
 
     // === 区分の衝突チェック ===
     if (datesStr) {
@@ -485,11 +498,22 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (mModeWish && mModeWish.checked) {
+      // 清除旧提示
+      if (mShiftBlk) mShiftBlk.querySelectorAll(".shift-note").forEach(n => n.remove());
+
       const shiftChosen = mForm.querySelector('input[name="shift"]:checked');
       if (!shiftChosen) {
         valid = false;
-        addError(mShiftBlk, "※ シフト（白 or 夜）を選択してください。");
+        addError(mShiftBlk, "※ シフト（昼勤 or 夜勤）を選択してください。");
+      } else {
+        const info = document.createElement("div");
+        info.className = "text-muted small mt-1 shift-note";
+        info.textContent = (shiftChosen.value === "day")
+          ? "※ もし昼勤と夜勤の交代があれば17時厳守。"
+          : "※ もし夜勤と昼勤の交代があれば7時厳守。";
+        mShiftBlk && mShiftBlk.appendChild(info);
       }
+
       if (!mAnyCar || !mAnyCar.checked) {
         const f = mFirstCar ? mFirstCar.value : "";
         const s = mSecondCar ? mSecondCar.value : "";
@@ -503,6 +527,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
     }
+
 
     // === 区分の衝突チェック（モバイル） ===
     if (datesStr) {
