@@ -19,8 +19,6 @@
   {# ① 桌面端（md以上）= 表格布局       #}
   {# ================================ #}
   <div class="row d-none d-md-flex">
-
-    <!-- 右侧：填写区域 -->
     <div class="col-md-12 mb-3">
       <div class="card">
         <div class="card-header">スケジュール内容</div>
@@ -33,11 +31,11 @@
                 <th style="width: 25%;">日付（複数選択可）</th>
                 <td>
                   <input type="text"
-                        class="form-control form-control-sm" required
-                        id="work-dates"
-                        name="work_dates"
-                        placeholder="日付を複数選択"
-                        autocomplete="off">
+                         class="form-control form-control-sm" required
+                         id="work-dates"
+                         name="work_dates"
+                         placeholder="日付を複数選択"
+                         autocomplete="off">
                   <small class="text-muted">
                     ※ 右のカレンダーは“表示切替”、ここは“提出する日付”。複数月にまたがって選べます。
                     （選択中：<span id="sel-count">0</span> 日）
@@ -46,31 +44,26 @@
               </tr>
 
               <tr>
-                <th style="width: 25%;">区分</th>
+                <th>区分</th>
                 <td>
-                  <!-- BEGIN: ①休み -->
                   <div class="form-check">
                     <input class="form-check-input"
-                          type="radio"
-                          name="mode"
-                          id="mode-rest"
-                          value="rest"
-                          {% if existing and existing.is_rest %}checked{% elif not existing %}checked{% endif %}>
+                           type="radio"
+                           name="mode"
+                           id="mode-rest"
+                           value="rest"
+                           {% if existing and existing.is_rest %}checked{% elif not existing %}checked{% endif %}>
                     <label class="form-check-label" for="mode-rest">① 休み</label>
                   </div>
-                  <!-- END: ①休み -->
-
-                  <!-- BEGIN: ②希望提出 -->
                   <div class="form-check mt-1">
                     <input class="form-check-input"
-                          type="radio"
-                          name="mode"
-                          id="mode-wish"
-                          value="wish"
-                          {% if existing and not existing.is_rest %}checked{% endif %}>
+                           type="radio"
+                           name="mode"
+                           id="mode-wish"
+                           value="wish"
+                           {% if existing and not existing.is_rest %}checked{% endif %}>
                     <label class="form-check-label" for="mode-wish">② 希望車両を提出</label>
                   </div>
-                  <!-- END: ②希望提出 -->
                 </td>
               </tr>
 
@@ -79,20 +72,20 @@
                 <td>
                   <div class="form-check form-check-inline">
                     <input class="form-check-input"
-                          type="radio"
-                          name="shift"
-                          id="shift-day"
-                          value="day"
-                          {% if existing and existing.shift == "day" %}checked{% endif %}>
+                           type="radio"
+                           name="shift"
+                           id="shift-day"
+                           value="day"
+                           {% if existing and existing.shift == "day" %}checked{% endif %}>
                     <label class="form-check-label" for="shift-day">白班</label>
                   </div>
                   <div class="form-check form-check-inline">
                     <input class="form-check-input"
-                          type="radio"
-                          name="shift"
-                          id="shift-night"
-                          value="night"
-                          {% if existing and existing.shift == "night" %}checked{% endif %}>
+                           type="radio"
+                           name="shift"
+                           id="shift-night"
+                           value="night"
+                           {% if existing and existing.shift == "night" %}checked{% endif %}>
                     <label class="form-check-label" for="shift-night">夜班</label>
                   </div>
                   <small class="text-muted d-block mt-1">※ ②を選んだ場合はどちらか必須</small>
@@ -104,11 +97,11 @@
                 <td>
                   <div class="form-check mb-2">
                     <input class="form-check-input"
-                          type="checkbox"
-                          id="any-car"
-                          name="any_car"
-                          value="1"
-                          {% if existing and existing.any_car %}checked{% endif %}>
+                           type="checkbox"
+                           id="any-car"
+                           name="any_car"
+                           value="1"
+                           {% if existing and existing.any_car %}checked{% endif %}>
                     <label class="form-check-label" for="any-car">任意の車両でもよい</label>
                   </div>
 
@@ -152,10 +145,10 @@
                 <th>備考</th>
                 <td>
                   <input type="text"
-                        class="form-control form-control-sm" 
-                        name="note"
-                        placeholder="例）9時以降でお願いします"
-                        value="{% if existing %}{{ existing.note }}{% endif %}">
+                         class="form-control form-control-sm"
+                         name="note"
+                         placeholder="例）9時以降でお願いします"
+                         value="{% if existing %}{{ existing.note }}{% endif %}">
                 </td>
               </tr>
             </table>
@@ -256,17 +249,19 @@
           <button type="submit" class="btn btn-primary btn-sm" id="m-btn-submit">
             提出
           </button>
-
         </div>
       </div>
     </form>
   </div>
-
 </div>
 
+{# ===== flatpickr 依赖 ===== #}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+
+{# 把后端喂给前端的“既存提出(最近区间)”塞进来：[{date:'YYYY-MM-DD',is_rest:true|false}, ...] #}
+<script id="my-existing" type="application/json">{{ my_existing_json|default:"[]" }}</script>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
@@ -286,7 +281,31 @@ document.addEventListener("DOMContentLoaded", function () {
     if (e) e.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  // ====== 1) 桌面端：日期多选（提交用） ======
+  // ====== 既存データ → { "2025-11-09": true(休) / false(希望) } ======
+  const EXISTING_MAP = (() => {
+    try {
+      const raw = document.getElementById("my-existing")?.textContent || "[]";
+      const arr = JSON.parse(raw);
+      const m = {};
+      arr.forEach(r => { if (r?.date) m[r.date] = !!r.is_rest; });
+      return m;
+    } catch { return {}; }
+  })();
+  function parseDates(raw) {
+    if (!raw) return [];
+    return raw.replace(/，/g, ",").split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+  }
+  function findConflicts(dates, wantRest) {
+    const bad = [];
+    for (const d of dates) {
+      if (!(d in EXISTING_MAP)) continue;
+      const alreadyRest = EXISTING_MAP[d]; // true=休, false=希望
+      if (alreadyRest !== wantRest) bad.push(d);
+    }
+    return bad;
+  }
+
+  // ====== 1) 桌面端：日期多选 ======
   const desktopDatesInput = document.getElementById("work-dates");
   if (desktopDatesInput) {
     const fp = flatpickr(desktopDatesInput, {
@@ -299,18 +318,15 @@ document.addEventListener("DOMContentLoaded", function () {
       onChange(selectedDates) {
         const cnt = document.getElementById("sel-count");
         if (cnt) cnt.textContent = selectedDates.length;
-        // ★ 新增：日期变化后重新校验，自动清除红字
         validateDesktop(false);
       }
     });
     const cnt = document.getElementById("sel-count");
     if (cnt) cnt.textContent = fp.selectedDates.length;
-
-    // 兜底：手动修改 input 时也触发
     desktopDatesInput.addEventListener("change", () => validateDesktop(false));
   }
 
-  // ====== 2) 手机端：日期多选（提交用） ======
+  // ====== 2) 手机端：日期多选 ======
   const mDates = document.getElementById("m-dates");
   if (mDates) {
     flatpickr(mDates, {
@@ -320,12 +336,8 @@ document.addEventListener("DOMContentLoaded", function () {
       conjunction: ",",
       minDate: "today",
       showMonths: 2,
-      onChange() {
-        // ★ 新增：日期变化后重新校验，自动清除红字
-        validateMobile(false);
-      }
+      onChange() { validateMobile(false); }
     });
-    // 兜底：手动修改 input 时也触发
     mDates.addEventListener("change", () => validateMobile(false));
   }
 
@@ -386,12 +398,26 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
+    // === 区分の衝突チェック ===
+    if (datesStr) {
+      const selectedDates = parseDates(datesStr);
+      const wantRest = !!(modeRest && modeRest.checked);
+      const conflicts = findConflicts(selectedDates, wantRest);
+      if (conflicts.length) {
+        valid = false;
+        const where = desktopForm.querySelector('tr:nth-child(1) td') || desktopForm;
+        const tip = wantRest
+          ? "※ その日付は『希望提出』で登録済みです。まず既存の登録を削除してください。"
+          : "※ その日付は『休み』で登録済みです。まず既存の登録を削除してください。";
+        addError(where, `${tip}（${conflicts.join("、")}）`);
+      }
+    }
+
     if (btnSubmit) btnSubmit.disabled = !valid;
     if (!valid && showTip) scrollToFirstError();
     return valid;
   }
 
-  // 新增：勾选“任意の車両”时禁用第1/第2希望
   function toggleDesktopAnyCar() {
     const dis = !!(anyCar && anyCar.checked);
     if (firstCar) firstCar.disabled = dis;
@@ -413,10 +439,7 @@ document.addEventListener("DOMContentLoaded", function () {
     toggleDesktopAnyCar();
     desktopForm.addEventListener("submit", function (e) {
       if (!validateDesktop(true)) { e.preventDefault(); return; }
-      if (btnSubmit) {
-        btnSubmit.disabled = true;
-        btnSubmit.textContent = "送信中…";
-      }
+      if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.textContent = "送信中…"; }
     });
   }
 
@@ -455,7 +478,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let valid = true;
 
-    // 日付
     const datesStr = (mDates && mDates.value || "").trim();
     if (!datesStr) {
       valid = false;
@@ -468,7 +490,6 @@ document.addEventListener("DOMContentLoaded", function () {
         valid = false;
         addError(mShiftBlk, "※ シフト（白 or 夜）を選択してください。");
       }
-
       if (!mAnyCar || !mAnyCar.checked) {
         const f = mFirstCar ? mFirstCar.value : "";
         const s = mSecondCar ? mSecondCar.value : "";
@@ -480,6 +501,21 @@ document.addEventListener("DOMContentLoaded", function () {
           if (mDupMsg) mDupMsg.style.display = "";
           addError(mWishBlk, "※ 同じ車両は選べません。");
         }
+      }
+    }
+
+    // === 区分の衝突チェック（モバイル） ===
+    if (datesStr) {
+      const selectedDatesM = parseDates(datesStr);
+      const wantRestM = !!(mModeRest && mModeRest.checked);
+      const conflictsM = findConflicts(selectedDatesM, wantRestM);
+      if (conflictsM.length) {
+        valid = false;
+        const tip = wantRestM
+          ? "※ その日付は『希望提出』で登録済みです。まず既存の登録を削除してください。"
+          : "※ その日付は『休み』で登録済みです。まず既存の登録を削除してください。";
+        addError(mForm.querySelector(".card:nth-of-type(1) .card-body") || mForm,
+                 `${tip}（${conflictsM.join("、")}）`);
       }
     }
 
@@ -509,19 +545,14 @@ document.addEventListener("DOMContentLoaded", function () {
     toggleMobileAnyCar();
     mForm.addEventListener("submit", function (e) {
       if (!validateMobile(true)) { e.preventDefault(); return; }
-      if (mBtnSubmit) {
-        mBtnSubmit.disabled = true;
-        mBtnSubmit.textContent = "送信中…";
-      }
+      if (mBtnSubmit) { mBtnSubmit.disabled = true; mBtnSubmit.textContent = "送信中…"; }
     });
   }
 });
 </script>
 
 <style>
-/* 可视化错误提示 */
 .validation-error { font-size: .85rem; color: #d9534f; }
-/* 把“整備中”等禁用选项做弱化显示 */
 select option[disabled][data-unavailable="1"] {
   color: #999; background: #f3f3f3; font-style: italic;
 }

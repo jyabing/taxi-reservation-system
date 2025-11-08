@@ -1,5 +1,6 @@
 import csv, re, datetime
 import re
+import json
 from itertools import zip_longest
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -7,6 +8,7 @@ from django.http import HttpResponse
 from datetime import datetime as DatetimeClass, timedelta, date as _date, datetime as _datetime, datetime as _dt, date 
 
 from django.views.decorators.http import require_http_methods
+from django.utils.safestring import mark_safe
 
 from django.utils.timezone import make_aware, is_naive
 from collections import defaultdict
@@ -541,14 +543,12 @@ def staffbook_dashboard(request):
 # BEGIN: 司机本人填写“约日期”表单页（桌面=表格，手机=卡片）
 # ==============================================================
 
-from django.utils.safestring import mark_safe
-
 
 @login_required
 @require_http_methods(["GET", "POST"])
 def schedule_form_view(request):
-    """司机本人：提交自己的希望スケジュール"""
-    today = date.today()
+    """司机本人：提交自己的希望スケジュール（含区分冲突防护）"""
+    today = _date.today()
 
     # ① 当前登录司机
     try:
@@ -560,7 +560,7 @@ def schedule_form_view(request):
     work_date_str = request.GET.get("work_date") or today.strftime("%Y-%m-%d")
     try:
         y, m, d = [int(x) for x in work_date_str.split("-")]
-        work_date = date(y, m, d)
+        work_date = _date(y, m, d)
     except Exception:
         work_date = today
 
@@ -576,7 +576,6 @@ def schedule_form_view(request):
         .order_by("license_plate", "name", "id")
     )
     normal_cars, maint_cars = [], []
-
     for c in raw_cars:
         plate = getattr(c, "license_plate", None) or getattr(c, "registration_number", None) or ""
         car_name = getattr(c, "name", None) or getattr(c, "model", None) or ""
@@ -586,12 +585,10 @@ def schedule_form_view(request):
         is_active   = getattr(c, "is_active", True)
         is_maint    = bool(getattr(c, "is_maintaining", False))
         is_scrapped = bool(getattr(c, "is_scrapped", False))
-
         if is_scrapped:
             continue
 
         is_maint_status = status in ("maintenance", "repair", "fixing") or is_maint
-
         if is_maint_status:
             c.label = f"{base_label}（整備中）"
             c.is_bad = True
@@ -606,12 +603,10 @@ def schedule_form_view(request):
         normal_cars.append(c)
 
     cars = normal_cars + maint_cars
-    # 用于后端校验：只允许选择 normal_cars（整備中/停用即使被前端改也不让过）
     allowed_car_ids = {c.id for c in normal_cars}
 
     # ⑤ 提交保存（支持多日期）
     if request.method == "POST" and me:
-        # 多日：name="work_dates"，用逗号连接
         dates_str = (request.POST.get("work_dates") or "").strip()
         if not dates_str:
             messages.error(request, "日付を選択してください。")
@@ -625,12 +620,10 @@ def schedule_form_view(request):
             try:
                 y, m, d = [int(x) for x in part.split("-")]
                 dt = _date(y, m, d)
-                if dt >= _date.today():
+                if dt >= today:
                     dates.append(dt)
             except Exception:
-                # 跳过无效片段
                 continue
-
         dates = sorted(set(dates))
         if not dates:
             messages.error(request, "有効な日付がありません。")
@@ -643,6 +636,7 @@ def schedule_form_view(request):
         any_car  = (request.POST.get("any_car")  or request.POST.get("m_any_car")) == "1"
         first_id = request.POST.get("first_car") or request.POST.get("m_first_car") or None
         second_id= request.POST.get("second_car")or request.POST.get("m_second_car") or None
+        overwrite = (request.POST.get("overwrite") == "1")  # ← 可选：允许覆盖开关
 
         # —— 服务器端校验 —— #
         if mode not in ("rest", "wish"):
@@ -653,29 +647,48 @@ def schedule_form_view(request):
             if not shift:
                 messages.error(request, "シフトを選択してください。")
                 return redirect(request.path)
-
             if not any_car:
-                # 必须选第1和第2
                 if not first_id or not second_id:
                     messages.error(request, "第1希望と第2希望を選択してください。")
                     return redirect(request.path)
                 if first_id == second_id:
                     messages.error(request, "第1希望と第2希望は同じ車両にできません。")
                     return redirect(request.path)
-
-                # 车辆合法性（不可选择“整備中/停用/廃車”等）
                 try:
-                    f_id_int = int(first_id)
-                    s_id_int = int(second_id)
+                    f_id_int = int(first_id); s_id_int = int(second_id)
                 except Exception:
                     messages.error(request, "車両の選択が不正です。")
                     return redirect(request.path)
-
                 if f_id_int not in allowed_car_ids or s_id_int not in allowed_car_ids:
                     messages.error(request, "選択した車両は現在使用できません。別の車両を選んでください。")
                     return redirect(request.path)
 
-        # —— 逐日保存（覆盖同日既存记录，避免“休み”和“希望”并存）—— #
+        # —— 区分冲突检查（后端强拦）——
+        # 已有记录中与当前提交“区分”不同的日期，即为冲突
+        existing_rows = {
+            r.work_date: r
+            for r in DriverSchedule.objects.filter(driver=me, work_date__in=dates)
+        }
+        want_rest = (mode == "rest")
+        conflicts = []
+        for d in dates:
+            row = existing_rows.get(d)
+            if not row:
+                continue
+            if bool(row.is_rest) != want_rest:
+                conflicts.append(d)
+
+        if conflicts and not overwrite:
+            jstr = "、".join(dt.strftime("%Y-%m-%d") for dt in conflicts)
+            tip = "既に『希望提出』で登録済み" if want_rest else "既に『休み』で登録済み"
+            messages.error(
+                request,
+                f"以下の日付は区分が衝突しています：{jstr}。{tip}のため上書きできません。"
+                "先に該当日の登録を削除するか、同じ区分で再提出してください。"
+            )
+            return redirect(request.path)
+
+        # 逐日保存（若 overwrite=True，则允许覆盖）
         saved, skipped = 0, 0
         for wd in dates:
             try:
@@ -683,28 +696,22 @@ def schedule_form_view(request):
                 obj.note = note
 
                 if mode == "rest":
-                    # 选择“休み”时：清空一切与出勤相关字段 & 已配车信息
                     obj.is_rest = True
                     obj.shift = ""
                     obj.any_car = False
                     obj.first_choice_car = None
                     obj.second_choice_car = None
                     obj.assigned_car = None
-                    obj.status = "pending"  # 或者你希望置为 "approved" 亦可
+                    obj.status = "pending"
                 else:
-                    # 希望提出
                     obj.is_rest = False
                     obj.shift = shift
                     obj.any_car = any_car
 
                     fc = Car.objects.filter(pk=first_id).first() if first_id else None
                     sc = Car.objects.filter(pk=second_id).first() if second_id else None
-
-                    # 保险：同一辆就把第二希望清空
                     if fc and sc and fc.id == sc.id:
                         sc = None
-
-                    # 只允许选择“允许池”里的车
                     if fc and fc.id not in allowed_car_ids:
                         fc = None
                     if sc and sc.id not in allowed_car_ids:
@@ -712,31 +719,40 @@ def schedule_form_view(request):
 
                     obj.first_choice_car = fc
                     obj.second_choice_car = sc
-
-                    # 若改为“希望”，不主动清空已配车；由管理员配车或自动配车逻辑处理
-                    # 如需强制清空请解除下一行注释
+                    # 如需改“希望”时也清空已配车，取消下一行注释
                     # obj.assigned_car = None
 
                 obj.save()
                 saved += 1
             except Exception:
                 skipped += 1
-                continue
 
         if saved:
             messages.success(request, f"{saved} 日分のスケジュールを保存しました。")
         if skipped:
             messages.warning(request, f"{skipped} 日は保存できませんでした。入力内容をご確認ください。")
-
         return redirect("staffbook:my_reservations")
 
-    # ⑥ GET 渲染
+    # ⑥ GET 渲染 —— 附带“我已有的提交”给前端做即时提醒（可选）
+    my_existing_json = "[]"
+    if me:
+        rng_from = today - timedelta(days=30)
+        rng_to   = today + timedelta(days=90)
+        rows = DriverSchedule.objects.filter(
+            driver=me, work_date__gte=rng_from, work_date__lte=rng_to
+        ).values("work_date", "is_rest")
+        my_existing_json = json.dumps([
+            {"date": r["work_date"].strftime("%Y-%m-%d"), "is_rest": bool(r["is_rest"])}
+            for r in rows
+        ])
+
     ctx = {
         "driver": me,
         "today": today,
         "work_date": work_date,
         "existing": existing,
         "cars": cars,
+        "my_existing_json": mark_safe(my_existing_json),  # ← 前端可读
     }
     return render(request, "staffbook/schedule_form.html", ctx)
 
