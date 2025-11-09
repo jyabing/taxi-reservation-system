@@ -49,6 +49,8 @@
     </div>
   </form>
 
+  
+
   {# ===== 目标示例：本日の配車 / 整備中 / 空き車両（系统输出） ===== #}
   {% if selected_work_date %}
     <div class="card mb-3">
@@ -106,6 +108,39 @@
         {% endfor %}
       </div>
     </div>
+  {% endif %}
+
+  {% if selected_work_date and auto_schedule_groups %}
+  <div class="green-board mt-3">
+    <div class="gb-head">
+      {{ selected_work_date|date:"Y年n月j日（l）" }}
+    </div>
+
+    {% for sec_title, items in auto_schedule_groups %}
+      <div class="gb-section">
+        <div class="gb-sec-title">{{ sec_title }}</div>
+        <ul class="gb-list">
+          {% for it in items %}
+            <li class="gb-row">
+              <span class="gb-car">🚖 {{ it.num }}</span>
+              {% if it.state == "assigned" %}
+                <span class="gb-name">{{ it.driver }}</span>
+                {% if it.shift == "day" %}
+                  <span class="gb-badge">白</span>
+                {% elif it.shift == "night" %}
+                  <span class="gb-badge gb-dark">夜</span>
+                {% endif %}
+              {% elif it.state == "maint" %}
+                <span class="gb-name">🛠️ 维修中</span>
+              {% else %}
+                <span class="gb-name text-muted">未使用</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+  </div>
   {% endif %}
 
 
@@ -270,5 +305,40 @@ document.getElementById('toggle-compact')?.addEventListener('change', function()
   else root.classList.remove('compact');
 });
 </script>
+
+<style>
+/* Green board */
+.green-board {
+  background: #25b35a;      /* 绿色底 */
+  color: #111;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.green-board .gb-head {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #fff;
+  margin-bottom: .5rem;
+}
+.gb-section { margin-top: .5rem; }
+.gb-sec-title {
+  color: #f9fff9;
+  font-weight: 700;
+  margin: .25rem 0 .25rem;
+}
+.gb-list { list-style: none; margin: 0; padding: 0; }
+.gb-row { display: flex; align-items: center; gap: .75rem; padding: 2px 0; }
+.gb-car  { min-width: 72px; font-variant-numeric: tabular-nums; }
+.gb-name { flex: 1; }
+.gb-badge {
+  display: inline-block;
+  padding: 0 .4rem;
+  border-radius: .35rem;
+  background: rgba(255,255,255,.85);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.gb-badge.gb-dark { background: rgba(20,20,20,.85); color: #fff; }
+</style>
 
 {% endblock %}

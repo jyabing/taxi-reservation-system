@@ -1008,6 +1008,7 @@ def schedule_list_view(request):
             auto_date = _date.today()
 
         plan = auto_assign_plan_for_date(auto_date)  # 只计算，不落库（我们下面再决定是否写入）
+        setattr(request, "_auto_assign_plan", plan)   # ✅ 保存本次预演 plan
 
         has_meta = "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}
 
@@ -1171,7 +1172,7 @@ def schedule_list_view(request):
         if assigned_rows:
             dispatch_sections.append({"title": "本日の配車", "rows": assigned_rows})
 
-        # 未使用车辆：分成整备中 & 空车
+        # 未使用车辆：分成整備中 & 空车
         maint_rows, free_rows = [], []
         for car in cars:
             status      = getattr(car, "status", "") or ""
@@ -1196,7 +1197,160 @@ def schedule_list_view(request):
         if free_rows:
             dispatch_sections.append({"title": "空き車両", "rows": free_rows})
 
-    # ⑧ 渲染
+    # ===== 绿色板工具（带 state/shift） =====
+    from collections import defaultdict
+
+    def _car_model_text(car) -> str:
+        """
+        尽量从车型相关字段里拿“车型名”。字段名按你实际模型自调；
+        这里按常见命名做回退。
+        """
+        for f in ("model", "name", "car_model", "car_type", "category", "group"):
+            v = getattr(car, f, None)
+            if v:
+                return str(v)
+        return ""
+
+    def _car_group_title(car) -> str:
+        """
+        通过 group/category/model/name 等文本来推断 A/B/C/D；
+        识别日文/英文常见写法。
+        """
+        txt = " ".join([
+            str(getattr(car, f, "") or "")
+            for f in ("group", "category", "model", "name", "car_type")
+        ]).lower()
+
+        # A アルファード
+        if ("アルファ" in txt) or ("アルファード" in txt) or ("alphard" in txt) or ("alpha" in txt):
+            return "A アルファ"
+
+        # B ヴォクシー等（ノア/セレナ/ステップワゴン等もここへ）
+        if ("ヴォクシー" in txt) or ("ボクシー" in txt) or ("voxy" in txt) \
+        or ("ノア" in txt) or ("noah" in txt) \
+        or ("セレナ" in txt) or ("serena" in txt) \
+        or ("ステップ" in txt) or ("stepwgn" in txt) \
+        or ("ウォクシー" in txt):
+            return "B ウォクシー等"
+
+        # C カムリ
+        if ("カムリ" in txt) or ("camry" in txt):
+            return "C カムリ"
+
+        # D シエンタ
+        if ("シエンタ" in txt) or ("sienta" in txt):
+            return "D シエンタ"
+
+        return "その他"
+
+    def _car_num_label(car) -> str:
+        """
+        在车号后面拼上车型（若识别到），例：'3523 / アルファード'
+        """
+        plate = getattr(car, "license_plate", None) \
+                or getattr(car, "registration_number", None) \
+                or getattr(car, "name", None) \
+                or f"ID:{car.id}"
+        model = _car_model_text(car)
+        if model:
+            return f"{plate} / {model}"
+        return str(plate)
+
+    def _build_green_from_plan(plan, cars_all):
+        cars_by_id = {c.id: c for c in cars_all}
+        used = set()
+        groups = defaultdict(list)
+
+        sched_ids = [sid for (sid, _cid, _why) in plan.get("assign_ops", [])]
+        sched_map = {
+            s.id: s for s in DriverSchedule.objects
+                        .select_related("driver", "assigned_car")
+                        .filter(id__in=sched_ids)
+        }
+
+        # 已分配（预演）
+        for sched_id, car_id, _why in plan.get("assign_ops", []):
+            car = cars_by_id.get(car_id)
+            if not car:
+                continue
+            used.add(car_id)
+            s = sched_map.get(sched_id)
+            groups[_car_group_title(car)].append({
+                "num": _car_num_label(car),
+                "driver": s.driver.name if s and s.driver else "",
+                "shift": (s.shift or "") if s else "",
+                "state": "assigned",  # ← 已分配
+            })
+
+        # 剩余车辆（未使用 / 维修中）
+        for c in cars_all:
+            if getattr(c, "is_scrapped", False):
+                continue
+            if c.id in used:
+                continue
+            status = (getattr(c, "status", "") or "").lower()
+            is_maint = status in ("maintenance", "repair", "fixing") or getattr(c, "is_maintaining", False)
+            groups[_car_group_title(c)].append({
+                "num": _car_num_label(c),
+                "driver": "🛠️ 维修中" if is_maint else "未使用",
+                "shift": "",
+                "state": "maint" if is_maint else "free",
+            })
+
+        order = ["A アルファ", "B ウォクシー等", "C カムリ", "D シエンタ", "その他"]
+        return [(g, groups[g]) for g in order if groups.get(g)]
+
+    def _build_green_from_assigned(day_qs_full, cars_all):
+        used = set()
+        groups = defaultdict(list)
+
+        # 已落库的当天配车
+        for s in day_qs_full.select_related("assigned_car", "driver"):
+            car = s.assigned_car
+            if not car:
+                continue
+            used.add(car.id)
+            groups[_car_group_title(car)].append({
+                "num": _car_num_label(car),
+                "driver": s.driver.name if s.driver else "",
+                "shift": s.shift or "",
+                "state": "assigned",
+            })
+
+        # 剩余车辆（未使用 / 维修中）
+        for c in cars_all:
+            if getattr(c, "is_scrapped", False):
+                continue
+            if c.id in used:
+                continue
+            status = (getattr(c, "status", "") or "").lower()
+            is_maint = status in ("maintenance", "repair", "fixing") or getattr(c, "is_maintaining", False)
+            groups[_car_group_title(c)].append({
+                "num": _car_num_label(c),
+                "driver": "🛠️ 维修中" if is_maint else "未使用",
+                "shift": "",
+                "state": "maint" if is_maint else "free",
+            })
+
+        order = ["A アルファ", "B ウォクシー等", "C カムリ", "D シエンタ", "その他"]
+        return [(g, groups[g]) for g in order if groups.get(g)]
+
+    # ⑧ 绿色板数据：dryrun 时优先用刚计算的 plan，否则读数据库
+    auto_schedule_groups = None
+    if selected_work_date:
+        is_dryrun = (request.GET.get("dryrun") or "").strip() == "1"
+        plan_obj = getattr(request, "_auto_assign_plan", None) if is_dryrun else None
+        if plan_obj:
+            auto_schedule_groups = _build_green_from_plan(plan_obj, cars)
+        else:
+            day_qs_full = (
+                DriverSchedule.objects
+                .select_related("driver", "assigned_car")
+                .filter(work_date=selected_work_date)
+            )
+            auto_schedule_groups = _build_green_from_assigned(day_qs_full, cars)
+
+    # ⑨ 渲染
     ctx = {
         "date_from": date_from,
         "date_to": date_to,
@@ -1208,20 +1362,10 @@ def schedule_list_view(request):
         "selected_driver": int(driver_id) if driver_id else None,
         "selected_work_date": selected_work_date,
         "dispatch_sections": dispatch_sections,
-        # auto_assign dry-run 预览
         "auto_assign_preview": getattr(request, "_auto_assign_preview", None),
+        "auto_schedule_groups": auto_schedule_groups,   # ✅ 绿色板
     }
-
-    # === BEGIN INSERT: 自动配车清单 ===
-    auto_date = selected_work_date or localdate()
-    ctx["auto_schedule_date"] = auto_date
-    ctx["auto_schedule_groups"] = build_daily_vehicle_schedule(auto_date)
-    # === END INSERT ===
-
     return render(request, "staffbook/schedule_list.html", ctx)
-
-
-# ======= staffbook/views.py 替换结束 =======
 
 # ==============================================================
 # END: 管理员 / 事务员：查看所有司机提交的“日期+希望车両”
