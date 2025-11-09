@@ -10,7 +10,7 @@ from datetime import datetime as DatetimeClass, timedelta, date as _date, dateti
 from django.views.decorators.http import require_http_methods
 from django.utils.safestring import mark_safe
 
-from django.utils.timezone import make_aware, is_naive
+from django.utils.timezone import make_aware, is_naive, now, localdate
 from collections import defaultdict
 from carinfo.models import Car
 from vehicles.models import Reservation
@@ -43,7 +43,7 @@ from django.utils import timezone
 from django import forms
 
 from calendar import monthrange
-from django.utils.timezone import now
+
 from django.core.paginator import Paginator
 from django.urls import reverse
 from decimal import Decimal, ROUND_HALF_UP
@@ -809,7 +809,7 @@ def my_reservations_view(request):
 
     today = _date.today()
     # 你模板里要显示 “今天 ~ to_date”
-    to_date = today + timedelta(days=14)   # 想 7 天就写 7
+    to_date = today + timedelta(days=14)   # 自己的sschedule, 想 7 天就写 7, 14 天就写 14 天
 
     if driver:
         schedules = (
@@ -831,6 +831,85 @@ def my_reservations_view(request):
 # ==============================================================
 # END: 司机本人查看「我的预约」页面
 # ==============================================================
+
+# === 目标示例：车辆分组与清单生成（A/B/C/D/その他） ===
+_SCHEDULE_GROUP_RULES = [
+    (["alphard", "アルファード", "alpha"], "A アルファ"),
+    (["voxy", "ヴォクシー", "noah", "ノア"], "B ウォクシー等"),
+    (["camry", "カムリ"],                   "C カムリ"),
+    (["sienta", "シエンタ"],               "D シエンタ"),
+]
+
+def _veh_number(v):
+    return (
+        getattr(v, "license_plate", "") or
+        getattr(v, "nameplate", "") or
+        getattr(v, "registration_number", "") or
+        str(getattr(v, "id", ""))
+    )
+
+def _veh_group_title(v):
+    val = (getattr(v, "model", "") or getattr(v, "model_code", "") or "").lower()
+    for keys, title in _SCHEDULE_GROUP_RULES:
+        if any(k.lower() in val for k in keys):
+            return title
+    return "その他"
+
+def _driver_name(d):
+    if not d:
+        return ""
+    for attr in ("display_name", "name", "full_name", "realname", "username"):
+        if hasattr(d, attr) and getattr(d, attr):
+            return str(getattr(d, attr))
+    return str(d)
+
+def build_daily_vehicle_schedule(work_date):
+    """
+    返回 [(group_title, [(num, driver, is_repair), ...]), ...] 已排序。
+    规则：
+      - 同日若有预约，优先显示 STATUS=out 的司机；否则显示当天该车第一条预约的司机
+      - 维修中车辆显示“🛠️ 维修中”，司机留空
+      - 车号按数字排序
+    """
+    vehicles = Car.objects.exclude(status__in=["retired", "scrapped", "disabled"])
+
+    # 当天涉及的预约（含跨日）
+    day_res = (
+        Reservation.objects
+        .select_related("vehicle", "driver")
+        .filter(date__lte=work_date, end_date__gte=work_date)
+        .order_by("vehicle_id", "status", "start_time")
+    )
+
+    # 挑每辆车“最合适的一条”
+    chosen = {}
+    for r in day_res:
+        vid = getattr(r.vehicle, "id", None)
+        prev = chosen.get(vid)
+        # 优先 out，其次第一条
+        if prev is None or (getattr(prev, "status", "") != "out" and getattr(r, "status", "") == "out"):
+            chosen[vid] = r
+
+    grouped = {}
+    for v in vehicles:
+        is_repair = (getattr(v, "status", "") in ["repair", "maintenance", "fixing"])
+        num = _veh_number(v)
+        r = chosen.get(getattr(v, "id", None))
+        dname = _driver_name(getattr(r, "driver", None)) if (r and not is_repair) else ""
+        gtitle = _veh_group_title(v)
+        grouped.setdefault(gtitle, []).append((num, dname, is_repair))
+
+    # 数字顺序（029、162……）
+    def _numkey(t):
+        digits = "".join(ch for ch in str(t[0]) if ch.isdigit())
+        return int(digits) if digits else 10**9
+
+    for rows in grouped.values():
+        rows.sort(key=_numkey)
+
+    order = ["A アルファ", "B ウォクシー等", "C カムリ", "D シエンタ", "その他"]
+    return [(g, grouped[g]) for g in order if g in grouped and grouped[g]]
+
 
 # ==============================================================
 # 管理员 / 事务员：查看所有司机提交的“日期+希望车両”
@@ -854,7 +933,7 @@ def schedule_list_view(request):
     """
     today = _date.today()
     date_from = today
-    date_to   = today + timedelta(days=7)
+    date_to   = today + timedelta(days=14)   # 默认看未来7天
 
     group         = request.GET.get("group", "date")      # "date" 或 "driver"
     driver_id     = request.GET.get("driver")             # 司机过滤
@@ -1132,6 +1211,13 @@ def schedule_list_view(request):
         # auto_assign dry-run 预览
         "auto_assign_preview": getattr(request, "_auto_assign_preview", None),
     }
+
+    # === BEGIN INSERT: 自动配车清单 ===
+    auto_date = selected_work_date or localdate()
+    ctx["auto_schedule_date"] = auto_date
+    ctx["auto_schedule_groups"] = build_daily_vehicle_schedule(auto_date)
+    # === END INSERT ===
+
     return render(request, "staffbook/schedule_list.html", ctx)
 
 
@@ -2380,9 +2466,4 @@ def driver_salary(request, driver_id):
 
         **context,
     })
-
-
-
-
-
 

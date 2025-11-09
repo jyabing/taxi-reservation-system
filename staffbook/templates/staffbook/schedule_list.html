@@ -49,6 +49,68 @@
     </div>
   </form>
 
+  {# ===== 目标示例：本日の配車 / 整備中 / 空き車両（系统输出） ===== #}
+  {% if selected_work_date %}
+    <div class="card mb-3">
+      <div class="card-header d-flex align-items-center gap-2">
+        <div>🗓 {{ selected_work_date|date:"Y-m-d (D)" }} のシステム配車プレビュー</div>
+
+        <form method="post" class="ms-auto d-flex gap-2">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="auto_assign">
+          <input type="hidden" name="auto_work_date" value="{{ selected_work_date|date:'Y-m-d' }}">
+          <button class="btn btn-outline-secondary btn-sm" formaction="?dryrun=1">予演だけ</button>
+          <button class="btn btn-primary btn-sm">この内容で確定</button>
+        </form>
+      </div>
+
+      <div class="list-group list-group-flush">
+        {% for sec in dispatch_sections %}
+          <div class="list-group-item">
+            <div class="fw-bold mb-2">{{ sec.title }}</div>
+
+            {% if sec.rows %}
+              <div class="row g-2 small">
+                {% for r in sec.rows %}
+                  <div class="col-12 col-md-6">
+                    {% if r.car %}
+                      <span class="badge bg-light text-dark">
+                        {{ r.car.label|default:r.car }}
+                      </span>
+                    {% else %}
+                      <span class="badge bg-outline text-muted border">車両なし</span>
+                    {% endif %}
+
+                    {% if r.driver %}
+                      <span class="ms-2">
+                        {{ r.driver.driver_code }} {{ r.driver.name }}
+                      </span>
+                    {% else %}
+                      <span class="ms-2 text-muted">未使用</span>
+                    {% endif %}
+
+                    {% if r.is_rest %}<span class="badge bg-secondary ms-1">休</span>{% endif %}
+                    {% if r.shift == 'day' %}<span class="badge bg-info ms-1">白</span>{% endif %}
+                    {% if r.shift == 'night' %}<span class="badge bg-dark ms-1">夜</span>{% endif %}
+
+                    {% if r.admin_note %}
+                      <span class="ms-2 text-muted">（{{ r.admin_note }}）</span>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">該当なし</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+
+
+
   {# ===== 分组渲染 ===== #}
   {% for key, rows in grouped.items %}
     <h6 class="text-muted mt-3 mb-2">
