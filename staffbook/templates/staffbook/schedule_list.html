@@ -158,7 +158,10 @@
 
     <div class="vstack gap-2">
       {% for row in rows %}
-      <details class="sched-acc card p-0" {% if forloop.first %}open{% endif %} data-id="{{ row.id }}">
+      <details class="sched-acc card p-0"
+              {% if forloop.first %}open{% endif %}
+              data-id="{{ row.id }}"
+              data-rest="{% if row.is_rest %}1{% else %}0{% endif %}">
         <summary class="summary-line">
           <div class="d-flex w-100 justify-content-between align-items-center">
             <div class="summary-main">
@@ -210,7 +213,8 @@
 
             <div class="col-12 col-md-3">
               <label class="form-label small mb-1">会社決定（車両）</label>
-              <select class="form-select form-select-sm" name="assigned_car">
+              <select class="form-select form-select-sm" name="assigned_car"
+                    {% if row.is_rest %}disabled data-rest="1" title="休のため選択不可"{% endif %}>
                 <option value="">-- 未決定 --</option>
                 {% for c in cars %}
                   <option value="{{ c.id }}"
@@ -340,5 +344,18 @@ document.getElementById('toggle-compact')?.addEventListener('change', function()
 }
 .gb-badge.gb-dark { background: rgba(20,20,20,.85); color: #fff; }
 </style>
+
+<script>
+/** 兜底：把 data-rest="1" 的行车辆下拉始终禁用 */
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('details.sched-acc[data-rest="1"]').forEach(function (box) {
+    const sel = box.querySelector('select[name="assigned_car"]');
+    if (sel) {
+      sel.disabled = true;
+      sel.setAttribute('title', '休のため選択不可');
+    }
+  });
+});
+</script>
 
 {% endblock %}
