@@ -8,7 +8,7 @@
 
   <div class="d-flex justify-content-between align-items-center mb-2 sticky-filters">
     <div class="small text-muted">
-      规则 v1.0：入社早→事故率低→出勤率高→上月売上高→毁约率低→driver_id昇順
+      规则 v1.0：事故率低→毁约率低→上月売上高→出勤率高→入社早→driver_id昇順
     </div>
     <div class="d-flex align-items-center gap-2">
       <label class="form-check form-switch m-0 small">
@@ -51,7 +51,7 @@
 
   
 
-  {# ===== 目标示例：本日の配車 / 整備中 / 空き車両（系统输出） ===== #}
+  {# ===== 预演/今日配车卡片 ===== #}
   {% if selected_work_date %}
     <div class="card mb-3">
       <div class="card-header d-flex align-items-center gap-2">
@@ -98,6 +98,18 @@
                     {% if r.admin_note %}
                       <span class="ms-2 text-muted">（{{ r.admin_note }}）</span>
                     {% endif %}
+
+                    {# ===== 【开始留存代码】每行显示“推荐理由”摘要 ===== #}
+                    {% if r.why %}
+                      <div class="text-muted mt-1" style="font-size:.85em;">
+                        ・事故率(12ヶ月)：{{ r.why.accident_rate }}（事故 {{ r.why.accidents_12m }} / 出勤 {{ r.why.attend_days_12m }}）<br>
+                        ・毁约率(90日)：{{ r.why.breach_rate }}<br>
+                        ・上月売上(不含税)：{{ r.why.last_month_sales }} 円<br>
+                        ・出勤率(90日)：{{ r.why.attendance_rate_90 }}（出勤 {{ r.why.attend_days_90 }} / 工作日 {{ r.why.workdays_90 }}）<br>
+                        ・入社日：{{ r.why.join_date|default:"-" }}
+                      </div>
+                    {% endif %}
+                    {# ===== 【结束留存代码】每行显示“推荐理由”摘要 ===== #}
                   </div>
                 {% endfor %}
               </div>
@@ -110,37 +122,39 @@
     </div>
   {% endif %}
 
-  {% if selected_work_date and auto_schedule_groups %}
-  <div class="green-board mt-3">
-    <div class="gb-head">
-      {{ selected_work_date|date:"Y年n月j日（l）" }}
-    </div>
 
-    {% for sec_title, items in auto_schedule_groups %}
-      <div class="gb-section">
-        <div class="gb-sec-title">{{ sec_title }}</div>
-        <ul class="gb-list">
-          {% for it in items %}
-            <li class="gb-row">
-              <span class="gb-car">🚖 {{ it.num }}</span>
-              {% if it.state == "assigned" %}
-                <span class="gb-name">{{ it.driver }}</span>
-                {% if it.shift == "day" %}
-                  <span class="gb-badge">白</span>
-                {% elif it.shift == "night" %}
-                  <span class="gb-badge gb-dark">夜</span>
-                {% endif %}
-              {% elif it.state == "maint" %}
-                <span class="gb-name">🛠️ 维修中</span>
-              {% else %}
-                <span class="gb-name text-muted">未使用</span>
-              {% endif %}
-            </li>
-          {% endfor %}
-        </ul>
+  {# ===== 绿色面板（带悬停tooltip） ===== #}
+  {% if selected_work_date and auto_schedule_groups %}
+    <div class="green-board mt-3">
+      <div class="gb-head">
+        {{ selected_work_date|date:"Y年n月j日（l）" }}
       </div>
-    {% endfor %}
-  </div>
+
+      {% for sec_title, items in auto_schedule_groups %}
+        <div class="gb-section">
+          <div class="gb-sec-title">{{ sec_title }}</div>
+          <ul class="gb-list">
+            {% for it in items %}
+              <li class="gb-row" {% if it.tooltip %}title="{{ it.tooltip }}"{% endif %}>
+                <span class="gb-car">🚖 {{ it.num }}</span>
+                {% if it.state == "assigned" %}
+                  <span class="gb-name">{{ it.driver }}</span>
+                  {% if it.shift == "day" %}
+                    <span class="gb-badge">白</span>
+                  {% elif it.shift == "night" %}
+                    <span class="gb-badge gb-dark">夜</span>
+                  {% endif %}
+                {% elif it.state == "maint" %}
+                  <span class="gb-name">🛠️ 维修中</span>
+                {% else %}
+                  <span class="gb-name text-muted">未使用</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
   {% endif %}
 
 

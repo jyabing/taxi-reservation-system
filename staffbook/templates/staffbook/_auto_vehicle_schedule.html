@@ -1,0 +1,24 @@
+{# staffbook/_auto_vehicle_schedule.html 绿色风格输出 #}
+<div class="p-4 rounded-4" style="background-color:#22c55e; color:#000; font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif;">
+
+  <h3 class="fw-bold mb-4" style="text-align:center;">
+    {{ auto_schedule_date|date:"Y年n月j日（D）" }}
+  </h3>
+
+  {% for title, rows in ordered_groups %}
+    <h4 class="fw-bold mt-4 mb-2">{{ title }}</h4>
+
+    {% for num, driver, is_repair in rows %}
+      <div class="d-flex align-items-center mb-1" style="font-size:1.6rem; line-height:1.6rem;">
+        <span class="me-2">🚖</span>
+        <span class="me-3" style="min-width:6ch; display:inline-block;">{{ num }}</span>
+        {% if is_repair %}
+          <span>🛠️ 维修中</span>
+        {% else %}
+          <span>{{ driver|default:"" }}</span>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% endfor %}
+
+</div>

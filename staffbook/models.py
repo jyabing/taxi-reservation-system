@@ -7,6 +7,7 @@ from carinfo.models import Car
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+from django.db.models import Q, UniqueConstraint
 
 # 📌 插入在 import 之后，模型定义之前
 RESIDENCE_STATUS_CHOICES = [
@@ -496,9 +497,19 @@ class DriverSchedule(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # ====== BEGIN STEP1 PATCH (models.py -> DriverSchedule.Meta) ======
     class Meta:
         unique_together = (("driver", "work_date"),)
         ordering = ["-work_date", "-created_at"]
+        constraints = [
+            # ✅ 同一天 + 非空车辆 只能分配给一个人
+            UniqueConstraint(
+                fields=["work_date", "assigned_car"],
+                condition=Q(assigned_car__isnull=False),
+                name="uniq_car_per_day",
+            ),
+        ]
+    # ======  END  STEP1 PATCH (models.py -> DriverSchedule.Meta)  ======
 
     def __str__(self):
         return f"{self.driver} {self.work_date} {'rest' if self.is_rest else 'wish'}"
