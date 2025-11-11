@@ -92,7 +92,7 @@
                     {% endif %}
 
                     {% if r.is_rest %}<span class="badge bg-secondary ms-1">休</span>{% endif %}
-                    {% if r.shift == 'day' %}<span class="badge bg-info ms-1">白</span>{% endif %}
+                    {% if r.shift == 'day' %}<span class="badge bg-info ms-1">昼</span>{% endif %}
                     {% if r.shift == 'night' %}<span class="badge bg-dark ms-1">夜</span>{% endif %}
 
                     {% if r.admin_note %}
@@ -140,7 +140,7 @@
                 {% if it.state == "assigned" %}
                   <span class="gb-name">{{ it.driver }}</span>
                   {% if it.shift == "day" %}
-                    <span class="gb-badge">白</span>
+                    <span class="gb-badge">昼</span>
                   {% elif it.shift == "night" %}
                     <span class="gb-badge gb-dark">夜</span>
                   {% endif %}
@@ -190,7 +190,7 @@
               {% if row.is_rest %}
                 <span class="badge bg-secondary">休</span>
               {% else %}
-                {% if row.shift == 'day' %}<span class="badge bg-info">白</span>{% endif %}
+                {% if row.shift == 'day' %}<span class="badge bg-info">昼</span>{% endif %}
                 {% if row.shift == 'night' %}<span class="badge bg-dark">夜</span>{% endif %}
                 {% if row.assigned_car %}
                   <span class="badge bg-success ms-1">{{ row.assigned_car.label|default:row.assigned_car }}</span>

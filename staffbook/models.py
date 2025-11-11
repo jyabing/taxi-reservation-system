@@ -501,13 +501,13 @@ class DriverSchedule(models.Model):
     class Meta:
         unique_together = (("driver", "work_date"),)
         ordering = ["-work_date", "-created_at"]
+
+        # ===== 【开始留存代码】同一天 + 同车 + 同班 则唯一 =====
         constraints = [
-            # ✅ 同一天 + 非空车辆 只能分配给一个人
-            UniqueConstraint(
-                fields=["work_date", "assigned_car"],
-                condition=Q(assigned_car__isnull=False),
-                name="uniq_car_per_day",
-            ),
+            models.UniqueConstraint(
+                fields=["work_date", "assigned_car", "shift"],
+                name="uniq_car_per_day_and_shift"
+            )
         ]
     # ======  END  STEP1 PATCH (models.py -> DriverSchedule.Meta)  ======
 

@@ -71,6 +71,15 @@ def is_admin_user(user):
     # "仅允许 is_staff 或 superuser 的用户访问：要么是超级管理员，要么是staff
     return user.is_superuser or user.is_staff
 
+# ===== BEGIN keep-code: Japanese date helper =====
+WEEK_JA = ['月', '火', '水', '木', '金', '土', '日']
+def fmt_jp_date(d):
+    """2025年11月14日（金）のように整形"""
+    if not d:
+        return ""
+    return f"{d.year}年{d.month}月{d.day}日（{WEEK_JA[d.weekday()]}）"
+# ===== END keep-code: Japanese date helper =====
+
 # ===== 売上に基づく分段控除（給与側の規則）BEGIN =====
 def calc_progressive_fee_by_table(amount_jpy: int | Decimal) -> int:
     """
@@ -117,6 +126,17 @@ def _safe_date(d, default_future=True):
         return d
     return _date(2100, 1, 1) if default_future else _date(1970, 1, 1)
 
+def _serialize_sort_key(tup):
+    """把排序键里的 date 等不可 JSON 序列化对象转换为字符串"""
+    out = []
+    for v in key_tuple:
+        if hasattr(v, "isoformat"):  # date/datetime
+            out.append(v.isoformat())
+        else:
+            out.append(v)
+    return tuple(out)
+
+
 def _business_days(d1: date, d2: date) -> int:
     days, cur = 0, d1
     while cur < d2:
@@ -127,7 +147,19 @@ def _business_days(d1: date, d2: date) -> int:
 
 # --- 指标（无数据时做稳健兜底） ---
 def metric_join_date(driver) -> date:
-    return _safe_date(getattr(driver, "hire_date", None) or getattr(driver, "join_date", None))
+    jd = getattr(driver, "hire_date", None) or getattr(driver, "join_date", None)
+    return jd
+
+def metric_accident_rate(driver, ref: date) -> float:
+    if not Accident or not DriverDailyReportItem:
+        return 0.0
+    a_from = ref - timedelta(days=365)
+    cnt = Accident.objects.filter(driver=driver, happened_at__gte=a_from, happened_at__lt=ref).count()
+    attend = (DriverDailyReportItem.objects
+              .filter(report__driver=driver, report__date__gte=a_from, report__date__lt=ref)
+              .values('report__date').distinct().count())
+    return cnt / max(attend, 1)
+
 
 def _attend_days(driver, start: date, end: date) -> int:
     if not DriverDailyReportItem:
@@ -137,106 +169,64 @@ def _attend_days(driver, start: date, end: date) -> int:
             .values('report__date').distinct().count())
 
 
-def metric_accident_rate(driver, ref: date) -> float:
-    a_from = ref - timedelta(days=365)
-    cnt = Accident.objects.filter(driver=driver, happened_at__gte=a_from, happened_at__lt=ref).count()
-    attend = _attend_days(driver, a_from, ref)
-    return cnt / max(attend, 1)
-
-# ==== 开始留存代码：替换 metric_attendance_rate ====
 def metric_attendance_rate(driver, ref: date) -> float:
-    """近90天 出勤天数 ÷ 工作日天数（越高越好）"""
-    start = ref - timedelta(days=90)
-    # 没有报表模型时，直接返回 0
-    if DriverDailyReportItem is None:
+    if not DriverDailyReportItem:
         return 0.0
+    start = ref - timedelta(days=90)
     attend = (DriverDailyReportItem.objects
               .filter(report__driver=driver, report__date__gte=start, report__date__lt=ref)
               .values('report__date').distinct().count())
-    biz = _business_days(start, ref)
-    return attend / biz
-# ==== 结束留存代码 ====
+    return attend / _business_days(start, ref)
 
-# ==== 开始留存代码：替换 metric_sales_last_month ====
 def metric_sales_last_month(driver, ref: date) -> float:
-    """上月 不含税売上（越高越好）。没有报表模型时返回 0。"""
-    if DriverDailyReportItem is None:
+    if not DriverDailyReportItem:
         return 0.0
     y, m = ref.year, ref.month
     py, pm = (y, m-1) if m > 1 else (y-1, 12)
     start, end = date(py, pm, 1), date(y, m, 1)
-    qs = DriverDailyReportItem.objects.filter(
-        report__driver=driver, report__date__gte=start, report__date__lt=end
-    )
+    qs = DriverDailyReportItem.objects.filter(report__driver=driver,
+                                              report__date__gte=start,
+                                              report__date__lt=end)
     gross = (qs.aggregate(total=Sum(F('meter_fee') + F('charter_amount_jpy')))['total'] or 0)
     try:
-        return float(Decimal(gross) / Decimal("1.10"))  # 去税
+        return float(Decimal(gross) / Decimal("1.10"))
     except Exception:
         return float(gross)
-# ==== 结束留存代码 ====
 
-# ===== 【开始留存代码】修复 metric_breach_rate：按 DriverUser 过滤 =====
+
 def metric_breach_rate(driver, ref: date) -> float:
-    """
-    近90天 毁约率（越低越好）。
-    注意：Reservation.driver 指向 DriverUser；这里用 driver.user 参与过滤。
-    当没有绑定 user 时，返回 0.0（视为无数据）。
-    """
-    # 1) 找到 DriverUser
-    driver_user = getattr(driver, "user", None)
-    try:
-        # 如果导入得到 DriverUser 类型可用就顺便做类型判断；导入失败也不影响逻辑
-        from accounts.models import DriverUser as _DriverUser
-        if driver_user is not None and not isinstance(driver_user, _DriverUser):
-            # 类型不对就当无数据
-            return 0.0
-    except Exception:
-        # 忽略类型检查
-        pass
-
-    if not driver_user:
-        return 0.0  # 该 Driver 未绑定用户，则视为无数据
-
-    # 2) 时间字段与窗口
+    if not Reservation:
+        return 0.0
     start = ref - timedelta(days=90)
-    time_field = 'reserved_at' if hasattr(Reservation, 'reserved_at') else (
-        'created_at' if hasattr(Reservation, 'created_at') else None
-    )
+    time_field = None
+    for f in ("reserved_at", "created_at"):
+        if hasattr(Reservation, f):
+            time_field = f
+            break
     if not time_field:
         return 0.0
     time_filter = {f"{time_field}__gte": start, f"{time_field}__lt": ref}
-
-    # 3) 统计
+    total = Reservation.objects.filter(driver=driver, **time_filter).count()
     cancel_statuses = ["canceled", "cancelled", "no_show", "rejected"]
-    base_qs = Reservation.objects.filter(driver=driver_user, **time_filter)
-
-    total = base_qs.count()
-    if total == 0:
-        return 0.0
-
-    canceled = base_qs.filter(status__in=cancel_statuses).count()
-    return canceled / total
-# ===== 【结束留存代码】修复 metric_breach_rate =====
+    canceled = Reservation.objects.filter(driver=driver, **time_filter, status__in=cancel_statuses).count()
+    return canceled / max(total, 1)
 
 def build_ranking_key(driver, ref: date):
     """
-    顺序：
-      1) 事故率低（近12个月）      asc
-      2) 毁约率低（近90天）        asc
-      3) 上月売上高（不含税）      desc
-      4) 出勤率高（近90天）        desc
-      5) 入社早                   asc
-      6) driver_id                asc
+    优先顺序：
+      1) 事故率低 (asc)
+      2) 毁约率低 (asc)
+      3) 上月売上高 (desc)
+      4) 出勤率高 (desc)
+      5) 入社早   (asc)
+      6) driver_id(asc)
     """
-    jd = metric_join_date(driver)                 # 日期
-    ar = metric_accident_rate(driver, ref)       # 事故率
-    br = metric_breach_rate(driver, ref)         # 毁约率
-    sl = metric_sales_last_month(driver, ref)    # 上月売上（不含税）
-    at = metric_attendance_rate(driver, ref)     # 近90天出勤率
-
-    # 入社越早越好 → 直接用日期参与比较（早的更小）
+    jd = metric_join_date(driver) or date(2100,1,1)
+    ar = metric_accident_rate(driver, ref)
+    br = metric_breach_rate(driver, ref)
+    sl = metric_sales_last_month(driver, ref)
+    at = metric_attendance_rate(driver, ref)
     return (ar, br, -sl, -at, jd, driver.id)
-
 
 
 def _serialize_sort_key(val):
@@ -286,63 +276,69 @@ def _serialize_sort_key(sk):
 
 # ===== 【开始留存代码】build_assign_reason：计算详细理由（全局可复用） =====
 def build_assign_reason(drv, ref: date):
-    """
-    生成一个包含 事故率/毁约率/上月売上/出勤率/入社日/排序键 等字段的理由字典。
-    drv: Driver 实例
-    ref: 基准日期（通常是 work_date）
-    """
-    # 基本指标（内部已经各自兜底）
+    """生成落库/预演通用的“推荐理由”结构，全部字段可 JSON 序列化"""
     jd = metric_join_date(drv)
     ar = metric_accident_rate(drv, ref)
     at = metric_attendance_rate(drv, ref)
     sl = metric_sales_last_month(drv, ref)
     br = metric_breach_rate(drv, ref)
 
-    # 统计窗口
     a_from = ref - timedelta(days=365)
     b_from = ref - timedelta(days=90)
+    # --- 安全取数：模型可能不存在时返回 0 ---
+    # 事故数（近12个月）
+    try:
+        if 'Accident' in globals() and Accident is not None:
+            accidents_12m = Accident.objects.filter(
+                driver=drv, happened_at__gte=a_from, happened_at__lt=ref
+            ).count()
+        else:
+            accidents_12m = 0
+    except Exception:
+        accidents_12m = 0
 
-    # 事故数（Driver/Accident 在本 app 中，正常可用；若你移到别的 app 也可按需 try/except）
-    accidents_12m = Accident.objects.filter(
-        driver=drv, happened_at__gte=a_from, happened_at__lt=ref
-    ).count()
-
-    # 出勤统计：缺少 reports 应用时安全降级为 0
-    if 'DriverDailyReportItem' in globals() and DriverDailyReportItem is not None:
-        attend_12m = (DriverDailyReportItem.objects
-                      .filter(report__driver=drv,
-                              report__date__gte=a_from, report__date__lt=ref)
-                      .values('report__date').distinct().count())
-        attend_90 = (DriverDailyReportItem.objects
-                     .filter(report__driver=drv,
-                             report__date__gte=b_from, report__date__lt=ref)
-                     .values('report__date').distinct().count())
-    else:
+    # 出勤天数（近12个月）
+    try:
+        if 'DriverDailyReportItem' in globals() and DriverDailyReportItem is not None:
+            attend_12m = (DriverDailyReportItem.objects
+                        .filter(report__driver=drv,
+                                report__date__gte=a_from, report__date__lt=ref)
+                        .values('report__date').distinct().count())
+        else:
+            attend_12m = 0
+    except Exception:
         attend_12m = 0
+
+    # 出勤天数（近90天）
+    try:
+        if 'DriverDailyReportItem' in globals() and DriverDailyReportItem is not None:
+            attend_90 = (DriverDailyReportItem.objects
+                        .filter(report__driver=drv,
+                                report__date__gte=b_from, report__date__lt=ref)
+                        .values('report__date').distinct().count())
+        else:
+            attend_90 = 0
+    except Exception:
         attend_90 = 0
 
-    # 工作日（周一~周五）
     wd90 = sum(1 for i in range(90) if (b_from + timedelta(days=i)).weekday() < 5)
 
-    # 展示用事故率（分母为 0 -> "NA"）
-    acc_rate_show = (round(accidents_12m / attend_12m, 4)
+    acc_rate_show = (round(accidents_12m / max(attend_12m,1), 4)
                      if attend_12m > 0 else "NA")
 
-    # 排序键（与你的 6 项规则一致）→ 一定要序列化再放进 JSON
-    sk = build_ranking_key(drv, ref)
-    sort_key = _serialize_sort_key(sk)
+    sort_key = _serialize_sort_key(build_ranking_key(drv, ref))
 
     return {
-        "join_date": jd.isoformat() if isinstance(jd, date) else None,
-        "accidents_12m": int(accidents_12m),
-        "attend_days_12m": int(attend_12m),
-        "accident_rate": acc_rate_show,                    # 可能是 float 或 "NA"
-        "attend_days_90": int(attend_90),
-        "workdays_90": int(wd90),
-        "attendance_rate_90": round(float(at), 4) if isinstance(at, (int, float, Decimal)) else 0.0,
-        "last_month_sales": int(sl) if isinstance(sl, (int, float, Decimal)) else 0,
-        "breach_rate": float(br) if isinstance(br, (int, float, Decimal)) else 0.0,
-        "sort_key": sort_key,                              # 已处理为 list/基础类型
+        "join_date": jd.isoformat() if jd else None,
+        "accidents_12m": accidents_12m,
+        "attend_days_12m": attend_12m,
+        "accident_rate": acc_rate_show,
+        "attend_days_90": attend_90,
+        "workdays_90": wd90,
+        "attendance_rate_90": round(at, 4),
+        "last_month_sales": int(sl),
+        "breach_rate": float(br),
+        "sort_key": sort_key,
         "priority_order": [
             "accident_rate_12m（低）",
             "breach_rate（低）",
@@ -352,7 +348,33 @@ def build_assign_reason(drv, ref: date):
             "driver_id（昇順）",
         ],
     }
-# ===== 【结束留存代码】build_assign_reason =====
+
+# ===== 留存代码-开始: notices & tooltip =====
+DAY_NOTICE   = "（もし昼勤と夜勤の交代があれば17時厳守。）"
+NIGHT_NOTICE = "（もし夜勤と昼勤の交代があれば7時厳守。）"
+
+def _format_reason_tooltip(why: dict) -> str:
+    if not why:
+        return ""
+    def pct(x):
+        try:
+            return f"{float(x)*100:.1f}%"
+        except Exception:
+            return "NA"
+    parts = []
+    parts.append(f"入社日: {why.get('join_date') or '-'}")
+    parts.append(
+        f"事故率(12ヶ月): {why.get('accident_rate')} "
+        f"（事故{why.get('accidents_12m',0)} / 出勤{why.get('attend_days_12m',0)}）"
+    )
+    parts.append(
+        f"出勤率(90日): {why.get('attendance_rate_90')} "
+        f"（出勤{why.get('attend_days_90',0)} / 営業日{why.get('workdays_90',0)}）"
+    )
+    parts.append(f"上月売上(税抜): {why.get('last_month_sales',0)}円")
+    parts.append(f"毁約率(90日): {why.get('breach_rate',0)}")
+    return " / ".join([p for p in parts if p])
+# ===== 留存代码-结束 =====
 
 
 def build_priority_tuple_and_reason(d):
@@ -417,12 +439,18 @@ def build_priority_tuple_and_reason(d):
     }
     return key, reason
 
+DAY_NOTICE   = "（もし昼勤と夜勤の交代があれば17時厳守。）"
+NIGHT_NOTICE = "（もし夜勤と昼勤の交代があれば7時厳守。）"
 
 # —— 主函数：自动配车 —— 
-def auto_assign_for_date(target_date: date) -> dict:
+def auto_assign_plan_for_date(target_date: _date):
     """
-    先第1希望（冲突按评分），再第2，希望未中者若 any_car=True 则分配剩余空车。
-    返回 {'first':x,'second':y,'any':z}
+    只计算不落库；返回：
+      {
+        "preview_rows": [...],   # 供灰色卡片列表
+        "assign_ops":   [(sched_id, car_id, shift, why_dict), ...],
+        "counts":       {"first":x,"second":y,"any":z}
+      }
     """
     scheds = list(
         DriverSchedule.objects
@@ -430,98 +458,115 @@ def auto_assign_for_date(target_date: date) -> dict:
         .filter(work_date=target_date, is_rest=False)
     )
 
-    used_car_ids = set(s.assigned_car_id for s in scheds if s.assigned_car_id)
+    # 已占用（按班别）
+    used_day   = {s.assigned_car_id for s in scheds if s.assigned_car_id and (s.shift or "") == "day"}
+    used_night = {s.assigned_car_id for s in scheds if s.assigned_car_id and (s.shift or "") == "night"}
 
-    # 可用车辆池
     raw_cars = Car.objects.exclude(status__in=["scrapped","retired","disabled"]).order_by('id')
-    available = []
+    available_ids = []
     for c in raw_cars:
         if getattr(c, "is_scrapped", False):  continue
         if not getattr(c, "is_active", True): continue
         st = (getattr(c,'status','') or '').strip().lower()
         if st in ("maintenance","repair","fixing") or getattr(c, 'is_maintaining', False):
             continue
-        if c.id in used_car_ids:
-            continue
-        available.append(c.id)
+        available_ids.append(c.id)
 
     ref = target_date
-    score_cache = {}
+    score_cache, why_cache = {}, {}
     def _score(drv):
         if drv.id not in score_cache:
             score_cache[drv.id] = build_ranking_key(drv, ref)
         return score_cache[drv.id]
+    def _why(drv):
+        if drv.id not in why_cache:
+            why_cache[drv.id] = build_assign_reason(drv, ref)
+        return why_cache[drv.id]
 
-    assigned = set()
-    first_cnt = 0
+    def _car_free_for_shift(car_id, shift):
+        s = (shift or "").strip()
+        if s == "night": return car_id not in used_night
+        return car_id not in used_day  # 默认当作白班
+
+    preview_rows, assign_ops = [], []
+    assigned_drv_ids = set()
+    first_cnt = second_cnt = any_cnt = 0
 
     # 第1希望
     car_to_scheds = {}
     for s in scheds:
-        if s.first_choice_car_id and s.driver_id not in assigned and not s.assigned_car_id:
+        if s.first_choice_car_id and s.driver_id not in assigned_drv_ids and not s.assigned_car_id:
             car_to_scheds.setdefault(s.first_choice_car_id, []).append(s)
 
     for car_id, rows in car_to_scheds.items():
-        if car_id in used_car_ids:
-            continue
         rows_sorted = sorted(rows, key=lambda r: _score(r.driver))
-        win = rows_sorted[0]
-        win.assigned_car_id = car_id
-        win.status = "approved"
-        win.save()
-        used_car_ids.add(car_id)
-        assigned.add(win.driver_id)
+        win = next((r for r in rows_sorted if _car_free_for_shift(car_id, r.shift)), None)
+        if not win:
+            continue
+        if (win.shift or "") == "night": used_night.add(car_id)
+        else: used_day.add(car_id)
+        assigned_drv_ids.add(win.driver_id)
         first_cnt += 1
+        preview_rows.append({
+            "car": win.first_choice_car, "driver": win.driver, "winner": True,
+            "why": _why(win.driver),
+            "others": [{"driver": r.driver, "why": _why(r.driver), "key": _score(r.driver)} for r in rows_sorted if r!=win],
+        })
+        assign_ops.append((win.id, car_id, (win.shift or ""), build_assign_reason(win.driver, ref)))
 
     # 第2希望
-    second_cnt = 0
-    remaining = [s for s in scheds if s.driver_id not in assigned and not s.assigned_car_id]
+    remaining = [s for s in scheds if s.driver_id not in assigned_drv_ids and not s.assigned_car_id]
     car2_to_scheds = {}
     for s in remaining:
         if s.second_choice_car_id:
             car2_to_scheds.setdefault(s.second_choice_car_id, []).append(s)
 
     for car_id, rows in car2_to_scheds.items():
-        if car_id in used_car_ids:
-            continue
         rows_sorted = sorted(rows, key=lambda r: _score(r.driver))
-        win = rows_sorted[0]
-        win.assigned_car_id = car_id
-        win.status = "approved"
-        win.save()
-        used_car_ids.add(car_id)
-        assigned.add(win.driver_id)
+        win = next((r for r in rows_sorted if _car_free_for_shift(car_id, r.shift)), None)
+        if not win:
+            continue
+        if (win.shift or "") == "night": used_night.add(car_id)
+        else: used_day.add(car_id)
+        assigned_drv_ids.add(win.driver_id)
         second_cnt += 1
+        preview_rows.append({
+            "car": win.second_choice_car, "driver": win.driver, "winner": True,
+            "why": _why(win.driver),
+            "others": [{"driver": r.driver, "why": _why(r.driver), "key": _score(r.driver)} for r in rows_sorted if r!=win],
+        })
+        assign_ops.append((win.id, car_id, (win.shift or ""), build_assign_reason(win.driver, ref)))
 
     # 任意车
-    any_cnt = 0
-    free = [cid for cid in available if cid not in used_car_ids]
+    free_ids = [cid for cid in available_ids]
     remain_any = [
         s for s in scheds
-        if s.driver_id not in assigned
-        and not s.assigned_car_id
-        and (
-            getattr(s, "any_car", False) is True
-            or (not s.first_choice_car_id and not s.second_choice_car_id)
-        )
+        if s.driver_id not in assigned_drv_ids and not s.assigned_car_id
+        and (getattr(s, "any_car", False) is True
+             or (not s.first_choice_car_id and not s.second_choice_car_id))
     ]
     remain_any_sorted = sorted(remain_any, key=lambda r: _score(r.driver))
-    idx = 0
     for s in remain_any_sorted:
-        while idx < len(free) and free[idx] in used_car_ids:
-            idx += 1
-        if idx >= len(free):
+        # 找第一辆在该班别可用的车
+        cid = next((cid for cid in free_ids if _car_free_for_shift(cid, s.shift)), None)
+        if not cid:
             break
-        cid = free[idx]
-        s.assigned_car_id = cid
-        s.status = "approved"
-        s.save()
-        used_car_ids.add(cid)
-        assigned.add(s.driver_id)
+        if (s.shift or "") == "night": used_night.add(cid)
+        else: used_day.add(cid)
+        assigned_drv_ids.add(s.driver_id)
         any_cnt += 1
-        idx += 1
+        preview_rows.append({
+            "car": next((c for c in raw_cars if c.id == cid), None),
+            "driver": s.driver, "winner": True,
+            "why": _why(s.driver),
+            "others": [],
+        })
+        assign_ops.append((s.id, cid, (s.shift or ""), build_assign_reason(s.driver, ref)))
 
-    return {"first": first_cnt, "second": second_cnt, "any": any_cnt}
+    return {"preview_rows": preview_rows, "assign_ops": assign_ops,
+            "counts": {"first": first_cnt, "second": second_cnt, "any": any_cnt}}
+
+
 # =================== Auto-assign block END ===================
 
 # ==== BEGIN INSERT P1: plan-only (dry-run) helper ====
@@ -662,49 +707,31 @@ def _make_reason_meta(driver, ref_date, match_kind, base_reason: dict):
     return meta
 
 
-def auto_assign_apply_ops(assign_ops, ref_date: date):
-    """
-    参数：assign_ops 形如 [(sched_id, car_id, why_dict), ...]
-    作用：把预演结果落库，并把 why_dict 写入 assignment_meta.reason。
-    返回：成功条数
-    """
-    ok = 0
-    for sched_id, car_id, why in assign_ops:
-        try:
-            with transaction.atomic():
-                obj = DriverSchedule.objects.select_for_update().get(pk=sched_id)
-                # 已经有车就跳过（避免重复）
-                if obj.assigned_car_id:
-                    continue
-
-                # 记录配车与状态
-                obj.assigned_car_id = car_id
-                obj.status = "approved"
-                if hasattr(obj, "assigned_by"):
-                    obj.assigned_by = "auto"
-                if hasattr(obj, "assigned_at"):
-                    obj.assigned_at = now()
-
-                # 判断命中种类：first / second / any
-                if obj.first_choice_car_id == car_id:
-                    match_kind = "first"
-                elif obj.second_choice_car_id == car_id:
-                    match_kind = "second"
-                else:
-                    match_kind = "any"
-
-                # 写 assignment_meta（包含 reason）
-                if "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}:
-                    base_meta = getattr(obj, "assignment_meta", {}) or {}
-                    base_meta.update(_make_reason_meta(obj.driver, ref_date, match_kind, why))
-                    obj.assignment_meta = base_meta
-
-                obj.save()
-                ok += 1
-        except IntegrityError:
-            # 命中唯一约束（同一天同车重复）时跳过
-            continue
-    return ok
+def auto_assign_apply_ops(assign_ops, target_date: date) -> int:
+    saved = 0
+    has_meta = "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}
+    for op in assign_ops:
+        # 兼容旧三元组
+        sched_id, car_id = op[0], op[1]
+        why = op[3] if len(op) > 3 else (op[2] if len(op) > 2 else {})
+        upd = {
+            "assigned_car_id": car_id,
+            "status": "approved",
+        }
+        if hasattr(DriverSchedule, "assigned_by"):
+            upd["assigned_by"] = "auto"
+        if hasattr(DriverSchedule, "assigned_at"):
+            upd["assigned_at"] = now()
+        if has_meta:
+            upd["assignment_meta"] = {
+                "rule_version": "v1.0",
+                "by": "auto",
+                "at": now().isoformat(timespec="seconds"),
+                "reason": why,
+            }
+        DriverSchedule.objects.filter(pk=sched_id).update(**upd)
+        saved += 1
+    return saved
 
 def _parse_work_dates(raw: str) -> list[_date]:
     """支持中文/英文逗号、分号、空格分隔；返回去重后的日期列表"""
@@ -1107,36 +1134,21 @@ def build_daily_vehicle_schedule(work_date):
 # 模板: staffbook/schedule_list.html
 # ==============================================================
 
+# ===== BEGIN VIEW schedule_list_view (留存代码-开始) =====
 @login_required
-@user_passes_test(is_admin_user)   # 只允许 超管 or staff
+@user_passes_test(is_admin_user)
 def schedule_list_view(request):
-    """
-    管理者用：全ドライバーの提出スケジュールを見る＆更新する
-    GET:
-      ?group=date|driver
-      ?driver=<id>
-      ?work_date=YYYY-MM-DD
-      ?dryrun=1   （在 action=auto_assign 时生效，仅预演不落库）
-    POST:
-      - 行内保存：action 省略或 != auto_assign
-      - 自动配车：action=auto_assign（支持 dryrun）
-    """
     today = _date.today()
-    date_from = today
-    date_to   = today + timedelta(days=14)   # 默认看未来7天
+    date_from, date_to = today, today + timedelta(days=14)
 
-    group         = request.GET.get("group", "date")      # "date" 或 "driver"
-    driver_id     = request.GET.get("driver")             # 司机过滤
-    work_date_str = request.GET.get("work_date")          # 指定日期过滤（亦用于“本日の配車”面板）
+    group         = request.GET.get("group","date")
+    driver_id     = request.GET.get("driver")
+    work_date_str = request.GET.get("work_date")
 
-    # ① 查询基础集合
-    qs = (
-        DriverSchedule.objects
-        .select_related("driver", "first_choice_car", "second_choice_car", "assigned_car")
-        .filter(work_date__gte=date_from, work_date__lte=date_to)
-    )
+    qs = (DriverSchedule.objects
+          .select_related("driver","first_choice_car","second_choice_car","assigned_car")
+          .filter(work_date__gte=date_from, work_date__lte=date_to))
 
-    # 指定日期进一步缩小
     selected_work_date = None
     if work_date_str:
         try:
@@ -1145,469 +1157,374 @@ def schedule_list_view(request):
         except ValueError:
             selected_work_date = None
 
-    # 指定司机进一步缩小
     if driver_id:
         qs = qs.filter(driver_id=driver_id)
 
-    # ② 车的下拉：正常在上，整備中在下；报废/退役/停用不出
-    raw_cars = (
-        Car.objects
-        .exclude(status__in=["scrapped", "retired", "disabled"])
-        .order_by("license_plate", "name", "id")
-    )
+    # 车辆下拉
+    raw_cars = Car.objects.exclude(status__in=["scrapped","retired","disabled"]).order_by("license_plate","name","id")
     normal_cars, maint_cars = [], []
     for c in raw_cars:
-        plate = getattr(c, "license_plate", None) or getattr(c, "registration_number", None) or ""
-        car_name = getattr(c, "name", None) or getattr(c, "model", None) or ""
-        base_label = " / ".join([p for p in (plate, car_name) if p]) or f"ID:{c.id}"
-
-        status      = (getattr(c, "status", "") or "").strip()
-        is_active   = getattr(c, "is_active", True)
-        is_maint    = bool(getattr(c, "is_maintaining", False))
-        is_scrapped = bool(getattr(c, "is_scrapped", False))
-
-        if is_scrapped:
-            continue
-
-        maint_status = status in ("maintenance", "repair", "fixing") or is_maint
-        if maint_status:
-            c.label = f"{base_label}（整備中）"
-            c.is_bad = True
-            maint_cars.append(c)
-            continue
-
-        if not is_active:
-            continue
-
-        c.label = base_label
-        c.is_bad = False
-        normal_cars.append(c)
-
+        plate = getattr(c,"license_plate",None) or getattr(c,"registration_number",None) or ""
+        car_name = getattr(c,"name",None) or getattr(c,"model",None) or ""
+        base_label = " / ".join([p for p in (plate,car_name) if p]) or f"ID:{c.id}"
+        status    = (getattr(c,"status","") or "").strip()
+        is_active = getattr(c,"is_active",True)
+        is_maint  = bool(getattr(c,"is_maintaining",False))
+        is_scrap  = bool(getattr(c,"is_scrapped",False))
+        if is_scrap: continue
+        if status in ("maintenance","repair","fixing") or is_maint:
+            c.label = f"{base_label}（整備中）"; c.is_bad = True; maint_cars.append(c); continue
+        if not is_active: continue
+        c.label = base_label; c.is_bad = False; normal_cars.append(c)
     cars = normal_cars + maint_cars
 
-    # ③ 下拉：司机与日期选择
-    all_drivers  = Driver.objects.order_by("driver_code", "name")
+    all_drivers  = Driver.objects.order_by("driver_code","name")
     date_choices = [date_from + timedelta(days=i) for i in range((date_to - date_from).days + 1)]
 
-    # ④ 自动配车（按钮提交）
+    # 自动配车按钮
     if request.POST.get("action") == "auto_assign":
         auto_date_str = request.POST.get("auto_work_date") or work_date_str
         try:
             auto_date = _date.fromisoformat(auto_date_str)
         except Exception:
-            auto_date = _date.today()
+            auto_date = today
 
-        plan = auto_assign_plan_for_date(auto_date)  # 只计算，不落库（我们下面再决定是否写入）
-        setattr(request, "_auto_assign_plan", plan)   # ✅ 保存本次预演 plan
+        plan = auto_assign_plan_for_date(auto_date)
+        setattr(request, "_auto_assign_plan", plan)
 
-        has_meta = "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}
-
-        # dry-run：只展示，不写库
         if (request.GET.get("dryrun") or "").strip() == "1":
             messages.info(request, "これは予演結果（保存されません）です。")
             setattr(request, "_auto_assign_preview", plan["preview_rows"])
-            # 继续往下渲染页面
         else:
-            # 真正写入（带理由）
-            for sched_id, car_id, why in plan["assign_ops"]:
-                update = {
-                    "assigned_car_id": car_id,
-                    "assigned_by": "auto",
-                    "assigned_at": now(),
-                    "status": "approved",
-                }
-                if has_meta:
-                    base = {
-                        "rule_version": "v1.0",
-                        "reason":       why,
-                        "by":           "auto",
-                        "at":           now().isoformat(timespec="seconds"),
-                    }
-                    update["assignment_meta"] = base
-                DriverSchedule.objects.filter(pk=sched_id).update(**update)
-
-            c = plan["counts"]  # 本次新增
-
-            # 统计当日合计（既存 + 本次）
-            tot = {"first": 0, "second": 0, "any": 0}
-            day_all = (
-                DriverSchedule.objects
-                .filter(work_date=auto_date, assigned_car__isnull=False)
-                .select_related("first_choice_car", "second_choice_car")
-            )
-            for s in day_all:
-                if s.assigned_car_id and s.first_choice_car_id and s.assigned_car_id == s.first_choice_car_id:
-                    tot["first"] += 1
-                elif s.assigned_car_id and s.second_choice_car_id and s.assigned_car_id == s.second_choice_car_id:
-                    tot["second"] += 1
-                elif s.assigned_car_id and bool(getattr(s, "any_car", False)):
-                    tot["any"] += 1
-
+            saved = auto_assign_apply_ops(plan["assign_ops"], auto_date)
+            c = plan["counts"]
             messages.success(
                 request,
-                (
-                    f"{auto_date:%Y-%m-%d} の自動配車が完了："
-                    f"（今回新規）第1希望 {c['first']} 件 / 第2希望 {c['second']} 件 / 任意 {c['any']} 件 ｜ "
-                    f"（当日合計・既存含む）第1希望 {tot['first']} 件 / 第2希望 {tot['second']} 件 / 任意 {tot['any']} 件"
-                )
+                f"{auto_date:%Y-%m-%d} の自動配車を反映しました（新規 {saved} 件：第1 {c['first']} / 第2 {c['second']} / 任意 {c['any']}）。"
             )
-
-            # 回当前筛选
             redirect_url = f"{reverse('staffbook:schedule_list')}?group={group}"
             if driver_id:     redirect_url += f"&driver={driver_id}"
             if auto_date_str: redirect_url += f"&work_date={auto_date_str}"
             return redirect(redirect_url)
 
-    # ⑤ 行内保存（管理员手动配车 / 变更状态 / 备注）
+    # 行内保存（昼/夜交替规则）
     if request.method == "POST" and request.POST.get("action") != "auto_assign":
         sched_id        = request.POST.get("sched_id")
-        status          = request.POST.get("status") or "pending"
+        status_v        = request.POST.get("status") or "pending"
         assigned_car_id = request.POST.get("assigned_car") or None
         admin_note      = (request.POST.get("admin_note") or "").strip()
 
-        # 回跳时保留当前筛选
         post_group     = request.POST.get("group", group)
         post_driver    = request.POST.get("driver") or driver_id
         post_work_date = request.POST.get("work_date") or work_date_str
 
         obj = DriverSchedule.objects.filter(pk=sched_id).first()
         if obj:
-            # —— 基本字段 —— #
-            obj.status     = status
+            obj.status = status_v
             obj.admin_note = admin_note
 
-            # —— 指派车辆 —— #
             if assigned_car_id:
-                obj.assigned_car_id = int(assigned_car_id)
+                assigned_car_id = int(assigned_car_id)
+                obj.assigned_car_id = assigned_car_id
 
-                # 命中类型判定
-                if obj.first_choice_car_id and obj.assigned_car_id == obj.first_choice_car_id:
-                    match_kind = "first"
-                elif obj.second_choice_car_id and obj.assigned_car_id == obj.second_choice_car_id:
-                    match_kind = "second"
-                elif bool(getattr(obj, "any_car", False)):
-                    match_kind = "any"
-                else:
-                    match_kind = "manual"
+                # 同班冲突拒绝
+                same_exists = DriverSchedule.objects.filter(
+                    work_date=obj.work_date, assigned_car_id=assigned_car_id, shift=(obj.shift or "").strip()
+                ).exclude(pk=obj.pk).exists()
+                if same_exists:
+                    messages.error(request, "同一日・同一車両・同一勤種（昼/夜）が既に割当済みです。")
+                    obj.assigned_car = None
+                    return redirect(request.get_full_path())
 
-                # 管理员手动配车 → 直接通过
+                # 允许对向班并追加提醒
+                opp = "night" if (obj.shift or "") == "day" else ("day" if (obj.shift or "") == "night" else None)
+                cross_exists = False
+                if opp:
+                    cross_exists = DriverSchedule.objects.filter(
+                        work_date=obj.work_date, assigned_car_id=assigned_car_id, shift=opp
+                    ).exists()
+                    if cross_exists:
+                        if (obj.shift or "") == "day":
+                            obj.admin_note = ((obj.admin_note or "") + " " + DAY_NOTICE).strip()
+                        elif (obj.shift or "") == "night":
+                            obj.admin_note = ((obj.admin_note or "") + " " + NIGHT_NOTICE).strip()
+
+                # 元素 & 元数据
+                match_kind = "manual"
+                if obj.first_choice_car_id and obj.assigned_car_id == obj.first_choice_car_id:   match_kind = "first"
+                elif obj.second_choice_car_id and obj.assigned_car_id == obj.second_choice_car_id: match_kind = "second"
+                elif bool(getattr(obj, "any_car", False)):                                         match_kind = "any"
+
                 obj.status = "approved"
+                if hasattr(obj,"assigned_by"): obj.assigned_by = "manual"
+                if hasattr(obj,"assigned_at"): obj.assigned_at = now()
 
-                if hasattr(obj, "assigned_by"):
-                    obj.assigned_by = "manual"
-                if hasattr(obj, "assigned_at"):
-                    obj.assigned_at = now()
-
-                # ===== 【开始留存代码】写入 assignment_meta（统一“详细推荐理由”结构） =====
                 if "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}:
-                    # 使用全局的 build_assign_reason，得到与自动配车一致的详细理由
                     reason = build_assign_reason(obj.driver, obj.work_date)
-
                     meta = {
-                        "rule_version": "v1.0",
-                        "by":    "manual",
-                        "at":    now().isoformat(timespec="seconds"),
-                        "match": match_kind,  # "first" / "second" / "any" / "manual"
-                        "reason": reason,     # << 包含事故率/毁约率/上月売上/出勤率/入社等
+                        "rule_version": "v1.0", "by":"manual",
+                        "at": now().isoformat(timespec="seconds"),
+                        "match": match_kind, "reason": reason,
                     }
-                    base_meta = getattr(obj, "assignment_meta", {}) or {}
+                    if cross_exists:
+                        meta["notice"] = DAY_NOTICE if (obj.shift or "")=="day" else NIGHT_NOTICE if (obj.shift or "")=="night" else ""
+                    base_meta = getattr(obj,"assignment_meta",{}) or {}
                     base_meta.update(meta)
                     obj.assignment_meta = base_meta
-                # ===== 【结束留存代码】 =====
             else:
-                # 清空指派
                 obj.assigned_car = None
                 if "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}:
-                    base_meta = getattr(obj, "assignment_meta", {}) or {}
+                    base_meta = getattr(obj,"assignment_meta",{}) or {}
                     base_meta.update({"cleared": True, "at": now().isoformat(timespec="seconds")})
                     obj.assignment_meta = base_meta
 
             obj.save()
             messages.success(request, "スケジュールを更新しました。")
 
-        # 回跳
         redirect_url = f"{reverse('staffbook:schedule_list')}?group={post_group}"
-        if post_driver:
-            redirect_url += f"&driver={post_driver}"
-        if post_work_date:
-            redirect_url += f"&work_date={post_work_date}"
+        if post_driver:    redirect_url += f"&driver={post_driver}"
+        if post_work_date: redirect_url += f"&work_date={post_work_date}"
         return redirect(redirect_url)
 
-
-    # ⑥ 分组（供页面表格使用）
+    # 分组供页面展示
     grouped = {}
     if group == "driver":
-        qs = qs.order_by("driver__driver_code", "work_date")
+        qs = qs.order_by("driver__driver_code","work_date")
         for row in qs:
             key = f"{row.driver.driver_code} {row.driver.name}"
             grouped.setdefault(key, []).append(row)
     else:
         group = "date"
-        qs = qs.order_by("work_date", "driver__driver_code")
+        qs = qs.order_by("work_date","driver__driver_code")
         for row in qs:
             grouped.setdefault(row.work_date, []).append(row)
 
-    # ⑦ “本日の配車 / 整備中 / 空き車両” 只读面板
+    # “本日の配車/整備中/空き車両”
     dispatch_sections = []
     if selected_work_date:
-        # ===== 【开始留存代码】若是dry-run，用 plan.preview_rows 直接渲染 =====
-        _plan = getattr(request, "_auto_assign_plan", None)
-        _is_dry = (request.GET.get("dryrun") or "").strip() == "1"
-        if _is_dry and _plan:
-            assigned_rows = []
-            for pr in _plan.get("preview_rows", []):
-                # preview_rows 里我们已经放了 car/driver/why
-                assigned_rows.append({
-                    "car": pr.get("car"),
-                    "driver": pr.get("driver"),
-                    "is_rest": False,
-                    "shift": "",                    # 预演里通常没有班别；若有可加
-                    "admin_note": "",
-                    "driver_note": "",
-                    "why": pr.get("why"),           # ✅ 关键：把推荐理由带到模板
-                })
-            if assigned_rows:
-                dispatch_sections.append({"title": "本日の配車（予演）", "rows": assigned_rows})
+        day_qs = qs.filter(work_date=selected_work_date)
+        assigned_rows, used_car_ids = [], set()
+        for s in day_qs:
+            car = s.assigned_car or None
+            if car: used_car_ids.add(car.id)
+            assigned_rows.append({"car": car,"driver": s.driver,"is_rest": s.is_rest,"shift": s.shift,
+                                  "admin_note": s.admin_note,"driver_note": s.note})
+        if assigned_rows: dispatch_sections.append({"title":"本日の配車","rows": assigned_rows})
 
-            # 空车/维修中还是用 vehicles 列表推
-            maint_rows, free_rows = [], []
-            used_ids = {cid for (_sid, cid, _why) in _plan.get("assign_ops", [])}
-            for car in cars:
-                status = (getattr(car, "status", "") or "").lower()
-                if getattr(car, "is_scrapped", False) or status in ("retired","disabled","scrapped"):
-                    continue
-                if car.id in used_ids:
-                    continue
-                is_maint = status in ("maintenance","repair","fixing") or getattr(car,"is_maintaining",False)
-                row = {"car": car, "driver": None, "is_rest": False, "shift": None, "admin_note": "", "driver_note": ""}
-                (maint_rows if is_maint else free_rows).append(row)
-            if maint_rows: dispatch_sections.append({"title":"整備中 / 修理中","rows":maint_rows})
-            if free_rows:  dispatch_sections.append({"title":"空き車両","rows":free_rows})
+        maint_rows, free_rows = [], []
+        for car in cars:
+            status = getattr(car,"status","") or ""
+            is_scrap = getattr(car,"is_scrapped",False)
+            is_active = getattr(car,"is_active",True)
+            if is_scrap or status in ("retired","disabled","scrapped") or not is_active: continue
+            if car.id in used_car_ids: continue
+            is_maint = status in ("maintenance","repair","fixing") or getattr(car,"is_maintaining",False)
+            row = {"car":car,"driver":None,"is_rest":False,"shift":None,"admin_note":"","driver_note":""}
+            (maint_rows if is_maint else free_rows).append(row)
+        if maint_rows: dispatch_sections.append({"title":"整備中 / 修理中","rows": maint_rows})
+        if free_rows:  dispatch_sections.append({"title":"空き車両","rows": free_rows})
 
-        else:
-        # ===== 【结束留存代码】若是dry-run，用 plan.preview_rows 直接渲染 =====
-            day_qs = qs.filter(work_date=selected_work_date)
-
-            # 已配车
-            assigned_rows = []
-            used_car_ids = set()
-            for s in day_qs:
-                car = s.assigned_car or None
-                if car:
-                    used_car_ids.add(car.id)
-                # ===== 【开始留存代码】把落库时的理由（assignment_meta.reason）带到模板 =====
-                reason = None
-                if hasattr(s, "assignment_meta") and s.assignment_meta:
-                    reason = (s.assignment_meta or {}).get("reason") or None
-                assigned_rows.append({
-                    "car": car,
-                    "driver": s.driver,
-                    "is_rest": s.is_rest,
-                    "shift": s.shift,
-                    "admin_note": s.admin_note,
-                    "driver_note": s.note,
-                    "why": reason,                   # ✅ 关键
-                })
-                # ===== 【结束留存代码】把落库时的理由（assignment_meta.reason）带到模板 =====
-            if assigned_rows:
-                dispatch_sections.append({"title": "本日の配車", "rows": assigned_rows})
-
-            # 未使用车辆：分成整備中 & 空车（原逻辑不变）
-            maint_rows, free_rows = [], []
-            for car in cars:
-                status      = getattr(car, "status", "") or ""
-                is_scrapped = getattr(car, "is_scrapped", False)
-                is_active   = getattr(car, "is_active", True)
-
-                if is_scrapped or status in ("retired", "disabled", "scrapped") or not is_active:
-                    continue
-                if car.id in used_car_ids:
-                    continue
-
-                is_maint = status in ("maintenance", "repair", "fixing") or getattr(car, "is_maintaining", False)
-                row = {"car": car, "driver": None, "is_rest": False, "shift": None, "admin_note": "", "driver_note": ""}
-
-                if is_maint:
-                    maint_rows.append(row)
-                else:
-                    free_rows.append(row)
-
-            if maint_rows:
-                dispatch_sections.append({"title": "整備中 / 修理中", "rows": maint_rows})
-            if free_rows:
-                dispatch_sections.append({"title": "空き車両", "rows": free_rows})
-
-
-    # ===== 绿色板工具（带 state/shift） =====
-    from collections import defaultdict
-
-    def _car_model_text(car) -> str:
-        """尽量从车型相关字段里拿“车型名”"""
-        for f in ("model", "name", "car_model", "car_type", "category", "group"):
-            v = getattr(car, f, None)
-            if v:
-                return str(v)
-        return ""
-
-    def _car_group_title(car) -> str:
-        """
-        通过 group/category/model/name 等文本来推断 A/B/C/D；识别日文/英文常见写法
-        """
-        txt = " ".join([
-            str(getattr(car, f, "") or "")
-            for f in ("group", "category", "model", "name", "car_type")
-        ]).lower()
-
-        # A アルファード
-        if ("アルファ" in txt) or ("アルファード" in txt) or ("alphard" in txt) or ("alpha" in txt):
-            return "A アルファ"
-
-        # B ヴォクシー等
-        if ("ヴォクシー" in txt) or ("ボクシー" in txt) or ("voxy" in txt) \
-           or ("ノア" in txt) or ("noah" in txt) \
-           or ("セレナ" in txt) or ("serena" in txt) \
-           or ("ステップ" in txt) or ("stepwgn" in txt) \
-           or ("ウォクシー" in txt):
-            return "B ウォクシー等"
-
-        # C カムリ
-        if ("カムリ" in txt) or ("camry" in txt):
-            return "C カムリ"
-
-        # D シエンタ
-        if ("シエンタ" in txt) or ("sienta" in txt):
-            return "D シエンタ"
-
-        return "その他"
-
-    def _car_num_label(car) -> str:
-        """在车号后面拼上车型（若识别到），例：'3523 / アルファード'"""
-        plate = (getattr(car, "license_plate", None)
-                 or getattr(car, "registration_number", None)
-                 or getattr(car, "name", None)
-                 or f"ID:{car.id}")
-        model = _car_model_text(car)
-        return f"{plate} / {model}" if model else str(plate)
-
-    def _build_green_from_plan(plan, cars_all):
-        """
-        使用“预演计划”构造绿色面板数据
-        返回 list[ (section_title, [ {num, driver, shift, state}, ... ]) ]
-        """
-        cars_by_id = {c.id: c for c in cars_all}
-        used = set()
-        groups = defaultdict(list)
-
-        # 预先拉取需要的 schedule 以便获得司机/班别
-        sched_ids = [sid for (sid, _cid, _why) in plan.get("assign_ops", [])]
-        sched_map = {
-            s.id: s for s in DriverSchedule.objects
-                        .select_related("driver", "assigned_car")
-                        .filter(id__in=sched_ids)
-        }
-
-        # 已分配（预演）
-        for sched_id, car_id, _why in plan.get("assign_ops", []):
-            car = cars_by_id.get(car_id)
-            if not car:
-                continue
-            used.add(car_id)
-            s = sched_map.get(sched_id)
-            groups[_car_group_title(car)].append({
-                "num": _car_num_label(car),
-                "driver": s.driver.name if s and s.driver else "",
-                "shift": (s.shift or "") if s else "",
-                "state": "assigned",  # ← 已分配
-            })
-
-        # 剩余车辆（未使用 / 维修中）
-        for c in cars_all:
-            if getattr(c, "is_scrapped", False):
-                continue
-            if c.id in used:
-                continue
-            status = (getattr(c, "status", "") or "").lower()
-            is_maint = status in ("maintenance", "repair", "fixing") or getattr(c, "is_maintaining", False)
-            groups[_car_group_title(c)].append({
-                "num": _car_num_label(c),
-                "driver": "🛠️ 维修中" if is_maint else "未使用",
-                "shift": "",
-                "state": "maint" if is_maint else "free",
-            })
-
-        order = ["A アルファ", "B ウォクシー等", "C カムリ", "D シエンタ", "その他"]
-        return [(g, groups[g]) for g in order if groups.get(g)]
-
-    def _build_green_from_assigned(day_qs_full, cars_all):
-        """
-        使用“已写入数据库”的当天配车构造绿色面板数据
-        """
-        used = set()
-        groups = defaultdict(list)
-
-        # 已落库的当天配车
-        for s in day_qs_full.select_related("assigned_car", "driver"):
-            car = s.assigned_car
-            if not car:
-                continue
-            used.add(car.id)
-            groups[_car_group_title(car)].append({
-                "num": _car_num_label(car),
-                "driver": s.driver.name if s.driver else "",
-                "shift": s.shift or "",
-                "state": "assigned",
-            })
-
-        # 剩余车辆（未使用 / 维修中）
-        for c in cars_all:
-            if getattr(c, "is_scrapped", False):
-                continue
-            if c.id in used:
-                continue
-            status = (getattr(c, "status", "") or "").lower()
-            is_maint = status in ("maintenance", "repair", "fixing") or getattr(c, "is_maintaining", False)
-            groups[_car_group_title(c)].append({
-                "num": _car_num_label(c),
-                "driver": "🛠️ 维修中" if is_maint else "未使用",
-                "shift": "",
-                "state": "maint" if is_maint else "free",
-            })
-
-        order = ["A アルファ", "B ウォクシー等", "C カムリ", "D シエンタ", "その他"]
-        return [(g, groups[g]) for g in order if groups.get(g)]
-
-    # ⑧ 绿色板数据：dryrun 时优先用刚计算的 plan，否则读数据库
+    # 绿色面板数据（dryrun 优先）
     auto_schedule_groups = None
     if selected_work_date:
         is_dryrun = (request.GET.get("dryrun") or "").strip() == "1"
-        plan_obj = getattr(request, "_auto_assign_plan", None) if is_dryrun else None
+        plan_obj = getattr(request,"_auto_assign_plan",None) if is_dryrun else None
         if plan_obj:
             auto_schedule_groups = _build_green_from_plan(plan_obj, cars)
         else:
-            day_qs_full = (
-                DriverSchedule.objects
-                .select_related("driver", "assigned_car")
-                .filter(work_date=selected_work_date)
-            )
+            day_qs_full = (DriverSchedule.objects
+                           .select_related("driver","assigned_car")
+                           .filter(work_date=selected_work_date))
             auto_schedule_groups = _build_green_from_assigned(day_qs_full, cars)
 
-    # ⑨ 渲染
     ctx = {
-        "date_from": date_from,
-        "date_to": date_to,
-        "group": group,
-        "grouped": grouped,
-        "cars": cars,
-        "all_drivers": all_drivers,
-        "date_choices": date_choices,
+        "date_from": date_from, "date_to": date_to,
+        "group": group, "grouped": grouped,
+        "cars": cars, "all_drivers": all_drivers, "date_choices": date_choices,
         "selected_driver": int(driver_id) if driver_id else None,
         "selected_work_date": selected_work_date,
         "dispatch_sections": dispatch_sections,
         "auto_assign_preview": getattr(request, "_auto_assign_preview", None),
-        "auto_schedule_groups": auto_schedule_groups,   # ✅ 绿色板
+        "auto_schedule_groups": auto_schedule_groups,
+        "jp_selected_date": fmt_jp_date(selected_work_date) if selected_work_date else "",
     }
     return render(request, "staffbook/schedule_list.html", ctx)
+# ===== END VIEW schedule_list_view (留存代码-结束) =====
 
+
+# ===== 绿色板工具（带 state/shift） =====
+from collections import defaultdict
+
+def _car_model_text(car) -> str:
+    """尽量从车型相关字段里拿“车型名”"""
+    for f in ("model", "name", "car_model", "car_type", "category", "group"):
+        v = getattr(car, f, None)
+        if v:
+            return str(v)
+    return ""
+
+def _car_group_title(car) -> str:
+    """
+    通过 group/category/model/name 等文本来推断 A/B/C/D；识别日文/英文常见写法
+    """
+    txt = " ".join([
+        str(getattr(car, f, "") or "")
+        for f in ("group", "category", "model", "name", "car_type")
+    ]).lower()
+
+    # A アルファード
+    if ("アルファ" in txt) or ("アルファード" in txt) or ("alphard" in txt) or ("alpha" in txt):
+        return "A アルファ"
+
+    # B ヴォクシー等
+    if ("ヴォクシー" in txt) or ("ボクシー" in txt) or ("voxy" in txt) \
+        or ("ノア" in txt) or ("noah" in txt) \
+        or ("セレナ" in txt) or ("serena" in txt) \
+        or ("ステップ" in txt) or ("stepwgn" in txt) \
+        or ("ウォクシー" in txt):
+        return "B ウォクシー等"
+
+    # C カムリ
+    if ("カムリ" in txt) or ("camry" in txt):
+        return "C カムリ"
+
+    # D シエンタ
+    if ("シエンタ" in txt) or ("sienta" in txt):
+        return "D シエンタ"
+
+    return "その他"
+
+def _car_num_label(car) -> str:
+    """在车号后面拼上车型（若识别到），例：'3523 / アルファード'"""
+    plate = (getattr(car, "license_plate", None)
+                or getattr(car, "registration_number", None)
+                or getattr(car, "name", None)
+                or f"ID:{car.id}")
+    model = _car_model_text(car)
+    return f"{plate} / {model}" if model else str(plate)
+
+def _build_green_from_plan(plan, cars_all):
+    cars_by_id = {c.id: c for c in cars_all}
+    groups = defaultdict(list)
+
+    # 暂存：同一辆车的条目，后面看是否昼夜皆有
+    items_by_car = defaultdict(list)
+
+    for sched_id, car_id, shift, why in plan.get("assign_ops", []):
+        car = cars_by_id.get(car_id)
+        if not car:
+            continue
+        entry = {
+            "car_id": car_id,
+            "num": _car_num_label(car),
+            "driver": "",          # 预演：司机名通常在上方卡片显示，这里保持空
+            "shift": (shift or ""),
+            "state": "assigned",
+            "title": _format_reason_tooltip(why),  # 先放推荐理由，稍后如有昼夜交替再叠加提醒
+        }
+        items_by_car[car_id].append(entry)
+
+    # 还要把未使用/维修的车放进去（不参与昼夜判断）
+    used_ids = set(items_by_car.keys())
+    for c in cars_all:
+        if getattr(c, "is_scrapped", False):  continue
+        if c.id in used_ids:                 continue
+        status = (getattr(c, "status", "") or "").lower()
+        is_maint = status in ("maintenance","repair","fixing") or getattr(c, "is_maintaining", False)
+        entry = {
+            "car_id": c.id,
+            "num": _car_num_label(c),
+            "driver": "🛠️ 维修中" if is_maint else "未使用",
+            "shift": "",
+            "state": "maint" if is_maint else "free",
+            "title": "整備中" if is_maint else "",
+        }
+        items_by_car[c.id].append(entry)
+
+    # 昼夜交替 → 给两边都追加各自提醒
+    for car_id, items in items_by_car.items():
+        shifts = { (it.get("shift") or "").strip() for it in items if it["state"] == "assigned" }
+        if "day" in shifts and "night" in shifts:
+            for it in items:
+                if it["state"] != "assigned":
+                    continue
+                if (it.get("shift") or "") == "day":
+                    it["title"] = ((it.get("title") or "") + " " + DAY_NOTICE).strip()
+                elif (it.get("shift") or "") == "night":
+                    it["title"] = ((it.get("title") or "") + " " + NIGHT_NOTICE).strip()
+
+    # 按分组输出
+    for items in items_by_car.values():
+        for it in items:
+            # 找回车对象以决定分组标题
+            cid = it["car_id"]
+            car = cars_by_id.get(cid)
+            gtitle = _car_group_title(car) if car else "その他"
+            groups[gtitle].append({k:v for k,v in it.items() if k!="car_id"})
+
+    order = ["A アルファ", "B ウォクシー等", "C カムリ", "D シエンタ", "その他"]
+    return [(g, groups[g]) for g in order if groups.get(g)]
+
+def _build_green_from_assigned(day_qs_full, cars_all):
+    groups = defaultdict(list)
+    items_by_car = defaultdict(list)
+    cars_by_id = {c.id: c for c in cars_all}
+
+    for s in day_qs_full.select_related("assigned_car", "driver"):
+        car = s.assigned_car
+        if not car:
+            continue
+        meta = getattr(s, "assignment_meta", {}) or {}
+        title = meta.get("notice") or _format_reason_tooltip(meta.get("reason"))
+        entry = {
+            "car_id": car.id,
+            "num": _car_num_label(car),
+            "driver": s.driver.name if s.driver else "",
+            "shift": s.shift or "",
+            "state": "assigned",
+            "title": title or "",
+        }
+        items_by_car[car.id].append(entry)
+
+    # 补齐未使用/维修
+    used_ids = set(items_by_car.keys())
+    for c in cars_all:
+        if getattr(c, "is_scrapped", False):  continue
+        if c.id in used_ids:                 continue
+        status = (getattr(c, "status", "") or "").lower()
+        is_maint = status in ("maintenance","repair","fixing") or getattr(c, "is_maintaining", False)
+        entry = {
+            "car_id": c.id,
+            "num": _car_num_label(c),
+            "driver": "🛠️ 维修中" if is_maint else "未使用",
+            "shift": "",
+            "state": "maint" if is_maint else "free",
+            "title": "整備中" if is_maint else "",
+        }
+        items_by_car[c.id].append(entry)
+
+    # 昼夜交替 → 两侧都追加
+    for car_id, items in items_by_car.items():
+        shifts = { (it.get("shift") or "").strip() for it in items if it["state"] == "assigned" }
+        if "day" in shifts and "night" in shifts:
+            for it in items:
+                if it["state"] != "assigned":
+                    continue
+                if (it.get("shift") or "") == "day":
+                    it["title"] = ((it.get("title") or "") + " " + DAY_NOTICE).strip()
+                elif (it.get("shift") or "") == "night":
+                    it["title"] = ((it.get("title") or "") + " " + NIGHT_NOTICE).strip()
+
+    # 分组输出
+    for items in items_by_car.values():
+        for it in items:
+            cid = it["car_id"]
+            car = cars_by_id.get(cid)
+            gtitle = _car_group_title(car) if car else "その他"
+            groups[gtitle].append({k:v for k,v in it.items() if k!="car_id"})
+
+    order = ["A アルファ", "B ウォクシー等", "C カムリ", "D シエンタ", "その他"]
+    return [(g, groups[g]) for g in order if groups.get(g)]
 # ==============================================================
 # END: 管理员 / 事务员：查看所有司机提交的“日期+希望车両”
 # ==============================================================
