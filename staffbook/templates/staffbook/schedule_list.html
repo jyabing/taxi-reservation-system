@@ -69,7 +69,12 @@
       <div class="list-group list-group-flush">
         {% for sec in dispatch_sections %}
           <div class="list-group-item">
-            <div class="fw-bold mb-2">{{ sec.title }}</div>
+            <div class="fw-bold mb-2">
+              {{ sec.title }}
+              {% if sec.car_count is not None and sec.people_count is not None %}
+                <span class="text-muted small">（車両: {{ sec.car_count }} / 人数: {{ sec.people_count }}）</span>
+              {% endif %}
+            </div>
 
             {% if sec.rows %}
               <div class="row g-2 small">
@@ -127,7 +132,7 @@
   {% if selected_work_date and auto_schedule_groups %}
     <div class="green-board mt-3">
       <div class="gb-head">
-        {{ selected_work_date|date:"Y年n月j日（l）" }}
+        {{ jp_selected_date }}
       </div>
 
       {% for sec_title, items in auto_schedule_groups %}

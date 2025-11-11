@@ -77,7 +77,7 @@ def fmt_jp_date(d):
     """2025年11月14日（金）のように整形"""
     if not d:
         return ""
-    return f"{d.year}年{d.month}月{d.day}日（{WEEK_JA[d.weekday()]}）"
+    return f"{d.year}年{d.month}月{d.day}日（{WEEK_JA[d.weekday()]}曜日）"
 # ===== END keep-code: Japanese date helper =====
 
 # ===== 売上に基づく分段控除（給与側の規則）BEGIN =====
@@ -1303,13 +1303,31 @@ def schedule_list_view(request):
     dispatch_sections = []
     if selected_work_date:
         day_qs = qs.filter(work_date=selected_work_date)
-        assigned_rows, used_car_ids = [], set()
+        assigned_rows = []
+        used_car_ids = set()
         for s in day_qs:
             car = s.assigned_car or None
-            if car: used_car_ids.add(car.id)
-            assigned_rows.append({"car": car,"driver": s.driver,"is_rest": s.is_rest,"shift": s.shift,
-                                  "admin_note": s.admin_note,"driver_note": s.note})
-        if assigned_rows: dispatch_sections.append({"title":"本日の配車","rows": assigned_rows})
+            if car:
+                used_car_ids.add(car.id)
+            assigned_rows.append({
+                "car": car,
+                "driver": s.driver,
+                "is_rest": s.is_rest,
+                "shift": s.shift,
+                "admin_note": s.admin_note,
+                "driver_note": s.note,
+            })
+
+        if assigned_rows:
+            car_count = len(used_car_ids)
+            # 统计“已分配且有人”的条目；如需排除休み，可再加 `and not r["is_rest"]`
+            people_count = sum(1 for r in assigned_rows if r["car"] and r["driver"])
+            dispatch_sections.append({
+                "title": "本日の配車",
+                "rows": assigned_rows,
+                "car_count": car_count,
+                "people_count": people_count,
+            })
 
         maint_rows, free_rows = [], []
         for car in cars:
