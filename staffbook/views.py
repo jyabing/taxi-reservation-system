@@ -59,6 +59,13 @@ try:
     from reservations.models import Reservation      # 预约/派单记录
 except Exception:
     Reservation = None  # 兼容：后续毁约率函数会判空
+
+# ===== BEGIN INSERT R1: Reservation upsert helper（留存代码-开始）=====
+# 尝试导入预约模型；不存在也不报错（线上/本地都能跑）
+try:
+    from vehicles.models import Reservation as _Reservation
+except Exception:
+    _Reservation = None
 # ===== END SAFE IMPORTS (留存代码-结束) =====
 
 from accounts.utils import check_module_permission
@@ -66,6 +73,88 @@ from dailyreport.services.summary import (
     calculate_totals_from_queryset,
     calculate_totals_from_formset, 
 )
+
+def _ensure_reservation_for_assignment(driver, car, work_date, shift=None) -> bool:
+    """
+    当某一条 DriverSchedule 被“确定配车”后，确保后台的预约记录存在（不存在则创建，存在则更新）。
+    - 自动探测 Reservation 的字段名（driver / car / date / shift / status 等）
+    - 以 (driver, date) 或 (driver_user, date) 作为 upsert 的查找键（常见唯一约束）
+    """
+    if _Reservation is None or not (driver and car and work_date):
+        return False
+
+    # —— 映射查找：驱动/车辆/日期字段 —— #
+    data, lookup, defaults = {}, {}, {}
+
+    # driver（优先 driver，其次 driver_user）
+    if hasattr(_Reservation, 'driver'):
+        data['driver'] = driver
+        lookup['driver'] = driver
+    elif hasattr(_Reservation, 'driver_user'):
+        data['driver_user'] = getattr(driver, 'user', None)
+        lookup['driver_user'] = data['driver_user']
+
+    # car / vehicle / car_number
+    if hasattr(_Reservation, 'car'):
+        data['car'] = car
+    elif hasattr(_Reservation, 'vehicle'):
+        data['vehicle'] = car
+    elif hasattr(_Reservation, 'car_number'):
+        plate = (getattr(car, "license_plate", None)
+                 or getattr(car, "registration_number", None)
+                 or getattr(car, "name", None)
+                 or str(car))
+        data['car_number'] = plate
+
+    # date 字段名（常见几种择一）
+    date_field = None
+    for f in ('date', 'reserved_date', 'reservation_date', 'reserved_at'):
+        if hasattr(_Reservation, f):
+            date_field = f
+            break
+    if not date_field:
+        return False
+    lookup[date_field] = work_date
+
+    # shift（如果模型有）
+    for f in ('shift', 'duty'):
+        if hasattr(_Reservation, f):
+            defaults[f] = (shift or '')
+
+    # status（若存在就给个“预约済/確定/予定”等默认值；没有就跳过）
+    if hasattr(_Reservation, 'status'):
+        try:
+            field = _Reservation._meta.get_field('status')
+            choices = [c[0] for c in getattr(field, 'choices', [])]
+            if '予約済' in choices:
+                defaults['status'] = '予約済'
+            elif '確定' in choices:
+                defaults['status'] = '確定'
+            elif '予定' in choices:
+                defaults['status'] = '予定'
+        except Exception:
+            pass
+
+    # 组合 defaults（把 data 里不在 lookup 的也写入）
+    for k, v in data.items():
+        if k not in lookup:
+            defaults[k] = v
+
+    try:
+        _Reservation.objects.update_or_create(defaults=defaults, **lookup)
+        return True
+    except Exception:
+        # 有些站点唯一约束是 (driver, date, car)；再兜底一次
+        try:
+            ext_lookup = dict(lookup)
+            if 'car' in data:        ext_lookup['car'] = data['car']
+            if 'vehicle' in data:    ext_lookup['vehicle'] = data['vehicle']
+            if 'car_number' in data: ext_lookup['car_number'] = data['car_number']
+            _Reservation.objects.update_or_create(defaults=defaults, **ext_lookup)
+            return True
+        except Exception:
+            return False
+# ===== END INSERT R1: Reservation upsert helper（留存代码-结束）=====
 
 def is_admin_user(user):
     # "仅允许 is_staff 或 superuser 的用户访问：要么是超级管理员，要么是staff
@@ -707,31 +796,70 @@ def _make_reason_meta(driver, ref_date, match_kind, base_reason: dict):
     return meta
 
 
+# ===== BEGIN INSERT R3: auto_assign_apply_ops（含同步预约）【留存代码-开始】=====
 def auto_assign_apply_ops(assign_ops, target_date: date) -> int:
-    saved = 0
+    """
+    将 plan 里的 assign_ops 落库到 DriverSchedule；
+    现在同时：当某条记录被“確定 + 赋车”后，写/更新 Reservation（预约记录）。
+    assign_ops 元素兼容两种格式：
+      (sched_id, car_id, why) 或 (sched_id, car_id, shift, why)
+    """
     has_meta = "assignment_meta" in {f.name for f in DriverSchedule._meta.fields}
+    saved = 0
+
     for op in assign_ops:
-        # 兼容旧三元组
-        sched_id, car_id = op[0], op[1]
-        why = op[3] if len(op) > 3 else (op[2] if len(op) > 2 else {})
+        # 兼容三元/四元
+        if len(op) == 4:
+            sched_id, car_id, op_shift, why = op
+        else:
+            sched_id, car_id, why = op
+            op_shift = None
+
+        # 1) 更新配车
         upd = {
             "assigned_car_id": car_id,
             "status": "approved",
+            "assigned_by": "auto" if hasattr(DriverSchedule, "assigned_by") else None,
+            "assigned_at": now() if hasattr(DriverSchedule, "assigned_at") else None,
         }
-        if hasattr(DriverSchedule, "assigned_by"):
-            upd["assigned_by"] = "auto"
-        if hasattr(DriverSchedule, "assigned_at"):
-            upd["assigned_at"] = now()
+        # 清理掉模型里不存在的键
+        upd = {k: v for k, v in upd.items() if k in {f.name for f in DriverSchedule._meta.fields}}
+
         if has_meta:
-            upd["assignment_meta"] = {
+            base_meta = {
                 "rule_version": "v1.0",
                 "by": "auto",
                 "at": now().isoformat(timespec="seconds"),
-                "reason": why,
+                "reason": why or {},
             }
+            # 若有排序键为 tuple/date，已在 build_assign_reason 中转为可序列化
+            upd["assignment_meta"] = base_meta
+
         DriverSchedule.objects.filter(pk=sched_id).update(**upd)
         saved += 1
+
+        # 2) 同步预约：读取最新对象，确保拿到 driver / car / shift
+        s = (DriverSchedule.objects
+             .select_related("driver", "assigned_car")
+             .filter(pk=sched_id).first())
+
+        if s and s.assigned_car_id and s.status == "approved":
+            # 优先使用 s.shift；若为空则回退到 plan 中带来的 op_shift
+            shift_val = (s.shift or "") or (op_shift or "")
+            try:
+                _ensure_reservation_for_assignment(
+                    driver=s.driver,
+                    car=s.assigned_car,
+                    work_date=target_date,
+                    shift=shift_val,
+                )
+            except Exception as e:
+                # 不中断主流程，便于排查
+                if settings.DEBUG:
+                    print("[reservation sync] failed:", e)
+
     return saved
+# ===== END INSERT R3: auto_assign_apply_ops（含同步预约）【留存代码-结束】=====
 
 def _parse_work_dates(raw: str) -> list[_date]:
     """支持中文/英文逗号、分号、空格分隔；返回去重后的日期列表"""
@@ -1280,6 +1408,14 @@ def schedule_list_view(request):
 
             obj.save()
             messages.success(request, "スケジュールを更新しました。")
+
+            # ===== BEGIN INSERT R2: 手动“確定”后同步预约（留存代码-开始）=====
+            if obj.assigned_car_id and obj.status == "approved":
+                # 将这次决定同步进后台预约（若已存在则更新）
+                _ensure_reservation_for_assignment(
+                    driver=obj.driver, car=obj.assigned_car, work_date=obj.work_date, shift=(obj.shift or "")
+                )
+            # ===== END INSERT R2: 手动“確定”后同步预约（留存代码-结束）=====
 
         redirect_url = f"{reverse('staffbook:schedule_list')}?group={post_group}"
         if post_driver:    redirect_url += f"&driver={post_driver}"
