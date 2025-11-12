@@ -2,7 +2,7 @@ from uuid import uuid4
 import os
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.utils.timezone import localdate
+from django.utils.timezone import make_aware, is_naive, now, localdate
 
 def car_main_photo_path(instance, filename):
     """
@@ -90,6 +90,7 @@ class Car(models.Model):
 
     # --- 证件与保险 ---
     inspection_date = models.DateField("车检到期日", null=True, blank=True)
+    tenken_due_date = models.DateField("点检予定日", null=True, blank=True)
     insurance_certificate_number = models.CharField("保険証明書番号", max_length=50, blank=True)
     insurance_company = models.CharField("保険会社", max_length=100, blank=True)
     insurance_start_date = models.DateField("保険开始日", null=True, blank=True)

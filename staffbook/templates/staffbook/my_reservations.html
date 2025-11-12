@@ -68,11 +68,80 @@
               {% endif %}
             </td>
 
+            {# ==== BEGIN REPLACE MS2: 会社決定 列，加入車両情報（決定後のみ） ==== #}
             <td data-label="会社決定">
               {% if s.assigned_car %}
                 <span class="badge bg-success">
                   {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }} {{ s.assigned_car.name }}
                 </span>
+
+                {# ↓↓↓ 已会社決定且有車時，在車牌下方顯示 點検/年検/設備（手機=卡片、桌面=表格） ↓↓↓ #}
+                {% if s.show_car_box %}
+                  <div class="car-info-box mt-2">
+                    <div class="car-info-head">
+                      <span class="car-no-badge">
+                        {{ s.car_obj.license_plate|default:s.car_obj.name|default:"" }}
+                      </span>
+                      <span class="car-name">
+                        {{ s.car_obj.brand }} {{ s.car_obj.model }}
+                      </span>
+                    </div>
+
+                    {# 桌面端：表格風 #}
+                    <div class="car-info-grid d-none d-lg-grid">
+                      <div class="k">点検</div>
+                      <div class="v {{ s.car_info_ctx.tenken.css }}">
+                        {% if s.car_info_ctx.tenken.show %}{{ s.car_info_ctx.tenken.label }}{% else %}<span class="text-muted">正常</span>{% endif %}
+                      </div>
+
+                      <div class="k">年検</div>
+                      <div class="v {{ s.car_info_ctx.shaken.css }}">
+                        {% if s.car_info_ctx.shaken.show %}{{ s.car_info_ctx.shaken.label }}{% else %}<span class="text-muted">正常</span>{% endif %}
+                      </div>
+
+                      <div class="k">設備</div>
+                      <div class="v">
+                        {% if s.car_info_ctx.equipment %}
+                          {% for e in s.car_info_ctx.equipment %}
+                            <span class="equip-chip">{{ e }}</span>
+                          {% endfor %}
+                        {% else %}
+                          <span class="text-muted">（未登録）</span>
+                        {% endif %}
+                      </div>
+                    </div>
+
+                    {# 手機端：卡片式 #}
+                    <div class="car-info-body d-lg-none">
+                      {% if s.car_info_ctx.tenken.show %}
+                        <div class="car-info-line {{ s.car_info_ctx.tenken.css }}">
+                          <span class="label">点検</span>
+                          <span class="text">{{ s.car_info_ctx.tenken.label }}</span>
+                        </div>
+                      {% endif %}
+                      {% if s.car_info_ctx.shaken.show %}
+                        <div class="car-info-line {{ s.car_info_ctx.shaken.css }}">
+                          <span class="label">年検</span>
+                          <span class="text">{{ s.car_info_ctx.shaken.label }}</span>
+                        </div>
+                      {% endif %}
+                      <div class="car-info-line equipment">
+                        <span class="label">設備</span>
+                        <span class="text">
+                          {% if s.car_info_ctx.equipment %}
+                            {% for e in s.car_info_ctx.equipment %}
+                              <span class="equip-chip">{{ e }}</span>
+                            {% endfor %}
+                          {% else %}
+                            <span class="text-muted">（未登録）</span>
+                          {% endif %}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+                {# ↑↑↑ 車情報ここまで ↑↑↑ #}
+
               {% elif s.status == "approved" %}
                 <span class="badge bg-info text-dark">会社決定済（車両未指定）</span>
               {% elif s.status == "rejected" %}
@@ -80,10 +149,12 @@
               {% else %}
                 <span class="badge bg-secondary">確認中</span>
               {% endif %}
+
               {% if s.admin_note %}
                 <div class="small text-muted mt-1">{{ s.admin_note }}</div>
               {% endif %}
             </td>
+            {# ==== END REPLACE MS2 ==== #}
 
             <td data-label="備考">{{ s.note|default:"-" }}</td>
 
@@ -123,5 +194,31 @@
     </tbody>
   </table>
 </div>
+
+<style>
+.car-info-box{border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;background:#fafafa;margin-top:8px;}
+.car-info-head{font-weight:600;margin-bottom:6px;display:flex;gap:8px;align-items:center;}
+.car-no-badge{background:#e6f4ea;color:#137333;border-radius:999px;padding:2px 8px;font-weight:700;}
+.car-name{color:#555;}
+.car-info-line{display:flex;gap:10px;padding:6px 0;align-items:baseline;border-top:1px dashed #eee;}
+.car-info-line:first-of-type{border-top:none;}
+.car-info-line .label{width:56px;color:#666;font-size:.92rem;}
+.car-info-line .text{flex:1;}
+.due-soon{box-shadow:inset 0 0 0 9999px rgba(255,193,7,.12);}
+.due-today .text{font-weight:800;color:#0f9d58;}
+.due-expired .text{color:#d93025;font-weight:700;}
+.due-unknown .text{color:#9aa0a6;}
+.equipment .equip-chip{display:inline-block;padding:2px 8px;margin:2px 4px 0 0;border-radius:999px;border:1px solid #d0d5db;font-size:12px;color:#374151;background:#fff;}
+@media (min-width: 992px){
+  .car-info-box{background:#fff;border:1px solid #dfe1e5;}
+  .car-info-grid{display:grid;grid-template-columns:120px 1fr 120px 1fr;gap:8px 12px;align-items:center;}
+  .car-info-grid .k{color:#666;}
+  .car-info-grid .v{padding:4px 0;}
+  .car-info-grid .v.due-soon{box-shadow:inset 0 0 0 9999px rgba(255,193,7,.12);}
+  .car-info-grid .v.due-today{font-weight:800;color:#0f9d58;}
+  .car-info-grid .v.due-expired{color:#d93025;font-weight:700;}
+}
+</style>
+
 
 {% endblock %}

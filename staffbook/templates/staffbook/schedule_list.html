@@ -221,6 +221,71 @@
         </summary>
 
         <div class="card-body pt-2 pb-3">
+          {# ==== BEGIN INSERT T2: 本车信息框（会社決定后显示；手机=卡片/桌面=表格） ==== #}
+          {% if row.show_car_box %}
+            <div class="car-info-box">
+              <div class="car-info-head">
+                <span class="car-no-badge">
+                  {{ row.car_obj.license_plate|default:row.car_obj.name|default:"" }}
+                </span>
+                <span class="car-name">
+                  {{ row.car_obj.brand }} {{ row.car_obj.model }}
+                </span>
+              </div>
+
+              {# 手机端：逐行 #}
+              <div class="car-info-body d-lg-none">
+                {% if row.car_info_ctx.tenken.show %}
+                  <div class="car-info-line {{ row.car_info_ctx.tenken.css }}">
+                    <span class="label">点检</span>
+                    <span class="text">{{ row.car_info_ctx.tenken.label }}</span>
+                  </div>
+                {% endif %}
+                {% if row.car_info_ctx.shaken.show %}
+                  <div class="car-info-line {{ row.car_info_ctx.shaken.css }}">
+                    <span class="label">年检</span>
+                    <span class="text">{{ row.car_info_ctx.shaken.label }}</span>
+                  </div>
+                {% endif %}
+                <div class="car-info-line equipment">
+                  <span class="label">设备</span>
+                  <span class="text">
+                    {% if row.car_info_ctx.equipment %}
+                      {% for e in row.car_info_ctx.equipment %}
+                        <span class="equip-chip">{{ e }}</span>
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-muted">（未登记）</span>
+                    {% endif %}
+                  </span>
+                </div>
+              </div>
+
+              {# 桌面端：表格风 #}
+              <div class="car-info-grid d-none d-lg-grid">
+                <div class="k">点检</div>
+                <div class="v {{ row.car_info_ctx.tenken.css }}">
+                  {% if row.car_info_ctx.tenken.show %}{{ row.car_info_ctx.tenken.label }}{% else %}<span class="text-muted">正常</span>{% endif %}
+                </div>
+                <div class="k">年检</div>
+                <div class="v {{ row.car_info_ctx.shaken.css }}">
+                  {% if row.car_info_ctx.shaken.show %}{{ row.car_info_ctx.shaken.label }}{% else %}<span class="text-muted">正常</span>{% endif %}
+                </div>
+                <div class="k">设备</div>
+                <div class="v">
+                  {% if row.car_info_ctx.equipment %}
+                    {% for e in row.car_info_ctx.equipment %}
+                      <span class="equip-chip">{{ e }}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-muted">（未登记）</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endif %}
+          {# ==== END INSERT T2 ==== #}
+
           {# ======= 行内编辑表单：沿用你原 POST 接口 ======= #}
           <form method="post" class="row g-2 align-items-center">
             {% csrf_token %}
@@ -328,7 +393,33 @@ document.getElementById('toggle-compact')?.addEventListener('change', function()
   else root.classList.remove('compact');
 });
 </script>
-
+{# ==== BEGIN INSERT T1: 车信息框样式（手机=卡片；桌面=表格） ==== #}
+<style>
+/* 手机（默认）= 卡片 */
+.car-info-box{border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;background:#fafafa;margin-top:8px;}
+.car-info-head{font-weight:600;margin-bottom:6px;display:flex;gap:8px;align-items:center;}
+.car-no-badge{background:#e6f4ea;color:#137333;border-radius:999px;padding:2px 8px;font-weight:700;}
+.car-name{color:#555;}
+.car-info-line{display:flex;gap:10px;padding:6px 0;align-items:baseline;border-top:1px dashed #eee;}
+.car-info-line:first-of-type{border-top:none;}
+.car-info-line .label{width:56px;color:#666;font-size:.92rem;}
+.car-info-line .text{flex:1;}
+.due-soon{box-shadow:inset 0 0 0 9999px rgba(255,193,7,.12);}
+.due-today .text{font-weight:800;color:#0f9d58;}
+.due-expired .text{color:#d93025;font-weight:700;}
+.due-unknown .text{color:#9aa0a6;}
+.equipment .equip-chip{display:inline-block;padding:2px 8px;margin:2px 4px 0 0;border-radius:999px;border:1px solid #d0d5db;font-size:12px;color:#374151;background:#fff;}
+/* 桌面 >= 992px = 表格 */
+@media (min-width: 992px){
+  .car-info-box{background:#fff;border:1px solid #dfe1e5;}
+  .car-info-grid{display:grid;grid-template-columns:120px 1fr 120px 1fr;gap:8px 12px;align-items:center;}
+  .car-info-grid .k{color:#666;}
+  .car-info-grid .v{padding:4px 0;}
+  .car-info-grid .v.due-soon{box-shadow:inset 0 0 0 9999px rgba(255,193,7,.12);}
+  .car-info-grid .v.due-today{font-weight:800;color:#0f9d58;}
+  .car-info-grid .v.due-expired{color:#d93025;font-weight:700;}
+}
+</style>
 <style>
 /* Green board */
 .green-board {
