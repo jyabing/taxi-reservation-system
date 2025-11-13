@@ -68,84 +68,59 @@
               {% endif %}
             </td>
 
-            {# ==== BEGIN REPLACE MS2: 会社決定 列，加入車両情報（決定後のみ） ==== #}
+            {# ==== BEGIN MS2 (Final Clean Version) ==== #}
             <td data-label="会社決定">
+
               {% if s.assigned_car %}
-                <span class="badge bg-success">
-                  {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }} {{ s.assigned_car.name }}
-                </span>
+                <div class="car-info-card small">
 
-                {# ↓↓↓ 已会社決定且有車時，在車牌下方顯示 點検/年検/設備（手機=卡片、桌面=表格） ↓↓↓ #}
-                {% if s.show_car_box %}
-                  <div class="car-info-box mt-2">
-                    <div class="car-info-head">
-                      <span class="car-no-badge">
-                        {{ s.car_obj.license_plate|default:s.car_obj.name|default:"" }}
-                      </span>
-                      <span class="car-name">
-                        {{ s.car_obj.brand }} {{ s.car_obj.model }}
-                      </span>
-                    </div>
-
-                    {# 桌面端：表格風 #}
-                    <div class="car-info-grid d-none d-lg-grid">
-                      <div class="k">点検</div>
-                      <div class="v {{ s.car_info_ctx.tenken.css }}">
-                        {% if s.car_info_ctx.tenken.show %}{{ s.car_info_ctx.tenken.label }}{% else %}<span class="text-muted">正常</span>{% endif %}
-                      </div>
-
-                      <div class="k">年検</div>
-                      <div class="v {{ s.car_info_ctx.shaken.css }}">
-                        {% if s.car_info_ctx.shaken.show %}{{ s.car_info_ctx.shaken.label }}{% else %}<span class="text-muted">正常</span>{% endif %}
-                      </div>
-
-                      <div class="k">設備</div>
-                      <div class="v">
-                        {% if s.car_info_ctx.equipment %}
-                          {% for e in s.car_info_ctx.equipment %}
-                            <span class="equip-chip">{{ e }}</span>
-                          {% endfor %}
-                        {% else %}
-                          <span class="text-muted">（未登録）</span>
-                        {% endif %}
-                      </div>
-                    </div>
-
-                    {# 手機端：卡片式 #}
-                    <div class="car-info-body d-lg-none">
-                      {% if s.car_info_ctx.tenken.show %}
-                        <div class="car-info-line {{ s.car_info_ctx.tenken.css }}">
-                          <span class="label">点検</span>
-                          <span class="text">{{ s.car_info_ctx.tenken.label }}</span>
-                        </div>
-                      {% endif %}
-                      {% if s.car_info_ctx.shaken.show %}
-                        <div class="car-info-line {{ s.car_info_ctx.shaken.css }}">
-                          <span class="label">年検</span>
-                          <span class="text">{{ s.car_info_ctx.shaken.label }}</span>
-                        </div>
-                      {% endif %}
-                      <div class="car-info-line equipment">
-                        <span class="label">設備</span>
-                        <span class="text">
-                          {% if s.car_info_ctx.equipment %}
-                            {% for e in s.car_info_ctx.equipment %}
-                              <span class="equip-chip">{{ e }}</span>
-                            {% endfor %}
-                          {% else %}
-                            <span class="text-muted">（未登録）</span>
-                          {% endif %}
-                        </span>
-                      </div>
-                    </div>
+                  <!-- 顶部：车牌徽章靠右 -->
+                  <div class="car-info-card-header">
+                    <div></div>  <!-- 左侧留空，使徽章靠右 -->
+                    <span class="badge bg-success car-info-badge">
+                      {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }}
+                      {{ s.assigned_car.name }}
+                    </span>
                   </div>
-                {% endif %}
-                {# ↑↑↑ 車情報ここまで ↑↑↑ #}
+
+                  <!-- 点检 -->
+                  <div class="car-info-row mb-1">
+                    <span class="ci-label">🛠 点検</span>
+                    <span class="car-due {{ s.car_info_ctx.tenken.css }}">
+                      {{ s.car_info_ctx.tenken.label }}
+                    </span>
+                  </div>
+
+                  <!-- 年检 -->
+                  <div class="car-info-row mb-1">
+                    <span class="ci-label">📅 年検</span>
+                    <span class="car-due {{ s.car_info_ctx.shaken.css }}">
+                      {{ s.car_info_ctx.shaken.label }}
+                    </span>
+                  </div>
+
+                  <!-- 设备 -->
+                  <div class="car-info-row">
+                    <span class="ci-label">⚙ 設備</span>
+                    <span>
+                      {% if s.car_info_ctx.equipment %}
+                        {% for e in s.car_info_ctx.equipment %}
+                          {{ e }}{% if not forloop.last %} ・ {% endif %}
+                        {% endfor %}
+                      {% else %}
+                        <span class="text-muted">（未登録）</span>
+                      {% endif %}
+                    </span>
+                  </div>
+
+                </div>
 
               {% elif s.status == "approved" %}
                 <span class="badge bg-info text-dark">会社決定済（車両未指定）</span>
+
               {% elif s.status == "rejected" %}
                 <span class="badge bg-danger">差し戻し</span>
+
               {% else %}
                 <span class="badge bg-secondary">確認中</span>
               {% endif %}
@@ -154,7 +129,7 @@
                 <div class="small text-muted mt-1">{{ s.admin_note }}</div>
               {% endif %}
             </td>
-            {# ==== END REPLACE MS2 ==== #}
+            {# ==== END MS2 ==== #}
 
             <td data-label="備考">{{ s.note|default:"-" }}</td>
 
@@ -219,6 +194,43 @@
   .car-info-grid .v.due-expired{color:#d93025;font-weight:700;}
 }
 </style>
+{# ==== BEGIN REPLACE/INSERT MS-CSS-CARD: 会社決定 情報カード 樣式 ==== #}
+<style>
+.car-info-card{
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+  background:#f8fafc;
+  padding:8px 10px;
+  box-shadow:0 1px 3px rgba(15,23,42,.08);
+}
 
+.car-info-card-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:4px;
+}
+
+.car-info-badge{
+  font-weight:700;
+}
+
+.car-info-row{
+  display:flex;
+  gap:6px;
+  align-items:baseline;
+}
+
+.ci-label{
+  min-width:4.2em;
+  color:#6b7280;
+}
+
+.car-due.due-expired{color:#d93025;font-weight:700;}
+.car-due.due-today{color:#0f9d58;font-weight:700;}
+.car-due.due-soon{color:#b36b00;font-weight:600;}
+.car-due.due-normal{color:#777;}
+</style>
+{# ==== END MS-CSS-CARD ==== #}
 
 {% endblock %}
