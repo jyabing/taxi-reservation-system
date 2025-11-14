@@ -30,8 +30,15 @@
     <tbody>
       {% if schedules %}
         {% for s in schedules %}
-          <tr>
-            <td data-label="日付">{{ s.work_date|date:"Y-m-d (D)" }}</td>
+          <tr class="my-sched-row" data-date="{{ s.work_date|date:'Y-m-d' }}">
+            <td data-label="日付" class="sched-date-cell">
+              <div class="sched-date-inner">
+                <span class="sched-toggle-icon">▼</span>
+                <span class="sched-date-text">
+                  {{ s.work_date|date:"Y-m-d (D)" }}
+                </span>
+              </div>
+            </td>
 
             <td data-label="シフト">
               {% if s.is_rest %}
@@ -82,11 +89,17 @@
                   {# 車両情報カード #}
                   <div class="car-info-card small">
                     <div class="car-info-card-header">
-                      <div></div>
-                      <span class="badge bg-success car-info-badge">
-                        {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }}
-                        {{ s.assigned_car.name }}
-                      </span>
+                      <div class="car-header-right">
+                        <span class="car-number-pill"
+                              data-brand="{{ s.assigned_car.brand|default:'' }}">
+                          {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }}
+                        </span>
+                        {% if s.assigned_car.name %}
+                          <span class="car-model-text">
+                            {{ s.assigned_car.name }}
+                          </span>
+                        {% endif %}
+                      </div>
                     </div>
 
                     <div class="car-info-row mb-1">
@@ -200,6 +213,101 @@
 
 {# ==== BEGIN REPLACE/INSERT MS-CSS-CARD: 会社決定 情報カード 樣式 ==== #}
 <style>
+/* 通用徽章基础样式 */
+.car-no-badge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: inline-block;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+/* ======== Toyota (トヨタ) ======== */
+.brand-toyota.car-no-badge {
+  background: #e6f4ea;
+  color: #137333;
+  border-color: #c9e6d4;
+}
+
+/* ======== Nissan (日産) ======== */
+.brand-nissan.car-no-badge {
+  background: #e7f0fd;
+  color: #0b57d0;
+  border-color: #c7daf8;
+}
+
+/* ======== Honda (ホンダ) ======== */
+.brand-honda.car-no-badge {
+  background: #fde8e8;
+  color: #b42318;
+  border-color: #f5c2c2;
+}
+
+/* ======== Suzuki (スズキ) ======== */
+.brand-suzuki.car-no-badge {
+  background: #f0f9ff;
+  color: #0369a1;
+  border-color: #bae6fd;
+}
+
+/* ======== Daihatsu (ダイハツ) ======== */
+.brand-daihatsu.car-no-badge {
+  background: #fff4e5;
+  color: #8a4d00;
+  border-color: #f5d9b8;
+}
+
+/* ======== Toyota ハイエース 用の別色（可选） ======== */
+/*
+.brand-hiace.car-no-badge {
+  background: #eef6ff;
+  color: #1e40af;
+  border-color: #cbdffb;
+}
+*/
+
+/* ======== 默认（无法判断品牌） ======== */
+.car-no-badge:not([class*="brand-"]) {
+  background: #f3f4f6;
+  color: #374151;
+  border-color: #e5e7eb;
+}
+
+
+/* ===== 私のスケジュール：行折りたたみ（アコーディオン） ===== */
+
+/* 折りたたみ状態の行：1列目（日付）以外を非表示にする */
+.my-sched-row.my-collapsed td:not(:first-child) {
+  display: none;
+}
+
+/* 日付セル全体をクリックターゲットにする */
+.sched-date-cell {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* 日付の中身：アイコン＋テキストを横並び */
+.sched-date-inner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 展開アイコン（▶ / ▼） */
+.sched-toggle-icon {
+  font-size: .8rem;
+  color: #6b7280;
+  width: 1em;
+  text-align: center;
+}
+
+/* 展開中は少し強調（颜色稍深） */
+.my-sched-row:not(.my-collapsed) .sched-toggle-icon {
+  color: #111827;
+}
 /* ===== 配車決定：セル内を縦方向に並べる ===== */
 .car-cell-wrap{
   display:flex;
@@ -224,9 +332,63 @@
   margin-bottom:4px;
 }
 
-/* 車両バッジ（ナンバー＋車名） */
+/* ===== 柔和浅绿 pill 风车牌徽章 ===== */
 .car-info-badge{
+  background: #e6f4ea !important;     /* 柔和浅绿背景 */
+  color: #137333 !important;           /* 深绿字体 */
+  padding: 3px 10px;
+  border-radius: 999px;                /* 丸み最大的 pill 风格 */
+  font-weight: 700;
+  font-size: .85rem;
+  display: inline-block;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  border: 1px solid #d2e9d7;
+}
+
+/* ==== 車両バッジ（ナンバー＋車名を分離） ==== */
+
+/* 右側コンテナ：ナンバー＋車名を横並びで、全体を右寄せ */
+.car-header-right{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+/* ナンバーの楕円バッジ */
+.car-number-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:3px 12px;          /* ← 比以前稍大一点 */
+  border-radius:999px;
   font-weight:700;
+  font-size:.9rem;           /* ← 略大きめ */
+  letter-spacing:.03em;
+  background:#e5f3ff;        /* デフォルト（非トヨタ） */
+  color:#1d4ed8;
+}
+
+/* 車名テキスト */
+.car-model-text{
+  font-size:.9rem;
+  color:#374151;
+}
+
+/* ==== メーカー別色（Toyota 系だけ特別色） ==== */
+/* brand が「トヨタ」「Toyota」「TOYOTA」で始まる場合 */
+.car-number-pill[data-brand^="トヨタ"],
+.car-number-pill[data-brand^="Toyota"],
+.car-number-pill[data-brand^="TOYOTA"]{
+  background:#e6f4ea;  /* Google の “成功” 系グリーン背景に近い色 */
+  color:#137333;       /* 濃いグリーン文字 */
+}
+
+/* ==== スマホ時はバッジをより右寄せ（念のため） ==== */
+@media (max-width: 767.98px){
+  .car-info-card-header{
+    justify-content:flex-end;
+  }
 }
 
 /* 点検／車検／設備 の各行レイアウト */
@@ -295,6 +457,47 @@
 .d-none{
   display:none !important;
 }
+
+/* ============================
+   折りたたみ行の背景色＆今日ハイライト
+============================ */
+
+/* 折りたたみ状態：薄いグレー */
+.my-sched-row.my-collapsed {
+  background: #f8f9fa !important;
+}
+
+/* 展開中：白（デフォルト） */
+.my-sched-row:not(.my-collapsed) {
+  background: #ffffff !important;
+}
+
+/* 今日の行（展開中のみ）：淡い青でハイライト */
+.my-sched-row[data-date="{{ today|date:'Y-m-d' }}"]:not(.my-collapsed) {
+  background: #e8f3ff !important;
+}
+
+/* ============================
+   スマホ用：折りたたみ行の見た目を少し大きく
+============================ */
+@media (max-width: 768px) {
+
+  /* 折りたたみ時：日付セルの高さと文字を少し大きく */
+  .my-sched-row.my-collapsed .sched-date-cell {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  /* アイコンと日付を少し強調 */
+  .my-sched-row.my-collapsed .sched-toggle-icon {
+    font-size: 0.95rem;
+  }
+  .my-sched-row.my-collapsed .sched-date-text {
+    font-size: 1rem;
+  }
+}
 </style>
 
 {# ==== END MS-CSS-CARD ==== #}
@@ -328,5 +531,62 @@ document.addEventListener('click', function (e) {
   }
 });
 </script>
+
+<script>
+/* 私のスケジュール：アコーディオン（今日以外は初期折りたたみ） */
+document.addEventListener('DOMContentLoaded', function () {
+  const todayStr = '{{ today|date:"Y-m-d" }}';  // 例: 2025-11-13
+
+  // アイコンを行の状態に合わせて更新
+  function updateRowIcon(row) {
+    const icon = row.querySelector('.sched-toggle-icon');
+    if (!icon) return;
+    if (row.classList.contains('my-collapsed')) {
+      icon.textContent = '▶';  // 折りたたみ
+    } else {
+      icon.textContent = '▼';  // 展開中
+    }
+  }
+
+  const rows = document.querySelectorAll('.my-sched-row');
+
+  rows.forEach(function (row) {
+    const rowDate = row.getAttribute('data-date');
+
+    // 今日以外 → 初期状態で折りたたみ
+    if (rowDate !== todayStr) {
+      row.classList.add('my-collapsed');
+    }
+
+    // 初期アイコン設定
+    updateRowIcon(row);
+
+    // 行クリックでアコーディオン動作
+    row.addEventListener('click', function (e) {
+      // 編集・削除ボタンやリンクをクリックしたときは無視
+      if (e.target.closest('a, button, form')) {
+        return;
+      }
+
+      const isCollapsed = row.classList.contains('my-collapsed');
+
+      if (isCollapsed) {
+        // 今クリックした行を「展開」、他の行は全部「折りたたみ」
+        rows.forEach(function (r) {
+          r.classList.add('my-collapsed');
+          updateRowIcon(r);
+        });
+        row.classList.remove('my-collapsed');
+        updateRowIcon(row);
+      } else {
+        // 既に展開中の行をクリックした → 折りたたむ（全部折りたたみ状態も可）
+        row.classList.add('my-collapsed');
+        updateRowIcon(row);
+      }
+    });
+  });
+});
+</script>
+
 
 {% endblock %}
