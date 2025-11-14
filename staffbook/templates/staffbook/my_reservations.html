@@ -19,8 +19,7 @@
     <thead class="table-light">
       <tr>
         <th style="width: 110px;">日付</th>
-        <th style="width: 90px;">区分</th>
-        <th style="width: 90px;">シフト</th>
+        <th style="width: 130px;">シフト</th>
         <th>車両希望</th>
         <th>会社決定</th>
         <th>備考</th>
@@ -33,18 +32,23 @@
         {% for s in schedules %}
           <tr>
             <td data-label="日付">{{ s.work_date|date:"Y-m-d (D)" }}</td>
-            <td data-label="区分">
+
+            <td data-label="シフト">
               {% if s.is_rest %}
                 <span class="badge bg-secondary">休み</span>
               {% else %}
-                <span class="badge bg-primary">希望</span>
+                <span class="badge bg-primary me-2">出勤</span>
+
+                {% if s.shift == "day" %}
+                  昼勤
+                {% elif s.shift == "night" %}
+                  夜勤
+                {% else %}
+                  -
+                {% endif %}
               {% endif %}
             </td>
-            <td data-label="シフト">
-              {% if not s.is_rest %}
-                {% if s.shift == "day" %}白{% elif s.shift == "night" %}夜{% else %}-{% endif %}
-              {% else %}-{% endif %}
-            </td>
+
 
             <td data-label="車両希望">
               {% if s.is_rest %}
@@ -68,66 +72,90 @@
               {% endif %}
             </td>
 
-            {# ==== BEGIN MS2 (Final Clean Version) ==== #}
+            {# ==== BEGIN MS2: 会社決定列（カード＋備考折りたたみ） ==== #}
             <td data-label="会社決定">
 
-              {% if s.assigned_car %}
-                <div class="car-info-card small">
+              <div class="car-cell-wrap">
 
-                  <!-- 顶部：车牌徽章靠右 -->
-                  <div class="car-info-card-header">
-                    <div></div>  <!-- 左侧留空，使徽章靠右 -->
-                    <span class="badge bg-success car-info-badge">
-                      {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }}
-                      {{ s.assigned_car.name }}
-                    </span>
+                {% if s.assigned_car %}
+
+                  {# 車両情報カード #}
+                  <div class="car-info-card small">
+                    <div class="car-info-card-header">
+                      <div></div>
+                      <span class="badge bg-success car-info-badge">
+                        {{ s.assigned_car.license_plate|default:s.assigned_car.registration_number }}
+                        {{ s.assigned_car.name }}
+                      </span>
+                    </div>
+
+                    <div class="car-info-row mb-1">
+                      <span class="ci-label">🛠 点検</span>
+                      <span class="car-due {{ s.car_info_ctx.tenken.css }}">
+                        {{ s.car_info_ctx.tenken.label }}
+                      </span>
+                    </div>
+
+                    <div class="car-info-row mb-1">
+                      <span class="ci-label">📅 車検</span>
+                      <span class="car-due {{ s.car_info_ctx.shaken.css }}">
+                        {{ s.car_info_ctx.shaken.label }}
+                      </span>
+                    </div>
+
+                    <div class="car-info-row">
+                      <span class="ci-label">⚙ 設備</span>
+                      <span>
+                        {% if s.car_info_ctx.equipment %}
+                          {% for e in s.car_info_ctx.equipment %}
+                            {{ e }}{% if not forloop.last %} ・ {% endif %}
+                          {% endfor %}
+                        {% else %}
+                          <span class="text-muted">（登録なし）</span>
+                        {% endif %}
+                      </span>
+                    </div>
                   </div>
 
-                  <!-- 点检 -->
-                  <div class="car-info-row mb-1">
-                    <span class="ci-label">🛠 点検</span>
-                    <span class="car-due {{ s.car_info_ctx.tenken.css }}">
-                      {{ s.car_info_ctx.tenken.label }}
-                    </span>
-                  </div>
+                  {# ★ カードの下に出す管理メモ（長い場合は折りたたみ） #}
+                  {% if s.admin_note %}
+                    {% with s.admin_note as note %}
+                      <div class="car-admin-note" data-note-id="{{ s.id }}">
+                        <span class="note-icon">💬</span>
 
-                  <!-- 年检 -->
-                  <div class="car-info-row mb-1">
-                    <span class="ci-label">📅 年検</span>
-                    <span class="car-due {{ s.car_info_ctx.shaken.css }}">
-                      {{ s.car_info_ctx.shaken.label }}
-                    </span>
-                  </div>
+                        {# 短い版（先頭 40 文字） #}
+                        <span class="note-text note-short">
+                          {{ note|truncatechars:40 }}
+                        </span>
 
-                  <!-- 设备 -->
-                  <div class="car-info-row">
-                    <span class="ci-label">⚙ 設備</span>
-                    <span>
-                      {% if s.car_info_ctx.equipment %}
-                        {% for e in s.car_info_ctx.equipment %}
-                          {{ e }}{% if not forloop.last %} ・ {% endif %}
-                        {% endfor %}
-                      {% else %}
-                        <span class="text-muted">（未登録）</span>
-                      {% endif %}
-                    </span>
-                  </div>
+                        {# 全文版 #}
+                        <span class="note-text note-full d-none">
+                          {{ note }}
+                        </span>
 
-                </div>
+                        {# 40 文字を超える場合だけトグルボタンを表示 #}
+                        {% if note|length > 40 %}
+                          <button type="button"
+                                  class="note-toggle btn btn-link btn-sm p-0 ms-1">
+                            もっと見る
+                          </button>
+                        {% endif %}
+                      </div>
+                    {% endwith %}
+                  {% endif %}
 
-              {% elif s.status == "approved" %}
-                <span class="badge bg-info text-dark">会社決定済（車両未指定）</span>
+                {% elif s.status == "approved" %}
+                  <span class="badge bg-info text-dark">会社決定済（車両未指定）</span>
 
-              {% elif s.status == "rejected" %}
-                <span class="badge bg-danger">差し戻し</span>
+                {% elif s.status == "rejected" %}
+                  <span class="badge bg-danger">差し戻し</span>
 
-              {% else %}
-                <span class="badge bg-secondary">確認中</span>
-              {% endif %}
+                {% else %}
+                  <span class="badge bg-secondary">確認中</span>
+                {% endif %}
 
-              {% if s.admin_note %}
-                <div class="small text-muted mt-1">{{ s.admin_note }}</div>
-              {% endif %}
+              </div>  {# /car-cell-wrap：上下レイアウト用ラッパー #}
+
             </td>
             {# ==== END MS2 ==== #}
 
@@ -170,32 +198,16 @@
   </table>
 </div>
 
-<style>
-.car-info-box{border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;background:#fafafa;margin-top:8px;}
-.car-info-head{font-weight:600;margin-bottom:6px;display:flex;gap:8px;align-items:center;}
-.car-no-badge{background:#e6f4ea;color:#137333;border-radius:999px;padding:2px 8px;font-weight:700;}
-.car-name{color:#555;}
-.car-info-line{display:flex;gap:10px;padding:6px 0;align-items:baseline;border-top:1px dashed #eee;}
-.car-info-line:first-of-type{border-top:none;}
-.car-info-line .label{width:56px;color:#666;font-size:.92rem;}
-.car-info-line .text{flex:1;}
-.due-soon{box-shadow:inset 0 0 0 9999px rgba(255,193,7,.12);}
-.due-today .text{font-weight:800;color:#0f9d58;}
-.due-expired .text{color:#d93025;font-weight:700;}
-.due-unknown .text{color:#9aa0a6;}
-.equipment .equip-chip{display:inline-block;padding:2px 8px;margin:2px 4px 0 0;border-radius:999px;border:1px solid #d0d5db;font-size:12px;color:#374151;background:#fff;}
-@media (min-width: 992px){
-  .car-info-box{background:#fff;border:1px solid #dfe1e5;}
-  .car-info-grid{display:grid;grid-template-columns:120px 1fr 120px 1fr;gap:8px 12px;align-items:center;}
-  .car-info-grid .k{color:#666;}
-  .car-info-grid .v{padding:4px 0;}
-  .car-info-grid .v.due-soon{box-shadow:inset 0 0 0 9999px rgba(255,193,7,.12);}
-  .car-info-grid .v.due-today{font-weight:800;color:#0f9d58;}
-  .car-info-grid .v.due-expired{color:#d93025;font-weight:700;}
-}
-</style>
 {# ==== BEGIN REPLACE/INSERT MS-CSS-CARD: 会社決定 情報カード 樣式 ==== #}
 <style>
+/* ===== 配車決定：セル内を縦方向に並べる ===== */
+.car-cell-wrap{
+  display:flex;
+  flex-direction:column;  /* カード → 備考 の順で縦並び */
+  gap:6px;
+}
+
+/* ===== 配車決定：車両情報カード ===== */
 .car-info-card{
   border:1px solid #e5e7eb;
   border-radius:10px;
@@ -204,6 +216,7 @@
   box-shadow:0 1px 3px rgba(15,23,42,.08);
 }
 
+/* ヘッダー部分（右上に車両バッジ） */
 .car-info-card-header{
   display:flex;
   justify-content:space-between;
@@ -211,26 +224,109 @@
   margin-bottom:4px;
 }
 
+/* 車両バッジ（ナンバー＋車名） */
 .car-info-badge{
   font-weight:700;
 }
 
+/* 点検／車検／設備 の各行レイアウト */
 .car-info-row{
   display:flex;
   gap:6px;
   align-items:baseline;
 }
 
+/* 左側のラベル（🛠 点検／📅 車検／⚙ 設備） */
 .ci-label{
   min-width:4.2em;
   color:#6b7280;
 }
 
-.car-due.due-expired{color:#d93025;font-weight:700;}
-.car-due.due-today{color:#0f9d58;font-weight:700;}
-.car-due.due-soon{color:#b36b00;font-weight:600;}
-.car-due.due-normal{color:#777;}
+/* ===== 点検・車検のステータス色分け ===== */
+/* 期限切れ（赤） */
+.car-due.due-expired{
+  color:#d93025;
+  font-weight:700;
+}
+
+/* 本日が期限（緑） */
+.car-due.due-today{
+  color:#0f9d58;
+  font-weight:700;
+}
+
+/* 5日以内に期限（茶色） */
+.car-due.due-soon{
+  color:#b36b00;
+  font-weight:600;
+}
+
+/* 通常（グレー） */
+.car-due.due-normal{
+  color:#777;
+}
+
+/* ===== 車両カードの下に出す管理メモ（折りたたみ対応） ===== */
+.car-admin-note{
+  margin-top:2px;
+  padding:4px 6px;
+  border-left:3px solid #9ca3af;
+  background:#f9fafb;
+  font-size:.8rem;
+  color:#4b5563;
+  line-height:1.4;
+}
+
+.car-admin-note .note-icon{
+  margin-right:4px;
+  opacity:.8;
+}
+
+.car-admin-note .note-text{
+  word-break:break-word;
+}
+
+/* トグルボタン（もっと見る／閉じる） */
+.note-toggle{
+  font-size:.75rem;
+}
+
+/* シンプルな .d-none 互換（念のため） */
+.d-none{
+  display:none !important;
+}
 </style>
+
 {# ==== END MS-CSS-CARD ==== #}
+
+<script>
+/* 管理メモの「もっと見る／閉じる」トグル */
+document.addEventListener('click', function (e) {
+  const btn = e.target.closest('.note-toggle');
+  if (!btn) return;
+
+  const wrap = btn.closest('.car-admin-note');
+  if (!wrap) return;
+
+  const shortText = wrap.querySelector('.note-short');
+  const fullText  = wrap.querySelector('.note-full');
+
+  if (!shortText || !fullText) return;
+
+  const isExpanded = !fullText.classList.contains('d-none');
+
+  if (isExpanded) {
+    // 今は全文表示 → 短く戻す
+    fullText.classList.add('d-none');
+    shortText.classList.remove('d-none');
+    btn.textContent = 'もっと見る';
+  } else {
+    // 今は短い版 → 全文表示
+    shortText.classList.add('d-none');
+    fullText.classList.remove('d-none');
+    btn.textContent = '閉じる';
+  }
+});
+</script>
 
 {% endblock %}
