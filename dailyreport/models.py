@@ -128,9 +128,40 @@ class DriverDailyReport(models.Model):
     )
     
     # ✅ 新增字段：ETC不足部分（多跑未补收）
-    etc_shortage = models.PositiveIntegerField(default=0, verbose_name="ETC不足额", help_text="ETC使用金额超过应收金额的部分，将从工资中扣除")
+    etc_shortage = models.PositiveIntegerField(
+        default=0,
+        verbose_name="ETC不足额",
+        help_text="ETC使用金额超过应收金额的部分，将从工资中扣除",
+    )
+
+    # ✅ 新增：司机负担ETC（例如会社カードで空車ETCを利用したが、ドライバー自費とする分）
+    etc_driver_cost = models.PositiveIntegerField(
+        "司机負担ETC（給与控除）",
+        default=0,
+        help_text="会社カード等で支払ったETCのうち、ドライバー負担とする金額の合計",
+    )
 
     etc_note = models.CharField(max_length=255, blank=True, verbose_name="ETC备注")
+
+    @property
+    def etc_collected_total(self):
+        """实收ETC合计 = cash + app"""
+        return (self.etc_collected_cash or 0) + (self.etc_collected_app or 0)
+
+    @property
+    def etc_expected(self):
+        """ETC应收合计 = 收取 + 未收"""
+        return (self.etc_collected or 0) + (self.etc_uncollected or 0)
+
+    @property
+    def total_etc_driver_deduction(self) -> int:
+        """
+        給与から控除すべきETC合計：
+        ・etc_shortage：应收未收部分
+        ・etc_driver_cost：会社カード空車ETCなどドライバー自費とした部分
+        """
+        return (self.etc_shortage or 0) + (self.etc_driver_cost or 0)
+
 
     @property
     def etc_collected_total(self):

@@ -45,13 +45,18 @@ class DriverDailyReportForm(forms.ModelForm):
         # fields = "__all__"
 
         widgets = {
-            "etc_rider_payer": forms.Select(attrs={"class": "form-select form-select-sm js-etc-rider-payer"}),
-            "etc_empty_card": forms.Select(attrs={"class": "form-select form-select-sm js-empty-etc-card"}),  # ✅ 新增
+            "etc_rider_payer": forms.Select(
+                attrs={"class": "form-select form-select-sm js-etc-rider-payer"}
+            ),
+            "etc_empty_card": forms.Select(
+                attrs={"class": "form-select form-select-sm js-empty-etc-card"}
+            ),  # ✅ 已有
+            # ✅ 新增：司机負担ETC，作为 hidden 字段
+            "etc_driver_cost": forms.HiddenInput(),
         }
 
     def clean(self):
         cleaned = super().clean()
-        # 若用户输入了退勤时间，则把“未完成入库手续”强制视为未勾选
         co = cleaned.get("clock_out")
         if co:
             cleaned["unreturned_flag"] = False

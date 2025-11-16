@@ -397,6 +397,26 @@ input[type=number] {
         </div>
       </div>
       <!-- ======= END NEW ======= -->
+
+      <!-- ✅ 新增：司机负担ETC（工资扣除予定） -->
+      <div class="border rounded px-3 py-2 text-start" style="min-width: 220px;">
+        <div class="small text-muted mb-1">司机負担ETC（工资扣除予定）</div>
+        <div class="fw-bold">
+          <span id="etc-driver-cost">
+            {{ form.instance.etc_driver_cost|default:0 }}
+          </span> 円
+        </div>
+
+        {# HiddenInput：提交到后端（在 forms.py 里已设为 HiddenInput） #}
+        {{ form.etc_driver_cost }}
+
+        <div class="form-text small mt-1">
+          ＝ 行明細の <b>空車ETC</b> のうち「空車ETC 立替者 = ドライバー」として入力された合計。<br>
+          給与計算時に、運転手の給与から控除します。
+        </div>
+      </div>
+      <!-- ✅ 新增卡片结束 -->
+
       
       <!-- ======= BEGIN 折叠版：ETC 收取＝乗車合計（円） ======= -->
       <div class="border rounded mb-2" id="ride-etc-card" data-collapse-key="ride-etc">

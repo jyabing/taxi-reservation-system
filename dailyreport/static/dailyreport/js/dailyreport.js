@@ -572,6 +572,20 @@ function updateTotals() {
   if (typeof updateSmartHintPanel === "function") {
     try { updateSmartHintPanel(); } catch (_) {}
   }
+
+   /* ====== PATCH: 写回“司机負担ETC（工资扣除）” ====== */
+  (function syncDriverEtcCost() {
+    // 等同于右侧 ETC(ドライバー立替)
+    const driverEtc = etcDriver;  
+
+    // 右侧卡片
+    const span = document.getElementById("etc-driver-cost");
+    if (span) span.textContent = driverEtc;
+
+    // hidden → 提交到后端
+    const hidden = document.getElementById("id_etc_driver_cost");
+    if (hidden) hidden.value = driverEtc;
+  })();
 }
 /* ====== REPLACE TO HERE ====== */
 
