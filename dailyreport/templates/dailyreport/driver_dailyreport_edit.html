@@ -349,13 +349,6 @@ input[type=number] {
       <!-- ✅ ETC 包含判断提示（JS 动态修改） -->
       <div id="etc-included-warning" class="small mt-1"></div>
 
-      <!-- ▼▼ 新增：実際ETC（会社 → 運転手）显示 + hidden ▼▼ -->
-      <div class="small text-muted mt-1">
-            実際ETC 会社 → 運転手：<span id="actual_etc_company_to_driver_view">0</span> 円
-      </div>
-          <input type="hidden" id="actual_etc_company_to_driver" name="actual_etc_company_to_driver" value="0">
-          <!-- ▲▲ 新增结束 ▲▲ -->
-
           {% if report.etc_collected and report.deposit_amount %}
             {% if report.is_etc_included_in_deposit %}
               <div class="small text-success mt-1">✔️ 含 ETC</div>
@@ -381,41 +374,61 @@ input[type=number] {
       </div>
       <!-- ✅ 入金 + ETC 综合区域 结束-->
 
-      <!-- ======= BEGIN NEW: 右侧 ETC 分项小计（仅显示，不改口径） ======= -->
+      <!-- ======= BEGIN: ETC 概要（行明細より集計＋工资扣除） ======= -->
       <div class="border rounded px-3 py-2 text-start" style="min-width: 220px;">
-        <div class="small text-muted mb-1">ETC 小計（行明細より集計）</div>
+        <div class="small text-muted mb-1">ETC 概要（行明細より集計）</div>
+
         <div class="d-flex flex-column gap-1 small">
+          <!-- ① 行明细汇总 -->
           <div>乗車ETC 合計：<span id="ride-etc-total">0</span></div>
           <div>空車ETC 合計：<span id="empty-etc-total">0</span></div>
+
           <hr class="my-1">
+
+          <!-- ② 负担区分 -->
           <div>ETC(客払 = 売上候補)：<span id="etc-customer-total">0</span></div>
           <div>ETC(会社負担)：<span id="etc-company-total">0</span></div>
           <div>ETC(ドライバー立替)：<span id="etc-driver-total" data-role="etc-paid-driver">0</span></div>
-        </div>
-        <div class="form-text mt-1">
-          ※ 現在は表示のみ。売上や過不足の計算口径は従前どおりです。
-        </div>
-      </div>
-      <!-- ======= END NEW ======= -->
 
-      <!-- ✅ 新增：司机负担ETC（工资扣除予定） -->
-      <div class="border rounded px-3 py-2 text-start" style="min-width: 220px;">
-        <div class="small text-muted mb-1">司机負担ETC（工资扣除予定）</div>
-        <div class="fw-bold">
-          <span id="etc-driver-cost">
-            {{ form.instance.etc_driver_cost|default:0 }}
-          </span> 円
+          <hr class="my-1">
+
+          <!-- ③ 司机负担（工资扣除予定） -->
+          <div class="d-flex justify-content-between align-items-center">
+            <span>司机負担ETC（工资扣除予定）</span>
+            <span class="fw-bold">
+              <span id="etc-driver-cost">
+                {{ form.instance.etc_driver_cost|default:0 }}
+              </span> 円
+            </span>
+          </div>
+
+          <!-- ④ ETC 不足（只读） -->
+          <div class="d-flex justify-content-between align-items-center mt-1">
+            <span class="small text-danger">ETC不足（円）</span>
+            <div style="width: 110px;">
+              {{ form.etc_shortage|add_class:"form-control form-control-sm text-end text-danger"|attr:"readonly" }}
+            </div>
+          </div>
+
+          <!-- ⑤ 未收 ETC 提示（由 JS/后台更新文案） -->
+          <div id="etc-diff-display" class="alert alert-info small py-1 px-2 mt-1 mb-0">
+            未收 ETC：0 円（无需扣除）
+          </div>
         </div>
 
-        {# HiddenInput：提交到后端（在 forms.py 里已设为 HiddenInput） #}
+        {# HiddenInput：提交到后端。widget 已在 forms.py 设为 HiddenInput #}
         {{ form.etc_driver_cost }}
 
-        <div class="form-text small mt-1">
-          ＝ 行明細の <b>空車ETC</b> のうち「空車ETC 立替者 = ドライバー」として入力された合計。<br>
-          給与計算時に、運転手の給与から控除します。
+        <div class="form-text mt-1">
+          ・上記 3 区分は、行明細の ETC(乗車/空車, 负担) 合計の内訳です。<br>
+          ・司机負担ETC = 会社カード等で支払ったうち「ドライバー負担」とした金額で、
+            月次の給与から控除されます。<br>
+          ・ETC不足（円）= 应收合计 − 实收金额。<br>
+          ・“ETC 实际收回”不是一个单独填写的字段，而是由日报明细的付款方式数据动态汇总出来的。
         </div>
       </div>
-      <!-- ✅ 新增卡片结束 -->
+      <!-- ======= END: ETC 概要 ======= -->
+
 
       
       <!-- ======= BEGIN 折叠版：ETC 收取＝乗車合計（円） ======= -->
@@ -502,19 +515,7 @@ input[type=number] {
       </div>
       <!-- === 追加结束 === -->
 
-      <!-- ✅ ETC 不足额（保持你原逻辑，只读展示） -->
-      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-        <label for="{{ form.etc_shortage.id_for_label }}" class="small text-danger">ETC不足（円）</label>
-        {{ form.etc_shortage|add_class:"form-control form-control-sm text-end text-danger"|attr:"readonly" }}
-        <label class="small text-muted mt-2 d-block">应收合计 - 实收金额</label>
-        <label class="small text-muted mt-2 d-block">“ETC 实际收回”不是一个单独填写的字段，</label>
-        <label class="small text-muted mt-2 d-block">而是由日报明细的付款方式数据动态汇总出来的</label>
-      </div>
 
-      <!-- ETC 未收提醒区 -->
-      <div id="etc-diff-display" class="alert alert-info small py-1 px-2 mt-1">
-        未收 ETC：0 円（无需扣除）
-      </div>
       
       <!-- ✅ 智能提示区（推荐放在 payment-summary-panel 结尾） -->
       <div id="smart-hint-panel" class="mt-2 w-100">

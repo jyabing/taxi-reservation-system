@@ -54,6 +54,12 @@
           <th class="text-end">总売上</th>
           <th class="text-end">日均売上</th>
           <th class="text-end">円/小时</th>
+
+          <!-- ======= [BEGIN INSERT T1] 新增 ETC 扣款表头 ======= -->
+          <th class="text-end text-danger">ETC不足</th>
+          <th class="text-end text-danger">司机負担ETC</th>
+          <th class="text-end text-danger">ETC扣除合計</th>
+          <!-- ======= [END   INSERT T1] ======================== -->
         </tr>
       </thead>
       <tbody>
@@ -67,9 +73,19 @@
           <td class="text-end"><strong>{{ r.total_sales|floatformat:0 }}</strong></td>
           <td class="text-end">{{ r.avg_sales_per_day|floatformat:0 }}</td>
           <td class="text-end">{{ r.sales_per_hour|floatformat:0 }}</td>
+
+          <!-- ======= [BEGIN INSERT T2] 新增 ETC 扣款字段 ======= -->
+          <td class="text-end text-danger">
+            {{ r.etc_shortage_sum|default:0 }}
+          </td>
+          <td class="text-end text-danger">
+            {{ r.etc_driver_cost_sum|default:0 }}
+          </td>
+          <td class="text-end fw-bold text-danger">
+            {{ r.etc_deduction_total|default:0 }}
+          </td>
+          <!-- ======= [END   INSERT T2] ======================== -->
         </tr>
-        {% empty %}
-        <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
         {% endfor %}
       </tbody>
     </table>

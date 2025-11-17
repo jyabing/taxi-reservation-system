@@ -279,13 +279,63 @@ def _compute_driver_sales(d_from: date, d_to: date):
     rows.sort(key=lambda x: (-x["total_sales"], x["label"]))
     return rows
 
+# ====== [BEGIN INSERT M2] 追加：按司机汇总 ETC 扣款并挂到 rows 上 ======
+def _attach_etc_deductions(rows, d_from: date, d_to: date):
+    """
+    给每个 rows[i] 附加：
+      - etc_driver_cost_sum  本期司机负担ETC（report.etc_driver_cost 合计）
+      - etc_shortage_sum     本期ETC不足额（report.etc_shortage 合计）
+      - etc_deduction_total  上面两者的合计（工资扣除用）
+    """
+
+    # 1）先从 DriverDailyReport 做聚合：按 driver_id 汇总
+    qs = (
+        DriverDailyReport.objects
+        .filter(date__gte=d_from, date__lte=d_to, driver__isnull=False)
+        .values("driver_id")
+        .annotate(
+            etc_driver_cost_sum=Sum("etc_driver_cost"),
+            etc_shortage_sum=Sum("etc_shortage"),
+        )
+    )
+
+    etc_map = {row["driver_id"]: row for row in qs}
+
+    # 2）把汇总结果挂回每一行 row 上
+    for row in rows:
+        # 尝试从 row 中拿到 driver_id（兼容 dict 和对象两种情况）
+        driver_id = None
+        if isinstance(row, dict):
+            driver_id = row.get("driver_id") or getattr(row.get("driver", None), "id", None)
+        else:
+            driver_id = getattr(row, "driver_id", None) or getattr(getattr(row, "driver", None), "id", None)
+
+        data = etc_map.get(driver_id) or {}
+        etc_driver_cost_sum = data.get("etc_driver_cost_sum") or 0
+        etc_shortage_sum = data.get("etc_shortage_sum") or 0
+
+        # 写回到 row
+        if isinstance(row, dict):
+            row["etc_driver_cost_sum"] = etc_driver_cost_sum
+            row["etc_shortage_sum"] = etc_shortage_sum
+            row["etc_deduction_total"] = etc_driver_cost_sum + etc_shortage_sum
+        else:
+            row.etc_driver_cost_sum = etc_driver_cost_sum
+            row.etc_shortage_sum = etc_shortage_sum
+            row.etc_deduction_total = etc_driver_cost_sum + etc_shortage_sum
+# ====== [END   INSERT M2] ==============================================
+
 @login_required
 def driver_sales_view(request: HttpRequest) -> HttpResponse:
     today = date.today()
     d_from = _parse_date(request.GET.get("from"), today.replace(day=1))
     d_to = _parse_date(request.GET.get("to"), _end_of_month(d_from))
 
+    # ====== [BEGIN MODIFY M3] 先算売上，再挂上 ETC 扣款 ======
     rows = _compute_driver_sales(d_from, d_to)
+    _attach_etc_deductions(rows, d_from, d_to)
+    # ====== [END   MODIFY M3] =================================
+
     ctx = {
         "rows": rows,
         "date_from": f"{d_from:%Y-%m-%d}",
