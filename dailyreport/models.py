@@ -86,8 +86,12 @@ class DriverDailyReport(models.Model):
     # ✅ etc_uncollected	@property	应收 - 实收 = 未收部分
     # ✅ etc_collected	IntegerField	旧字段，暂时保留（可用于数据迁移）
 
-    # ✅ 新字段（合并）
-    etc_collected = models.PositiveIntegerField("ETC收取金额（円）", null=True, blank=True, help_text="日计账单中“空乘合计”")
+    # ✅ 新字段（合并）：ETC 收取 & 应收/未收
+    etc_collected = models.PositiveIntegerField(
+        "ETC收取金额（円）",
+        null=True, blank=True,
+        help_text="日计账单中“空乘合计”（乗車ETC の実際收取額）"
+    )
     etc_payment_method = models.CharField(
         "ETC收取方式", max_length=20,
         choices=PAYMENT_METHOD_CHOICES,  # ✅ 正确引用全局变量，避免循环引用
@@ -126,39 +130,70 @@ class DriverDailyReport(models.Model):
         default="company",
         blank=True,
     )
+
+    # ===== [BEGIN PATCH] 回程費相关字段 =====
+    ETC_RETURN_METHOD_CHOICES = [
+        ("none",        "— 個別（別払い/なし）—"),
+        ("app_ticket",  "アプリ/チケット 一体結算"),
+        ("cash_to_driver", "現金（直接司机）"),
+    ]
+
+    etc_return_fee_claimed = models.PositiveIntegerField(
+        "回程費 受領額（円）",
+        null=True, blank=True, default=0,
+        help_text="回程費として客側から受け取った金額（アプリ一体／現金等）"
+    )
+
+    etc_return_fee_method = models.CharField(
+        "回程費 支払方法",
+        max_length=16,
+        choices=ETC_RETURN_METHOD_CHOICES,
+        default="none",
+        blank=True,
+    )
+    # ===== [END PATCH] =====
+    
     
     # ✅ 新增字段：ETC不足部分（多跑未补收）
     etc_shortage = models.PositiveIntegerField(
         default=0,
         verbose_name="ETC不足额",
-        help_text="ETC使用金额超过应收金额的部分，将从工资中扣除",
+        help_text="ETC应收合计 − 实际收取合计 的不足部分，仅用于统计/提示，不直接从工资中扣除。",
     )
 
-    # ✅ 新增：司机负担ETC（例如会社カードで空車ETCを利用したが、ドライバー自費とする分）
+    # 司机負担ETC（前端根据明细＋回程费算好后写入）
     etc_driver_cost = models.PositiveIntegerField(
         "司机負担ETC（給与控除）",
         default=0,
-        help_text="会社カード等で支払ったETCのうち、ドライバー負担とする金額の合計",
+        help_text="会社カード/自己カード等复杂情况最终认定为“司机自费”的ETC金额合计（工资扣除对象）",
     )
 
     etc_note = models.CharField(max_length=255, blank=True, verbose_name="ETC备注")
 
     @property
-    def etc_collected_total(self):
-        """实收ETC合计 = cash + app"""
-        return (self.etc_collected_cash or 0) + (self.etc_collected_app or 0)
+    def etc_collected_total(self) -> int:
+        """
+        实收ETC合计 = 现金收取 + App收取。
+        如子项未拆分，则退回 etc_collected。
+        """
+        if self.etc_collected_cash is not None or self.etc_collected_app is not None:
+            return (self.etc_collected_cash or 0) + (self.etc_collected_app or 0)
+        return self.etc_collected or 0
 
     @property
-    def etc_expected(self):
-        """ETC应收合计 = 收取 + 未收"""
+    def etc_expected(self) -> int:
+        """
+        ETC应收合计 = 收取 + 未收。
+        （乗車ETC收取 + 空车ETC 未收）
+        """
         return (self.etc_collected or 0) + (self.etc_uncollected or 0)
 
     @property
     def total_etc_driver_deduction(self) -> int:
         """
         給与から控除すべきETC合計：
-        ・etc_shortage：应收未收部分
-        ・etc_driver_cost：会社カード空車ETCなどドライバー自費とした部分
+        ・当前口径：仅 etc_driver_cost。
+        ・etc_shortage 仅用于统计“未收ETC”，不计入工资扣除。
         """
         return (self.etc_shortage or 0) + (self.etc_driver_cost or 0)
 

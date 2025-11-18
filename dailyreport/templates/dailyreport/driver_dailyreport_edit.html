@@ -431,91 +431,110 @@ input[type=number] {
 
 
       
-      <!-- ======= BEGIN 折叠版：ETC 收取＝乗車合計（円） ======= -->
-      <div class="border rounded mb-2" id="ride-etc-card" data-collapse-key="ride-etc">
-        <!-- 头部行：标题 + 收起/展开按钮 -->
-        <div class="d-flex align-items-center justify-content-between px-3 py-2">
-          <div class="fw-semibold">ETC 收取＝乗車合計（円）</div>
-          <button type="button"
-                  class="btn btn-sm btn-outline-secondary js-collapse-toggle"
-                  data-target="#ride-etc-body">收起/展开</button>
+      <!-- ======= BEGIN: ETC 明细折叠区域（乘车＋回程） ======= -->
+      <div class="mt-2">
+
+        <!-- 统一标题 -->
+        <div class="small text-muted mb-1">
+          ETC 明细（需要时展开填写）
         </div>
 
-        <!-- 可折叠的主体内容：把你原来的内容放在这里 -->
-        <div id="ride-etc-body" class="px-3 pb-3">
-          <!-- ✅ ETC 现金收区域（原样保留） -->
-          <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-            <label class="small text-muted">ETC 收取=乗車合計（円）</label>
-            {{ form.etc_collected|add_class:"form-control form-control-sm text-end"|attr:"data-role:etc-collected-passenger" }}
+        <!-- ▼ 折叠1：ETC 收取（＝乗車合計） -->
+        <!-- ======= BEGIN MOD: 精简版｜ETC 收取（乗車合計） ======= -->
+        <button class="btn btn-outline-secondary btn-sm w-100 text-start mb-1"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#collapse-etc-collected"
+                aria-expanded="false">
+          ETC 收取（＝乗車合計）
+        </button>
 
-            <!-- ✅ 追加：乘車ETC の 支払者（単選） -->
-            <label class="small text-muted mt-2 d-block">乗車ETC の支払者</label>
-            {{ form.etc_rider_payer|add_class:"form-select form-select-sm js-etc-rider-payer" }}
+        <div class="collapse" id="collapse-etc-collected">
+          <div class="border rounded px-3 py-2 text-start small" style="min-width: 220px;">
 
-            <div class="form-text small text-start mt-2">
-              ・会社カード：ETC 应收合计に加算（空車ETCは従来どおりのロジック）<br>
-              ・<span class="bg-warning px-1">自己カード：会社が下月工资で返す → 过不足に計上</span><br>
-              ・お客様カード：会社の应收・过不足ともに影響なし（備查のみ）
+            <!-- ▼ 1. 收取金额 -->
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span>ETC 收取金额（円）</span>
+              {{ form.etc_collected|add_class:"form-control form-control-sm text-end"|attr:"style:width:90px;" }}
             </div>
 
-            <label class="small text-muted mt-2 d-block">支付方式</label>
-            {{ form.etc_payment_method|add_class:"form-select form-select-sm" }}
+            <!-- ▼ 2. 收款方式 -->
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span>收款方式</span>
+              {{ form.etc_payment_method|add_class:"form-select form-select-sm"|attr:"style:width:120px;" }}
+            </div>
 
-            <label class="small text-muted mt-2 d-block">貸切の場合、お客様が乗って高速道路をご利用したので、</label>
-            <label class="small text-muted mt-2 d-block">日計で空車合計でも、乗車合計に記入ください</label>
+            <!-- ▼ 3. 乗車ETC 支払者 -->
+            <div class="d-flex justify-content-between align-items-center">
+              <span>乗車ETC 支払者</span>
+              {{ form.etc_rider_payer|add_class:"form-select form-select-sm"|attr:"style:width:140px;" }}
+            </div>
+
           </div>
         </div>
+        <!-- ======= END MOD: 精简版｜ETC 收取（乗車合計） ======= -->
+
+        <!-- ▼ 折叠2：空車ETC（回程）詳細 -->
+        <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
+        <button class="btn btn-outline-secondary btn-sm w-100 text-start mb-1"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#collapse-empty-etc-detail"
+                aria-expanded="false">
+          空車ETC（回程）詳細
+        </button>
+
+        <div class="collapse" id="collapse-empty-etc-detail">
+
+          <div id="empty-etc-card" class="border rounded px-3 py-2" style="min-width: 280px;">
+
+            <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
+            <div class="small text-muted">🧾 メータ小票 記載用：</div>
+
+            <div style="font-family:ui-monospace,Menlo,monospace;">空車ETC {{ report.etc_uncollected|default:0 }}円</div>
+            <div class="row g-2 align-items-end">
+              <!-- 空車ETC金额 -->
+              <div class="col-6">
+                <label for="id_etc_uncollected" class="form-label small">空車ETC 金額（円）</label>
+                <input type="number" class="form-control form-control-sm text-end js-empty-etc-amount"
+                      id="id_etc_uncollected" name="etc_uncollected" min="0" step="1"
+                      value="{% firstof form.etc_uncollected.value report.etc_uncollected 0 %}" inputmode="numeric" pattern="[0-9]*">
+              </div>
+              <!-- 回程费受领額 -->
+              <div class="col-6">
+                <label for="{{ form.etc_return_fee_claimed.id_for_label }}" class="form-label small">
+                  回程費 受領額（円）
+                </label>
+                {{ form.etc_return_fee_claimed }}
+              </div>
+
+              <!-- 回程费支付方式 -->
+              <div class="col-6">
+                <label for="{{ form.etc_return_fee_method.id_for_label }}" class="form-label small">
+                  回程費 支払方法
+                </label>
+                {{ form.etc_return_fee_method }}
+              </div>
+              <!-- 空車ETC 使用卡 -->
+              <div class="col-6">
+                <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
+                {{ form.etc_empty_card|add_class:"form-select form-select-sm js-empty-etc-card" }}
+
+              </div>
+            </div>
+            <div class="form-text mt-2">
+              <small>
+                覆盖规则：支払方法 = <strong>アプリ/チケット</strong> 时，回程費用于覆盖空車ETC；<br>
+                覆盖不足 → <strong>司机負担</strong>；覆盖过多 → 記為 <strong>未收ETC</strong>（展示/統計用）。
+              </small>
+            </div>
+          </div>
+
+        </div>
+        <!-- === 追加结束 === -->
+
       </div>
-      <!-- ======= END 折叠版 ======= -->
-
-      <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
-      <div id="empty-etc-card" class="border rounded px-3 py-2" style="min-width: 280px;">
-
-        <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
-        <div class="small text-muted">🧾 メータ小票 記載用：</div>
-
-        <div style="font-family:ui-monospace,Menlo,monospace;">空車ETC {{ report.etc_uncollected|default:0 }}円</div>
-        <div class="row g-2 align-items-end">
-          <!-- 空車ETC金额 -->
-          <div class="col-6">
-            <label for="id_etc_uncollected" class="form-label small">空車ETC 金額（円）</label>
-            <input type="number" class="form-control form-control-sm text-end js-empty-etc-amount"
-                  id="id_etc_uncollected" name="etc_uncollected" min="0" step="1"
-                  value="{% firstof form.etc_uncollected.value report.etc_uncollected 0 %}" inputmode="numeric" pattern="[0-9]*">
-          </div>
-          <!-- 回程费受领额 -->
-          <div class="col-6">
-            <label for="id_etc_return_fee_claimed" class="form-label small">回程費 受領額（円）</label>
-            <input type="number" class="form-control form-control-sm text-end js-return-fee-claimed"
-                  id="id_etc_return_fee_claimed" name="etc_return_fee_claimed" min="0" step="1" value="">
-          </div>
-          <!-- 回程费支付方式 -->
-          <div class="col-6">
-            <label for="id_etc_return_fee_method" class="form-label small">回程費 支払方法</label>
-            <select id="id_etc_return_fee_method" name="etc_return_fee_method"
-                    class="form-select form-select-sm js-return-fee-method">
-              <option value="none">— 個別（別払い/なし）—</option>
-              <option value="app_ticket">アプリ/チケット 一体結算</option>
-              <option value="cash_to_driver">現金（直接司机）</option>
-            </select>
-          </div>
-          <!-- 空車ETC 使用卡 -->
-          <div class="col-6">
-            <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
-            {{ form.etc_empty_card|add_class:"form-select form-select-sm js-empty-etc-card" }}
-
-          </div>
-        </div>
-        <div class="form-text mt-2">
-          <small>
-            覆盖规则：支払方法 = <strong>アプリ/チケット</strong> 时，回程費用于覆盖空車ETC；<br>
-            覆盖不足 → <strong>司机負担</strong>；覆盖过多 → 記為 <strong>未收ETC</strong>（展示/統計用）。
-          </small>
-        </div>
-      </div>
-      <!-- === 追加结束 === -->
-
-
+      <!-- ======= END: ETC 明细折叠区域 ======= -->
       
       <!-- ✅ 智能提示区（推荐放在 payment-summary-panel 结尾） -->
       <div id="smart-hint-panel" class="mt-2 w-100">
@@ -675,7 +694,7 @@ input[type=number] {
 
         <td class="col-etc-riding-charge" style="min-width: 110px;">
           {% if form.etc_riding_charge_type.errors %}<div class="text-danger small">{{ form.etc_riding_charge_type.errors.0 }}</div>{% endif %}
-          {{ form.etc_riding_charge_type|add_class:"form-select form-select-sm etc-riding-charge-select" }}
+          {{ form.etc_riding_charge_type|add_class:"form-select form-select-sm etc-riding-charge-select js-ride-etc-charge" }}
         </td>
 
         <td class="col-etc-empty" style="min-width: 80px;">
@@ -685,7 +704,7 @@ input[type=number] {
 
         <td class="col-etc-empty-charge" style="min-width: 110px;">
           {% if form.etc_empty_charge_type.errors %}<div class="text-danger small">{{ form.etc_empty_charge_type.errors.0 }}</div>{% endif %}
-          {{ form.etc_empty_charge_type|add_class:"form-select form-select-sm etc-empty-charge-select" }}
+          {{ form.etc_empty_charge_type|add_class:"form-select form-select-sm etc-empty-charge-select js-empty-etc-charge" }}
         </td>
         <!-- 兼容历史：旧字段保留（HiddenInput，不显示不占位） -->
         {{ form.etc_charge_type }}
@@ -723,7 +742,8 @@ input[type=number] {
           {{ form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
         </td>
 
-        <td>
+        <!-- ===== [PATCH C1] 备注列加上 note-cell，供智能提示插入 ===== -->
+        <td class="note-cell">
           {% if form.note.value %}📝{% endif %}
           {% if form.note.errors %}
             <div class="text-danger small">{{ form.note.errors.0 }}</div>
@@ -734,6 +754,7 @@ input[type=number] {
             這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
           </div>
         </td>
+        <!-- ===== [PATCH C1 END] ===== -->
 
         {# 每一行的操作列里：#}
         <td style="white-space: nowrap;">
@@ -793,17 +814,33 @@ input[type=number] {
 
       <!-- ======= BEGIN PATCH: 空模板的 ETC 4格 ======= -->
       <td class="col-etc-riding">
-        {{ formset.empty_form.etc_riding|add_class:"form-control form-control-sm text-end etc-riding-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
+        {{ formset.empty_form.etc_riding
+           |add_class:"form-control form-control-sm text-end etc-riding-input"
+           |attr:"inputmode:numeric"
+           |attr:"pattern:[0-9]*"
+           |attr:"min:0"
+           |attr:"step:1" }}
       </td>
+
       <td class="col-etc-riding-charge">
-        {{ formset.empty_form.etc_riding_charge_type|add_class:"form-select form-select-sm etc-riding-charge-select" }}
+        {{ formset.empty_form.etc_riding_charge_type
+           |add_class:"form-select form-select-sm etc-riding-charge-select js-ride-etc-charge" }}
       </td>
+
       <td class="col-etc-empty">
-        {{ formset.empty_form.etc_empty|add_class:"form-control form-control-sm text-end etc-empty-input"|attr:"inputmode:numeric"|attr:"pattern:[0-9]*"|attr:"min:0"|attr:"step:1" }}
+        {{ formset.empty_form.etc_empty
+           |add_class:"form-control form-control-sm text-end etc-empty-input"
+           |attr:"inputmode:numeric"
+           |attr:"pattern:[0-9]*"
+           |attr:"min:0"
+           |attr:"step:1" }}
       </td>
+
       <td class="col-etc-empty-charge">
-        {{ formset.empty_form.etc_empty_charge_type|add_class:"form-select form-select-sm etc-empty-charge-select" }}
+        {{ formset.empty_form.etc_empty_charge_type
+           |add_class:"form-select form-select-sm etc-empty-charge-select js-empty-etc-charge" }}
       </td>
+
       <!-- 兼容历史：旧字段保留（HiddenInput） -->
       {{ formset.empty_form.etc_charge_type }}
       <!-- ======= END PATCH ======= -->
@@ -830,12 +867,14 @@ input[type=number] {
         {{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
       </td>
 
-      <td>
+      <!-- ===== [PATCH C2] 空模板备注列同样加 note-cell ===== -->
+      <td class="note-cell">
         {{ formset.empty_form.note|add_class:"form-control" }}
         <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
           這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
         </div>
       </td>
+      <!-- ===== [PATCH C2 END] ===== -->
 
       <td style="white-space:nowrap;">
         <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>

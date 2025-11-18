@@ -53,6 +53,23 @@ class DriverDailyReportForm(forms.ModelForm):
             ),  # ✅ 已有
             # ✅ 新增：司机負担ETC，作为 hidden 字段
             "etc_driver_cost": forms.HiddenInput(),
+
+            # ===== [BEGIN PATCH] 回程費字段 widget =====
+            "etc_return_fee_claimed": forms.NumberInput(
+                attrs={
+                    "class": "form-control form-control-sm text-end js-return-fee-claimed",
+                    "min": 0,
+                    "step": 1,
+                    "inputmode": "numeric",
+                    "pattern": "[0-9]*",
+                }
+            ),
+            "etc_return_fee_method": forms.Select(
+                attrs={
+                    "class": "form-select form-select-sm js-return-fee-method",
+                }
+            ),
+            # ===== [END PATCH] =====
         }
 
     def clean(self):
@@ -72,7 +89,8 @@ class DriverDailyReportItemForm(forms.ModelForm):
     ]
     EMPTY_CHOICES = [
         ("company",  "会社（会社負担）"),
-        ("driver",   "ドライバー（自費・返還なし）"),  # ← 新文案
+        # ↓ 强调“自己カード利用/回程費等で精算される前提”
+        ("driver",   "ドライバー（自己カード・回程費等で精算）"),
     ]
 
     class Meta:

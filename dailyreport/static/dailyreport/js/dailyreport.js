@@ -76,6 +76,96 @@ function __calcEtcDueForOverShort() {
 }
 window.__calcEtcDueForOverShort = __calcEtcDueForOverShort;
 
+// ====== 智能提示：ETC 自动引导 ======
+function updateSmartHintPanel() {
+  const panel = document.getElementById("smart-hint-panel");
+  if (!panel) return;
+
+  // 用单独的容器，不覆盖你模板里原本的提示（入金不足等）
+  let box = panel.querySelector(".js-etc-smart-hints");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "js-etc-smart-hints mt-1";
+    panel.appendChild(box);
+  }
+  box.innerHTML = "";
+
+  const toIntSafe = (v, def = 0) => {
+    const n = parseInt(String(v || "").replace(/,/g, ""), 10);
+    return Number.isFinite(n) ? n : def;
+  };
+
+  // ===== 读取当前 ETC 聚合结果 =====
+  const etcDriverTotal = toIntSafe(
+    document.getElementById("etc-driver-total")?.textContent,
+    0
+  );                            // 全部“ドライバー立替”ETC 合计（乗車+空車）
+
+  const actualRefund = toIntSafe(
+    document.getElementById("actual_etc_company_to_driver_view")?.textContent,
+    0
+  );                            // 会社→運転手 返還ETC 合计（乘车ETC中，司机垫付且公司侧结算）
+
+  const driverNetCost = toIntSafe(
+    document.getElementById("etc-driver-cost")?.textContent,
+    0
+  );                            // 净额：实际“司机負担ETC（工资扣除予定）”
+
+  const etcShortage = toIntSafe(
+    document.querySelector("input[name='etc_shortage']")?.value,
+    0
+  );                            // ETC不足（应收 - 实收）
+
+  // 小工具：生成一条提示
+  const makeAlert = (type, icon, html) => {
+    const div = document.createElement("div");
+    div.className = `alert alert-${type} py-1 px-2 small mb-1`;
+    div.innerHTML = `${icon} ${html}`;
+    box.appendChild(div);
+  };
+
+  // ===== 1) 有司机立替 ETC 吗？ =====
+  if (etcDriverTotal > 0) {
+    if (driverNetCost <= 0 && actualRefund > 0) {
+      // B 类：司机垫付，但公司完全返还 → 不扣工资
+      makeAlert(
+        "success",
+        "✔️",
+        `本日存在 <strong>${etcDriverTotal.toLocaleString()}円</strong> 的「司机垫付 ETC」，` +
+          `但已由会社侧结算返还（<strong>对照表：B 类</strong>）。<br>` +
+          `这些金额不会从工资中扣除。`
+      );
+    } else if (driverNetCost > 0) {
+      // G 类等：司机真正自费部分 → 扣工资
+      makeAlert(
+        "danger",
+        "⚠️",
+        `本日存在 <strong>${driverNetCost.toLocaleString()}円</strong> 的「司机負担ETC」，` +
+          `将作为工资扣除对象（<strong>对照表：G 类 等</strong>）。`
+      );
+      if (actualRefund > 0) {
+        makeAlert(
+          "info",
+          "ℹ️",
+          `其中有 <strong>${actualRefund.toLocaleString()}円</strong> 属于「司机垫付后由会社返还」部分，` +
+            `系统已自动从工资扣除金额中排除。`
+        );
+      }
+    }
+  }
+
+  // ===== 2) 有 ETC 不足吗？（应收合计 - 实收） =====
+  if (etcShortage > 0) {
+    makeAlert(
+      "warning",
+      "🚧",
+      `现在存在 <strong>${etcShortage.toLocaleString()}円</strong> 的「ETC不足」（应收合计 − 实收）。<br>` +
+        `这部分不会从司机工资中扣除，但会计入「未收ETC」统计，请根据票据确认是否为 <strong>A/C 类</strong> 情形或需要补收。`
+    );
+  }
+}
+
+
 // ====== 工时计算 ======
 function updateDuration() {
   const form = document.querySelector('form[method="post"]') || document;
@@ -286,6 +376,105 @@ function bindRowEvents(row) {
     sync(); // 初始渲染一次
   })();
 
+    // === [PATCH C3] 行级 ETC 智能提示：怀疑“空車ETC 立替者”选错时给出提醒 ===
+  (function attachEtcSmartSuggestion(){
+    const rideEtcInput   = row.querySelector('.etc-riding-input');
+    const emptyEtcInput  = row.querySelector('.etc-empty-input');
+    const rideChargeSel  = row.querySelector('.etc-riding-charge-select');
+    const emptyChargeSel = row.querySelector('.etc-empty-charge-select');
+    const paySel         = row.querySelector("select[name$='-payment_method']");
+    const noteCell       = row.querySelector('.note-cell');
+
+    if (!rideEtcInput || !emptyEtcInput || !rideChargeSel || !emptyChargeSel || !paySel || !noteCell) {
+      return;
+    }
+
+    // 提示容器：塞在备注列最下面
+    let hintBox = noteCell.querySelector('.js-etc-row-smart-hint');
+    if (!hintBox) {
+      hintBox = document.createElement('div');
+      hintBox.className = 'js-etc-row-smart-hint mt-1 small';
+      noteCell.appendChild(hintBox);
+    }
+
+    const COMPANY_SIDE = new Set(['uber','didi','go','credit','kyokushin','omron','kyotoshi','qr']);
+
+    function normInt(el){
+      return toInt(el && el.value, 0);
+    }
+
+    function normPay(v){
+      return resolveJsPaymentMethod(v || '');
+    }
+
+    function recompute(){
+      hintBox.innerHTML = '';
+      hintBox.className = 'js-etc-row-smart-hint mt-1 small';
+
+      const rideEtc   = normInt(rideEtcInput);
+      const emptyEtc  = normInt(emptyEtcInput);
+      const rideCh    = (rideChargeSel.value  || 'company').trim();
+      const emptyCh   = (emptyChargeSel.value || 'company').trim();
+      const pay       = normPay(paySel.value);
+
+      // 全局“空車ETC カード”“回程費”信息
+      const emptyCard   = (document.getElementById('id_etc_empty_card')?.value || 'company').trim();
+      const returnMeth  = (document.getElementById('id_etc_return_fee_method')?.value || 'none').trim();
+      const returnClaim = toInt(document.getElementById('id_etc_return_fee_claimed')?.value, 0);
+
+      // 条件：当前行类似你那种「乘车司机卡 + 有空车ETC」，但空车ETC 却标成会社
+      const condRideDriverCompanySide =
+        rideEtc > 0 &&
+        rideCh === 'driver' &&
+        COMPANY_SIDE.has(pay);
+
+      const condEmptyExistsCompany =
+        emptyEtc > 0 &&
+        emptyCh === 'company';
+
+      // 全局提示：空車ETC カード=自己カード，且回程费有金额/有方式
+      const condReturnExists =
+        emptyCard === 'own' &&
+        returnClaim > 0 &&
+        (returnMeth === 'cash_to_driver' || returnMeth === 'app_ticket');
+
+      if (condRideDriverCompanySide && condEmptyExistsCompany && condReturnExists) {
+        // 组合起来极像“其实空车也是自己卡，但司机勾成了会社”
+        hintBox.classList.add('text-danger'); // 字体红一点
+        hintBox.innerHTML = (
+          '⚠️ この行は <strong>乘車ETC=ドライバー(自己カード)</strong> かつ ' +
+          '<strong>空車ETC も入力済み</strong> ですが、立替者が <strong>会社</strong> のままです。<br>' +
+          '実際に回程でも自己ETCカードを使った場合は、' +
+          '空車ETC 立替者を <strong>「ドライバー（自費・返還なし）」</strong> に変更してください。<br>' +
+          'そうするとシステムが「回程費でカバーされるETC」として正しく判断し、給与控除に入れません。'
+        );
+      } else {
+        // 无风险时不显示，保持空白
+        hintBox.textContent = '';
+      }
+    }
+
+    // 绑定事件：只要本行 ETC / 支付方式 / 立替者 / 全局回程参数发生变化，就重新判断
+    ['input','change'].forEach(ev => {
+      rideEtcInput.addEventListener(ev, recompute);
+      emptyEtcInput.addEventListener(ev, recompute);
+      rideChargeSel.addEventListener(ev, recompute);
+      emptyChargeSel.addEventListener(ev, recompute);
+      if (paySel) paySel.addEventListener(ev, recompute);
+    });
+
+    ['#id_etc_empty_card','#id_etc_return_fee_method','#id_etc_return_fee_claimed'].forEach(sel => {
+      const el = document.querySelector(sel);
+      if (!el) return;
+      ['input','change'].forEach(ev => el.addEventListener(ev, recompute));
+    });
+
+    // 初次渲染
+    recompute();
+  })();
+  // === [PATCH C3 END] ===
+
+
   // 行级ETC 三字段
   $all(".etc-riding-input, .etc-empty-input, .etc-charge-type-select", row).forEach(el => {
     el.addEventListener("input", () => { updateTotals(); evaluateEmptyEtcDetailVisibility(); });
@@ -378,9 +567,52 @@ function updateTotals() {
   let rideEtcSum = 0;     // 乗車ETC 合计
   let emptyEtcSum = 0;    // 空車ETC 合计
   let etcCompany = 0;     // 会社負担
-  let etcDriver  = 0;     // ドライバー立替
+  let etcDriver  = 0;     // ドライバー立替（乗車+空車）
   let etcCustomer= 0;     // お客様支払
   let actualEtcCompanyToDriver = 0; // ✅ 实際ETC（会社→運転手）
+  let driverEmptyEtc = 0; // 司机承担的“空車ETC”合计（用于回程费覆盖计算）
+
+  // ====== [BEGIN 新增：行级 ETC 分类判定器] ======
+  function classifyEtcRow(row) {
+    const rideEtc  = toInt(row.querySelector(".js-ride-etc")?.value, 0);
+    const emptyEtc = toInt(row.querySelector(".js-empty-etc")?.value, 0);
+
+    const chargeRide  = row.querySelector(".js-ride-etc-charge")?.value || "";
+    const chargeEmpty = row.querySelector(".js-empty-etc-charge")?.value || "";
+
+    const payMethod = resolveJsPaymentMethod(
+      row.querySelector(".js-payment-method")?.value || ""
+    );
+
+    const hasPassenger = toInt(row.querySelector(".js-meter-fee")?.value, 0) > 0;
+
+    const COMPANY_SIDE = new Set(["uber", "didi", "go", "credit"]);
+
+    // 1) 乘车 ETC 分类（A1 / A2 / A3 / B2）
+    if (rideEtc > 0 && hasPassenger) {
+      if (chargeRide === "customer") {
+        if (payMethod === "cash") return "A2";       // 现金客付
+        else return "A1";                            // app/卡客付
+      }
+      if (chargeRide === "driver") {
+        if (COMPANY_SIDE.has(payMethod))
+          return "B2";                               // 司机卡 → 公司返还
+        else
+          return "A3";                               // 司机卡 → 客人付 (现金等)
+      }
+      if (chargeRide === "company") return "A4";     // 公司负担（几乎不用）
+    }
+
+    // 2) 空车 ETC 分类（A6 / B4 / B5）
+    if (emptyEtc > 0 && !hasPassenger) {
+      if (chargeEmpty === "company") return "A6";    // 公司负担
+      if (chargeEmpty === "driver") {
+        return "B5"; // 默认司机负担，之后再判断是否被覆盖
+      }
+    }
+    return "";
+  }
+  // ====== [END 新增：行级 ETC 分类判定器] ======
 
   const COMPANY_SIDE = new Set(["uber","didi","go","credit","kyokushin","omron","kyotoshi","qr"]);
 
@@ -441,10 +673,14 @@ function updateTotals() {
       else if (emptyCharge === "driver")   etcDriver   += emptyEtc;
       else if (emptyCharge === "customer") etcCustomer += emptyEtc;
     }
+    // 专门记一份“司机空車ETC”，用于后面按回程费覆盖
+    if (emptyEtc > 0 && emptyCharge === "driver") {
+      driverEmptyEtc += emptyEtc;
+    }
 
     // ✅ 实際ETC（会社→運転手）：仅统计 “乗車ETC > 0 & 乗車ETC負担=ドライバー & 支払=公司侧”
     if (rideEtc > 0) {
-      const payResolved = resolveJsPaymentMethod(paymentRaw); // -> "credit","uber","didi","go","qr",...
+      const payResolved = resolveJsPaymentMethod(paymentRaw);
       if (rideCharge === "driver" && COMPANY_SIDE.has(payResolved)) {
         actualEtcCompanyToDriver += rideEtc;
       }
@@ -478,7 +714,7 @@ function updateTotals() {
   const actualHidden = document.getElementById("actual_etc_company_to_driver");
   if (actualHidden) actualHidden.value = actualEtcCompanyToDriver;
 
-  // ===== 同步“ETC 收取=乗車合計（円）”：把「お客様支払」的 ETC 写回输入框（显示用）
+  // ===== 同步“ETC 收取=乗車合計（円）”：把「お客様支払」的 ETC 写回输入框（显示用） =====
   (function syncRideEtcCollected() {
     const input = document.querySelector('[data-role="etc-collected-passenger"]');
     if (!input) return;
@@ -491,7 +727,7 @@ function updateTotals() {
     }
   })();
 
-  // ===== 同步“空車ETC 金額（円）”卡片输入：展示用途
+  // ===== 同步“空車ETC 金額（円）”卡片输入：展示用途 =====
   (function syncEmptyEtcCard() {
     const input = document.getElementById("id_etc_uncollected");
     if (!input) return;
@@ -503,7 +739,7 @@ function updateTotals() {
     }
   })();
 
-  // ===== 过不足：旧口径 + 実際ETC（会社→運転手）
+  // ===== 过不足：旧口径 + 実際ETC（会社→運転手） =====
   const deposit      = _yen(document.getElementById("deposit-input")?.value || 0);
   const cashNagashi  = totalMap.cash || 0;
   const charterCash  = charterCashTotal || 0;
@@ -568,26 +804,44 @@ function updateTotals() {
     try { evaluateEmptyEtcDetailVisibility(); } catch (_) {}
   }
 
+  // === 司机負担ETC（工资扣除予定）计算 ===
+  (function syncDriverEtcCost() {
+    const driverCostView   = document.getElementById("etc-driver-cost");
+    const driverCostHidden = document.getElementById("id_etc_driver_cost");
+    if (!driverCostView && !driverCostHidden) return;
+
+    let driverCost = etcDriver; // 先从“ドライバー立替”总额开始
+
+    // ① 扣掉 B 场景：乘車ETC 司机用自卡，实际由公司侧结算
+    driverCost -= actualEtcCompanyToDriver;
+
+    // ② 扣掉 回程费覆盖 的空車ETC（仅自己卡 & 覆盖方式）
+    const emptyCard   = (document.getElementById("id_etc_empty_card")?.value || "company").trim();
+    const returnMeth  = (document.getElementById("id_etc_return_fee_method")?.value || "none").trim();
+    const returnClaim = toInt(document.getElementById("id_etc_return_fee_claimed")?.value, 0);
+
+    if (emptyCard === "own" && ETC_COVERAGE.coverReturnMethods.has(returnMeth)) {
+      const covered = Math.min(driverEmptyEtc, returnClaim);
+      driverCost -= covered;
+    }
+
+    if (driverCost < 0) driverCost = 0;
+
+    if (driverCostView) {
+      driverCostView.textContent = driverCost.toLocaleString();
+    }
+    if (driverCostHidden) {
+      driverCostHidden.value = String(driverCost);
+    }
+  })();
+
   // 智能提示面板（若有）
   if (typeof updateSmartHintPanel === "function") {
     try { updateSmartHintPanel(); } catch (_) {}
   }
-
-   /* ====== PATCH: 写回“司机負担ETC（工资扣除）” ====== */
-  (function syncDriverEtcCost() {
-    // 等同于右侧 ETC(ドライバー立替)
-    const driverEtc = etcDriver;  
-
-    // 右侧卡片
-    const span = document.getElementById("etc-driver-cost");
-    if (span) span.textContent = driverEtc;
-
-    // hidden → 提交到后端
-    const hidden = document.getElementById("id_etc_driver_cost");
-    if (hidden) hidden.value = driverEtc;
-  })();
 }
 /* ====== REPLACE TO HERE ====== */
+
 
 // ====== 夜班排序（保留，默认关闭） ======
 (function () {
