@@ -427,6 +427,23 @@ input[type=number] {
           ・“ETC 实际收回”不是一个单独填写的字段，而是由日报明细的付款方式数据动态汇总出来的。
         </div>
       </div>
+      <div class="mt-2">
+          <div class="small text-muted mb-1">ETC 行別明細（時間・支付方式を確認）</div>
+          <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+              <tr class="small text-center">
+                <th style="white-space: nowrap;">時間</th>
+                <th style="white-space: nowrap;">支付</th>
+                <th style="white-space: nowrap;">乗車ETC</th>
+                <th style="white-space: nowrap;">空車ETC</th>
+                <th style="white-space: nowrap;">合計</th>
+              </tr>
+            </thead>
+            <tbody id="etc-detail-body" class="small">
+              {# JS で tr を挿入する。初期は空 #}
+            </tbody>
+          </table>
+        </div>
       <!-- ======= END: ETC 概要 ======= -->
 
 
@@ -777,113 +794,166 @@ input[type=number] {
     {% endfor %}
   </tbody>
 
-  {# ✅ 空模板：同样把 id/DELETE 放进隐藏 <td>；并保持列结构一致 #}
-  <tbody id="empty-form-template" class="d-none">
-    <tr class="report-item-row">
-      <td class="d-none">
-        {{ formset.empty_form.id }}
-        {{ formset.empty_form.DELETE|add_class:"delete-flag" }}
-      </td>
+    {# ✅ 空模板：同样把 id/DELETE 放进隐藏 <td>；并保持列结构一致 #}
+    <tbody id="empty-form-template" class="d-none">
+      <tr class="report-item-row">
+        <!-- 隐藏：id + DELETE -->
+        <td class="d-none">
+          <input type="hidden"
+                name="form-__prefix__-id"
+                id="id_form-__prefix__-id">
+          <input type="checkbox"
+                name="form-__prefix__-DELETE"
+                id="id_form-__prefix__-DELETE"
+                class="delete-flag">
+        </td>
 
-      <td class="row-number">__num__</td>
+        <td class="row-number">__num__</td>
 
-      <td>
-        {{ formset.empty_form.ride_time|add_class:"form-control form-control-sm time-input" }}
-      </td>
+        <!-- 時間 -->
+        <td>
+          <input type="text"
+                name="form-__prefix__-ride_time"
+                id="id_form-__prefix__-ride_time"
+                class="form-control form-control-sm time-input">
+        </td>
 
-      <td>
-        {{ formset.empty_form.ride_from|add_class:"form-control form-control-sm" }}
-      </td>
+        <!-- 乗車地 -->
+        <td>
+          <input type="text"
+                name="form-__prefix__-ride_from"
+                id="id_form-__prefix__-ride_from"
+                class="form-control form-control-sm">
+        </td>
 
-      <td>
-        <input
-          type="number"
-          name="form-__prefix__-meter_fee"
-          id="id_form-__prefix__-meter_fee"
-          class="form-control form-control-sm text-end meter-fee-input fee-input"
-          inputmode="numeric"
-          pattern="[0-9]*"
-          min="0"
-          value="0"
-        >
-      </td>
+        <!-- 料金 -->
+        <td>
+          <input
+            type="number"
+            name="form-__prefix__-meter_fee"
+            id="id_form-__prefix__-meter_fee"
+            class="form-control form-control-sm text-end meter-fee-input fee-input"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            min="0"
+            value="0"
+          >
+        </td>
 
-      <td>
-        {{ formset.empty_form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
-      </td>
+        <!-- 支付方式（选项稍后用 JS 从第一行复制） -->
+        <td>
+          <select
+            name="form-__prefix__-payment_method"
+            id="id_form-__prefix__-payment_method"
+            class="form-select form-select-sm payment-method-select">
+          </select>
+        </td>
 
-      <!-- ======= BEGIN PATCH: 空模板的 ETC 4格 ======= -->
-      <td class="col-etc-riding">
-        {{ formset.empty_form.etc_riding
-           |add_class:"form-control form-control-sm text-end etc-riding-input"
-           |attr:"inputmode:numeric"
-           |attr:"pattern:[0-9]*"
-           |attr:"min:0"
-           |attr:"step:1" }}
-      </td>
+        <!-- ======= 空模板的 ETC 4格（选项也用 JS 复制） ======= -->
+        <td class="col-etc-riding">
+          <input type="number"
+                name="form-__prefix__-etc_riding"
+                id="id_form-__prefix__-etc_riding"
+                class="form-control form-control-sm text-end etc-riding-input"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                min="0"
+                step="1"
+                value="0">
+        </td>
 
-      <td class="col-etc-riding-charge">
-        {{ formset.empty_form.etc_riding_charge_type
-           |add_class:"form-select form-select-sm etc-riding-charge-select js-ride-etc-charge" }}
-      </td>
+        <td class="col-etc-riding-charge">
+          <select
+            name="form-__prefix__-etc_riding_charge_type"
+            id="id_form-__prefix__-etc_riding_charge_type"
+            class="form-select form-select-sm etc-riding-charge-select js-ride-etc-charge">
+          </select>
+        </td>
 
-      <td class="col-etc-empty">
-        {{ formset.empty_form.etc_empty
-           |add_class:"form-control form-control-sm text-end etc-empty-input"
-           |attr:"inputmode:numeric"
-           |attr:"pattern:[0-9]*"
-           |attr:"min:0"
-           |attr:"step:1" }}
-      </td>
+        <td class="col-etc-empty">
+          <input type="number"
+                name="form-__prefix__-etc_empty"
+                id="id_form-__prefix__-etc_empty"
+                class="form-control form-control-sm text-end etc-empty-input"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                min="0"
+                step="1"
+                value="0">
+        </td>
 
-      <td class="col-etc-empty-charge">
-        {{ formset.empty_form.etc_empty_charge_type
-           |add_class:"form-select form-select-sm etc-empty-charge-select js-empty-etc-charge" }}
-      </td>
+        <td class="col-etc-empty-charge">
+          <select
+            name="form-__prefix__-etc_empty_charge_type"
+            id="id_form-__prefix__-etc_empty_charge_type"
+            class="form-select form-select-sm etc-empty-charge-select js-empty-etc-charge">
+          </select>
+        </td>
+        <!-- ======= END: ETC 4格 ======= -->
 
-      <!-- 兼容历史：旧字段保留（HiddenInput） -->
-      {{ formset.empty_form.etc_charge_type }}
-      <!-- ======= END PATCH ======= -->
+        <!-- 待入 -->
+        <td class="text-center">
+          <input type="checkbox"
+                name="form-__prefix__-is_pending"
+                id="id_form-__prefix__-is_pending"
+                class="pending-checkbox">
+        </td>
 
+        <!-- 強調 -->
+        <td class="text-center">
+          <input type="checkbox"
+                name="form-__prefix__-is_flagged"
+                id="id_form-__prefix__-is_flagged">
+        </td>
 
+        <!-- 貸切 -->
+        <td class="text-center">
+          <input type="checkbox"
+                name="form-__prefix__-is_charter"
+                id="id_form-__prefix__-is_charter">
+        </td>
 
-      <td class="text-center">
-        {{ formset.empty_form.is_pending|add_class:"pending-checkbox" }}
-      </td>
+        <!-- 貸切金額 -->
+        <td>
+          <input type="number"
+                name="form-__prefix__-charter_amount_jpy"
+                id="id_form-__prefix__-charter_amount_jpy"
+                class="form-control form-control-sm text-end auto-width-input charter-amount-input"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                min="0"
+                value="0">
+        </td>
 
-      <td class="text-center">
-        {{ formset.empty_form.is_flagged }}
-      </td>
+        <!-- 貸切支払（选项用 JS 复制） -->
+        <td>
+          <select
+            name="form-__prefix__-charter_payment_method"
+            id="id_form-__prefix__-charter_payment_method"
+            class="form-control form-control-sm auto-width-input charter-payment-method-select">
+          </select>
+        </td>
 
-      <td class="text-center">
-        {{ formset.empty_form.is_charter }}
-      </td>
+        <!-- 注釈 -->
+        <td class="note-cell">
+          <input type="text"
+                name="form-__prefix__-note"
+                id="id_form-__prefix__-note"
+                class="form-control">
+          <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
+            這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
+          </div>
+        </td>
 
-      <td>
-        {{ formset.empty_form.charter_amount_jpy|add_class:"form-control form-control-sm text-end auto-width-input charter-amount-input" }}
-      </td>
+        <!-- 操作 -->
+        <td style="white-space:nowrap;">
+          <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
+          <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 
-      <td>
-        {{ formset.empty_form.charter_payment_method|add_class:"form-control form-control-sm auto-width-input charter-payment-method-select" }}
-      </td>
-
-      <!-- ===== [PATCH C2] 空模板备注列同样加 note-cell ===== -->
-      <td class="note-cell">
-        {{ formset.empty_form.note|add_class:"form-control" }}
-        <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
-          這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
-        </div>
-      </td>
-      <!-- ===== [PATCH C2 END] ===== -->
-
-      <td style="white-space:nowrap;">
-        <button type="button" class="btn btn-sm btn-outline-danger remove-row">移除</button>
-        <button type="button" class="btn btn-sm btn-outline-primary insert-below">➕向下挿入</button>
-      </td>
-    </tr>
-    
-  </tbody>
-</table>
 
 
     <button type="submit" class="btn btn-primary">💾 保存する</button>
