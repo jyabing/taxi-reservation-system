@@ -131,6 +131,8 @@ input[type=number] {
     {% endif %}
   {% endif %}
 
+  
+
   {% if form.errors %}
     <div class="alert alert-danger">
       <strong>フォームエラー：</strong>
@@ -148,6 +150,26 @@ input[type=number] {
       {{ formset.non_form_errors }}
     </div>
   {% endif %}
+
+  {# ==== DEBUG: 每一行明细的所有错误都打印出来 ==== #}
+  {# 只有“真的有错误”时才显示这个大黄块，避免页面一直被撑得很高 #}
+  {% if formset.errors or formset.non_form_errors %}
+    <div class="alert alert-warning small" style="white-space: normal; white-space-collapse: discard;">
+      <strong>DEBUG: 明細行エラー一覧</strong>
+      <ul class="mb-0">
+        {% for f in formset.forms %}
+          {% if f.errors or f.non_field_errors %}
+            <li>
+              <strong>行 {{ forloop.counter }}:</strong>
+              {{ f.non_field_errors }}
+              {{ f.errors }}
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+  {# ==== DEBUG ここまで ==== #}
 
     <!--缩进无影响，也可以写成单行形式-->
     <form method="post"

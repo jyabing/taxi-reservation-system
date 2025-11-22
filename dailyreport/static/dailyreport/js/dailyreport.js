@@ -495,6 +495,57 @@ function bindRowEvents(row) {
   });
 }
 
+// === 小工具：给新行补全下拉选项（从第一行克隆） ===
+function ensureRowSelectOptions(row) {
+  if (!row) return;
+
+  // 以当前表里的第一条明细行为“模板行”
+  const baseRow = document.querySelector('tr.report-item-row');
+  if (!baseRow) return;
+
+  function fillSelect(targetSelect, baseSelector) {
+    if (!targetSelect) return;
+    // 已经有选项就不用管
+    if (targetSelect.options && targetSelect.options.length > 0) return;
+
+    const baseSelect = baseRow.querySelector(baseSelector);
+    if (!baseSelect || !baseSelect.options || !baseSelect.options.length) return;
+
+    // 克隆选项
+    targetSelect.innerHTML = baseSelect.innerHTML;
+
+    // 默认选中“------”，如果没有就选第一个
+    if (targetSelect.options.length > 0) {
+      let idx = 0;
+      for (let i = 0; i < targetSelect.options.length; i++) {
+        if (targetSelect.options[i].value === "") {
+          idx = i;
+          break;
+        }
+      }
+      targetSelect.selectedIndex = idx;
+    }
+  }
+
+  // 支付方式
+  fillSelect(
+    row.querySelector('.payment-method-select'),
+    '.payment-method-select'
+  );
+
+  // 乗車ETC 立替者
+  fillSelect(
+    row.querySelector('.etc-riding-charge-select'),
+    '.etc-riding-charge-select'
+  );
+
+  // 空車ETC 立替者
+  fillSelect(
+    row.querySelector('.etc-empty-charge-select'),
+    '.etc-empty-charge-select'
+  );
+}
+
 // ====== 模板克隆/插入 ======
 function cloneRowFromTemplate() {
   const tpl = document.querySelector('#empty-form-template');
@@ -504,26 +555,120 @@ function cloneRowFromTemplate() {
   const tmp = document.createElement('tbody');
   tmp.innerHTML = tpl.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count + 1);
   const tr = tmp.querySelector('tr'); if (!tr) return null;
+
+  // === [M1 BEGIN] 保险：给新行的“支付”下拉复制一份选项 ===
+  try {
+    const firstPay = document.querySelector(
+      'table.report-table tbody:not(#empty-form-template) select[name$="-payment_method"]'
+    );
+    const newPay = tr.querySelector('select[name$="-payment_method"]');
+    if (firstPay && newPay) {
+      // 如果新行的 select 没有选项，或者只有一个 “------”，就直接复制第一行的 innerHTML
+      if (!newPay.options.length || newPay.options.length === 1) {
+        newPay.innerHTML = firstPay.innerHTML;
+      }
+    }
+  } catch (e) {
+    console.warn('cloneRowFromTemplate: payment_method option copy failed:', e);
+  }
+  // === [M1 END] ===
+
+
   tr.classList.remove('d-none', 'hidden', 'invisible', 'template-row');
   tr.style.removeProperty('display'); tr.removeAttribute('aria-hidden');
-  tr.querySelectorAll('input,select,textarea,button').forEach(el => { el.disabled = false; el.removeAttribute('disabled'); });
+  tr.querySelectorAll('input,select,textarea,button').forEach(el => {
+    el.disabled = false;
+    el.removeAttribute('disabled');
+  });
   total.value = String(count + 1);
+
+  // === PATCH: 确保新行的“支付方式”下拉框有和现有行一样的选项 ===
+  try {
+    const baseSelect = document.querySelector('table.report-table .payment-method-select');
+    const newSelect  = tr.querySelector('.payment-method-select');
+    if (baseSelect && newSelect && newSelect.options.length <= 1) {
+      newSelect.innerHTML = baseSelect.innerHTML;
+    }
+  } catch (e) {
+    console.warn('cloneRowFromTemplate: copy payment options failed', e);
+  }
+
   return tr;
 }
 function addRowToEnd() {
   const dataTb = document.querySelector('table.report-table tbody:not(#empty-form-template)');
   if (!dataTb) return false;
   const tr = cloneRowFromTemplate(); if (!tr) return false;
+
+  // ☆ 新增：给新行补全下拉选项
+  ensureRowSelectOptions(tr);
+
   dataTb.appendChild(tr); bindRowEvents(tr);
   updateRowNumbersAndIndexes(); updateSameTimeGrouping(); updateTotals();
   try { tr.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { }
   (tr.querySelector('.time-input') || tr.querySelector('input,select'))?.focus?.();
   return true;
 }
+
+// === [PATCH R1 BEGIN] 在指定行后插入一行（统一给“下に挿入”等入口使用） ===
+function addRowAfterRow(anchorRow) {
+  const table = document.querySelector('table.report-table');
+  if (!table) return false;
+
+  const dataTb = table.querySelector('tbody:not(#empty-form-template)');
+  if (!dataTb) return false;
+
+  const tr = cloneRowFromTemplate();
+  if (!tr) return false;
+
+  // 补全下拉选项
+  ensureRowSelectOptions(tr);
+
+  // 决定插入位置：默认就在 anchorRow 后面；如果拿不到，就插在最后一行后面
+  let insertAfter = null;
+  if (anchorRow && anchorRow.parentNode === dataTb) {
+    insertAfter = anchorRow;
+  } else {
+    const last = dataTb.querySelector('tr.report-item-row:last-child');
+    if (last) insertAfter = last;
+  }
+
+  if (insertAfter) {
+    dataTb.insertBefore(tr, insertAfter.nextSibling);
+  } else {
+    dataTb.appendChild(tr);
+  }
+
+  // 只在这里绑定一次事件 + 更新各种联动
+  bindRowEvents(tr);
+  updateRowNumbersAndIndexes();
+  updateSameTimeGrouping();
+  updateTotals();
+  evaluateEmptyEtcDetailVisibility();
+  syncEtcColVisibility();
+
+  // 让新行尽量滚到中间，方便在手机上看
+  try {
+    tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (e) {}
+
+  const focusEl = tr.querySelector('.time-input') || tr.querySelector('input,select');
+  if (focusEl && typeof focusEl.focus === 'function') {
+    focusEl.focus();
+  }
+
+  return true;
+}
+// === [PATCH R1 END] ===
+
 function insertRowAfter(indexOneBased) {
   const dataTb = document.querySelector('table.report-table tbody:not(#empty-form-template)');
   if (!dataTb) return false;
   const tr = cloneRowFromTemplate(); if (!tr) return false;
+
+  // ☆ 新增：给新行补全下拉选项
+  ensureRowSelectOptions(tr);
+
   const rows = $all("tr.report-item-row", dataTb);
   const all = rows.length ? rows : $all("tr", dataTb);
   if (all.length === 0) dataTb.appendChild(tr);
@@ -537,6 +682,7 @@ function insertRowAfter(indexOneBased) {
   (tr.querySelector('.time-input') || tr.querySelector('input,select'))?.focus?.();
   return true;
 }
+
 
 // ====== 支付方式归一化（保留旧口径） ======
 function resolveJsPaymentMethod(raw) {
@@ -659,6 +805,8 @@ function updateTotals() {
   let uberTipTotal = 0, uberTipCount = 0;
   let uberPromotionTotal = 0, uberPromotionCount = 0;
   let specialUberSum = 0;          // Uber予約/チップ/プロモーション の合計
+
+  let etcCollectedTotal = 0;       // 「ETC 收取金额（円）」用于计入各支付方式合計
 
   // ---- 行レベル ETC 集計 ----
   let rideEtcSum = 0;          // 乗車ETC 合計
@@ -820,13 +968,40 @@ function updateTotals() {
     }
   });
 
+  
+
   // ====== 1) 売上系の表示 ======
+  // ① 先把「ETC 收取（＝乗車合計）」面板的金额，按收款方式加到 totalMap 里
+  let etcCollectedPanel = 0;
+  (function aggregateEtcCollectedFromPanel() {
+    const etcInput = document.getElementById("id_etc_collected");
+    if (!etcInput) return;
+
+    const amount = _yen(etcInput.value || 0);   // 面板里的「ETC 收取金额（円）」
+    if (!amount) return;
+
+    etcCollectedPanel = amount;
+
+    // 收款方式：Uber / Didi / 現金 / クレジット など
+    const paySel = document.getElementById("id_etc_payment_method");
+    if (!paySel) return;
+
+    const methodKey = resolveJsPaymentMethod(paySel.value || "");
+    if (!methodKey) return;
+
+    if (Object.prototype.hasOwnProperty.call(totalMap, methodKey)) {
+      totalMap[methodKey] += amount;   // 加到对应支付方式合计（Didi 合計等）
+    }
+  })();
+
+  // ② 卖上合計：在原有基础上，再加上面板的「ETC 收取」
   const salesTotal =
     meterOnlyTotal +
     etcSalesTotal +
     specialUberSum +
     charterCashTotal +
-    charterUncollectedTotal;
+    charterUncollectedTotal +
+    etcCollectedPanel;
 
   idText("total_meter_only", meterOnlyTotal);
   idText("total_meter", salesTotal);
@@ -1120,14 +1295,21 @@ function evaluateEmptyEtcDetailVisibility() {
   }
 }
 
-// 回程费相关控件变化时，重新计算
-["#id_etc_uncollected","#id_etc_return_fee_claimed","#id_etc_return_fee_method","#id_etc_empty_card"]
-  .forEach((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return;
-    el.addEventListener("input", () => updateTotals());
-    el.addEventListener("change", () => updateTotals());
-  });
+// 回程费 & ETC 收取 相关控件变化时，重新计算
+[
+  "#id_etc_uncollected",
+  "#id_etc_return_fee_claimed",
+  "#id_etc_return_fee_method",
+  "#id_etc_empty_card",
+  "#id_etc_collected",         // ← 新增：ETC 收取金额
+  "#id_etc_payment_method",    // ← 新增：ETC 收款方式
+  "#id_etc_rider_payer"        // ← 新增：乗車ETC 支払者（如有需要一并联动）
+].forEach((sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return;
+  el.addEventListener("input", () => updateTotals());
+  el.addEventListener("change", () => updateTotals());
+});
 
 // ====== 页面主绑定 ======
 document.addEventListener('DOMContentLoaded', () => {
@@ -1141,16 +1323,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const btn = e.target.closest(".insert-below");
       if (!btn) return;
       e.preventDefault();
+
       const row = getRow(btn);
       const rows = $all("tr.report-item-row", table);
       const index = row ? (rows.findIndex(r => r === row) + 1) : 1;
+
+      // insertRowAfter 内部已经做了：
+      // - cloneRowFromTemplate()
+      // - bindRowEvents(tr)
+      // - updateRowNumbersAndIndexes()
+      // - updateSameTimeGrouping()
+      // - updateTotals()
       insertRowAfter(index);
-      const newRow = $all("tr.report-item-row", table)[index];
-      if (newRow) bindRowEvents(newRow);
-      updateRowNumbersAndIndexes();
-      updateSameTimeGrouping();
-      updateTotals();
-      evaluateEmptyEtcDetailVisibility();
+
+      // 只需要根据现有列显示状态，同步一次 ETC 列显隐
       syncEtcColVisibility();
     });
   }
@@ -1243,16 +1429,57 @@ function ensureActualEtcIndicator(){
 }
 
 
-// === BEGIN PATCH: 重命名负担选项文字 独立的一小段脚本，不在任何函数里===
+/// === BEGIN PATCH: ETC 立替者 select 强制补全选项 + 重命名 ===
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.etc-riding-charge-select,.etc-empty-charge-select')
+  document
+    .querySelectorAll('.etc-riding-charge-select, .etc-empty-charge-select')
     .forEach(sel => {
+      if (!sel) return;
+
+      // 1) 如果完全没有 option，就强制补上三条
+      let opts = sel.querySelectorAll('option');
+      if (!opts || opts.length === 0) {
+        const defs = [
+          ['company',  '会社（会社負担）'],
+          ['driver',   'ドライバー（立替→後日返還）'],
+          ['customer', 'お客様（直接精算）'],
+        ];
+
+        const currentVal = (sel.value || '').trim();
+        defs.forEach(([val, label]) => {
+          const op = document.createElement('option');
+          op.value = val;
+          op.textContent = label;
+          if (!currentVal && val === 'company') {
+            // 没有原始值时，默认选「会社」
+            op.selected = true;
+          } else if (currentVal && currentVal === val) {
+            op.selected = true;
+          }
+          sel.appendChild(op);
+        });
+
+        return;  // 这一支刚补完就可以结束
+      }
+
+      // 2) 有 option 的情况，只是把文字改成统一说明版
       sel.querySelectorAll('option').forEach(op => {
         const v = (op.value || '').trim();
-        if (v === 'driver')   op.textContent = 'ドライバー（立替→後日返還）';
-        if (v === 'company')  op.textContent = '会社（会社負担）';
-        if (v === 'customer') op.textContent = 'お客様（直接精算）';
+        if (v === 'driver') {
+          op.textContent = 'ドライバー（立替→後日返還）';
+        } else if (v === 'company') {
+          op.textContent = '会社（会社負担）';
+        } else if (v === 'customer') {
+          op.textContent = 'お客様（直接精算）';
+        }
       });
     });
 });
 // === END PATCH ===
+
+window.addEventListener("pageshow", function (e) {
+  if (e.persisted) {
+    console.warn("页面来自 bfcache，正在强制重新加载...");
+    location.reload();
+  }
+});

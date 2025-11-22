@@ -338,16 +338,14 @@ class DriverDailyReportItem(models.Model):
     num_female = models.IntegerField("女性", blank=True, null=True)
     meter_fee = models.DecimalField("メータ料金", max_digits=7, decimal_places=2, blank=True, null=True)
     is_charter = models.BooleanField(default=False)  # ✅ 添加 default
-    
-    #charter_amount_jpy = models.DecimalField(max_digits=8, decimal_places=0, default=0)
-    #charter_payment_method = models.CharField(max_length=20, blank=True, default="")
+
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
-     # --- 新增开始：待入（未到账不计入売上；到账后手动取消勾选） ---
+
+    # --- 新增开始：待入（未到账不计入売上；到账后手动取消勾选） ---
     is_pending = models.BooleanField(default=False, verbose_name="待入")
     # --- 新增结束 ---
 
-     # === ↓↓↓ 包车收款明细字段：用于计算貸切現金/未収合計 ↓↓↓ ===
-
+    # === ↓↓↓ 包车收款明细字段：用于计算貸切現金/未収合計 ↓↓↓ ===
     charter_payment_method = models.CharField(
         max_length=20,
         choices=[
@@ -358,7 +356,7 @@ class DriverDailyReportItem(models.Model):
             ('boss_wechat', '老板微信'),
             ('bank_transfer', '银行转账'),
         ],
-        default="jpy_cash",             # ← 如需默认选项，加上
+        default="jpy_cash",
         blank=True,
         null=True,
         verbose_name='貸切收款方式'
@@ -385,29 +383,32 @@ class DriverDailyReportItem(models.Model):
         verbose_name='貸切日元金额'
     )
 
-    # === ↑↑↑ 包车字段结束 ↑↑↑ ===
-
     # ======= BEGIN NEW (ETC 明细化：行级字段) =======
-    etc_riding = models.PositiveIntegerField("乗車ETC（円）", default=0)
-    etc_empty  = models.PositiveIntegerField("空車ETC（円）", default=0)
+    etc_riding = models.PositiveIntegerField("乗車ETC（円）", default=0, blank=True)
+    etc_empty  = models.PositiveIntegerField("空車ETC（円）", default=0, blank=True)
 
     ETC_CHARGE_CHOICES = (
         ("company",  "会社負担"),
         ("driver",   "ドライバー立替"),
         ("customer", "お客様支払"),
     )
+
+    # ⚠️ 这三个就是关键：允许 blank/null，默认 company
     etc_charge_type = models.CharField(
         "ETC負担",
         max_length=20,
         choices=ETC_CHARGE_CHOICES,
+        blank=True,
+        null=True,
         default="company",
     )
 
-    # ======= BEGIN NEW (乘车/空车 ETC 负担细分) =======
     etc_riding_charge_type = models.CharField(
         "乗車ETC負担",
         max_length=20,
         choices=ETC_CHARGE_CHOICES,
+        blank=True,
+        null=True,
         default="company",
     )
 
@@ -415,6 +416,8 @@ class DriverDailyReportItem(models.Model):
         "空車ETC負担",
         max_length=20,
         choices=ETC_CHARGE_CHOICES,
+        blank=True,
+        null=True,
         default="company",
     )
     # ======= END NEW (乘车/空车 ETC 负担细分) =======
@@ -426,40 +429,25 @@ class DriverDailyReportItem(models.Model):
 
     combined_group = models.CharField("合算グループ", max_length=100, blank=True, null=True)
 
-    # >>>>>>>>>>>>>>>>>>>>>>> 在这里插入属性方法（字段下面，save/__str__ 上面） <<<<<<<<<<<<<<<<<<<<
     @property
     def resolved_riding_burden(self):
-        """
-        乘车ETC的负担者：优先用 etc_riding_charge_type；
-        没有该字段或值为空时回退到 etc_charge_type；再没有就默认 company。
-        """
         val = getattr(self, 'etc_riding_charge_type', '') or self.etc_charge_type
         return val or 'company'
 
     @property
     def resolved_empty_burden(self):
-        """
-        空车ETC的负担者：优先用 etc_empty_charge_type；
-        没有该字段或值为空时回退到 etc_charge_type；再没有就默认 company。
-        """
         val = getattr(self, 'etc_empty_charge_type', '') or self.etc_charge_type
         return val or 'company'
-    # >>>>>>>>>>>>>>>>>>>>>>> 属性方法结束 <<<<<<<<<<<<<<<<<<<<
 
     def save(self, *args, **kwargs):
-        # ✅ 已有逻辑：如果 comment 不为空就设为有异常
         self.has_issue = bool(self.comment.strip())
-        
         super().save(*args, **kwargs)
-
-        # ✅ 保存后更新日报状态
         if self.report:
             self.report.has_issue = self.report.items.filter(has_issue=True).exists()
             self.report.save(update_fields=['has_issue'])
 
     def __str__(self):
         return f"{self.ride_time} - {self.ride_from}→{self.ride_to} - {self.meter_fee}"
-
 
 
 # 日报图片（不变）

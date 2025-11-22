@@ -522,6 +522,9 @@ def dailyreport_edit(request, pk):
             messages.success(request, "保存成功！")
             return redirect('dailyreport:dailyreport_edit', pk=inst.pk)
         else:
+            # 🔥 调试：把错误打到控制台 或 log
+            print("【DEBUG】日报主表错误：", form.errors)
+            print("【DEBUG】明细行错误：", formset.errors)
             messages.error(request, "保存失败，请检查输入内容")
     else:
         form = DriverDailyReportForm(instance=report)
@@ -536,10 +539,7 @@ def dailyreport_edit(request, pk):
         'is_edit': True,
     })
 from django.views.decorators.http import require_POST
-from django.shortcuts import get_object_or_404, redirect
-from django.contrib import messages
 # 如果上面没引入 user_passes_test / 模型，也一并确认
-from django.contrib.auth.decorators import user_passes_test
 from .models import DriverDailyReportItem, Driver
 @user_passes_test(is_dailyreport_admin)
 @require_POST
@@ -698,7 +698,6 @@ def _filter_by_driver_id(qs, request):
 
     # 为了在文件名里显示司机名，尽量取一个 Driver 对象（失败就返回 None）
     try:
-        from staffbook.models import Driver
         d = Driver.objects.only("id", "name", "driver_code").get(id=did)
     except Exception:
         d = None

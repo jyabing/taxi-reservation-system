@@ -82,92 +82,133 @@ class DriverDailyReportForm(forms.ModelForm):
 
 # --- 日报明细表单 ---
 class DriverDailyReportItemForm(forms.ModelForm):
-    RIDING_CHOICES = [
-        ("company",  "会社（会社負担）"),
-        ("customer", "お客様（直接精算）"),
-        ("driver",   "ドライバー（立替→後日返還）"),
-    ]
-    EMPTY_CHOICES = [
-        ("company",  "会社（会社負担）"),
-        # ↓ 强调“自己カード利用/回程費等で精算される前提”
-        ("driver",   "ドライバー（自己カード・回程費等で精算）"),
-    ]
+    """
+    目的：先保证『能保存』，不要再因为 etc_xxx_charge_type / etc_charge_type 报错。
+    """
+
+    # 旧字段：显式覆盖成 CharField(required=False) + HiddenInput
+    etc_charge_type = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
+    )
+
+    # 新字段：仍然用 CharField + Select
+    etc_riding_charge_type = forms.CharField(
+        required=False,
+        widget=forms.Select(
+            attrs={"class": "form-select form-select-sm etc-riding-charge-select"}
+        ),
+    )
+    etc_empty_charge_type = forms.CharField(
+        required=False,
+        widget=forms.Select(
+            attrs={"class": "form-select form-select-sm etc-empty-charge-select"}
+        ),
+    )
 
     class Meta:
         model = DriverDailyReportItem
         fields = "__all__"
+        # 这里可以不再写 etc_charge_type 的 widget 了（上面的字段定义已经覆盖）
         widgets = {
-            "etc_riding_charge_type": forms.Select(attrs={"class": "form-select form-select-sm etc-riding-charge-select"}),
-            "etc_empty_charge_type":  forms.Select(attrs={"class": "form-select form-select-sm etc-empty-charge-select"}),
-            "etc_charge_type": forms.HiddenInput(),  # 兼容旧字段
+            # "etc_charge_type": forms.HiddenInput(),  # ← 可以删掉或留着都行
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        if "etc_riding_charge_type" in self.fields:
-            self.fields["etc_riding_charge_type"].choices = self.RIDING_CHOICES
-            self.fields["etc_riding_charge_type"].widget.choices = self.RIDING_CHOICES
-            self.fields["etc_riding_charge_type"].required = False
+        # 金额默认 0（防止 None）
+        if "etc_riding" in self.fields:
+            self.fields["etc_riding"].initial = getattr(self.instance, "etc_riding", 0) or 0
+        if "etc_empty" in self.fields:
+            self.fields["etc_empty"].initial = getattr(self.instance, "etc_empty", 0) or 0
 
-        if "etc_empty_charge_type" in self.fields:
-            self.fields["etc_empty_charge_type"].choices = self.EMPTY_CHOICES
-            self.fields["etc_empty_charge_type"].widget.choices = self.EMPTY_CHOICES   # ← 关键补丁
-            self.fields["etc_empty_charge_type"].required = False
-
-        # 金额默认 0
-        self.fields["etc_riding"].initial = getattr(self.instance, "etc_riding", 0) or 0
-        self.fields["etc_empty"].initial  = getattr(self.instance, "etc_empty", 0)  or 0
-
-        # 负担默认：优先实例 → 旧字段 → company
+        # 旧字段 -> 默认立替者
         default_charge = "company"
         legacy = getattr(self.instance, "etc_charge_type", None) or default_charge
+
+        # 乘车负担：实例值 > 旧字段 > 默认 company
         if "etc_riding_charge_type" in self.fields:
             self.fields["etc_riding_charge_type"].initial = (
-                getattr(self.instance, "etc_riding_charge_type", None) or legacy or default_charge
+                getattr(self.instance, "etc_riding_charge_type", None)
+                or legacy
+                or default_charge
             )
+
+        # 空车负担：实例值 > 默认 company
         if "etc_empty_charge_type" in self.fields:
             self.fields["etc_empty_charge_type"].initial = (
-                getattr(self.instance, "etc_empty_charge_type", None) or default_charge
+                getattr(self.instance, "etc_empty_charge_type", None)
+                or default_charge
             )
+
+        # 旧字段初始
         if "etc_charge_type" in self.fields:
             self.fields["etc_charge_type"].initial = legacy
 
-    # —— 非负整数 —— #
+    # —— 金额：非负整数 —— #
     def clean_etc_riding(self):
         v = self.cleaned_data.get("etc_riding")
-        try: v = int(v or 0)
-        except Exception: v = 0
+        try:
+            v = int(v or 0)
+        except Exception:
+            v = 0
         return max(0, v)
 
     def clean_etc_empty(self):
         v = self.cleaned_data.get("etc_empty")
-        try: v = int(v or 0)
-        except Exception: v = 0
+        try:
+            v = int(v or 0)
+        except Exception:
+            v = 0
         return max(0, v)
 
-    # —— 负担枚举（各自集合）—— #
+    # —— 负担类型：空/乱值一律回退到 'company' —— #
     def clean_etc_riding_charge_type(self):
-        v = (self.cleaned_data.get("etc_riding_charge_type") or "").strip() or "company"
-        allow = {k for k, _ in self.RIDING_CHOICES}
+        v = (self.cleaned_data.get("etc_riding_charge_type") or "").strip()
+        if not v:
+            return "company"
+        allow = {"company", "driver", "customer"}
         return v if v in allow else "company"
 
     def clean_etc_empty_charge_type(self):
-        v = (self.cleaned_data.get("etc_empty_charge_type") or "").strip() or "company"
-        allow = {k for k, _ in self.EMPTY_CHOICES}
+        v = (self.cleaned_data.get("etc_empty_charge_type") or "").strip()
+        if not v:
+            return "company"
+        allow = {"company", "driver", "customer"}  # 即使模板只用 company/driver 也没关系
         return v if v in allow else "company"
+
+    # —— 旧字段：保证永远有值，不再报“必填” —— #
+    def clean_etc_charge_type(self):
+        """
+        兼容老字段：如果没填，就用乘车负担或 'company'
+        """
+        v = (self.cleaned_data.get("etc_charge_type") or "").strip()
+        if not v:
+            v = (self.cleaned_data.get("etc_riding_charge_type") or "").strip()
+        if not v:
+            v = "company"
+        return v
 
     def clean(self):
         cleaned = super().clean()
-        # 非貸切 → charter 金额清零
-        if cleaned.get("is_charter") is False and cleaned.get("charter_amount_jpy") not in (None, "", 0):
+
+        # 非貸切 → charter 金额清零（保持你原来的逻辑）
+        if cleaned.get("is_charter") is False and cleaned.get("charter_amount_jpy") not in (
+            None,
+            "",
+            0,
+        ):
             cleaned["charter_amount_jpy"] = 0
-        # 若旧字段存在：同步成“乗車負担”
-        if "etc_charge_type" in self.fields:
-            cleaned["etc_charge_type"] = cleaned.get("etc_riding_charge_type", "company") or "company"
+
+        # 旧字段始终同步为“乘车负担”（再兜底 company）
+        cleaned["etc_charge_type"] = (
+            cleaned.get("etc_riding_charge_type") or
+            cleaned.get("etc_charge_type") or
+            "company"
+        )
+
         return cleaned
-
-
 
 
 
@@ -177,17 +218,52 @@ class _BaseReportItemFormSet(BaseInlineFormSet):
         # ★ 勾了 DELETE 就判定为删除
         return bool(getattr(form, "cleaned_data", {}) and form.cleaned_data.get("DELETE"))
 
-    
     def clean(self):
+        """
+        温和版校验：
+          - 不再因为 ETC 负担字段空/乱值而整套表单报错；
+          - 自动把无效值回退为 'company'；
+          - 同时把旧字段 etc_charge_type 跟 ride 的负担同步。
+        """
         super().clean()
-        # 如需“至少 1 条明细”强校验，取消注释：
-        # count = sum(
-        #     1 for f in self.forms
-        #     if getattr(f, "cleaned_data", None)
-        #     and not f.cleaned_data.get("DELETE", False)
-        # )
-        # if count == 0:
-        #     raise forms.ValidationError("请至少填写一条日报明细。")
+
+        allow = {"company", "driver", "customer"}
+
+        for form in self.forms:
+            cd = getattr(form, "cleaned_data", None)
+            if not cd:
+                continue
+            # 被标记删除的行不处理
+            if self.can_delete and cd.get("DELETE"):
+                continue
+
+            ride_charge = (cd.get("etc_riding_charge_type") or "").strip()
+            empty_charge = (cd.get("etc_empty_charge_type") or "").strip()
+            legacy = (cd.get("etc_charge_type") or "").strip()
+
+            if ride_charge not in allow:
+                ride_charge = "company"
+            if empty_charge not in allow:
+                empty_charge = "company"
+            if legacy not in allow:
+                legacy = ride_charge or "company"
+
+            # 写回 cleaned_data
+            cd["etc_riding_charge_type"] = ride_charge
+            cd["etc_empty_charge_type"] = empty_charge
+            cd["etc_charge_type"] = legacy
+
+            # 再同步到 instance，避免保存时报错
+            inst = form.instance
+            if inst is not None:
+                inst.etc_riding_charge_type = ride_charge
+                inst.etc_empty_charge_type = empty_charge
+                if hasattr(inst, "etc_charge_type"):
+                    inst.etc_charge_type = legacy
+
+        # ⚠️ 这里不要再 raise ValidationError("空車ETC負担の無効値") 之类的东西
+        # 如需“至少 1 条明细”，在这里单独加判断即可
+
 
 
 ReportItemFormSet = inlineformset_factory(
