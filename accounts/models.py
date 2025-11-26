@@ -21,6 +21,12 @@ class UserProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     is_vehicles_admin = models.BooleanField(default=False, verbose_name="配车系统管理员")
     is_staffbook_admin = models.BooleanField(default=False, verbose_name="员工台账系统管理员")
+    # ==== BEGIN INSERT: dailyreport admin flag ====
+    is_dailyreport_admin = models.BooleanField(
+        default=False,
+        verbose_name="日报管理系统管理员"
+    )
+    # ==== END INSERT: dailyreport admin flag ====
     is_carinfo_admin = models.BooleanField(default=False, verbose_name="车辆管理系统管理员")
 
     def __str__(self):

@@ -46,30 +46,67 @@
         <li><a role="menuitem" href="{% url 'staffbook:my_reservations' %}">📄 私の提出一覧</a></li>
       {% endif %}
 
-      {# 只有管理员/人事可以看到所有司机的列表 #}
-      {% if user.is_superuser or user.is_staff or user.userprofile.is_staffbook_admin %}
-        <li><a role="menuitem" href="{% url 'staffbook:schedule_list' %}">📑 提出スケジュール管理</a></li>
+      {# 只有超级管理员或「员工台账管理员」可以看到全员排班列表 #}
+      {% if user.is_authenticated %}
+        {% with p=user.userprofile %}
+          {% if user.is_superuser or p.is_staffbook_admin %}
+            <li><a role="menuitem" href="{% url 'staffbook:schedule_list' %}">📑 提出スケジュール管理</a></li>
+          {% endif %}
+        {% endwith %}
       {% endif %}
-      {# ===== END 新增：排班（司机 + 管理员） ===== #}
 
       {% if user.is_superuser or user.userprofile.is_vehicles_admin %}
         <li><a role="menuitem" href="{% url 'vehicles:reservation_approval_list' %}">🛠️ 审批面板</a></li>
         <li><a role="menuitem" href="{% url 'vehicles:admin_stats' %}">📊 管理员统计</a></li>
       {% endif %}
 
-      <li><a role="menuitem" href="{% url 'vehicles:reservation_dashboard' %}">🚖 配车系统</a></li>
-
-      {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
-        <li><a role="menuitem" href="{% url 'staffbook:driver_list' %}">📒 社員台帳</a></li>
+      {# ==== BEGIN REPLACE: 配车系统 导航权限控制 ==== #}
+      {% if user.is_authenticated %}
+        {% with p=user.userprofile %}
+          {% if user.is_superuser or p.is_vehicles_admin %}
+            <li>
+              <a role="menuitem" href="{% url 'vehicles:reservation_dashboard' %}">
+                🚖 配车系统
+              </a>
+            </li>
+          {% endif %}
+        {% endwith %}
       {% endif %}
+      {# ==== END REPLACE: 配车系统 导航权限控制 ==== #}
 
-      {% if user.is_superuser or user.userprofile.is_staffbook_admin %}
-        <li><a role="menuitem" href="{% url 'dailyreport:dailyreport_overview' %}">💸 日報一覧</a></li>
+      {# ==== BEGIN REPLACE: 社员台帐 导航权限控制 ==== #}
+      {% if user.is_authenticated %}
+        {% with p=user.userprofile %}
+          {% if user.is_superuser or p.is_staffbook_admin %}
+            <li><a role="menuitem" href="{% url 'staffbook:driver_list' %}">📒 社员台帐</a></li>
+          {% endif %}
+        {% endwith %}
       {% endif %}
+      {# ==== END REPLACE: 社员台帐 导航权限控制 ==== #}
 
-      {% if user.is_superuser or user.userprofile.is_carinfo_admin %}
-        <li><a role="menuitem" href="{% url 'carinfo:car_list' %}">🚗 車両管理</a></li>
+      {# ==== BEGIN REPLACE: 日報一覧 导航权限控制 (vehicles/templates/partials/navbar.html) ==== #}
+      {% if user.is_authenticated %}
+        {% with p=user.userprofile %}
+          {% if user.is_superuser or p.is_dailyreport_admin or p.is_vehicles_admin %}
+            <li>
+              <a role="menuitem" href="{% url 'dailyreport:dailyreport_overview' %}">
+                💸 日報一覧
+              </a>
+            </li>
+          {% endif %}
+        {% endwith %}
       {% endif %}
+      {# ==== END REPLACE: 日報一覧 导航权限控制 ==== #}
+
+      {# ==== BEGIN REPLACE: 车辆管理 导航权限控制 ==== #}
+      {% if user.is_authenticated %}
+        {% with p=user.userprofile %}
+          {% if user.is_superuser or p.is_carinfo_admin %}
+            <li><a role="menuitem" href="{% url 'carinfo:car_list' %}">🚗 车辆管理</a></li>
+          {% endif %}
+        {% endwith %}
+      {% endif %}
+      {# ==== END REPLACE: 车辆管理 导航权限控制 ==== #}
 
       {% if user.is_superuser %}
         <li><a role="menuitem" href="/admin/">⚙️ 后台</a></li>

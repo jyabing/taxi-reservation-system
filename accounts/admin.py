@@ -34,6 +34,20 @@ class DriverUserAdmin(UserAdmin):
 # ✅ 4. 注册权限扩展模型
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ['user', 'is_vehicles_admin', 'is_staffbook_admin', 'is_carinfo_admin']
-    list_editable = ['is_vehicles_admin', 'is_staffbook_admin', 'is_carinfo_admin']
+    list_display = [
+        'user',
+        'is_vehicles_admin',       # 配车系统管理员（你原来就有的）
+        'is_staffbook_admin',      # 员工台账系统管理员
+        'is_dailyreport_admin',    # 日报管理系统管理员（新加的）
+        'is_carinfo_admin',        # 车辆资料管理系统管理员
+    ]
+
+    list_editable = [
+        'is_vehicles_admin',
+        'is_staffbook_admin',
+        'is_dailyreport_admin',
+        'is_carinfo_admin',
+    ]
+
     search_fields = ['user__username']
+# ==== END REPLACE: UserProfileAdmin ====

@@ -1,5 +1,3 @@
-
-
 {% extends "base.html" %}
 
 {% block title %}系统首页{% endblock %}
@@ -14,28 +12,53 @@
 
 <div class="cards">
 
-  <!-- 配车系统入口 -->
-  <div class="card">
-    <h3>🚖 配车系统</h3>
-    <p>车辆预约、派车、预约审批等一站式管理。</p>
-    <a href="{% url 'vehicles:reservation_dashboard' %}">进入</a>
-  </div>
-
-  <!-- 员工台账管理系统入口，只给管理员 -->
-  {% if user.is_authenticated and user.userprofile.is_staffbook_admin %}
-  <div class="card">
-    <h3>📒 员工台账管理系统</h3>
-    <p>员工日报、工资、材料管理。</p>
-    <a href="{% url 'staffbook:driver_list' %}">进入</a>
-  </div>
+  {# ① 配车系统：所有登录用户都可以看到 #}
+  {% if user.is_authenticated %}
+    <div class="card">
+      <h3>🚖 配车系统</h3>
+      <p>车辆预约、派车、预约审批等一站式管理。</p>
+      <a href="{% url 'vehicles:reservation_dashboard' %}">进入</a>
+    </div>
   {% endif %}
 
-  <!-- 车辆管理入口 -->
-  <div class="card">
-    <h3>🚗 车辆管理系统</h3>
-    <p>车辆资料、维修、照片等统一管理。</p>
-    <a href="{% url 'carinfo:car_list' %}">进入</a>
-  </div>
+  {# ② 乘务日报管理系统：和导航「💸 日報一覧」同一套权限 #}
+  {% if user.is_authenticated %}
+    {% with p=user.userprofile %}
+      {% if user.is_superuser or p.is_dailyreport_admin or p.is_vehicles_admin %}
+        <div class="card">
+          <h3>📘 乘务日报管理系统</h3>
+          <p>司机乘务日报的录入、审批和汇总统计。</p>
+          <a href="{% url 'dailyreport:dailyreport_overview' %}">进入</a>
+        </div>
+      {% endif %}
+    {% endwith %}
+  {% endif %}
+
+  {# ③ 员工台账管理系统：仅员工台账管理员 #}
+  {% if user.is_authenticated %}
+    {% with p=user.userprofile %}
+      {% if user.is_superuser or p.is_staffbook_admin %}
+        <div class="card">
+          <h3>📒 员工台账管理系统</h3>
+          <p>员工资料、工资、材料管理。</p>
+          <a href="{% url 'staffbook:driver_list' %}">进入</a>
+        </div>
+      {% endif %}
+    {% endwith %}
+  {% endif %}
+
+  {# ④ 车辆管理系统：仅车辆管理系统管理员 #}
+  {% if user.is_authenticated %}
+    {% with p=user.userprofile %}
+      {% if user.is_superuser or p.is_carinfo_admin %}
+        <div class="card">
+          <h3>🚗 车辆管理系统</h3>
+          <p>车辆资料、维修、照片等统一管理。</p>
+          <a href="{% url 'carinfo:car_list' %}">进入</a>
+        </div>
+      {% endif %}
+    {% endwith %}
+  {% endif %}
 
 </div>
 

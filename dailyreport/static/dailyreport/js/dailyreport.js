@@ -208,42 +208,73 @@ function updateDuration() {
   if (breakTimeHidden) breakTimeHidden.value = toHM(realBreak);
 }
 
-// ====== 行号刷新 / 同时刻缩进 ======
+// ====== 行号刷新（只更新显示，不改 name/index） ======
 function updateRowNumbersAndIndexes() {
   const table = document.querySelector('table.report-table');
-  const rows = $all("tr.report-item-row", table).filter(r => r.style.display !== "none");
-  rows.forEach((row, i) => { row.querySelector(".row-number")?.replaceChildren(document.createTextNode(i + 1)); });
+  if (!table) return;
+
+  // 只拿真正的数据 tbody，排除模板
+  const tbody = table.querySelector('tbody:not(#empty-form-template)');
+  if (!tbody) return;
+
+  // 只用于【显示行号】，不改任何 name/id
+  const visibleRows = $all("tr.report-item-row", tbody).filter(
+    r => r.style.display !== "none"
+  );
+
+  visibleRows.forEach((row, i) => {
+    const numCell = row.querySelector(".row-number");
+    if (numCell) {
+      numCell.textContent = String(i + 1);  // 行号从 1 开始
+    }
+  });
+
+  // ⚠️ 不再修改 TOTAL_FORMS，不再重写 items-0-xxx 之类的字段
 }
+
 function updateSameTimeGrouping() {
   const table = document.querySelector('table.report-table');
-  const rows = $all("tr.report-item-row", table).filter(r => r.style.display !== "none");
+  if (!table) return;
+
+  const tbody = table.querySelector('tbody:not(#empty-form-template)');
+  if (!tbody) return;
+
+  const rows = $all("tr.report-item-row", tbody).filter(r => r.style.display !== "none");
   const groups = Object.create(null);
+
   rows.forEach(row => {
     const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
     const t = (timeInput ? String(timeInput.value).trim() : "");
     const key = t || "__EMPTY__";
     (groups[key] ||= []).push(row);
   });
-  Object.entries(groups).forEach(([key, arr]) => {
+
+  // 清理旧状态
+  Object.values(groups).forEach(arr => {
     arr.forEach(row => {
       row.classList.remove("same-time-child");
       const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
       const cell = timeInput?.closest("td");
       if (!cell) return;
-      const pref = cell.querySelector(".same-time-prefix"); if (pref) pref.remove();
+      const pref = cell.querySelector(".same-time-prefix");
+      if (pref) pref.remove();
     });
-    if (key === "__EMPTY__") return;
-    if (arr.length > 1) {
-      arr.forEach((row, idx) => {
-        if (idx === 0) return;
-        row.classList.add("same-time-child");
-        const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
-        const cell = timeInput?.closest("td"); if (!cell) return;
-        const span = document.createElement("span");
-        span.className = "same-time-prefix"; span.textContent = "↳ ";
-        cell.insertBefore(span, timeInput);
-      });
-    }
+  });
+
+  // 添加同一时间的缩进箭头
+  Object.entries(groups).forEach(([key, arr]) => {
+    if (key === "__EMPTY__" || arr.length <= 1) return;
+    arr.forEach((row, idx) => {
+      if (idx === 0) return;  // 第一行正常显示
+      row.classList.add("same-time-child");
+      const timeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
+      const cell = timeInput?.closest("td");
+      if (!cell) return;
+      const span = document.createElement("span");
+      span.className = "same-time-prefix";
+      span.textContent = "↳ ";
+      cell.insertBefore(span, timeInput);
+    });
   });
 }
 
@@ -495,66 +526,85 @@ function bindRowEvents(row) {
   });
 }
 
-// === 小工具：给新行补全下拉选项（从第一行克隆） ===
-function ensureRowSelectOptions(row) {
+// === 小工具：给新行补全下拉选项（从已有行克隆，支持 name 和 class 两种写法） ===
+// === 强制把新行的下拉选项复制成「第一行」的一样 ===
+// 挂到 window 上，保证全局可见（控制台里也能直接调用）
+window.ensureRowSelectOptions = function ensureRowSelectOptions(row) {
   if (!row) return;
 
-  // 以当前表里的第一条明细行为“模板行”
-  const baseRow = document.querySelector('tr.report-item-row');
+  // 以当前“数据区 tbody”里的第一条明细行为模板行（排除模板 tbody）
+  const baseTbody = document.querySelector('table.report-table tbody:not(#empty-form-template)');
+  if (!baseTbody) return;
+
+  const baseRow =
+    baseTbody.querySelector('tr.report-item-row') ||
+    baseTbody.querySelector('tr');
   if (!baseRow) return;
 
-  function fillSelect(targetSelect, baseSelector) {
-    if (!targetSelect) return;
-    // 已经有选项就不用管
-    if (targetSelect.options && targetSelect.options.length > 0) return;
+  // 在同一个作用域里，优先用 class，找不到再用 name$
+  function getSelect(scope, classSel, nameSel) {
+    return scope.querySelector(classSel) || scope.querySelector(nameSel);
+  }
 
-    const baseSelect = baseRow.querySelector(baseSelector);
-    if (!baseSelect || !baseSelect.options || !baseSelect.options.length) return;
+  function copySelect(target, from) {
+    if (!target || !from) return;
 
-    // 克隆选项
-    targetSelect.innerHTML = baseSelect.innerHTML;
+    // 直接把模板行的 option 全部拷贝过来
+    target.innerHTML = from.innerHTML;
 
-    // 默认选中“------”，如果没有就选第一个
-    if (targetSelect.options.length > 0) {
-      let idx = 0;
-      for (let i = 0; i < targetSelect.options.length; i++) {
-        if (targetSelect.options[i].value === "") {
-          idx = i;
-          break;
-        }
-      }
-      targetSelect.selectedIndex = idx;
+    // 默认选中和模板行一样的 option
+    if (from.selectedIndex >= 0 && from.selectedIndex < target.options.length) {
+      target.selectedIndex = from.selectedIndex;
+    } else if (target.options.length > 0) {
+      target.selectedIndex = 0;
     }
   }
 
-  // 支付方式
-  fillSelect(
-    row.querySelector('.payment-method-select'),
-    '.payment-method-select'
+  // ① 支付方式：.payment-method-select 或 name$='-payment_method'
+  copySelect(
+    getSelect(row, '.payment-method-select', 'select[name$="-payment_method"]'),
+    getSelect(baseRow, '.payment-method-select', 'select[name$="-payment_method"]')
   );
 
-  // 乗車ETC 立替者
-  fillSelect(
-    row.querySelector('.etc-riding-charge-select'),
-    '.etc-riding-charge-select'
+  // ② 乗車ETC 立替者：.etc-riding-charge-select 或 name$='-etc_riding_charge_type'
+  copySelect(
+    getSelect(row, '.etc-riding-charge-select', 'select[name$="-etc_riding_charge_type"]'),
+    getSelect(baseRow, '.etc-riding-charge-select', 'select[name$="-etc_riding_charge_type"]')
   );
 
-  // 空車ETC 立替者
-  fillSelect(
-    row.querySelector('.etc-empty-charge-select'),
-    '.etc-empty-charge-select'
+  // ③ 空車ETC 立替者：.etc-empty-charge-select 或 name$='-etc_empty_charge_type'
+  copySelect(
+    getSelect(row, '.etc-empty-charge-select', 'select[name$="-etc_empty_charge_type"]'),
+    getSelect(baseRow, '.etc-empty-charge-select', 'select[name$="-etc_empty_charge_type"]')
   );
-}
+
+  // ④ 貸切支払方式：.charter-payment-method-select 或 name$='-charter_payment_method'
+  copySelect(
+    getSelect(row, '.charter-payment-method-select', 'select[name$="-charter_payment_method"]'),
+    getSelect(baseRow, '.charter-payment-method-select', 'select[name$="-charter_payment_method"]')
+  );
+};
 
 // ====== 模板克隆/插入 ======
 function cloneRowFromTemplate() {
   const tpl = document.querySelector('#empty-form-template');
-  const total = document.querySelector("input[name$='-TOTAL_FORMS']");
-  if (!tpl || !total) return null;
-  const count = parseInt(total.value || '0', 10) || 0;
+  // 只操作明细 formset 的 TOTAL_FORMS
+  const totalInput = document.querySelector("input[name$='-TOTAL_FORMS']");
+  if (!tpl || !totalInput) return null;   // ✅ 用 totalInput
+
+  // 当前管理表单里的总数
+  const count = parseInt(totalInput.value || '0', 10) || 0;
+
+  // ✅ 关键：告诉 Django “总表单数 +1”
+  totalInput.value = String(count + 1);   // ✅ 用 totalInput
+
+  // 用 count 作为新行的 index
   const tmp = document.createElement('tbody');
-  tmp.innerHTML = tpl.innerHTML.replace(/__prefix__/g, count).replace(/__num__/g, count + 1);
-  const tr = tmp.querySelector('tr'); if (!tr) return null;
+  tmp.innerHTML = tpl.innerHTML
+    .replace(/__prefix__/g, count)
+    .replace(/__num__/g, count + 1);
+  const tr = tmp.querySelector('tr');
+  if (!tr) return null;
 
   // === [M1 BEGIN] 保险：给新行的“支付”下拉复制一份选项 ===
   try {
@@ -573,14 +623,16 @@ function cloneRowFromTemplate() {
   }
   // === [M1 END] ===
 
-
   tr.classList.remove('d-none', 'hidden', 'invisible', 'template-row');
-  tr.style.removeProperty('display'); tr.removeAttribute('aria-hidden');
+  tr.style.removeProperty('display');
+  tr.removeAttribute('aria-hidden');
   tr.querySelectorAll('input,select,textarea,button').forEach(el => {
     el.disabled = false;
     el.removeAttribute('disabled');
   });
-  total.value = String(count + 1);
+
+  // 这里 **不要再写第二个 total.value = ...**，这一行可以删掉
+  // total.value = String(count + 1);
 
   // === PATCH: 确保新行的“支付方式”下拉框有和现有行一样的选项 ===
   try {
@@ -595,6 +647,8 @@ function cloneRowFromTemplate() {
 
   return tr;
 }
+
+
 function addRowToEnd() {
   const dataTb = document.querySelector('table.report-table tbody:not(#empty-form-template)');
   if (!dataTb) return false;
@@ -1184,41 +1238,70 @@ function updateTotals() {
     const m = parseHHMM(v);
     return m == null ? 12 * 60 : m;
   }
-  function sortRowsByTime() {
-    const dataTb = document.querySelector('table.report-table tbody:not(#empty-form-template)');
-    if (!dataTb) return;
-    const anchor = getAnchorMinutes();
-    const rows = $all("tr.report-item-row", dataTb);
-    const pairs = rows.map(row => {
-      const t = (row.querySelector("input[name$='-ride_time']") || row.querySelector(".ride-time-input") || row.querySelector(".time-input"))?.value || "";
-      let mins = parseHHMM(t);
-      if (mins == null) mins = Number.POSITIVE_INFINITY;
-      else if (mins < anchor) mins += 24 * 60;
-      return { row, key: mins };
-    });
-    pairs.sort((a, b) => a.key - b.key).forEach(p => dataTb.appendChild(p.row));
-    let idx = 1; pairs.forEach(p => { const num = p.row.querySelector(".row-number"); if (num) num.textContent = idx++; });
-    updateSameTimeGrouping();
-  }
-  window.__resortByTime = sortRowsByTime;
+
+
+  function sortRowsByTime(anchorMinutes) {
+  const dataTb =
+    document.querySelector("table.report-table tbody.data-body") ||
+    document.querySelector("table.report-table tbody:not(#empty-form-template)");
+  if (!dataTb) return;
+
+  const rows = $all("tr.report-item-row", dataTb);
+  const pairs = rows.map(row => {
+    const tInput =
+      row.querySelector("input[name$='-ride_time']") ||
+      row.querySelector(".time-input");
+    const v = (tInput ? tInput.value : "") || "";
+    let mins = parseHHMM(v);
+    if (mins == null) {
+      mins = Number.POSITIVE_INFINITY;
+    } else if (mins < anchorMinutes) {
+      mins += 24 * 60; // 跨夜，排到后面
+    }
+    return { row, key: mins };
+  });
+
+  pairs.sort((a, b) => a.key - b.key).forEach(p => dataTb.appendChild(p.row));
+
+  let idx = 1;
+  pairs.forEach(p => {
+    const n = p.row.querySelector(".row-number");
+    if (n) n.textContent = idx++;
+  });
+
+  updateSameTimeGrouping();
+}
+window.__resortByTime = sortRowsByTime;
 })();
 
+
 // ====== 提交前兜底 ======
-(function () {
-  const form = document.querySelector("form"); if (!form) return;
+(function ensureNumericBeforeSubmit() {
+  const form = document.querySelector("form");
+  if (!form) return;
+
   form.addEventListener("submit", function () {
-    const sel = [".meter-fee-input", ".charter-amount-input", ".deposit-input", ".toll-input", ".etc-riding-input", ".etc-empty-input"].join(",");
-    document.querySelectorAll(sel).forEach((inp) => {
+    const selectors = [
+      ".meter-fee-input",
+      ".charter-amount-input",
+      ".toll-input",
+      ".etc-riding-input",
+      ".etc-empty-input",
+    ].join(",");
+
+    document.querySelectorAll(selectors).forEach(inp => {
       if (!inp) return;
       const v = inp.value;
-      if (v === "" || v == null) { inp.value = "0"; }
-      else {
-        const n = parseInt(String(v).replace(/[^\d-]/g, ""), 10);
-        inp.value = Number.isFinite(n) ? String(n) : "0";
+      if (v === "" || v == null) {
+        inp.value = "0";
+      } else {
+        const num = parseInt(String(v).replace(/[^\d-]/g, ""), 10);
+        inp.value = Number.isFinite(num) ? String(num) : "0";
       }
     });
   });
 })();
+
 
 // 让新插入的行马上跟随当前的列显隐状态
 function syncEtcColVisibility(){
@@ -1312,11 +1395,16 @@ function evaluateEmptyEtcDetailVisibility() {
 });
 
 // ====== 页面主绑定 ======
-document.addEventListener('DOMContentLoaded', () => {
-  // 行绑定
-  $all("tr.report-item-row").forEach(bindRowEvents);
+(function initDailyReportPage() {
+  // 1) 现有行：先补全下拉选项，再绑事件
+  $all("tr.report-item-row").forEach(row => {
+    if (window.ensureRowSelectOptions) {
+      window.ensureRowSelectOptions(row);
+    }
+    bindRowEvents(row);
+  });
 
-  // “下に挿入”
+  // 2) 行内「➕下に挿入」按钮
   const table = document.querySelector('table.report-table');
   if (table) {
     table.addEventListener("click", (e) => {
@@ -1328,20 +1416,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const rows = $all("tr.report-item-row", table);
       const index = row ? (rows.findIndex(r => r === row) + 1) : 1;
 
-      // insertRowAfter 内部已经做了：
-      // - cloneRowFromTemplate()
-      // - bindRowEvents(tr)
-      // - updateRowNumbersAndIndexes()
-      // - updateSameTimeGrouping()
-      // - updateTotals()
+      // insertRowAfter 内部已经完成各种更新
       insertRowAfter(index);
-
-      // 只需要根据现有列显示状态，同步一次 ETC 列显隐
+      // 按当前状态同步一次 ETC 列显隐
       syncEtcColVisibility();
     });
   }
 
-  // 顶部“指定行插入”
+  // 3) 顶部“指定行に挿入”输入 + 按钮
   const idxBtn = document.getElementById('insert-at-btn');
   const idxInput = document.getElementById('insert-index-input');
   if (idxBtn && idxInput && !idxBtn.dataset.boundOnce) {
@@ -1349,10 +1431,16 @@ document.addEventListener('DOMContentLoaded', () => {
     idxBtn.addEventListener('click', (e) => {
       e.preventDefault();
       const v = parseInt(idxInput.value, 10) || 1;
+
       insertRowAfter(v);
+
       const rows = $all("tr.report-item-row");
       const newRow = rows[Math.min(v, rows.length) - 1];
-      if (newRow) bindRowEvents(newRow);
+      if (newRow) {
+        // 再保险：再绑一次事件
+        bindRowEvents(newRow);
+      }
+
       updateRowNumbersAndIndexes();
       updateSameTimeGrouping();
       updateTotals();
@@ -1361,22 +1449,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 退勤勾选状态同步
+  // 4) 退勤勾选状态同步
   (function () {
     var out = document.getElementById("id_clock_out");
-    var chk = document.getElementById("id_unreturned_flag") || document.querySelector('input[name="unreturned_flag"]');
+    var chk = document.getElementById("id_unreturned_flag") ||
+              document.querySelector('input[name="unreturned_flag"]');
     var txt = document.getElementById("return-status-text");
     function sync() {
       var hasVal = out && out.value.trim() !== "";
-      if (hasVal) { if (chk) chk.checked = false; if (txt) txt.textContent = "已完成"; }
-      else { if (txt) txt.textContent = "未完成入库手续"; }
+      if (hasVal) {
+        if (chk) chk.checked = false;
+        if (txt) txt.textContent = "已完成";
+      } else {
+        if (txt) txt.textContent = "未完成入库手续";
+      }
     }
-    if (out) { out.addEventListener("input", sync); window.addEventListener("load", sync); }
+    if (out) {
+      out.addEventListener("input", sync);
+      window.addEventListener("load", sync);
+    }
   })();
 
-  // 初始计算
+  // 5) 初始计算 / 状态同步
   initFlatpickr(document);
-  // ✅ 新增：若模板里缺少显示行，就自动补上（只加一次）
   ensureActualEtcIndicator();
 
   updateDuration();
@@ -1384,7 +1479,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateSameTimeGrouping();
   updateTotals();
   evaluateEmptyEtcDetailVisibility();
-});
+})();
 
 // —— 进入页面先排一次；提交前再排一次（夜班排序入口） ——
 (function bindNightSortEntrypoints(){
@@ -1477,9 +1572,27 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 // === END PATCH ===
 
-window.addEventListener("pageshow", function (e) {
-  if (e.persisted) {
-    console.warn("页面来自 bfcache，正在强制重新加载...");
-    location.reload();
+// =====================================================
+// 解决“返回后最后一行不保存”的问题：
+// 当通过浏览器“后退”回到本页，而且页面来自 bfcache（event.persisted=true）
+// 或 navigation type 是 'back_forward' 时，强制刷新一次。
+// =====================================================
+window.addEventListener('pageshow', function (event) {
+  try {
+    // 情况 1：来自 bfcache（Chrome/Safari/Firefox 通用）
+    if (event.persisted) {
+      window.location.reload();
+      return;
+    }
+
+    // 情况 2：某些浏览器用 navigation type 标记“后退/前进”
+    if (window.performance && performance.getEntriesByType) {
+      var entries = performance.getEntriesByType('navigation') || [];
+      if (entries.length && entries[0].type === 'back_forward') {
+        window.location.reload();
+      }
+    }
+  } catch (e) {
+    console && console.warn && console.warn('pageshow reload failed:', e);
   }
 });

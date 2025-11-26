@@ -431,18 +431,53 @@ def check_module_permission(user, perm_key: str) -> bool:
     except Exception:
         return False
 
+
+# ==== BEGIN REPLACE: is_dailyreport_admin (dailyreport/views.py) ====
 def is_dailyreport_admin(user):
+    """
+    日报系统管理权限：
+    - 超级用户
+    - UserProfile.is_dispatch_admin = True  （配车系统管理员）
+    - UserProfile.is_dailyreport_admin = True（日报管理系统管理员）
+    （员工台账系统管理员 is_staffbook_admin 不再自动拥有日报权限）
+
+    同时保留基于 permission 的判断（dailyreport_admin / dailyreport），方便以后扩展。
+    """
     try:
-        return (
-            check_module_permission(user, 'dailyreport_admin')
-            or check_module_permission(user, 'dailyreport')
-            or getattr(user, 'is_superuser', False)
-            or getattr(user, "is_staff", False)
-        )
+        # 未登录一律不允许
+        if not getattr(user, "is_authenticated", False):
+            return False
+
+        # 超级用户永远允许
+        if getattr(user, "is_superuser", False):
+            return True
+
+        # 先看 UserProfile 上的布尔位
+        profile = getattr(user, "userprofile", None)
+        if profile is not None:
+            if getattr(profile, "is_dispatch_admin", False) or getattr(
+                profile, "is_dailyreport_admin", False
+            ):
+                return True
+
+        # 再看基于权限字符串的判断（沿用原来的灵活机制）
+        if (
+            check_module_permission(user, "dailyreport_admin")
+            or check_module_permission(user, "dailyreport")
+        ):
+            return True
+
+        # 普通 is_staff 不再赋予日报管理权
+        return False
     except Exception:
-        return bool(getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False))
+        # 出错时保守处理：只给超管
+        return bool(getattr(user, "is_superuser", False))
+# ==== END REPLACE: is_dailyreport_admin (dailyreport/views.py) ====
+
 
 dailyreport_admin_required = user_passes_test(is_dailyreport_admin)
+
+
 
 def get_active_drivers(month_obj=None, keyword=None):
     qs = Driver.objects.all()

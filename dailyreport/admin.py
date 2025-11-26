@@ -12,6 +12,49 @@ from vehicles.models import Reservation
 from django.utils import timezone
 from datetime import time, datetime  # 新增
 
+# ==== BEGIN INSERT: DailyReportAdminPermissionMixin ====
+class DailyReportAdminPermissionMixin:
+    """
+    限制 Django Admin 中 DAILYREPORT 相关模型的可见范围：
+    - 超级用户
+    - 配车系统管理员 (UserProfile.is_dispatch_admin)
+    - 日报管理系统管理员 (UserProfile.is_dailyreport_admin)
+    """
+
+    def _has_dailyreport_admin_flag(self, request):
+        try:
+            user = request.user
+            if not getattr(user, "is_authenticated", False):
+                return False
+            if getattr(user, "is_superuser", False):
+                return True
+            profile = getattr(user, "userprofile", None)
+            if profile is None:
+                return False
+            return (
+                getattr(profile, "is_dispatch_admin", False) or
+                getattr(profile, "is_dailyreport_admin", False)
+            )
+        except Exception:
+            return False
+
+    def has_module_permission(self, request):
+        return self._has_dailyreport_admin_flag(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self._has_dailyreport_admin_flag(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self._has_dailyreport_admin_flag(request)
+
+    def has_add_permission(self, request):
+        return self._has_dailyreport_admin_flag(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return self._has_dailyreport_admin_flag(request)
+# ==== END INSERT: DailyReportAdminPermissionMixin ====
+
+
 # >>> ADMIN SOFT PREFILL (no-FK) START
 from django import forms
 
@@ -126,7 +169,7 @@ class DriverDailyReportItemInline(admin.TabularInline):
 
 
 @admin.register(DriverDailyReport)
-class DriverDailyReportAdmin(admin.ModelAdmin):
+class DriverDailyReportAdmin(DailyReportAdminPermissionMixin, admin.ModelAdmin):
     form = DriverDailyReportAdminForm
     inlines = [DriverDailyReportItemInline]
 
@@ -290,7 +333,7 @@ class DriverDailyReportAdmin(admin.ModelAdmin):
         return format_html('<span style="color:gray;font-style:italic;">无</span>')
 
 @admin.register(DriverDailyReportItem)
-class DriverDailyReportItemAdmin(admin.ModelAdmin):
+class DriverDailyReportItemAdmin(DailyReportAdminPermissionMixin, admin.ModelAdmin):
     # 列表页显示：加入貸切三字段
     list_display = [
         'report', 'ride_time', 'ride_from', 'ride_to',
@@ -318,7 +361,7 @@ class DriverDailyReportItemAdmin(admin.ModelAdmin):
     readonly_fields = ['meter_fee', 'has_issue']
 
 @admin.register(DriverReportImage)
-class DriverReportImageAdmin(admin.ModelAdmin):
+class DriverReportImageAdmin(DailyReportAdminPermissionMixin, admin.ModelAdmin):
     list_display = ('driver', 'date', 'uploaded_at', 'image_tag')
     list_filter = ('date',)
     readonly_fields = ('image_tag',)

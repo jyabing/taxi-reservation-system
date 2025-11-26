@@ -84,10 +84,43 @@ def apply_form_control_style(fields):
             existing_class = field.widget.attrs.get('class', '')
             field.widget.attrs['class'] = (existing_class + ' form-control').strip()
 
+# ==== BEGIN REPLACE: staffbook.utils.is_dailyreport_admin ====
 def is_dailyreport_admin(user):
-    return user.is_superuser or getattr(user, 'is_dailyreport_admin', False)
+    """
+    staffbook 中使用的「日报系统管理员」判定逻辑：
 
-# 可选：用于视图装饰器
+    - 超级用户
+    - UserProfile.is_dispatch_admin = True  （配车系统管理员）
+    - UserProfile.is_dailyreport_admin = True（日报管理系统管理员）
+
+    不再使用 user.is_staff 或 user 上的 is_dailyreport_admin 属性，
+    而是统一从 user.userprofile 上读取布尔位。
+    """
+    try:
+        # 未登录一律不允许
+        if not getattr(user, "is_authenticated", False):
+            return False
+
+        # 超级用户永远允许
+        if getattr(user, "is_superuser", False):
+            return True
+
+        # 读取 UserProfile 上的权限位
+        profile = getattr(user, "userprofile", None)
+        if profile is not None:
+            if getattr(profile, "is_dispatch_admin", False) or getattr(
+                profile, "is_dailyreport_admin", False
+            ):
+                return True
+
+        # 员工台账管理员 is_staffbook_admin 不包含在日报权限里
+        return False
+    except Exception:
+        # 出错时保守处理：只给超管
+        return bool(getattr(user, "is_superuser", False))
+# ==== END REPLACE: staffbook.utils.is_dailyreport_admin ====
+
+
 dailyreport_admin_required = user_passes_test(is_dailyreport_admin)
 
 
