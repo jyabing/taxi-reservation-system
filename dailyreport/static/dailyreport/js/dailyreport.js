@@ -546,40 +546,49 @@ window.ensureRowSelectOptions = function ensureRowSelectOptions(row) {
     return scope.querySelector(classSel) || scope.querySelector(nameSel);
   }
 
-  function copySelect(target, from) {
+  // ✅ 只拷贝 options，尽量保留 target 原来的值
+  function syncSelectOptions(target, from) {
     if (!target || !from) return;
 
-    // 直接把模板行的 option 全部拷贝过来
+    const prevValue = target.value;  // 先记住原来的 value
+
+    // 统一选项列表
     target.innerHTML = from.innerHTML;
 
-    // 默认选中和模板行一样的 option
-    if (from.selectedIndex >= 0 && from.selectedIndex < target.options.length) {
-      target.selectedIndex = from.selectedIndex;
-    } else if (target.options.length > 0) {
-      target.selectedIndex = 0;
+    if (prevValue !== null && prevValue !== "") {
+      // 尝试恢复原值
+      target.value = prevValue;
+
+      // 如果原值在新 options 里不存在，则退回模板行的值
+      if (target.value !== prevValue) {
+        target.value = from.value;
+      }
+    } else {
+      // 对于“新插入的空行”，用模板行当前值作为默认
+      target.value = from.value;
     }
   }
 
   // ① 支付方式：.payment-method-select 或 name$='-payment_method'
-  copySelect(
+  syncSelectOptions(
     getSelect(row, '.payment-method-select', 'select[name$="-payment_method"]'),
     getSelect(baseRow, '.payment-method-select', 'select[name$="-payment_method"]')
   );
 
   // ② 乗車ETC 立替者：.etc-riding-charge-select 或 name$='-etc_riding_charge_type'
-  copySelect(
+  syncSelectOptions(
     getSelect(row, '.etc-riding-charge-select', 'select[name$="-etc_riding_charge_type"]'),
     getSelect(baseRow, '.etc-riding-charge-select', 'select[name$="-etc_riding_charge_type"]')
   );
 
   // ③ 空車ETC 立替者：.etc-empty-charge-select 或 name$='-etc_empty_charge_type'
-  copySelect(
+  syncSelectOptions(
     getSelect(row, '.etc-empty-charge-select', 'select[name$="-etc_empty_charge_type"]'),
     getSelect(baseRow, '.etc-empty-charge-select', 'select[name$="-etc_empty_charge_type"]')
   );
 
   // ④ 貸切支払方式：.charter-payment-method-select 或 name$='-charter_payment_method'
-  copySelect(
+  syncSelectOptions(
     getSelect(row, '.charter-payment-method-select', 'select[name$="-charter_payment_method"]'),
     getSelect(baseRow, '.charter-payment-method-select', 'select[name$="-charter_payment_method"]')
   );
