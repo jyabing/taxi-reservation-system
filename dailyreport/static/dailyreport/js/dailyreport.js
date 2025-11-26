@@ -526,73 +526,7 @@ function bindRowEvents(row) {
   });
 }
 
-// === 小工具：给新行补全下拉选项（从已有行克隆，支持 name 和 class 两种写法） ===
-// === 强制把新行的下拉选项复制成「第一行」的一样 ===
-// 挂到 window 上，保证全局可见（控制台里也能直接调用）
-window.ensureRowSelectOptions = function ensureRowSelectOptions(row) {
-  if (!row) return;
 
-  // 以当前“数据区 tbody”里的第一条明细行为模板行（排除模板 tbody）
-  const baseTbody = document.querySelector('table.report-table tbody:not(#empty-form-template)');
-  if (!baseTbody) return;
-
-  const baseRow =
-    baseTbody.querySelector('tr.report-item-row') ||
-    baseTbody.querySelector('tr');
-  if (!baseRow) return;
-
-  // 在同一个作用域里，优先用 class，找不到再用 name$
-  function getSelect(scope, classSel, nameSel) {
-    return scope.querySelector(classSel) || scope.querySelector(nameSel);
-  }
-
-  // ✅ 只拷贝 options，尽量保留 target 原来的值
-  function syncSelectOptions(target, from) {
-    if (!target || !from) return;
-
-    const prevValue = target.value;  // 先记住原来的 value
-
-    // 统一选项列表
-    target.innerHTML = from.innerHTML;
-
-    if (prevValue !== null && prevValue !== "") {
-      // 尝试恢复原值
-      target.value = prevValue;
-
-      // 如果原值在新 options 里不存在，则退回模板行的值
-      if (target.value !== prevValue) {
-        target.value = from.value;
-      }
-    } else {
-      // 对于“新插入的空行”，用模板行当前值作为默认
-      target.value = from.value;
-    }
-  }
-
-  // ① 支付方式：.payment-method-select 或 name$='-payment_method'
-  syncSelectOptions(
-    getSelect(row, '.payment-method-select', 'select[name$="-payment_method"]'),
-    getSelect(baseRow, '.payment-method-select', 'select[name$="-payment_method"]')
-  );
-
-  // ② 乗車ETC 立替者：.etc-riding-charge-select 或 name$='-etc_riding_charge_type'
-  syncSelectOptions(
-    getSelect(row, '.etc-riding-charge-select', 'select[name$="-etc_riding_charge_type"]'),
-    getSelect(baseRow, '.etc-riding-charge-select', 'select[name$="-etc_riding_charge_type"]')
-  );
-
-  // ③ 空車ETC 立替者：.etc-empty-charge-select 或 name$='-etc_empty_charge_type'
-  syncSelectOptions(
-    getSelect(row, '.etc-empty-charge-select', 'select[name$="-etc_empty_charge_type"]'),
-    getSelect(baseRow, '.etc-empty-charge-select', 'select[name$="-etc_empty_charge_type"]')
-  );
-
-  // ④ 貸切支払方式：.charter-payment-method-select 或 name$='-charter_payment_method'
-  syncSelectOptions(
-    getSelect(row, '.charter-payment-method-select', 'select[name$="-charter_payment_method"]'),
-    getSelect(baseRow, '.charter-payment-method-select', 'select[name$="-charter_payment_method"]')
-  );
-};
 
 // ====== 模板克隆/插入 ======
 function cloneRowFromTemplate() {
@@ -644,14 +578,11 @@ function cloneRowFromTemplate() {
   // total.value = String(count + 1);
 
   // === PATCH: 确保新行的“支付方式”下拉框有和现有行一样的选项 ===
+  // 用统一工具补全新行里的“支付方式”选项（只填空的，不改现有值）
   try {
-    const baseSelect = document.querySelector('table.report-table .payment-method-select');
-    const newSelect  = tr.querySelector('.payment-method-select');
-    if (baseSelect && newSelect && newSelect.options.length <= 1) {
-      newSelect.innerHTML = baseSelect.innerHTML;
-    }
+    fillPaymentMethodOptions(tr);
   } catch (e) {
-    console.warn('cloneRowFromTemplate: copy payment options failed', e);
+    console.warn('cloneRowFromTemplate: fillPaymentMethodOptions failed', e);
   }
 
   return tr;
@@ -663,8 +594,7 @@ function addRowToEnd() {
   if (!dataTb) return false;
   const tr = cloneRowFromTemplate(); if (!tr) return false;
 
-  // ☆ 新增：给新行补全下拉选项
-  ensureRowSelectOptions(tr);
+  
 
   dataTb.appendChild(tr); bindRowEvents(tr);
   updateRowNumbersAndIndexes(); updateSameTimeGrouping(); updateTotals();
@@ -683,9 +613,6 @@ function addRowAfterRow(anchorRow) {
 
   const tr = cloneRowFromTemplate();
   if (!tr) return false;
-
-  // 补全下拉选项
-  ensureRowSelectOptions(tr);
 
   // 决定插入位置：默认就在 anchorRow 后面；如果拿不到，就插在最后一行后面
   let insertAfter = null;
@@ -729,8 +656,6 @@ function insertRowAfter(indexOneBased) {
   if (!dataTb) return false;
   const tr = cloneRowFromTemplate(); if (!tr) return false;
 
-  // ☆ 新增：给新行补全下拉选项
-  ensureRowSelectOptions(tr);
 
   const rows = $all("tr.report-item-row", dataTb);
   const all = rows.length ? rows : $all("tr", dataTb);
@@ -744,6 +669,59 @@ function insertRowAfter(indexOneBased) {
   try { tr.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { }
   (tr.querySelector('.time-input') || tr.querySelector('input,select'))?.focus?.();
   return true;
+}
+
+// ====== 只给“支付方式”下拉填充缺失的选项（不会改已有值） ======
+function fillPaymentMethodOptions(root) {
+  const scope = root || document;
+
+  // 找到所有支付方式 select（老的 name/class 都兼容）
+  const selects = scope.querySelectorAll(
+    "select[name$='-payment_method'], .payment-method-select"
+  );
+  if (!selects.length) return;
+
+  // ① 先尝试从页面上“已有选项的 select”里找一份模板
+  let masterHTML = null;
+  for (const sel of selects) {
+    if (sel.options && sel.options.length > 1) {
+      masterHTML = sel.innerHTML;
+      break;
+    }
+  }
+
+  // ② 页面上完全没有模板时，用一份兜底选项（只填到空 select，不会覆盖已有的）
+  if (!masterHTML) {
+    const defs = [
+      ["", "------"],
+      ["cash", "現金"],
+      ["uber", "Uber"],
+      ["didi", "DiDi"],
+      ["go", "GO"],
+      ["credit_card", "クレジットカード"],
+      ["kyokushin", "京交信"],
+      ["omron", "オムロン"],
+      ["kyotoshi", "京都市他"],
+      ["qr", "バーコード(PayPay等)"],
+      ["uber_reservation", "Uber予約"],
+      ["uber_tip", "Uberチップ"],
+      ["uber_promotion", "Uberプロモーション"],
+    ];
+    masterHTML = defs
+      .map(([v, t]) => `<option value="${v}">${t}</option>`)
+      .join("");
+  }
+
+  // ③ 只处理“几乎没有选项”的 select，不动那些已经有多个选项的
+  selects.forEach((sel) => {
+    if (!sel.options || sel.options.length <= 1) {
+      const prevValue = sel.value || "";
+      sel.innerHTML = masterHTML;
+      if (prevValue) {
+        sel.value = prevValue; // 理论上是空，这里只是稳一下
+      }
+    }
+  });
 }
 
 
@@ -1235,11 +1213,18 @@ function updateTotals() {
 (function () {
   function parseHHMM(str) {
     if (!str) return null;
-    const m = String(str).trim().match(/^(\d{1,2}):(\d{2})$/);
-    if (!m) return null;
-    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
-    const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
-    return h * 60 + mm;
+    const parts = String(str).trim().split(":");
+    if (parts.length < 2) return null;
+
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+
+    const hh = Math.min(23, Math.max(0, h));
+    const mm = Math.min(59, Math.max(0, m));
+
+    return hh * 60 + mm;
   }
   function getAnchorMinutes() {
     const el = document.querySelector("input[name='clock_in']") || document.getElementById("id_clock_in");
@@ -1254,6 +1239,11 @@ function updateTotals() {
     document.querySelector("table.report-table tbody.data-body") ||
     document.querySelector("table.report-table tbody:not(#empty-form-template)");
   if (!dataTb) return;
+
+  // ⭐ 关键补丁：如果外部没有传 anchorMinutes，就用当前出勤时间来计算
+  if (anchorMinutes == null || !Number.isFinite(anchorMinutes)) {
+    anchorMinutes = getAnchorMinutes();   // 上面同文件里已经定义过
+  }
 
   const rows = $all("tr.report-item-row", dataTb);
   const pairs = rows.map(row => {
@@ -1405,13 +1395,13 @@ function evaluateEmptyEtcDetailVisibility() {
 
 // ====== 页面主绑定 ======
 (function initDailyReportPage() {
-  // 1) 现有行：先补全下拉选项，再绑事件
+  // 1) 现有行：只绑定事件，不再批量改下拉
   $all("tr.report-item-row").forEach(row => {
-    if (window.ensureRowSelectOptions) {
-      window.ensureRowSelectOptions(row);
-    }
     bindRowEvents(row);
   });
+
+  // 1.5) 页面刚打开时，给所有“还没选项”的支付下拉补一次 options
+  fillPaymentMethodOptions(document);
 
   // 2) 行内「➕下に挿入」按钮
   const table = document.querySelector('table.report-table');
