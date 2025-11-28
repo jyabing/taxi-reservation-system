@@ -1633,6 +1633,29 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
         formset = ReportItemFormSet(post, instance=report, prefix=PREFIX)
 
         if form.is_valid() and formset.is_valid():
+            # >>> BEGIN DEBUG_ETC_FORMSET
+            # 打印每行 ETC 相关字段，确认 POST 进来的值
+            print("===== DEBUG ETC formset cleaned_data =====")
+            for idx, f in enumerate(formset.forms):
+                if not hasattr(f, "cleaned_data"):
+                    continue
+                cd = f.cleaned_data
+                # 跳过被标记删除的行
+                if cd.get("DELETE"):
+                    continue
+                print(
+                    f"[ROW {idx}] "
+                    f"id={cd.get('id')!r} "
+                    f"etc_riding={cd.get('etc_riding')!r} "
+                    f"etc_riding_charge_type={cd.get('etc_riding_charge_type')!r} "
+                    f"etc_empty={cd.get('etc_empty')!r} "
+                    f"etc_empty_charge_type={cd.get('etc_empty_charge_type')!r} "
+                    f"etc_charge_type={cd.get('etc_charge_type')!r}"
+                )
+            print("===== END DEBUG ETC formset cleaned_data =====")
+            # >>> END DEBUG_ETC_FORMSET
+
+            
             # === 记录保存前的旧值 ===
             _old_in  = getattr(report, "clock_in",  None)
             _old_out = getattr(report, "clock_out", None)
@@ -1767,16 +1790,58 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             inst.deposit_difference = deposit - cash_total - charter_cash_total
 
             inst.save()
+
+            # === 明细行保存（强制 + 调试输出） ===
             formset.instance = inst
-            # ✅ 若你需要在 save 前对 item 做额外处理，保留 commit=False；并显式处理删除对象
+
+            # 调试：看一下管理表单和每一行的 cleaned_data
+            try:
+                print("DEBUG formset TOTAL_FORMS =", formset.total_form_count())
+                print("DEBUG formset INITIAL_FORMS =", formset.initial_form_count())
+                for idx, f in enumerate(formset.forms):
+                    cd = getattr(f, "cleaned_data", None)
+                    print(f"  [FORM {idx}] cleaned_data =", cd)
+            except Exception as _e:
+                print("DEBUG formset inspect failed:", _e)
+
+            # 先拿到需要保存的对象列表（不含 DELETE 的）
             items = formset.save(commit=False)
+
+            # 先处理删除的行，确保真的从数据库删掉
+            for obj in formset.deleted_objects:
+                try:
+                    print("  [DELETE] item id =", obj.id)
+                except Exception:
+                    pass
+                obj.delete()
+
+            # 再保存新增/修改的行
             for item in items:
+                # 防御：确保外键指向当前日报
+                if getattr(item, "report_id", None) is None:
+                    item.report = inst
+
+                # 默认 is_pending=False（如果你需要这个行为）
                 if getattr(item, "is_pending", None) is None:
                     item.is_pending = False
+
                 item.save()
-            # 🔧 可选修复：确保被勾选 DELETE 的行真实删除
-            for obj in formset.deleted_objects:
-                obj.delete()
+                try:
+                    print(
+                        "  [SAVE] item id =", item.id,
+                        "meter_fee =", getattr(item, "meter_fee", None),
+                        "is_charter =", getattr(item, "is_charter", None),
+                        "payment_method =", getattr(item, "payment_method", None),
+                        "charter_payment_method =", getattr(item, "charter_payment_method", None),
+                    )
+                except Exception:
+                    pass
+
+            try:
+                # 保存完之后，再看一下这个日报下现在有多少条明细
+                print("DEBUG after save -> inst.items.count() =", inst.items.count())
+            except Exception as _e:
+                print("DEBUG count items failed:", _e)
 
             # >>> [SYNC-RESERVATION CALL]
             try:

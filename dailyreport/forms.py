@@ -83,7 +83,10 @@ class DriverDailyReportForm(forms.ModelForm):
 # --- 日报明细表单 ---
 class DriverDailyReportItemForm(forms.ModelForm):
     """
-    目的：先保证『能保存』，不要再因为 etc_xxx_charge_type / etc_charge_type 报错。
+    目的：
+    - 先保证『能保存』，不再因为 etc_xxx_charge_type 报错；
+    - 乘车/空车 ETC 负担类型确实写入模型字段；
+    - 旧字段 etc_charge_type 始终跟乘车负担同步，方便旧逻辑继续工作。
     """
 
     # 旧字段：显式覆盖成 CharField(required=False) + HiddenInput
@@ -92,7 +95,7 @@ class DriverDailyReportItemForm(forms.ModelForm):
         widget=forms.HiddenInput(),
     )
 
-    # 新字段：仍然用 CharField + Select
+    # 新字段：Select
     etc_riding_charge_type = forms.CharField(
         required=False,
         widget=forms.Select(
@@ -109,9 +112,8 @@ class DriverDailyReportItemForm(forms.ModelForm):
     class Meta:
         model = DriverDailyReportItem
         fields = "__all__"
-        # 这里可以不再写 etc_charge_type 的 widget 了（上面的字段定义已经覆盖）
         widgets = {
-            # "etc_charge_type": forms.HiddenInput(),  # ← 可以删掉或留着都行
+            # "etc_charge_type": forms.HiddenInput(),  # 上面字段定义已覆盖
         }
 
     def __init__(self, *args, **kwargs):
@@ -129,18 +131,25 @@ class DriverDailyReportItemForm(forms.ModelForm):
 
         # 乘车负担：实例值 > 旧字段 > 默认 company
         if "etc_riding_charge_type" in self.fields:
-            self.fields["etc_riding_charge_type"].initial = (
+            initial_val = (
                 getattr(self.instance, "etc_riding_charge_type", None)
                 or legacy
                 or default_charge
             )
+            field = self.fields["etc_riding_charge_type"]
+            field.initial = initial_val
+            # ⭐ 把服务器端的初始值写到 data-initial，给前端 JS 使用
+            field.widget.attrs["data-initial"] = initial_val or ""
 
         # 空车负担：实例值 > 默认 company
         if "etc_empty_charge_type" in self.fields:
-            self.fields["etc_empty_charge_type"].initial = (
+            initial_val = (
                 getattr(self.instance, "etc_empty_charge_type", None)
                 or default_charge
             )
+            field = self.fields["etc_empty_charge_type"]
+            field.initial = initial_val
+            field.widget.attrs["data-initial"] = initial_val or ""
 
         # 旧字段初始
         if "etc_charge_type" in self.fields:
@@ -175,7 +184,7 @@ class DriverDailyReportItemForm(forms.ModelForm):
         v = (self.cleaned_data.get("etc_empty_charge_type") or "").strip()
         if not v:
             return "company"
-        allow = {"company", "driver", "customer"}  # 即使模板只用 company/driver 也没关系
+        allow = {"company", "driver", "customer"}
         return v if v in allow else "company"
 
     # —— 旧字段：保证永远有值，不再报“必填” —— #
@@ -203,12 +212,32 @@ class DriverDailyReportItemForm(forms.ModelForm):
 
         # 旧字段始终同步为“乘车负担”（再兜底 company）
         cleaned["etc_charge_type"] = (
-            cleaned.get("etc_riding_charge_type") or
-            cleaned.get("etc_charge_type") or
-            "company"
+            cleaned.get("etc_riding_charge_type")
+            or cleaned.get("etc_charge_type")
+            or "company"
         )
 
         return cleaned
+
+    # === 关键补丁：强制把表单里的值写回模型字段，再同步旧字段 ===
+    def save(self, commit=True):
+        """
+        保证：
+        - etc_riding_charge_type / etc_empty_charge_type 一定写入实例
+        - etc_charge_type 跟乘车负担保持一致（旧逻辑仍可用）
+        """
+        instance = super().save(commit=False)
+
+        r_type = self.cleaned_data.get("etc_riding_charge_type") or "company"
+        e_type = self.cleaned_data.get("etc_empty_charge_type") or "company"
+
+        instance.etc_riding_charge_type = r_type
+        instance.etc_empty_charge_type = e_type
+        instance.etc_charge_type = r_type or e_type or "company"
+
+        if commit:
+            instance.save()
+        return instance
 
 
 

@@ -526,19 +526,53 @@ function bindRowEvents(row) {
   });
 }
 
+// ====== 找到“明细行 items formset”的 TOTAL_FORMS 输入框（严格版） ======
+function findItemsTotalInput() {
+  // 只从“真实数据 tbody（排除模板 tbody）”里的行去找样本字段
+  const candidates = document.querySelectorAll(
+    'table.report-table tbody:not(#empty-form-template) tr.report-item-row input[name*="-ride_time"], ' +
+    'table.report-table tbody:not(#empty-form-template) tr.report-item-row input[name*="-meter_fee"]'
+  );
 
+  let prefix = null;
+
+  for (const sample of candidates) {
+    if (!sample.name) continue;
+    // 例如 items-3-ride_time 这样的
+    const m = sample.name.match(/^(.+)-\d+-[^-]+$/);
+    if (m && m[1]) {
+      prefix = m[1];  // -> "items"
+      break;
+    }
+  }
+
+  // 如果上面成功解析出 prefix，就精确锁定 `${prefix}-TOTAL_FORMS`
+  if (prefix) {
+    const name = prefix + "-TOTAL_FORMS";
+    const exact = document.querySelector(`input[name="${name}"]`);
+    if (exact) return exact;
+  }
+
+  // 兜底：再试一次常见的名字
+  const fallback =
+    document.querySelector('input[name="items-TOTAL_FORMS"]') ||
+    document.querySelector('input[name$="-TOTAL_FORMS"]');
+
+  return fallback;
+}
 
 // ====== 模板克隆/插入 ======
 function cloneRowFromTemplate() {
   const tpl = document.querySelector('#empty-form-template');
-  // 只操作明细 formset 的 TOTAL_FORMS
-  const totalInput = document.querySelector("input[name$='-TOTAL_FORMS']");
-  if (!tpl || !totalInput) return null;   // ✅ 用 totalInput
 
-  // 当前管理表单里的总数
+  // ✅ 只针对“明细 items formset”的 TOTAL_FORMS
+  const totalInput = findItemsTotalInput();
+  if (!tpl || !totalInput) return null;
+
+  // 当前管理表单里的总数（例如 10 行）
   const count = parseInt(totalInput.value || '0', 10) || 0;
 
-  // ✅ 关键：告诉 Django “总表单数 +1”
+  // 告诉 Django：总表单数 +1（例如从 10 变成 11）
   totalInput.value = String(count + 1);   // ✅ 用 totalInput
 
   // 用 count 作为新行的 index
@@ -907,6 +941,7 @@ function updateTotals() {
     const charterPayMethod = charterPaySelect ? charterPaySelect.value || "" : "";
 
     // ===== 行レベル ETC 値の取得（class 名前と name の両方に対応） =====
+    // ===== [PATCH ETC-CHARGE-FALLBACK] 行レベル ETC 値の取得 =====
     const rideEtcInput =
       row.querySelector(".etc-riding-input") ||
       row.querySelector("input[name$='-etc_riding']");
@@ -914,9 +949,10 @@ function updateTotals() {
       row.querySelector(".etc-empty-input") ||
       row.querySelector("input[name$='-etc_empty']");
 
-    const rideEtc = toInt(rideEtcInput?.value, 0);
+    const rideEtc  = toInt(rideEtcInput?.value, 0);
     const emptyEtc = toInt(emptyEtcInput?.value, 0);
 
+    // 新しい select（乗車 / 空車）
     const rideChargeSelect =
       row.querySelector(".etc-riding-charge-select") ||
       row.querySelector("select[name$='-etc_riding_charge_type']");
@@ -924,8 +960,27 @@ function updateTotals() {
       row.querySelector(".etc-empty-charge-select") ||
       row.querySelector("select[name$='-etc_empty_charge_type']");
 
-    const rideCharge = (rideChargeSelect?.value || "company").trim();
-    const emptyCharge = (emptyChargeSelect?.value || "company").trim();
+    // 旧字段（单一 etc_charge_type）—— 用来兜底
+    const legacyChargeInput = row.querySelector("input[name$='-etc_charge_type']");
+    const legacyChargeRaw   = (legacyChargeInput?.value || "").trim();
+
+    const ALLOWED_CHARGE = new Set(["company", "driver", "customer"]);
+
+    let rideChargeRaw  = (rideChargeSelect?.value || "").trim();
+    let emptyChargeRaw = (emptyChargeSelect?.value || "").trim();
+
+    // 乘車負担：优先用行内 select，若值为空或非 company/driver/customer，就退回旧字段，再退回 company
+    let rideCharge = rideChargeRaw;
+    if (!rideCharge || !ALLOWED_CHARGE.has(rideCharge)) {
+      rideCharge = legacyChargeRaw || "company";
+    }
+
+    // 空車負担：优先用行内 select，若无效 → 先沿用乘車负担，再兜底旧字段/company
+    let emptyCharge = emptyChargeRaw;
+    if (!emptyCharge || !ALLOWED_CHARGE.has(emptyCharge)) {
+      emptyCharge = emptyChargeRaw || rideCharge || legacyChargeRaw || "company";
+    }
+    // ===== [PATCH ETC-CHARGE-FALLBACK END] =====
 
     // 集計
     rideEtcSum += rideEtc;
@@ -1530,6 +1585,9 @@ document.addEventListener('DOMContentLoaded', () => {
     .forEach(sel => {
       if (!sel) return;
 
+      // ⭐ NEW：从后端表单写入的 data-initial 里拿“原始选中值”
+      const initVal = sel.getAttribute('data-initial') || '';
+
       // 1) 如果完全没有 option，就强制补上三条
       let opts = sel.querySelectorAll('option');
       if (!opts || opts.length === 0) {
@@ -1553,7 +1611,8 @@ document.addEventListener('DOMContentLoaded', () => {
           sel.appendChild(op);
         });
 
-        return;  // 这一支刚补完就可以结束
+        // 这里不再 return，让下面的“恢复 initVal”也有机会执行
+        // return;
       }
 
       // 2) 有 option 的情况，只是把文字改成统一说明版
@@ -1567,9 +1626,14 @@ document.addEventListener('DOMContentLoaded', () => {
           op.textContent = 'お客様（直接精算）';
         }
       });
+
+      // 3) ⭐ NEW：如果后端提供了 data-initial，就最终以它为准恢复选中值
+      if (initVal) {
+        sel.value = initVal;
+      }
     });
 });
-// === END PATCH ===
+/// === END PATCH ===
 
 // =====================================================
 // 解决“返回后最后一行不保存”的问题：
