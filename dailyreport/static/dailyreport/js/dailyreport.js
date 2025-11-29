@@ -1090,15 +1090,16 @@ function updateTotals() {
     }
   })();
 
-  // ② 卖上合計：在原有基础上，再加上面板的「ETC 收取」
+   // ② 売上合計：在原有基础上，再加上面板的「ETC 收取」
   const salesTotal =
-    meterOnlyTotal +
-    etcSalesTotal +
-    specialUberSum +
-    charterCashTotal +
-    charterUncollectedTotal +
-    etcCollectedPanel;
+    meterOnlyTotal +        // メータのみ：只算 meter_fee
+    etcSalesTotal +         // 行明細中「お客様負担ETC」部分
+    specialUberSum +        // Uber予約/チップ/プロモーション
+    charterCashTotal +      // 貸切現金
+    charterUncollectedTotal + // 貸切未収
+    etcCollectedPanel;      // ← 新增：ETC 收取（会社側精算）
 
+  // 这些展示逻辑保持不变
   idText("total_meter_only", meterOnlyTotal);
   idText("total_meter", salesTotal);
   idText("sales-total", salesTotal);

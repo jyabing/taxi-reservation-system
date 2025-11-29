@@ -449,8 +449,15 @@ input[type=number] {
           ・“ETC 实际收回”不是一个单独填写的字段，而是由日报明细的付款方式数据动态汇总出来的。
         </div>
       </div>
+      <!-- ======= BEGIN: ETC 明細（行別＋乗車/空車/負担） ======= -->
       <div class="mt-2">
-          <div class="small text-muted mb-1">ETC 行別明細（時間・支付方式を確認）</div>
+        <!-- 统一标题 -->
+        <div class="small text-muted mb-1">
+          ETC 明細（行別＋乗車/空車/負担）
+        </div>
+
+        {# ① 行別一覧：時間・支付方式・乗車/空車ETC #}
+        <div class="mb-2">
           <table class="table table-sm table-bordered mb-0">
             <thead class="table-light">
               <tr class="small text-center">
@@ -466,20 +473,10 @@ input[type=number] {
             </tbody>
           </table>
         </div>
-      <!-- ======= END: ETC 概要 ======= -->
 
-
-      
-      <!-- ======= BEGIN: ETC 明细折叠区域（乘车＋回程） ======= -->
-      <div class="mt-2">
-
-        <!-- 统一标题 -->
-        <div class="small text-muted mb-1">
-          ETC 明细（需要时展开填写）
-        </div>
+        {# ② 下面保留原来的两个折叠卡片：ETC収取 + 空車ETC詳細 #}
 
         <!-- ▼ 折叠1：ETC 收取（＝乗車合計） -->
-        <!-- ======= BEGIN MOD: 精简版｜ETC 收取（乗車合計） ======= -->
         <button class="btn btn-outline-secondary btn-sm w-100 text-start mb-1"
                 type="button"
                 data-bs-toggle="collapse"
@@ -511,10 +508,8 @@ input[type=number] {
 
           </div>
         </div>
-        <!-- ======= END MOD: 精简版｜ETC 收取（乗車合計） ======= -->
 
         <!-- ▼ 折叠2：空車ETC（回程）詳細 -->
-        <!-- === 追加：空車ETC（回程）明细，用于计算覆盖与司机负担 === -->
         <button class="btn btn-outline-secondary btn-sm w-100 text-start mb-1"
                 type="button"
                 data-bs-toggle="collapse"
@@ -524,21 +519,25 @@ input[type=number] {
         </button>
 
         <div class="collapse" id="collapse-empty-etc-detail">
-
           <div id="empty-etc-card" class="border rounded px-3 py-2" style="min-width: 280px;">
 
             <div class="small text-muted mb-2">空車ETC（回程）詳細</div>
             <div class="small text-muted">🧾 メータ小票 記載用：</div>
 
-            <div style="font-family:ui-monospace,Menlo,monospace;">空車ETC {{ report.etc_uncollected|default:0 }}円</div>
+            <div style="font-family:ui-monospace,Menlo,monospace;">
+              空車ETC {{ report.etc_uncollected|default:0 }}円
+            </div>
+
             <div class="row g-2 align-items-end">
               <!-- 空車ETC金额 -->
               <div class="col-6">
                 <label for="id_etc_uncollected" class="form-label small">空車ETC 金額（円）</label>
                 <input type="number" class="form-control form-control-sm text-end js-empty-etc-amount"
                       id="id_etc_uncollected" name="etc_uncollected" min="0" step="1"
-                      value="{% firstof form.etc_uncollected.value report.etc_uncollected 0 %}" inputmode="numeric" pattern="[0-9]*">
+                      value="{% firstof form.etc_uncollected.value report.etc_uncollected 0 %}"
+                      inputmode="numeric" pattern="[0-9]*">
               </div>
+
               <!-- 回程费受领額 -->
               <div class="col-6">
                 <label for="{{ form.etc_return_fee_claimed.id_for_label }}" class="form-label small">
@@ -554,13 +553,14 @@ input[type=number] {
                 </label>
                 {{ form.etc_return_fee_method }}
               </div>
+
               <!-- 空車ETC 使用卡 -->
               <div class="col-6">
                 <label for="id_etc_empty_card" class="form-label small">空車ETC カード</label>
                 {{ form.etc_empty_card|add_class:"form-select form-select-sm js-empty-etc-card" }}
-
               </div>
             </div>
+
             <div class="form-text mt-2">
               <small>
                 覆盖规则：支払方法 = <strong>アプリ/チケット</strong> 时，回程費用于覆盖空車ETC；<br>
@@ -568,12 +568,10 @@ input[type=number] {
               </small>
             </div>
           </div>
-
         </div>
-        <!-- === 追加结束 === -->
 
       </div>
-      <!-- ======= END: ETC 明细折叠区域 ======= -->
+      <!-- ======= END: ETC 明細（行別＋乗車/空車/負担） ======= -->
       
       <!-- ✅ 智能提示区（推荐放在 payment-summary-panel 结尾） -->
       <div id="smart-hint-panel" class="mt-2 w-100">
