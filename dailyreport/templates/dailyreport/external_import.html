@@ -7,12 +7,14 @@
   <h4>外部日報データ取込</h4>
 
   <div class="alert alert-info mt-2" style="font-size: 14px;">
-      📄 外部入力用テンプレート：
-      <a href="{% static 'dailyreport/dailyreport_full_template.xlsx' %}" download>
-          👉 Excelテンプレートをダウンロード
-      </a>
+    📄 外部入力用テンプレート
+    （現在のバージョン：<strong>{{ template_version }}</strong>）：
+    <a href="{% static 'dailyreport/dailyreport_full_template.xlsx' %}" download>
+      👉 Excelテンプレートをダウンロード
+    </a>
   </div>
-  <p class="text-muted">
+
+  <p class="text-muted mt-2">
     外部の入力担当者が作成した Excel (.xlsx) をアップロードすると、
     ドライバー別・日付別に乗務日報と明細が自動作成されます。
   </p>

@@ -7,6 +7,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange
 from django.conf import settings
 
+# ===== BEGIN TEMPLATE_VERSION CONST M0 =====
+# 外部日報 Excel テンプレートの期待バージョン
+TEMPLATE_VERSION = "2025.01"
+
+# 校验用：Excel 里读出来的 version_val 必须等于这个值
+EXPECTED_TEMPLATE_VERSION = TEMPLATE_VERSION
+# ===== END INSERT =====
 
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib.auth.models import User
@@ -2522,46 +2529,73 @@ def _to_bool(val):
     return False
 
 
+# ===== BEGIN PARSER M3 v2 (with template version check) =====
 def parse_external_dailyreport_excel(file_obj):
     """
-    外部日報 Excel を解析し、行データのリストを返す。
-    戻り値:
-      {
-        "rows": [ { ...1行分... }, ... ],
-        "errors": [ "エラー文字列", ... ]
-      }
-
-    想定 Excel:
-      - シート名: "dailyreport"
-      - 1行目ヘッダー:
-        date, driver_code, vehicle_number,
-        ride_time, ride_from, meter_fee, payment_method,
-        is_charter, charter_amount, charter_payment_method,
-        note, is_pending
+    外部日報 Excel を解析して、行ごとの dict リスト + エラー一覧を返すヘルパー。
+    - シート名: 'dailyreport'
+    - 1 行目: テンプレートバージョン情報 (__template_version__, 2025.01)
+    - 2 行目: 表頭（header）
+    - 3 行目以降: データ行
     """
-    wb = openpyxl.load_workbook(file_obj, data_only=True)
-
-    # シート名は "dailyreport" 固定（変える場合はここも変更）
-    if "dailyreport" not in wb.sheetnames:
-        return {"rows": [], "errors": ["シート 'dailyreport' が見つかりません。"]}
-
-    ws = wb["dailyreport"]
     errors = []
     rows = []
 
-    # 1行目: ヘッダー行を取得
-    header_row = next(ws.iter_rows(min_row=1, max_row=1))
-    header = [
-        (str(c.value).strip() if c.value is not None else "")
-        for c in header_row
-    ]
+    try:
+        wb = openpyxl.load_workbook(file_obj, data_only=True)
+    except Exception as e:
+        errors.append(f"Excelファイルの読み込みに失敗しました: {e}")
+        return {"rows": [], "errors": errors}
 
-    required_headers = [
+    # --- シート存在チェック ---
+    SHEET_NAME = "dailyreport"
+    if SHEET_NAME not in wb.sheetnames:
+        errors.append(f"シート '{SHEET_NAME}' が見つかりません。シート名を '{SHEET_NAME}' にしてください。")
+        return {"rows": [], "errors": errors}
+
+    ws = wb[SHEET_NAME]
+
+    # --- テンプレートバージョンチェック ---
+    # 1 行目: A1 = "__template_version__", B1 = "2025.01"（など）
+    first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    first_col = (first_row[0] or "").strip() if first_row[0] is not None else ""
+    version_val = (first_row[1] or "").strip() if len(first_row) > 1 and first_row[1] is not None else ""
+
+    if first_col != "__template_version__":
+        errors.append(
+            "❌ この Excel にはテンプレートバージョン情報がありません。"
+            "必ずシステムからダウンロードした最新テンプレートを使用してください。"
+        )
+        return {"rows": [], "errors": errors}
+
+    if version_val != TEMPLATE_VERSION:
+        errors.append(
+            f"❌ テンプレートバージョンが一致しません: Excel={version_val} / 想定={TEMPLATE_VERSION}。"
+            "画面上部のリンクから最新テンプレートをダウンロードしてやり直してください。"
+        )
+        return {"rows": [], "errors": errors}
+
+    if version_val != EXPECTED_TEMPLATE_VERSION:
+        errors.append(
+            f"❌ テンプレートバージョンが一致しません: Excel={version_val} / 想定={EXPECTED_TEMPLATE_VERSION}。"
+            "画面上部のリンクから最新テンプレートをダウンロードしてやり直してください。"
+        )
+        return {"rows": [], "errors": errors}
+
+    # --- ヘッダー行のチェック ---
+    # 2 行目がヘッダー行
+    header_row_idx = 2
+    header_row = next(ws.iter_rows(min_row=header_row_idx, max_row=header_row_idx, values_only=True))
+    header = [(h or "").strip() for h in header_row]
+
+    # 想定ヘッダー（あなたの最新版テンプレートに合わせる）
+    EXPECTED_HEADER = [
         "date",
         "driver_code",
         "vehicle_number",
         "ride_time",
         "ride_from",
+        "ride_to",
         "meter_fee",
         "payment_method",
         "is_charter",
@@ -2569,59 +2603,69 @@ def parse_external_dailyreport_excel(file_obj):
         "charter_payment_method",
         "note",
         "is_pending",
+        "riding_etc",
+        "riding_etc_charge",
+        "empty_etc",
+        "empty_etc_charge",
     ]
-    missing = [h for h in required_headers if h not in header]
-    if missing:
-        errors.append(f"必須ヘッダーが不足しています: {', '.join(missing)}")
+
+    if header[: len(EXPECTED_HEADER)] != EXPECTED_HEADER:
+        errors.append(
+            "❌ Excel のヘッダー行が想定と異なります。"
+            "列名や順番を変更せず、最新テンプレートをそのまま使用してください。"
+        )
+        errors.append(f"  実際のヘッダー: {header}")
         return {"rows": [], "errors": errors}
 
-    # ヘッダー名 -> index
-    idx = {name: header.index(name) for name in required_headers}
+    # 列名 -> index のマップを作っておく
+    idx = {name: i for i, name in enumerate(header)}
 
-    # 2行目以降を順次読む
-    for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
-        # 1行まるごと空ならスキップ
-        if all(cell.value in (None, "") for cell in row):
+    # --- データ行の読み取り（3 行目以降）---
+    first_data_row = header_row_idx + 1
+
+    for row_idx, row in enumerate(ws.iter_rows(min_row=first_data_row, values_only=True), start=first_data_row):
+        # 完全に空の行はスキップ
+        if row is None or all(cell is None or str(cell).strip() == "" for cell in row):
             continue
 
-        try:
-            date_val = row[idx["date"]].value
-            driver_code = row[idx["driver_code"]].value
-            vehicle_number = row[idx["vehicle_number"]].value
-            ride_time = row[idx["ride_time"]].value
-            ride_from = row[idx["ride_from"]].value
-            meter_fee = row[idx["meter_fee"]].value
-            payment_method = row[idx["payment_method"]].value
-            is_charter = _to_bool(row[idx["is_charter"]].value)
-            charter_amount = row[idx["charter_amount"]].value
-            charter_payment_method = row[idx["charter_payment_method"]].value
-            note = row[idx["note"]].value
-            is_pending = _to_bool(row[idx["is_pending"]].value)
+        def _get(col_name, default=None):
+            i = idx.get(col_name)
+            if i is None or i >= len(row):
+                return default
+            return row[i]
 
+        try:
             rows.append(
                 {
-                    "excel_row": row_idx,  # Excel 上の行番号
-                    "date": date_val,
-                    "driver_code": driver_code,
-                    "vehicle_number": vehicle_number,
-                    "ride_time": ride_time,
-                    "ride_from": ride_from,
-                    "meter_fee": meter_fee,
-                    "payment_method": payment_method,
-                    "is_charter": is_charter,
-                    "charter_amount": charter_amount,
-                    "charter_payment_method": charter_payment_method,
-                    "note": note,
-                    "is_pending": is_pending,
+                    "excel_row": row_idx,
+                    "date": _get("date"),
+                    "driver_code": _get("driver_code"),
+                    "vehicle_number": _get("vehicle_number"),
+                    "ride_time": _get("ride_time"),
+                    "ride_from": _get("ride_from"),
+                    # ride_to は現時点では使用しないが、必要ならここで拾える
+                    # "ride_to": _get("ride_to"),
+                    "meter_fee": _get("meter_fee"),
+                    "payment_method": _get("payment_method"),
+                    "is_charter": _to_bool(_get("is_charter")),
+                    "charter_amount": _get("charter_amount"),
+                    "charter_payment_method": _get("charter_payment_method"),
+                    "note": _get("note"),
+                    "is_pending": _to_bool(_get("is_pending")),
+                    # riding_etc 系は今は読み捨て（将来使うならここで dict に入れればOK）
+                    # "riding_etc": _get("riding_etc"),
+                    # "riding_etc_charge": _get("riding_etc_charge"),
+                    # "empty_etc": _get("empty_etc"),
+                    # "empty_etc_charge": _get("empty_etc_charge"),
                 }
             )
         except Exception as e:
-            errors.append(f"{row_idx} 行目の解析中にエラー: {e}")
+            errors.append(f"{row_idx} 行目の解析中にエラーが発生しました: {e}")
 
     return {"rows": rows, "errors": errors}
-# ===== END IMPORT_EXTERNAL_DAILYREPORT_HELPERS M3 =====
+# ===== END PARSER M3 v2 (with template version check) =====
 
-# ===== BEGIN IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 =====
+# ===== BEGIN IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 (final) =====
 @transaction.atomic
 def external_dailyreport_import(request):
     """
@@ -2630,9 +2674,12 @@ def external_dailyreport_import(request):
     - POST: Excel を解析して DriverDailyReport / DriverDailyReportItem を作成
 
     Excel 側の前提：
-      - driver_code 列 … 現時点では Driver の「ID(pk)」を入れる運用にします
-      - vehicle_number 列 … Car の「ID(pk)」を入れる運用にします
-        （将来、別のコード列に変更したくなったらこの関数だけ直せばOK）
+      - シート名: dailyreport
+      - 1行目: __template_version__, 2025.01
+      - 2行目: ヘッダー
+      - 3行目以降: データ
+      - driver_code 列 … Driver.driver_code に対応
+      - vehicle_number 列 … 車号（例: 6598）。Car.license_plate の末尾4桁として検索
     """
     if request.method == "POST":
         form = ExternalDailyReportImportForm(request.POST, request.FILES)
@@ -2644,6 +2691,17 @@ def external_dailyreport_import(request):
             created_reports = 0
             created_items = 0
             error_messages = list(parse_errors)
+
+            # パース段階で致命的エラーがあれば rows は空のまま
+            if not rows and error_messages:
+                context = {
+                    "form": form,
+                    "created_reports": created_reports,
+                    "created_items": created_items,
+                    "error_messages": error_messages,
+                    "template_version": TEMPLATE_VERSION,
+                }
+                return render(request, "dailyreport/external_import_result.html", context)
 
             # キャッシュ: (date, driver_id, car_id) -> DriverDailyReport
             report_cache = {}
@@ -2664,7 +2722,6 @@ def external_dailyreport_import(request):
                 elif hasattr(raw_date, "date"):  # datetime の場合
                     report_date = raw_date.date()
                 else:
-                    # 文字列の場合は "YYYY-MM-DD" 想定
                     try:
                         report_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
                     except ValueError:
@@ -2680,11 +2737,11 @@ def external_dailyreport_import(request):
                     continue
 
                 try:
-                    # 現時点では「Excel に Driver.pk を入れる」運用とする
                     driver = Driver.objects.get(driver_code=str(driver_code).strip())
-                except (ValueError, Driver.DoesNotExist):
+                except Driver.DoesNotExist:
                     error_messages.append(
-                        f"{excel_row} 行目: driver_code='{driver_code}' に該当する運転手が見つかりません。（現仕様: Driver.pk を想定）"
+                        f"{excel_row} 行目: driver_code='{driver_code}' に該当する運転手が見つかりません。"
+                        "（Driver.driver_code を想定）"
                     )
                     continue
 
@@ -2695,13 +2752,13 @@ def external_dailyreport_import(request):
                     continue
 
                 try:
-                    # 現仕様: Excel の vehicle_number には「車号（例: 6598）」を入れる
+                    # 現仕様: Excel の vehicle_number 列には「車号（例: 6598）」を入れる
                     # Car.license_plate の末尾4桁がこの番号と一致する車を検索する
                     vehicle = Car.objects.get(license_plate__endswith=str(vehicle_number).strip())
                 except Car.DoesNotExist:
                     error_messages.append(
                         f"{excel_row} 行目: vehicle_number='{vehicle_number}' に該当する車両(Car)が見つかりません。"
-                        "（現仕様: Car.license_plate の末尾4桁 = この番号）"
+                        "（Car.license_plate の末尾4桁 = この番号 を想定）"
                     )
                     continue
                 except Car.MultipleObjectsReturned:
@@ -2721,7 +2778,6 @@ def external_dailyreport_import(request):
                         date=report_date,
                         defaults={"vehicle": vehicle},
                     )
-                    # 既存レポートで vehicle が未設定の場合は補完しておく
                     if not report.vehicle:
                         report.vehicle = vehicle
                         report.save(update_fields=["vehicle"])
@@ -2746,12 +2802,8 @@ def external_dailyreport_import(request):
                     error_messages.append(f"{excel_row} 行目: payment_method が空です。")
                     continue
 
-                # ride_time: モデルでは CharField なので、そのまま文字列として扱う
                 raw_ride_time = r["ride_time"]
-                if raw_ride_time in (None, ""):
-                    ride_time = ""
-                else:
-                    ride_time = str(raw_ride_time).strip()
+                ride_time = "" if raw_ride_time in (None, "") else str(raw_ride_time).strip()
 
                 ride_from = r["ride_from"] or ""
                 is_charter = r["is_charter"]
@@ -2772,9 +2824,9 @@ def external_dailyreport_import(request):
                 # --- 6) DriverDailyReportItem を作成 ---
                 item = DriverDailyReportItem(
                     report=report,
-                    ride_time=ride_time,         # ← CharField
+                    ride_time=ride_time,
                     ride_from=ride_from,
-                    meter_fee=meter_fee_int,     # DecimalField だが int を入れても Django がよしなに変換
+                    meter_fee=meter_fee_int,
                     payment_method=payment_method,
                     is_charter=is_charter,
                     charter_amount_jpy=charter_amount_int,
@@ -2785,7 +2837,6 @@ def external_dailyreport_import(request):
                 item.save()
                 created_items += 1
 
-            # メッセージフレームワークに概要を出しておく（任意）
             if created_items:
                 messages.success(
                     request,
@@ -2797,10 +2848,18 @@ def external_dailyreport_import(request):
                 "created_reports": created_reports,
                 "created_items": created_items,
                 "error_messages": error_messages,
+                "template_version": TEMPLATE_VERSION,
             }
             return render(request, "dailyreport/external_import_result.html", context)
     else:
         form = ExternalDailyReportImportForm()
 
-    return render(request, "dailyreport/external_import.html", {"form": form})
-# ===== END IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 =====
+    return render(
+        request,
+        "dailyreport/external_import.html",
+        {
+            "form": form,
+            "template_version": TEMPLATE_VERSION,
+        },
+    )
+# ===== END IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 (final) =====

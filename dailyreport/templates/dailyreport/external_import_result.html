@@ -1,11 +1,16 @@
-{# ===== BEGIN TEMPLATE: external_import_result.html T2 ===== #}
 {% extends "staffbook/base_staffbook.html" %}
 
 {% block content %}
 <div class="container mt-4">
   <h4>外部日報データ取込 - 結果</h4>
 
-  <div class="mb-3">
+  {# ===== BEGIN INSERT: 模板版本显示（结果页） ===== #}
+  <p class="text-muted small">
+    使用テンプレートバージョン：<strong>{{ template_version }}</strong>
+  </p>
+  {# ===== END INSERT: 模板版本显示（结果页） ===== #}
+
+  <div class="mb-3 mt-2">
     <p class="mb-1">
       作成された日報：<strong>{{ created_reports }}</strong> 件
     </p>
@@ -42,4 +47,3 @@
   </p>
 </div>
 {% endblock %}
-{# ===== END TEMPLATE: external_import_result.html T2 ===== #}

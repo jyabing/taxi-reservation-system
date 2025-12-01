@@ -1,4 +1,5 @@
 {% extends "staffbook/base_staffbook.html" %}
+{% load static %}
 {% load humanize %}
 {% load time_filters %}
 {% load custom_tags %}
@@ -45,6 +46,25 @@
     </a>
   {% endif %}
 </div>
+
+{# ===== BEGIN INSERT: 外部データ取込 & テンプレート入口 ===== #}
+<div class="d-flex justify-content-end mb-2">
+  <div class="btn-group" role="group">
+    <!-- 导入 Excel -->
+    <a href="{% url 'dailyreport:external_dailyreport_import' %}"
+       class="btn btn-sm btn-outline-success">
+      📥 外部データ取込（Excel）
+    </a>
+
+    <!-- 下载模板（含版本号） -->
+    <a href="{% static 'dailyreport/dailyreport_full_template.xlsx' %}"
+       download
+       class="btn btn-sm btn-outline-secondary">
+      📄 テンプレート（v{{ template_version }}）
+    </a>
+  </div>
+</div>
+{# ===== END INSERT ===== #}
 
 <!-- ✅ 月份切换按钮与统一标题 -->
 <div class="d-flex justify-content-between align-items-center mb-4">

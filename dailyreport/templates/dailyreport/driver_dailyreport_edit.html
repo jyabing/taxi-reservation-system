@@ -119,6 +119,17 @@ input[type=number] {
 
   <p class="text-muted">日付：{{ form.date.value|date:"Y年n月j日" }}</p>
 
+  <!-- ===== BEGIN INSERT: 外部日報データ取込 入口 ===== -->
+  <div class="d-flex justify-content-end mb-2">
+    <a href="{% url 'dailyreport:external_dailyreport_import' %}"
+       class="btn btn-outline-success btn-sm"
+       title="外部入力担当者が作成した Excel を取り込んで、日報・明細を自動作成します。">
+      📥 外部データ取込（Excel）
+    </a>
+  </div>
+  <!-- ===== END INSERT: 外部日報データ取込 入口 ===== -->
+
+
   {% if report.pk %}
     {% if report.edited_by %}
       <div class="alert alert-light small mb-3">
