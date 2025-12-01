@@ -1,6 +1,8 @@
 # dailyreport/forms.py
-# 终版：完全移除“车辆分段/segment”相关代码；仅保留日报主表、明细、与可选图片表单。
 from __future__ import annotations
+import openpyxl
+from django.urls import reverse
+
 
 from django.utils.encoding import force_str
 import datetime as _dt
@@ -9,12 +11,11 @@ from django import forms
 from django.forms import inlineformset_factory, BaseInlineFormSet
 from carinfo.models import Car
 
-from .models import DriverDailyReport, DriverDailyReportItem
+from .models import DriverDailyReport, DriverDailyReportItem, DriverReportImage, DriverDailyReport
+
 
 # --- 可选图片表单（若模型不存在也不报错） ---
 try:
-    from .models import DriverReportImage  # 若你的项目没有该模型，会进入 except 分支
-
     class DriverReportImageForm(forms.ModelForm):
         class Meta:
             model = DriverReportImage
@@ -78,6 +79,28 @@ class DriverDailyReportForm(forms.ModelForm):
         if co:
             cleaned["unreturned_flag"] = False
         return cleaned
+
+
+# ===== BEGIN IMPORT_EXTERNAL_DAILYREPORT_FORM M1 =====
+class ExternalDailyReportImportForm(forms.Form):
+    """
+    外部日報データ(Excel) 取込用フォーム
+    会社責任者がファイルをアップロードするだけ。
+    """
+    file = forms.FileField(
+        label="外部日報データファイル（Excel）",
+        help_text="拡張子 .xlsx のファイルを指定してください。"
+    )
+
+    def clean_file(self):
+        f = self.cleaned_data["file"]
+        name = f.name.lower()
+        if not (name.endswith(".xlsx") or name.endswith(".xlsm")):
+            raise forms.ValidationError(
+                "Excel ファイル(.xlsx / .xlsm)を指定してください。"
+            )
+        return f
+# ===== END IMPORT_EXTERNAL_DAILYREPORT_FORM M1 =====
 
 
 # --- 日报明细表单 ---
@@ -342,7 +365,6 @@ class DriverDailyReportAdminForm(_NormalizePostMixin, forms.ModelForm):
         self._normalize_querydict()
 
     class Meta:
-        from .models import DriverDailyReport
         model = DriverDailyReport
         fields = "__all__"
 

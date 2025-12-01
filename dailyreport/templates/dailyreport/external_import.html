@@ -1,0 +1,59 @@
+{# ===== BEGIN TEMPLATE: external_import.html T1 ===== #}
+{% extends "staffbook/base_staffbook.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+  <h4>外部日報データ取込</h4>
+
+  <div class="alert alert-info mt-2" style="font-size: 14px;">
+      📄 外部入力用テンプレート：
+      <a href="{% static 'dailyreport/dailyreport_full_template.xlsx' %}" download>
+          👉 Excelテンプレートをダウンロード
+      </a>
+  </div>
+  <p class="text-muted">
+    外部の入力担当者が作成した Excel (.xlsx) をアップロードすると、
+    ドライバー別・日付別に乗務日報と明細が自動作成されます。
+  </p>
+
+  <div class="alert alert-info">
+    <div class="mb-1"><strong>Excel フォーマット（シート名: <code>dailyreport</code>）</strong></div>
+    <div class="small">
+      1 行目ヘッダー（固定）：
+      <code>
+        date, driver_code, vehicle_number,
+        ride_time, ride_from, meter_fee, payment_method,
+        is_charter, charter_amount, charter_payment_method,
+        note, is_pending
+      </code>
+      <ul class="mt-1 mb-0">
+        <li><code>date</code> … 日付（例: 2025-11-30）</li>
+        <li><code>driver_code</code> … <strong>Driver の ID(pk)</strong> を入力</li>
+        <li><code>vehicle_number</code> … <strong>Car の ID(pk)</strong> を入力</li>
+        <li><code>ride_time</code> … 任意の文字列（例: 08:35）</li>
+        <li><code>meter_fee</code>, <code>charter_amount</code> … 金額（整数、円）</li>
+        <li><code>payment_method</code>, <code>charter_payment_method</code> … システムの支払方法コード（例: cash, uber, uber_cash, didi など）</li>
+        <li><code>is_charter</code>, <code>is_pending</code> … 1/0, TRUE/FALSE などの真偽値</li>
+      </ul>
+    </div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" class="mt-3">
+    {% csrf_token %}
+    <div class="mb-3">
+      {{ form.file.label_tag }}
+      {{ form.file }}
+      {% if form.file.help_text %}
+        <div class="form-text">{{ form.file.help_text }}</div>
+      {% endif %}
+      {% if form.file.errors %}
+        <div class="text-danger small">{{ form.file.errors }}</div>
+      {% endif %}
+    </div>
+
+    <button type="submit" class="btn btn-primary">アップロードして取込実行</button>
+  </form>
+</div>
+{% endblock %}
+{# ===== END TEMPLATE: external_import.html T1 ===== #}

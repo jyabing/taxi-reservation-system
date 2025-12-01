@@ -1,0 +1,45 @@
+{# ===== BEGIN TEMPLATE: external_import_result.html T2 ===== #}
+{% extends "staffbook/base_staffbook.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h4>外部日報データ取込 - 結果</h4>
+
+  <div class="mb-3">
+    <p class="mb-1">
+      作成された日報：<strong>{{ created_reports }}</strong> 件
+    </p>
+    <p class="mb-1">
+      作成された明細行：<strong>{{ created_items }}</strong> 行
+    </p>
+  </div>
+
+  {% if error_messages %}
+    <div class="alert alert-warning">
+      <h6 class="alert-heading">警告・エラー</h6>
+      <ul class="mb-0 small">
+        {% for msg in error_messages %}
+          <li>{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <div class="alert alert-success">
+      全て正常に取込が完了しました。
+    </div>
+  {% endif %}
+
+  <hr>
+
+  <div class="mb-3">
+    <a href="{% url 'dailyreport:external_dailyreport_import' %}" class="btn btn-outline-primary btn-sm">
+      ← 別のファイルを取込む
+    </a>
+  </div>
+
+  <p class="text-muted small">
+    ※ 作成された日報は、通常の「乗務日報編集」画面から確認・修正できます。
+  </p>
+</div>
+{% endblock %}
+{# ===== END TEMPLATE: external_import_result.html T2 ===== #}

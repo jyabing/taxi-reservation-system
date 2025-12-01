@@ -48,6 +48,11 @@ urlpatterns = [
     # 编辑 & 删除
     path('drivers/<int:driver_id>/dailyreport/<int:report_id>/edit/', views.dailyreport_edit_for_driver, name='driver_dailyreport_edit'),
     path('drivers/<int:driver_id>/dailyreport/<int:pk>/delete/', views.dailyreport_delete_for_driver, name='driver_dailyreport_delete'),
+    path(
+        'external/import/',
+        views.external_dailyreport_import,
+        name='external_dailyreport_import',
+    ),
 
     # 未分配司机账号的日报
     path('dailyreport/add/unassigned/', views.driver_dailyreport_add_unassigned, name='driver_dailyreport_add_unassigned'), #无账号员工日报

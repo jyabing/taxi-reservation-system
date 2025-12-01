@@ -493,6 +493,10 @@ input[type=number] {
               <span>ETC 收取金额（円）</span>
               {{ form.etc_collected|add_class:"form-control form-control-sm text-end"|attr:"style:width:90px;" }}
             </div>
+            <div class="form-text small">
+              ※ 金額は行明細の「客負担・会社側決済 ETC」から自動集計されます。<br>
+                売上合計への反映も行明細ベースで計算され、この欄は控え用です。
+            </div>
 
             <!-- ▼ 2. 收款方式 -->
             <div class="d-flex justify-content-between align-items-center mb-2">

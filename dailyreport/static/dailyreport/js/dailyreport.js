@@ -1000,11 +1000,31 @@ function updateTotals() {
       driverEmptyEtc += emptyEtc;
     }
 
-    // 本行の「客人負担ETC」：売上に乗せる分
+    // ====== PATCH: 本行の「売上に乗せる ETC」：ETC対照表 B / C 類 ======
     let etcForSalesRow = 0;
-    if (rideEtc > 0 && rideCharge === "customer") etcForSalesRow += rideEtc;
-    if (emptyEtc > 0 && emptyCharge === "customer") etcForSalesRow += emptyEtc;
+    const paidBy = resolveJsPaymentMethod(paymentRaw);
+
+    // ① 乗車ETC
+    if (rideEtc > 0) {
+      if (rideCharge === "customer") {
+        // C 類：お客様が直接負担（現金 / アプリで精算）
+        etcForSalesRow += rideEtc;
+      } else if (rideCharge === "driver" && COMPANY_SIDE.has(paidBy)) {
+        // B 類：ドライバー一時立替だが、決済は会社側（Uber / DiDi / GO / 京交信 等）
+        // 　　→ 売上としては「客経由で会社に入る ETC」なので売上に含める
+        etcForSalesRow += rideEtc;
+      }
+    }
+
+    // ② 空車ETC：通常は客が乗っていないため売上には含めない
+    if (emptyEtc > 0 && emptyCharge === "customer") {
+      // 理論上ほぼ発生しないが、安全のため残しておく
+      etcForSalesRow += emptyEtc;
+    }
+
+    // 売上用 ETC 合計
     etcSalesTotal += etcForSalesRow;
+    // ====== PATCH END ======
 
     // 「実際ETC 会社→運転手」：乗車ETC で 立替者=ドライバー & 支払方法=会社側 の合計
     if (rideEtc > 0) {
@@ -1067,37 +1087,40 @@ function updateTotals() {
   
 
   // ====== 1) 売上系の表示 ======
-  // ① 先把「ETC 收取（＝乗車合計）」面板的金额，按收款方式加到 totalMap 里
+
+  // ① 「ETC 收取金额」面板は【表示用】にする：
+  //    - 行明細から計算した etcSalesTotal を「建议値」として自動反映
+  //    - ここでの入力値は売上計算には使わない（控え・照合用）
   let etcCollectedPanel = 0;
-  (function aggregateEtcCollectedFromPanel() {
+  (function syncEtcCollectedPanel() {
     const etcInput = document.getElementById("id_etc_collected");
     if (!etcInput) return;
 
-    const amount = _yen(etcInput.value || 0);   // 面板里的「ETC 收取金额（円）」
-    if (!amount) return;
+    const panelVal = _yen(etcInput.value || 0);
+    if (!panelVal && etcSalesTotal > 0) {
+      // 面板为空：自动填入「行明细の売上用ETC 合計」
+      etcInput.value = String(etcSalesTotal);
+      etcCollectedPanel = etcSalesTotal;
+    } else {
+      // 若已手动输入，则保留你输入的值（仅用于显示）
+      etcCollectedPanel = panelVal;
+    }
 
-    etcCollectedPanel = amount;
-
-    // 收款方式：Uber / Didi / 現金 / クレジット など
-    const paySel = document.getElementById("id_etc_payment_method");
-    if (!paySel) return;
-
-    const methodKey = resolveJsPaymentMethod(paySel.value || "");
-    if (!methodKey) return;
-
-    if (Object.prototype.hasOwnProperty.call(totalMap, methodKey)) {
-      totalMap[methodKey] += amount;   // 加到对应支付方式合计（Didi 合計等）
+    // 若以后想显示详细拆分，可以在此写入某个 span
+    const breakdownEl = document.getElementById("etc-collected-breakdown");
+    if (breakdownEl) {
+      breakdownEl.textContent =
+        "行明細より集計：" + etcSalesTotal.toLocaleString() + " 円";
     }
   })();
 
-   // ② 売上合計：在原有基础上，再加上面板的「ETC 收取」
+  // ② 売上合計：只看【メータ + 行明细からの売上用ETC + 特殊Uber + 貸切】
   const salesTotal =
-    meterOnlyTotal +        // メータのみ：只算 meter_fee
-    etcSalesTotal +         // 行明細中「お客様負担ETC」部分
-    specialUberSum +        // Uber予約/チップ/プロモーション
-    charterCashTotal +      // 貸切現金
-    charterUncollectedTotal + // 貸切未収
-    etcCollectedPanel;      // ← 新增：ETC 收取（会社側精算）
+    meterOnlyTotal +
+    etcSalesTotal +
+    specialUberSum +
+    charterCashTotal +
+    charterUncollectedTotal;
 
   // 这些展示逻辑保持不变
   idText("total_meter_only", meterOnlyTotal);

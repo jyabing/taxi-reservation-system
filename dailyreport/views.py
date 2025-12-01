@@ -1,4 +1,4 @@
-import csv, logging
+import csv, logging, openpyxl
 from io import BytesIO
 from datetime import datetime, date, timedelta, time as dtime, time
 from tempfile import NamedTemporaryFile
@@ -6,6 +6,7 @@ from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 from calendar import monthrange
 from django.conf import settings
+
 
 from django.contrib.auth.decorators import user_passes_test, login_required
 from django.contrib.auth.models import User
@@ -27,7 +28,7 @@ from dateutil.relativedelta import relativedelta
 
 from dailyreport.constants import PAYMENT_RATES, CHARTER_CASH_KEYS, CHARTER_UNCOLLECTED_KEYS
 from dailyreport.models import DriverDailyReport, DriverDailyReportItem
-from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet, RequiredReportItemFormSet
+from .forms import DriverDailyReportForm, DriverDailyReportItemForm, ReportItemFormSet, RequiredReportItemFormSet, ExternalDailyReportImportForm
 from .services.calculations import calculate_deposit_difference
 from dailyreport.services.summary import (
     resolve_payment_method,
@@ -37,6 +38,7 @@ from dailyreport.utils.debug import debug_print
 
 from staffbook.services import get_driver_info
 from staffbook.models import Driver
+from carinfo.models import Car
 
 from vehicles.models import Reservation
 from urllib.parse import quote
@@ -2503,3 +2505,302 @@ def dailyreport_overview(request):
         'next_month': next_month,
         'sort': sort,
     })
+
+
+# ===== BEGIN IMPORT_EXTERNAL_DAILYREPORT_HELPERS M3 =====
+def _to_bool(val):
+    """
+    Excelセルの 1/0/TRUE/FALSE/空 を Python bool に変換
+    """
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return val
+    s = str(val).strip().lower()
+    if s in ("1", "true", "yes", "y", "はい", "t"):
+        return True
+    return False
+
+
+def parse_external_dailyreport_excel(file_obj):
+    """
+    外部日報 Excel を解析し、行データのリストを返す。
+    戻り値:
+      {
+        "rows": [ { ...1行分... }, ... ],
+        "errors": [ "エラー文字列", ... ]
+      }
+
+    想定 Excel:
+      - シート名: "dailyreport"
+      - 1行目ヘッダー:
+        date, driver_code, vehicle_number,
+        ride_time, ride_from, meter_fee, payment_method,
+        is_charter, charter_amount, charter_payment_method,
+        note, is_pending
+    """
+    wb = openpyxl.load_workbook(file_obj, data_only=True)
+
+    # シート名は "dailyreport" 固定（変える場合はここも変更）
+    if "dailyreport" not in wb.sheetnames:
+        return {"rows": [], "errors": ["シート 'dailyreport' が見つかりません。"]}
+
+    ws = wb["dailyreport"]
+    errors = []
+    rows = []
+
+    # 1行目: ヘッダー行を取得
+    header_row = next(ws.iter_rows(min_row=1, max_row=1))
+    header = [
+        (str(c.value).strip() if c.value is not None else "")
+        for c in header_row
+    ]
+
+    required_headers = [
+        "date",
+        "driver_code",
+        "vehicle_number",
+        "ride_time",
+        "ride_from",
+        "meter_fee",
+        "payment_method",
+        "is_charter",
+        "charter_amount",
+        "charter_payment_method",
+        "note",
+        "is_pending",
+    ]
+    missing = [h for h in required_headers if h not in header]
+    if missing:
+        errors.append(f"必須ヘッダーが不足しています: {', '.join(missing)}")
+        return {"rows": [], "errors": errors}
+
+    # ヘッダー名 -> index
+    idx = {name: header.index(name) for name in required_headers}
+
+    # 2行目以降を順次読む
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+        # 1行まるごと空ならスキップ
+        if all(cell.value in (None, "") for cell in row):
+            continue
+
+        try:
+            date_val = row[idx["date"]].value
+            driver_code = row[idx["driver_code"]].value
+            vehicle_number = row[idx["vehicle_number"]].value
+            ride_time = row[idx["ride_time"]].value
+            ride_from = row[idx["ride_from"]].value
+            meter_fee = row[idx["meter_fee"]].value
+            payment_method = row[idx["payment_method"]].value
+            is_charter = _to_bool(row[idx["is_charter"]].value)
+            charter_amount = row[idx["charter_amount"]].value
+            charter_payment_method = row[idx["charter_payment_method"]].value
+            note = row[idx["note"]].value
+            is_pending = _to_bool(row[idx["is_pending"]].value)
+
+            rows.append(
+                {
+                    "excel_row": row_idx,  # Excel 上の行番号
+                    "date": date_val,
+                    "driver_code": driver_code,
+                    "vehicle_number": vehicle_number,
+                    "ride_time": ride_time,
+                    "ride_from": ride_from,
+                    "meter_fee": meter_fee,
+                    "payment_method": payment_method,
+                    "is_charter": is_charter,
+                    "charter_amount": charter_amount,
+                    "charter_payment_method": charter_payment_method,
+                    "note": note,
+                    "is_pending": is_pending,
+                }
+            )
+        except Exception as e:
+            errors.append(f"{row_idx} 行目の解析中にエラー: {e}")
+
+    return {"rows": rows, "errors": errors}
+# ===== END IMPORT_EXTERNAL_DAILYREPORT_HELPERS M3 =====
+
+# ===== BEGIN IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 =====
+@transaction.atomic
+def external_dailyreport_import(request):
+    """
+    外部日報 Excel 取込ビュー。
+    - GET: アップロードフォームを表示
+    - POST: Excel を解析して DriverDailyReport / DriverDailyReportItem を作成
+
+    Excel 側の前提：
+      - driver_code 列 … 現時点では Driver の「ID(pk)」を入れる運用にします
+      - vehicle_number 列 … Car の「ID(pk)」を入れる運用にします
+        （将来、別のコード列に変更したくなったらこの関数だけ直せばOK）
+    """
+    if request.method == "POST":
+        form = ExternalDailyReportImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            result = parse_external_dailyreport_excel(form.cleaned_data["file"])
+            rows = result["rows"]
+            parse_errors = result["errors"]
+
+            created_reports = 0
+            created_items = 0
+            error_messages = list(parse_errors)
+
+            # キャッシュ: (date, driver_id, car_id) -> DriverDailyReport
+            report_cache = {}
+
+            from datetime import datetime, date as date_cls
+
+            for r in rows:
+                excel_row = r["excel_row"]
+
+                # --- 1) date ---
+                raw_date = r["date"]
+                if not raw_date:
+                    error_messages.append(f"{excel_row} 行目: date が空です。")
+                    continue
+
+                if isinstance(raw_date, date_cls):
+                    report_date = raw_date
+                elif hasattr(raw_date, "date"):  # datetime の場合
+                    report_date = raw_date.date()
+                else:
+                    # 文字列の場合は "YYYY-MM-DD" 想定
+                    try:
+                        report_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
+                    except ValueError:
+                        error_messages.append(
+                            f"{excel_row} 行目: date の形式が不正です（{raw_date}）。'YYYY-MM-DD' を想定。"
+                        )
+                        continue
+
+                # --- 2) driver ---
+                driver_code = r["driver_code"]
+                if not driver_code:
+                    error_messages.append(f"{excel_row} 行目: driver_code が空です。")
+                    continue
+
+                try:
+                    # 現時点では「Excel に Driver.pk を入れる」運用とする
+                    driver = Driver.objects.get(driver_code=str(driver_code).strip())
+                except (ValueError, Driver.DoesNotExist):
+                    error_messages.append(
+                        f"{excel_row} 行目: driver_code='{driver_code}' に該当する運転手が見つかりません。（現仕様: Driver.pk を想定）"
+                    )
+                    continue
+
+                # --- 3) vehicle (Car) ---
+                vehicle_number = r["vehicle_number"]
+                if not vehicle_number:
+                    error_messages.append(f"{excel_row} 行目: vehicle_number が空です。")
+                    continue
+
+                try:
+                    # 現仕様: Excel の vehicle_number には「車号（例: 6598）」を入れる
+                    # Car.license_plate の末尾4桁がこの番号と一致する車を検索する
+                    vehicle = Car.objects.get(license_plate__endswith=str(vehicle_number).strip())
+                except Car.DoesNotExist:
+                    error_messages.append(
+                        f"{excel_row} 行目: vehicle_number='{vehicle_number}' に該当する車両(Car)が見つかりません。"
+                        "（現仕様: Car.license_plate の末尾4桁 = この番号）"
+                    )
+                    continue
+                except Car.MultipleObjectsReturned:
+                    error_messages.append(
+                        f"{excel_row} 行目: vehicle_number='{vehicle_number}' に該当する車両が複数見つかりました。"
+                        "車号が重複している可能性があります。"
+                    )
+                    continue
+
+                # --- 4) DriverDailyReport を取得 or 作成 ---
+                key = (report_date, driver.pk, vehicle.pk)
+                if key in report_cache:
+                    report = report_cache[key]
+                else:
+                    report, created = DriverDailyReport.objects.get_or_create(
+                        driver=driver,
+                        date=report_date,
+                        defaults={"vehicle": vehicle},
+                    )
+                    # 既存レポートで vehicle が未設定の場合は補完しておく
+                    if not report.vehicle:
+                        report.vehicle = vehicle
+                        report.save(update_fields=["vehicle"])
+
+                    if created:
+                        created_reports += 1
+
+                    report_cache[key] = report
+
+                # --- 5) 明細行の基本フィールド ---
+                raw_meter_fee = r["meter_fee"]
+                try:
+                    meter_fee_int = int(raw_meter_fee) if raw_meter_fee not in (None, "") else 0
+                except (TypeError, ValueError):
+                    error_messages.append(
+                        f"{excel_row} 行目: meter_fee が整数として解釈できません（値={raw_meter_fee}）。"
+                    )
+                    continue
+
+                payment_method = (r["payment_method"] or "").strip()
+                if not payment_method:
+                    error_messages.append(f"{excel_row} 行目: payment_method が空です。")
+                    continue
+
+                # ride_time: モデルでは CharField なので、そのまま文字列として扱う
+                raw_ride_time = r["ride_time"]
+                if raw_ride_time in (None, ""):
+                    ride_time = ""
+                else:
+                    ride_time = str(raw_ride_time).strip()
+
+                ride_from = r["ride_from"] or ""
+                is_charter = r["is_charter"]
+
+                raw_charter_amount = r["charter_amount"]
+                try:
+                    charter_amount_int = int(raw_charter_amount) if raw_charter_amount not in (None, "") else 0
+                except (TypeError, ValueError):
+                    error_messages.append(
+                        f"{excel_row} 行目: charter_amount が整数として解釈できません（値={raw_charter_amount}）。"
+                    )
+                    continue
+
+                charter_payment_method = (r["charter_payment_method"] or "").strip() or None
+                note = r["note"] or ""
+                is_pending = r["is_pending"]
+
+                # --- 6) DriverDailyReportItem を作成 ---
+                item = DriverDailyReportItem(
+                    report=report,
+                    ride_time=ride_time,         # ← CharField
+                    ride_from=ride_from,
+                    meter_fee=meter_fee_int,     # DecimalField だが int を入れても Django がよしなに変換
+                    payment_method=payment_method,
+                    is_charter=is_charter,
+                    charter_amount_jpy=charter_amount_int,
+                    charter_payment_method=charter_payment_method,
+                    note=note,
+                    is_pending=is_pending,
+                )
+                item.save()
+                created_items += 1
+
+            # メッセージフレームワークに概要を出しておく（任意）
+            if created_items:
+                messages.success(
+                    request,
+                    f"外部日報データを取込しました（日報 {created_reports} 件、明細 {created_items} 行）。",
+                )
+
+            context = {
+                "form": form,
+                "created_reports": created_reports,
+                "created_items": created_items,
+                "error_messages": error_messages,
+            }
+            return render(request, "dailyreport/external_import_result.html", context)
+    else:
+        form = ExternalDailyReportImportForm()
+
+    return render(request, "dailyreport/external_import.html", {"form": form})
+# ===== END IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 =====
