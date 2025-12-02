@@ -50,7 +50,11 @@ from carinfo.models import Car
 from vehicles.models import Reservation
 from urllib.parse import quote
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
+# ===== BEGIN INSERT DUP-IMPORT-1 =====
+from io import BytesIO
+import base64
+# ===== END INSERT DUP-IMPORT-1 =====
 from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
@@ -582,7 +586,7 @@ def dailyreport_edit(request, pk):
         'driver': getattr(report, 'driver', None),
         'is_edit': True,
     })
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 # 如果上面没引入 user_passes_test / 模型，也一并确认
 from .models import DriverDailyReportItem, Driver
 @user_passes_test(is_dailyreport_admin)
@@ -2529,328 +2533,610 @@ def _to_bool(val):
     return False
 
 
-# ===== BEGIN PARSER M3 v2 (with template version check) =====
-def parse_external_dailyreport_excel(file_obj):
+# ===== BEGIN REPLACE DUP-HELPER: 外部日報Excelの重複チェック（時間を正規化） =====
+def find_duplicate_rows_in_external_excel(file_bytes: bytes):
     """
-    外部日報 Excel を解析して、行ごとの dict リスト + エラー一覧を返すヘルパー。
-    - シート名: 'dailyreport'
-    - 1 行目: テンプレートバージョン情報 (__template_version__, 2025.01)
-    - 2 行目: 表頭（header）
-    - 3 行目以降: データ行
-    """
-    errors = []
-    rows = []
+    外部日報 Excel 内の「同一ドライバー＋同一日付」で
+    『時間／乗車地／降車地』が完全一致している行を検出する。
 
+    ・時間は "9:00" / "09:00" / "09:00:00" / Excel 時刻セル などを
+      すべて "HH:MM" 形式に正規化してから比較する。
+    """
+
+    wb = load_workbook(BytesIO(file_bytes), data_only=True)
+
+    # シート選択：DailyReport があれば優先、なければアクティブ
+    if "DailyReport" in wb.sheetnames:
+        ws = wb["DailyReport"]
+    else:
+        ws = wb.active
+
+    # ヘッダ行
     try:
-        wb = openpyxl.load_workbook(file_obj, data_only=True)
-    except Exception as e:
-        errors.append(f"Excelファイルの読み込みに失敗しました: {e}")
-        return {"rows": [], "errors": errors}
+        header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    except StopIteration:
+        return []
 
-    # --- シート存在チェック ---
-    SHEET_NAME = "dailyreport"
-    if SHEET_NAME not in wb.sheetnames:
-        errors.append(f"シート '{SHEET_NAME}' が見つかりません。シート名を '{SHEET_NAME}' にしてください。")
-        return {"rows": [], "errors": errors}
+    col_index = {}
+    for idx, name in enumerate(header_row):
+        if not name:
+            continue
+        col_index[str(name).strip().lower()] = idx
 
-    ws = wb[SHEET_NAME]
+    # 重複判定に必要なカラム
+    required_for_dup = ["date", "driver_code", "ride_time", "ride_from", "ride_to"]
+    missing = [c for c in required_for_dup if c not in col_index]
+    if missing:
+        # テンプレートが古い／壊れている → 重複チェックは諦めて通常処理に任せる
+        return []
 
-    # --- テンプレートバージョンチェック ---
-    # 1 行目: A1 = "__template_version__", B1 = "2025.01"（など）
-    first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
-    first_col = (first_row[0] or "").strip() if first_row[0] is not None else ""
-    version_val = (first_row[1] or "").strip() if len(first_row) > 1 and first_row[1] is not None else ""
+    def get(row, key, default=None):
+        idx = col_index.get(key)
+        if idx is None:
+            return default
+        return row[idx]
 
-    if first_col != "__template_version__":
-        errors.append(
-            "❌ この Excel にはテンプレートバージョン情報がありません。"
-            "必ずシステムからダウンロードした最新テンプレートを使用してください。"
-        )
-        return {"rows": [], "errors": errors}
+    def _parse_date(v):
+        if v in (None, ""):
+            return None
+        if isinstance(v, (datetime, date)):
+            return v.date() if isinstance(v, datetime) else v
+        try:
+            return datetime.strptime(str(v).strip(), "%Y-%m-%d").date()
+        except Exception:
+            return None
 
-    if version_val != TEMPLATE_VERSION:
-        errors.append(
-            f"❌ テンプレートバージョンが一致しません: Excel={version_val} / 想定={TEMPLATE_VERSION}。"
-            "画面上部のリンクから最新テンプレートをダウンロードしてやり直してください。"
-        )
-        return {"rows": [], "errors": errors}
+    def _normalize_time_str(v):
+        """
+        時刻セルを 'HH:MM' に統一する。
+        - Excel の時刻セル（datetime.time / datetime） → strftime('%H:%M')
+        - 文字列 '9:00' / '09:00:00' など → できる限りパースして HH:MM にする
+        """
+        if v in (None, ""):
+            return ""
 
-    if version_val != EXPECTED_TEMPLATE_VERSION:
-        errors.append(
-            f"❌ テンプレートバージョンが一致しません: Excel={version_val} / 想定={EXPECTED_TEMPLATE_VERSION}。"
-            "画面上部のリンクから最新テンプレートをダウンロードしてやり直してください。"
-        )
-        return {"rows": [], "errors": errors}
+        # datetime / time の場合
+        if isinstance(v, datetime):
+            return v.time().strftime("%H:%M")
+        if isinstance(v, time):
+            return v.strftime("%H:%M")
 
-    # --- ヘッダー行のチェック ---
-    # 2 行目がヘッダー行
-    header_row_idx = 2
-    header_row = next(ws.iter_rows(min_row=header_row_idx, max_row=header_row_idx, values_only=True))
-    header = [(h or "").strip() for h in header_row]
+        s = str(v).strip()
+        if not s:
+            return ""
 
-    # 想定ヘッダー（あなたの最新版テンプレートに合わせる）
-    EXPECTED_HEADER = [
+        # 既に HH:MM or H:MM っぽい場合の簡易処理
+        if ":" in s:
+            parts = s.split(":")
+            try:
+                h = int(parts[0])
+                m = int(parts[1])
+                return f"{h:02d}:{m:02d}"
+            except Exception:
+                pass
+
+        # 数値（例えば 0.375 = 9:00）で来た場合は、24時間をかけて変換してみる
+        try:
+            num = float(s)
+            total_minutes = int(round(num * 24 * 60))
+            h = (total_minutes // 60) % 24
+            m = total_minutes % 60
+            return f"{h:02d}:{m:02d}"
+        except Exception:
+            # 最後の手段：そのまま返す（これでも完全一致なら同一とみなせる）
+            return s
+
+    duplicates = []
+    seen = {}  # (driver_code, date_str, time_norm, from, to) -> first_row_idx
+
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if not any(row):
+            continue
+
+        date_val = _parse_date(get(row, "date"))
+        driver_code_raw = get(row, "driver_code")
+        ride_time_raw = get(row, "ride_time")
+        ride_from_val = get(row, "ride_from")
+        ride_to_val = get(row, "ride_to")
+
+        if not (date_val and driver_code_raw and ride_time_raw):
+            continue  # キー要素が欠けていたらスキップ
+
+        date_str = date_val.isoformat()
+        driver_code = str(driver_code_raw).strip()
+        time_norm = _normalize_time_str(ride_time_raw)
+        from_str = str(ride_from_val or "").strip()
+        to_str = str(ride_to_val or "").strip()
+
+        key = (driver_code, date_str, time_norm, from_str, to_str)
+        if key in seen:
+            duplicates.append({
+                "row": row_idx,
+                "first_row": seen[key],
+                "driver_code": driver_code,
+                "date": date_str,
+                "ride_time": time_norm,
+                "ride_from": from_str,
+                "ride_to": to_str,
+            })
+        else:
+            seen[key] = row_idx
+
+    return duplicates
+# ===== END REPLACE DUP-HELPER =====
+
+
+
+# ===== BEGIN REPLACE M-V2: 解析外部日報 Excel（增强模板版） =====
+def parse_external_dailyreport_excel(uploaded_file, current_user=None):
+    """
+    解析由外部录入员填写的 Excel（增强模板版），
+    一次性创建 / 更新 DriverDailyReport + DriverDailyReportItem。
+
+    期望的 Sheet:
+        - DailyReport: 主数据
+        - MasterData: 支払コード列表（仅用于下拉，解析时只用 code）
+
+    期望的表头（daily sheet 第 1 行）：
+        date, driver_code, vehicle_number,
+        clock_in, clock_out, break_time,
+        gas_volume, mileage,
+        ride_time, ride_from, ride_to,
+        meter_fee, payment_method,
+        is_charter, charter_amount, charter_payment_method,
+        note, is_pending
+    """
+    wb = load_workbook(uploaded_file, data_only=True)
+
+    # 1) 读取版本信息（如果 Excel 内部写了就校验，否则只做 header 检查）
+    version_in_file = None
+    if "Meta" in wb.sheetnames:
+        meta_ws = wb["Meta"]
+        raw = meta_ws["A1"].value if meta_ws["A1"].value else ""
+        if isinstance(raw, str) and "TEMPLATE_VERSION" in raw:
+            # 例： "TEMPLATE_VERSION=2025.01"
+            try:
+                version_in_file = raw.split("=", 1)[1].strip()
+            except Exception:
+                version_in_file = None
+
+    if version_in_file and version_in_file != EXPECTED_TEMPLATE_VERSION:
+        return {
+            "ok": False,
+            "version_in_file": version_in_file,
+            "errors": [
+                f"テンプレートのバージョンが違います。期待: {EXPECTED_TEMPLATE_VERSION}, ファイル内: {version_in_file}"
+            ],
+            "created_reports": 0,
+            "updated_reports": 0,
+            "created_items": 0,
+        }
+
+    # 2) 选择主 sheet：优先 DailyReport，其次 active
+    if "DailyReport" in wb.sheetnames:
+        ws = wb["DailyReport"]
+    else:
+        ws = wb.active
+
+    # 3) 读取表头并构建列索引 map
+    header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+    col_index = {}  # "date" -> 0, ...
+    for idx, name in enumerate(header_row):
+        if not name:
+            continue
+        key = str(name).strip().lower()
+        col_index[key] = idx
+
+    # 必须的列
+    required_cols = [
         "date",
         "driver_code",
         "vehicle_number",
         "ride_time",
-        "ride_from",
-        "ride_to",
         "meter_fee",
         "payment_method",
-        "is_charter",
-        "charter_amount",
-        "charter_payment_method",
-        "note",
-        "is_pending",
-        "riding_etc",
-        "riding_etc_charge",
-        "empty_etc",
-        "empty_etc_charge",
     ]
+    missing = [c for c in required_cols if c not in col_index]
+    if missing:
+        return {
+            "ok": False,
+            "version_in_file": version_in_file,
+            "errors": [f"必須列が足りません: {', '.join(missing)}"],
+            "created_reports": 0,
+            "updated_reports": 0,
+            "created_items": 0,
+        }
 
-    if header[: len(EXPECTED_HEADER)] != EXPECTED_HEADER:
-        errors.append(
-            "❌ Excel のヘッダー行が想定と異なります。"
-            "列名や順番を変更せず、最新テンプレートをそのまま使用してください。"
-        )
-        errors.append(f"  実際のヘッダー: {header}")
-        return {"rows": [], "errors": errors}
+    # 4) 工具函数
+    def get(row, key, default=None):
+        idx = col_index.get(key)
+        if idx is None:
+            return default
+        return row[idx]
 
-    # 列名 -> index のマップを作っておく
-    idx = {name: i for i, name in enumerate(header)}
-
-    # --- データ行の読み取り（3 行目以降）---
-    first_data_row = header_row_idx + 1
-
-    for row_idx, row in enumerate(ws.iter_rows(min_row=first_data_row, values_only=True), start=first_data_row):
-        # 完全に空の行はスキップ
-        if row is None or all(cell is None or str(cell).strip() == "" for cell in row):
-            continue
-
-        def _get(col_name, default=None):
-            i = idx.get(col_name)
-            if i is None or i >= len(row):
-                return default
-            return row[i]
-
+    def parse_date(v):
+        if v in (None, ""):
+            return None
+        if isinstance(v, (datetime, date)):
+            return v.date() if isinstance(v, datetime) else v
         try:
-            rows.append(
-                {
-                    "excel_row": row_idx,
-                    "date": _get("date"),
-                    "driver_code": _get("driver_code"),
-                    "vehicle_number": _get("vehicle_number"),
-                    "ride_time": _get("ride_time"),
-                    "ride_from": _get("ride_from"),
-                    # ride_to は現時点では使用しないが、必要ならここで拾える
-                    # "ride_to": _get("ride_to"),
-                    "meter_fee": _get("meter_fee"),
-                    "payment_method": _get("payment_method"),
-                    "is_charter": _to_bool(_get("is_charter")),
-                    "charter_amount": _get("charter_amount"),
-                    "charter_payment_method": _get("charter_payment_method"),
-                    "note": _get("note"),
-                    "is_pending": _to_bool(_get("is_pending")),
-                    # riding_etc 系は今は読み捨て（将来使うならここで dict に入れればOK）
-                    # "riding_etc": _get("riding_etc"),
-                    # "riding_etc_charge": _get("riding_etc_charge"),
-                    # "empty_etc": _get("empty_etc"),
-                    # "empty_etc_charge": _get("empty_etc_charge"),
+            return datetime.strptime(str(v).strip(), "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+    def parse_time_cell(v):
+        if v in (None, ""):
+            return None
+        if isinstance(v, datetime):
+            return v.time()
+        if isinstance(v, time):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return None
+            try:
+                h, m = s.split(":")
+                return time(hour=int(h), minute=int(m))
+            except Exception:
+                return None
+        return None
+
+    def parse_timedelta_hm(v):
+        if v in (None, ""):
+            return None
+        if isinstance(v, timedelta):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return None
+            try:
+                h, m = s.split(":")
+                return timedelta(hours=int(h), minutes=int(m))
+            except Exception:
+                return None
+        return None
+
+    def parse_decimal(v):
+        if v in (None, ""):
+            return None
+        try:
+            return Decimal(str(v))
+        except Exception:
+            return None
+
+    def parse_bool(v):
+        if v in (None, ""):
+            return False
+        if isinstance(v, bool):
+            return v
+        s = str(v).strip().lower()
+        return s in ("1", "true", "yes", "y", "t", "○", "◯")
+
+    # 5) 逐行解析
+    created_reports = 0
+    updated_reports = 0
+    created_items = 0
+    errors = []
+
+    # 为了避免重复 get_or_create，每个 (driver_id, date) 缓存一份 report
+    report_cache = {}
+
+    @transaction.atomic
+    def _inner():
+        nonlocal created_reports, updated_reports, created_items
+
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            # 跳过全空行
+            if not any(row):
+                continue
+
+            date_val = parse_date(get(row, "date"))
+            driver_code_raw = get(row, "driver_code")
+            vehicle_number = get(row, "vehicle_number")
+
+            # ====== driver_code = 员工编号（Driver.driver_code） ======
+            if not date_val or not driver_code_raw:
+                errors.append(f"{row_idx} 行目: date または driver_code（员工编号）が空です。")
+                continue
+
+            driver_code_str = str(driver_code_raw).strip()
+
+            # 司机：用 Driver.driver_code 匹配，而不是 pk
+            try:
+                driver = Driver.objects.get(driver_code=driver_code_str)
+            except Driver.DoesNotExist:
+                errors.append(
+                    f"{row_idx} 行目: driver_code='{driver_code_str}'（员工编号）に該当するドライバーが見つかりません。"
+                )
+                continue
+            except Driver.MultipleObjectsReturned:
+                errors.append(
+                    f"{row_idx} 行目: driver_code='{driver_code_str}'（员工编号）に該当するドライバーが複数存在します。"
+                )
+                continue
+            # ====== driver_code 处理到此结束 ======
+
+            # 车辆：车号匹配 license_plate 中包含 vehicle_number（例：xxx-5001）
+            car = None
+            if vehicle_number not in (None, ""):
+                vn_str = str(vehicle_number).strip()
+                car = Car.objects.filter(license_plate__contains=vn_str).first()
+                if not car:
+                    errors.append(f"{row_idx} 行目: vehicle_number={vn_str} に対応する車両が見つかりません。")
+                    # 不致命：允许无车继续，只是日報 vehicle 为 None
+
+            # 该司机+日期 对应的 key
+            cache_key = (driver.pk, date_val)
+            report = report_cache.get(cache_key)
+
+            # 构造当行的“日報级”字段
+            clock_in = parse_time_cell(get(row, "clock_in"))
+            clock_out = parse_time_cell(get(row, "clock_out"))
+            break_td = parse_timedelta_hm(get(row, "break_time"))
+            gas_vol = parse_decimal(get(row, "gas_volume"))
+            mileage = parse_decimal(get(row, "mileage"))
+
+            if report is None:
+                defaults = {
+                    "vehicle": car,
                 }
+                if clock_in:
+                    defaults["clock_in"] = clock_in
+                if clock_out:
+                    defaults["clock_out"] = clock_out
+                if break_td is not None:
+                    defaults["休憩時間"] = break_td
+                if gas_vol is not None:
+                    defaults["gas_volume"] = gas_vol
+                if mileage is not None:
+                    defaults["mileage"] = mileage
+
+                report, created = DriverDailyReport.objects.get_or_create(
+                    driver=driver,
+                    date=date_val,
+                    defaults=defaults,
+                )
+                if created:
+                    created_reports += 1
+                else:
+                    # 已存在的情况，后面如果行里有非空值再更新
+                    pass
+                report_cache[cache_key] = report
+            else:
+                created = False
+
+            changed = False
+            if not created:
+                if car and report.vehicle != car:
+                    report.vehicle = car
+                    changed = True
+                if clock_in and report.clock_in != clock_in:
+                    report.clock_in = clock_in
+                    changed = True
+                if clock_out and report.clock_out != clock_out:
+                    report.clock_out = clock_out
+                    changed = True
+                if break_td is not None and report.休憩時間 != break_td:
+                    report.休憩時間 = break_td
+                    changed = True
+                if gas_vol is not None and report.gas_volume != gas_vol:
+                    report.gas_volume = gas_vol
+                    changed = True
+                if mileage is not None and report.mileage != mileage:
+                    report.mileage = mileage
+                    changed = True
+
+            # 有出勤/退勤/休憩的任一信息时，重算勤務時間/実働/残業
+            if clock_in or clock_out or break_td is not None:
+                report.calculate_work_times()
+                changed = True
+
+            # 记录编辑人
+            if current_user and getattr(report, "edited_by_id", None) != current_user.id:
+                report.edited_by = current_user
+                changed = True
+
+            if changed:
+                report.save()
+                if not created:
+                    updated_reports += 1
+
+            # ====== 创建行明细 DriverDailyReportItem ======
+            ride_time = get(row, "ride_time")
+            ride_from = get(row, "ride_from")
+            ride_to = get(row, "ride_to")
+            meter_fee_val = parse_decimal(get(row, "meter_fee")) or Decimal("0")
+            payment_method = (get(row, "payment_method") or "").strip() or None
+            is_charter = parse_bool(get(row, "is_charter"))
+            charter_amount = parse_decimal(get(row, "charter_amount"))
+            charter_payment_method = (get(row, "charter_payment_method") or "").strip() or None
+            note = get(row, "note") or ""
+            is_pending = parse_bool(get(row, "is_pending"))
+
+            # 如果行明细关键字段都空，则不创建 item
+            if not (ride_time or ride_from or ride_to or meter_fee_val or payment_method):
+                continue
+
+            item = DriverDailyReportItem.objects.create(
+                report=report,
+                ride_time=str(ride_time or "").strip(),
+                ride_from=str(ride_from or "").strip(),
+                ride_to=str(ride_to or "").strip(),
+                meter_fee=meter_fee_val,
+                payment_method=payment_method or "",
+                is_charter=is_charter,
+                charter_amount_jpy=charter_amount,
+                charter_payment_method=charter_payment_method,
+                note=str(note or "").strip(),
+                is_pending=is_pending,
             )
-        except Exception as e:
-            errors.append(f"{row_idx} 行目の解析中にエラーが発生しました: {e}")
+            created_items += 1
 
-    return {"rows": rows, "errors": errors}
-# ===== END PARSER M3 v2 (with template version check) =====
+    # 原子操作，出错就整批回滚
+    try:
+        _inner()
+    except Exception as e:
+        errors.append(f"予期しないエラー: {e}")
+        return {
+            "ok": False,
+            "version_in_file": version_in_file,
+            "errors": errors,
+            "created_reports": 0,
+            "updated_reports": 0,
+            "created_items": 0,
+        }
 
-# ===== BEGIN IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 (final) =====
-@transaction.atomic
+    return {
+        "ok": len(errors) == 0,
+        "version_in_file": version_in_file,
+        "errors": errors,
+        "created_reports": created_reports,
+        "updated_reports": updated_reports,
+        "created_items": created_items,
+    }
+# ===== END REPLACE M-V2 =====
+
+# ===== BEGIN IMPORT_EXTERNAL_DAILYREPORT_VIEW M5 (with duplicate check) =====
+@login_required
+@require_http_methods(["GET", "POST"])
 def external_dailyreport_import(request):
     """
-    外部日報 Excel 取込ビュー。
-    - GET: アップロードフォームを表示
-    - POST: Excel を解析して DriverDailyReport / DriverDailyReportItem を作成
+    外部录入员做好的 Excel を取り込む画面＋処理。
 
-    Excel 側の前提：
-      - シート名: dailyreport
-      - 1行目: __template_version__, 2025.01
-      - 2行目: ヘッダー
-      - 3行目以降: データ
-      - driver_code 列 … Driver.driver_code に対応
-      - vehicle_number 列 … 車号（例: 6598）。Car.license_plate の末尾4桁として検索
+    フロー：
+      1) 通常 POST（file 付き）:
+         - Excel をバイト列に読み込み
+         - find_duplicate_rows_in_external_excel() で
+           「同一ドライバー＋同一日付＋時間＋乗車地＋降車地」の重複行を検出
+         - 重複なし → そのまま parse_external_dailyreport_excel() で取り込み
+         - 重複あり → DB には書き込まず、重複一覧＋base64化したファイルを
+           external_import.html に渡して「確認画面」を表示
+
+      2) 確認画面からの POST（confirm_duplicates=1, file_base64付き）:
+         - base64 から元の Excel バイト列を復元し、
+           parse_external_dailyreport_excel() を実行して実際に取り込み。
     """
+    # ---- ② 確認後の再取込（file_base64 経由） ----
+    if (
+        request.method == "POST"
+        and request.POST.get("confirm_duplicates") == "1"
+        and "file" not in request.FILES
+    ):
+        b64 = request.POST.get("file_base64", "")
+        if not b64:
+            messages.error(request, "重複確認後の再取込に失敗しました（ファイル情報が見つかりません）。もう一度ファイルを選択してください。")
+            form = ExternalDailyReportImportForm()
+            return render(
+                request,
+                "dailyreport/external_import.html",
+                {
+                    "form": form,
+                    "template_version": TEMPLATE_VERSION,
+                    "import_result": None,
+                    "duplicate_warnings": None,
+                    "file_base64": "",
+                },
+            )
+
+        try:
+            file_bytes = base64.b64decode(b64)
+        except Exception:
+            messages.error(request, "ファイル情報の復元に失敗しました。もう一度ファイルを選択してください。")
+            form = ExternalDailyReportImportForm()
+            return render(
+                request,
+                "dailyreport/external_import.html",
+                {
+                    "form": form,
+                    "template_version": TEMPLATE_VERSION,
+                    "import_result": None,
+                    "duplicate_warnings": None,
+                    "file_base64": "",
+                },
+            )
+
+        # ここで本番取り込み
+        result = parse_external_dailyreport_excel(BytesIO(file_bytes), current_user=request.user)
+
+        if result["ok"]:
+            messages.success(
+                request,
+                f"取込完了：日報 {result['created_reports']} 件新規 / "
+                f"{result['updated_reports']} 件更新、明細 {result['created_items']} 行。"
+            )
+        else:
+            messages.error(request, "一部エラーがあります。内容を確認してください。")
+
+        return render(
+            request,
+            "dailyreport/external_import.html",
+            {
+                "form": ExternalDailyReportImportForm(),
+                "template_version": TEMPLATE_VERSION,
+                "import_result": result,
+                "duplicate_warnings": None,
+                "file_base64": "",
+            },
+        )
+
+    # ---- ① 通常のアップロード（最初の取り込みボタン） ----
     if request.method == "POST":
         form = ExternalDailyReportImportForm(request.POST, request.FILES)
         if form.is_valid():
-            result = parse_external_dailyreport_excel(form.cleaned_data["file"])
-            rows = result["rows"]
-            parse_errors = result["errors"]
+            uploaded_file = form.cleaned_data["file"]
 
-            created_reports = 0
-            created_items = 0
-            error_messages = list(parse_errors)
+            # アップロードファイルを丸ごと bytes に読み込む
+            file_bytes = uploaded_file.read()
 
-            # パース段階で致命的エラーがあれば rows は空のまま
-            if not rows and error_messages:
-                context = {
-                    "form": form,
-                    "created_reports": created_reports,
-                    "created_items": created_items,
-                    "error_messages": error_messages,
-                    "template_version": TEMPLATE_VERSION,
-                }
-                return render(request, "dailyreport/external_import_result.html", context)
+            # まず重複チェックだけ行う（DB には書き込まない）
+            duplicate_warnings = find_duplicate_rows_in_external_excel(file_bytes)
 
-            # キャッシュ: (date, driver_id, car_id) -> DriverDailyReport
-            report_cache = {}
-
-            from datetime import datetime, date as date_cls
-
-            for r in rows:
-                excel_row = r["excel_row"]
-
-                # --- 1) date ---
-                raw_date = r["date"]
-                if not raw_date:
-                    error_messages.append(f"{excel_row} 行目: date が空です。")
-                    continue
-
-                if isinstance(raw_date, date_cls):
-                    report_date = raw_date
-                elif hasattr(raw_date, "date"):  # datetime の場合
-                    report_date = raw_date.date()
-                else:
-                    try:
-                        report_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
-                    except ValueError:
-                        error_messages.append(
-                            f"{excel_row} 行目: date の形式が不正です（{raw_date}）。'YYYY-MM-DD' を想定。"
-                        )
-                        continue
-
-                # --- 2) driver ---
-                driver_code = r["driver_code"]
-                if not driver_code:
-                    error_messages.append(f"{excel_row} 行目: driver_code が空です。")
-                    continue
-
-                try:
-                    driver = Driver.objects.get(driver_code=str(driver_code).strip())
-                except Driver.DoesNotExist:
-                    error_messages.append(
-                        f"{excel_row} 行目: driver_code='{driver_code}' に該当する運転手が見つかりません。"
-                        "（Driver.driver_code を想定）"
-                    )
-                    continue
-
-                # --- 3) vehicle (Car) ---
-                vehicle_number = r["vehicle_number"]
-                if not vehicle_number:
-                    error_messages.append(f"{excel_row} 行目: vehicle_number が空です。")
-                    continue
-
-                try:
-                    # 現仕様: Excel の vehicle_number 列には「車号（例: 6598）」を入れる
-                    # Car.license_plate の末尾4桁がこの番号と一致する車を検索する
-                    vehicle = Car.objects.get(license_plate__endswith=str(vehicle_number).strip())
-                except Car.DoesNotExist:
-                    error_messages.append(
-                        f"{excel_row} 行目: vehicle_number='{vehicle_number}' に該当する車両(Car)が見つかりません。"
-                        "（Car.license_plate の末尾4桁 = この番号 を想定）"
-                    )
-                    continue
-                except Car.MultipleObjectsReturned:
-                    error_messages.append(
-                        f"{excel_row} 行目: vehicle_number='{vehicle_number}' に該当する車両が複数見つかりました。"
-                        "車号が重複している可能性があります。"
-                    )
-                    continue
-
-                # --- 4) DriverDailyReport を取得 or 作成 ---
-                key = (report_date, driver.pk, vehicle.pk)
-                if key in report_cache:
-                    report = report_cache[key]
-                else:
-                    report, created = DriverDailyReport.objects.get_or_create(
-                        driver=driver,
-                        date=report_date,
-                        defaults={"vehicle": vehicle},
-                    )
-                    if not report.vehicle:
-                        report.vehicle = vehicle
-                        report.save(update_fields=["vehicle"])
-
-                    if created:
-                        created_reports += 1
-
-                    report_cache[key] = report
-
-                # --- 5) 明細行の基本フィールド ---
-                raw_meter_fee = r["meter_fee"]
-                try:
-                    meter_fee_int = int(raw_meter_fee) if raw_meter_fee not in (None, "") else 0
-                except (TypeError, ValueError):
-                    error_messages.append(
-                        f"{excel_row} 行目: meter_fee が整数として解釈できません（値={raw_meter_fee}）。"
-                    )
-                    continue
-
-                payment_method = (r["payment_method"] or "").strip()
-                if not payment_method:
-                    error_messages.append(f"{excel_row} 行目: payment_method が空です。")
-                    continue
-
-                raw_ride_time = r["ride_time"]
-                ride_time = "" if raw_ride_time in (None, "") else str(raw_ride_time).strip()
-
-                ride_from = r["ride_from"] or ""
-                is_charter = r["is_charter"]
-
-                raw_charter_amount = r["charter_amount"]
-                try:
-                    charter_amount_int = int(raw_charter_amount) if raw_charter_amount not in (None, "") else 0
-                except (TypeError, ValueError):
-                    error_messages.append(
-                        f"{excel_row} 行目: charter_amount が整数として解釈できません（値={raw_charter_amount}）。"
-                    )
-                    continue
-
-                charter_payment_method = (r["charter_payment_method"] or "").strip() or None
-                note = r["note"] or ""
-                is_pending = r["is_pending"]
-
-                # --- 6) DriverDailyReportItem を作成 ---
-                item = DriverDailyReportItem(
-                    report=report,
-                    ride_time=ride_time,
-                    ride_from=ride_from,
-                    meter_fee=meter_fee_int,
-                    payment_method=payment_method,
-                    is_charter=is_charter,
-                    charter_amount_jpy=charter_amount_int,
-                    charter_payment_method=charter_payment_method,
-                    note=note,
-                    is_pending=is_pending,
+            if duplicate_warnings:
+                # 重複あり → ここでは取り込まず、確認画面を表示
+                file_b64 = base64.b64encode(file_bytes).decode("ascii")
+                messages.warning(
+                    request,
+                    "同じ日付・ドライバーで『時間／乗車地／降車地』が重複している明細が検出されました。内容を確認してください。"
                 )
-                item.save()
-                created_items += 1
+                return render(
+                    request,
+                    "dailyreport/external_import.html",
+                    {
+                        "form": ExternalDailyReportImportForm(),  # 新しいファイルを選び直すこともできる
+                        "template_version": TEMPLATE_VERSION,
+                        "import_result": None,
+                        "duplicate_warnings": duplicate_warnings,
+                        "file_base64": file_b64,
+                    },
+                )
 
-            if created_items:
+            # 重複なし → そのまま取り込む
+            result = parse_external_dailyreport_excel(BytesIO(file_bytes), current_user=request.user)
+
+            if result["ok"]:
                 messages.success(
                     request,
-                    f"外部日報データを取込しました（日報 {created_reports} 件、明細 {created_items} 行）。",
+                    f"取込完了：日報 {result['created_reports']} 件新規 / "
+                    f"{result['updated_reports']} 件更新、明細 {result['created_items']} 行。"
                 )
+            else:
+                messages.error(request, "一部エラーがあります。内容を確認してください。")
 
-            context = {
-                "form": form,
-                "created_reports": created_reports,
-                "created_items": created_items,
-                "error_messages": error_messages,
-                "template_version": TEMPLATE_VERSION,
-            }
-            return render(request, "dailyreport/external_import_result.html", context)
+            return render(
+                request,
+                "dailyreport/external_import.html",
+                {
+                    "form": ExternalDailyReportImportForm(),
+                    "template_version": TEMPLATE_VERSION,
+                    "import_result": result,
+                    "duplicate_warnings": None,
+                    "file_base64": "",
+                },
+            )
+
+    # ---- GET or フォームエラー時 ----
     else:
         form = ExternalDailyReportImportForm()
 
@@ -2860,6 +3146,9 @@ def external_dailyreport_import(request):
         {
             "form": form,
             "template_version": TEMPLATE_VERSION,
+            "import_result": None,
+            "duplicate_warnings": None,
+            "file_base64": "",
         },
     )
-# ===== END IMPORT_EXTERNAL_DAILYREPORT_VIEW M4 (final) =====
+# ===== END IMPORT_EXTERNAL_DAILYREPORT_VIEW M5 =====

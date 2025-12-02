@@ -1,61 +1,291 @@
-{# ===== BEGIN TEMPLATE: external_import.html T1 ===== #}
 {% extends "staffbook/base_staffbook.html" %}
 {% load static %}
+{% load humanize %}
+
+{% block extra_css %}
+<style>
+  .code-badge {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: .85rem;
+    padding: 0.1rem .35rem;
+    border-radius: .25rem;
+    background: #f1f3f5;
+    border: 1px solid #dee2e6;
+  }
+  .table-sample th,
+  .table-sample td {
+    white-space: nowrap;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-  <h4>外部日報データ取込</h4>
 
-  <div class="alert alert-info mt-2" style="font-size: 14px;">
-    📄 外部入力用テンプレート
-    （現在のバージョン：<strong>{{ template_version }}</strong>）：
-    <a href="{% static 'dailyreport/dailyreport_full_template.xlsx' %}" download>
-      👉 Excelテンプレートをダウンロード
-    </a>
-  </div>
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
 
-  <p class="text-muted mt-2">
-    外部の入力担当者が作成した Excel (.xlsx) をアップロードすると、
-    ドライバー別・日付別に乗務日報と明細が自動作成されます。
+  <h4 class="mb-1">外部データ取込（Excel）</h4>
+  <p class="text-muted mb-2">
+    外部入力担当者が記入した日報データを、Excel からまとめて取り込みます。
   </p>
 
-  <div class="alert alert-info">
-    <div class="mb-1"><strong>Excel フォーマット（シート名: <code>dailyreport</code>）</strong></div>
-    <div class="small">
-      1 行目ヘッダー（固定）：
-      <code>
-        date, driver_code, vehicle_number,
-        ride_time, ride_from, meter_fee, payment_method,
-        is_charter, charter_amount, charter_payment_method,
-        note, is_pending
-      </code>
-      <ul class="mt-1 mb-0">
-        <li><code>date</code> … 日付（例: 2025-11-30）</li>
-        <li><code>driver_code</code> … <strong>Driver の ID(pk)</strong> を入力</li>
-        <li><code>vehicle_number</code> … <strong>Car の ID(pk)</strong> を入力</li>
-        <li><code>ride_time</code> … 任意の文字列（例: 08:35）</li>
-        <li><code>meter_fee</code>, <code>charter_amount</code> … 金額（整数、円）</li>
-        <li><code>payment_method</code>, <code>charter_payment_method</code> … システムの支払方法コード（例: cash, uber, uber_cash, didi など）</li>
-        <li><code>is_charter</code>, <code>is_pending</code> … 1/0, TRUE/FALSE などの真偽値</li>
-      </ul>
+  <!-- バージョン表示 + テンプレートダウンロード -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="small text-muted">
+      現在のテンプレートバージョン：
+      <strong>v{{ template_version }}</strong>
+    </div>
+    <div>
+      <a href="{% static 'dailyreport/dailyreport_full_template_enhanced.xlsx' %}"
+         class="btn btn-sm btn-outline-secondary"
+         download>
+        📄 テンプレート (v{{ template_version }}) をダウンロード
+      </a>
     </div>
   </div>
 
-  <form method="post" enctype="multipart/form-data" class="mt-3">
-    {% csrf_token %}
-    <div class="mb-3">
-      {{ form.file.label_tag }}
-      {{ form.file }}
-      {% if form.file.help_text %}
-        <div class="form-text">{{ form.file.help_text }}</div>
-      {% endif %}
-      {% if form.file.errors %}
-        <div class="text-danger small">{{ form.file.errors }}</div>
-      {% endif %}
+  <!-- 利用手順 -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <h5 class="card-title mb-2">利用手順</h5>
+      <ol class="mb-2">
+        <li>上のボタンから Excel テンプレート（v{{ template_version }}）をダウンロードします。</li>
+        <li>外部入力担当者がテンプレートに従ってデータを入力します。</li>
+        <li>完成した Excel ファイルを、下のフォームからアップロードして取り込みます。</li>
+      </ol>
+      <p class="small text-muted mb-0">
+        ※ テンプレート構成は運用の都合で変更される場合があります。必ず最新バージョンをご利用ください。
+      </p>
     </div>
+  </div>
 
-    <button type="submit" class="btn btn-primary">アップロードして取込実行</button>
-  </form>
+  <!-- フィールド説明 -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <h5 class="card-title mb-2">テンプレート列の説明（シート名: <span class="code-badge">DailyReport</span>）</h5>
+      <ul class="mb-2">
+        <li><code class="code-badge">date</code> … 日付（例: <code>2025-12-01</code>）</li>
+        <li><code class="code-badge">driver_code</code> … ドライバーコード。システムの Driver ID と合わせてください。</li>
+        <li><code class="code-badge">vehicle_number</code> … 車両番号（例: <code>5001</code>）。ナンバー末尾など、システムと対応する値。</li>
+
+        <li><code class="code-badge">clock_in</code> … 出勤時間（例: <code>15:30</code>）。空欄可。</li>
+        <li><code class="code-badge">clock_out</code> … 退勤時間（例: <code>22:44</code>）。空欄可。</li>
+        <li><code class="code-badge">break_time</code> … 休憩時間（<code>H:MM</code> 形式、例: <code>0:00</code>, <code>0:20</code>, <code>1:00</code>）。空欄時は 0:00 相当。</li>
+        <li><code class="code-badge">gas_volume</code> … 給油量（L、小数可。例: <code>0</code>, <code>35.5</code>）。空欄可。</li>
+        <li><code class="code-badge">mileage</code> … 走行距離（km、小数可。例: <code>70</code>, <code>120.3</code>）。空欄可。</li>
+
+        <li><code class="code-badge">ride_time</code> … 個々の乗車時間（例: <code>08:35</code>）。</li>
+        <li><code class="code-badge">ride_from</code> … 乗車地。</li>
+        <li><code class="code-badge">ride_to</code> … 降車地。</li>
+        <li><code class="code-badge">meter_fee</code> … メータ料金（円）。整数推奨。</li>
+        <li>
+          <code class="code-badge">payment_method</code> … 支払方法コード（例: <code>cash</code>, <code>uber_cash</code>, <code>credit_card</code>）。<br>
+          <span class="text-muted">
+            ※ <span class="code-badge">MasterData</span> シートの <span class="code-badge">payment_code</span> を参照し、
+            同じコードを入力してください（プルダウンでも選択可）。
+          </span>
+        </li>
+        <li><code class="code-badge">is_charter</code> … 貸切フラグ。<code>1</code>/<code>0</code> または <code>true</code>/<code>false</code>。</li>
+        <li><code class="code-badge">charter_amount</code> … 貸切金額（円）。</li>
+        <li><code class="code-badge">charter_payment_method</code> … 貸切の受取方法（例: <code>jpy_cash</code>, <code>self_wechat</code> 等）。</li>
+        <li><code class="code-badge">note</code> … 備考・注釈。</li>
+        <li><code class="code-badge">is_pending</code> … 待入フラグ。入金がまだ確定していない場合に <code>1</code>。</li>
+      </ul>
+
+      <hr class="my-3">
+
+      <p class="mb-1">
+        <strong>📝 サンプル行（1 行目にヘッダ、2 行目にデータのイメージ）</strong>
+      </p>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0 table-sample">
+          <thead class="table-light text-center">
+            <tr>
+              <th>date</th>
+              <th>driver_code</th>
+              <th>vehicle_number</th>
+              <th>clock_in</th>
+              <th>clock_out</th>
+              <th>break_time</th>
+              <th>gas_volume</th>
+              <th>mileage</th>
+              <th>ride_time</th>
+              <th>ride_from</th>
+              <th>ride_to</th>
+              <th>meter_fee</th>
+              <th>payment_method</th>
+              <th>is_charter</th>
+              <th>charter_amount</th>
+              <th>charter_payment_method</th>
+              <th>note</th>
+              <th>is_pending</th>
+            </tr>
+          </thead>
+          <tbody class="small">
+            <tr>
+              <td>2025-12-01</td>
+              <td>1</td>
+              <td>5001</td>
+              <td>15:30</td>
+              <td>22:44</td>
+              <td>0:00</td>
+              <td>0</td>
+              <td>70</td>
+              <td>08:35</td>
+              <td>京都駅</td>
+              <td>烏丸御池</td>
+              <td>1500</td>
+              <td>cash</td>
+              <td>0</td>
+              <td></td>
+              <td></td>
+              <td>サンプル行</td>
+              <td>0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="mt-1 text-muted small mb-0">
+        ※ 同じドライバー・同じ日付の行が複数ある場合、
+        <code>clock_in</code> や <code>clock_out</code> 等の日報ヘッダ情報は、
+        <strong>その日の最初の行</strong> だけ入力すれば十分です。以降の行は空欄でも構いません。
+      </p>
+    </div>
+  </div>
+
+  <!-- アップロードフォーム -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Excel ファイルをアップロード</h5>
+
+      <form method="post" enctype="multipart/form-data" class="row g-3">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <div class="col-12">
+            <div class="alert alert-danger">
+              {{ form.non_field_errors }}
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="col-md-8">
+          <label class="form-label">ファイル</label>
+          {{ form.file }}
+          {% if form.file.errors %}
+            <div class="text-danger small">
+              {{ form.file.errors }}
+            </div>
+          {% endif %}
+          <div class="form-text">
+            ※ 対応形式：.xlsx（Excel 2007 以降）
+          </div>
+        </div>
+
+        <div class="col-md-4 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary w-100">
+            📥 取り込みを実行
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 取込結果表示 -->
+  {% if import_result %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-3">取込結果</h5>
+
+        <ul class="mb-2">
+          <li>新規作成された日報: <strong>{{ import_result.created_reports }}</strong> 件</li>
+          <li>更新された日報: <strong>{{ import_result.updated_reports }}</strong> 件</li>
+          <li>作成された明細行: <strong>{{ import_result.created_items }}</strong> 行</li>
+          {% if import_result.version_in_file %}
+            <li>ファイル内テンプレートバージョン: <code class="code-badge">{{ import_result.version_in_file }}</code></li>
+          {% endif %}
+        </ul>
+
+        {% if import_result.errors %}
+          <div class="alert alert-warning small mb-0">
+            <strong>以下の行でエラーが発生しました：</strong>
+            <ul class="mb-0">
+              {% for e in import_result.errors %}
+                <li>{{ e }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% else %}
+          <div class="alert alert-success small mb-0">
+            エラーはありませんでした。
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
 </div>
+
+{# ===== BEGIN PATCH: 重複行の警告＋自動確認 ===== #}
+{% if duplicate_warnings %}
+  <div class="alert alert-warning mt-3">
+    <strong>同じ日付・ドライバーで、時間／乗車地／降車地 が重複している行が検出されました。</strong><br>
+    下記の行は、同一ファイル内で <span class="fw-bold">同一の時間＋乗車地＋降車地</span> が複数回入力されています。
+    <ul class="mb-0 mt-2">
+      {% for dup in duplicate_warnings %}
+        <li>
+          行 {{ dup.first_row }} と 行 {{ dup.row }}：
+          {{ dup.date }} / driver_code={{ dup.driver_code }} /
+          {{ dup.ride_time }} {{ dup.ride_from|default:'（乗車地空）' }} → {{ dup.ride_to|default:'（降車地空）' }}
+        </li>
+      {% endfor %}
+    </ul>
+    <div class="mt-2 small text-muted">
+      ・重複を修正したい場合は、一旦この画面を閉じて Excel を直し、もう一度ファイルを選択して取り込みを実行してください。<br>
+      ・重複を承認してそのまま登録する場合は、下のボタン（または表示される確認ダイアログ）から続行できます。
+    </div>
+  </div>
+
+  <form id="confirm-duplicate-form" method="post" class="mt-3">
+    {% csrf_token %}
+    <input type="hidden" name="confirm_duplicates" value="1">
+    <input type="hidden" name="file_base64" value="{{ file_base64 }}">
+    <button type="submit" class="btn btn-warning">
+      上記の重複を承認して取り込みを実行する
+    </button>
+  </form>
+
+  <script>
+    // ページ表示時に一度だけ確認ダイアログを出し、OKなら自動で再取込を行う
+    (function() {
+      const form = document.getElementById('confirm-duplicate-form');
+      if (!form) return;
+
+      const msg =
+        '同じ日付・ドライバーで、時間／乗車地／降車地が重複している行が検出されました。\\n' +
+        'このまま重複を許可して取り込みを実行してもよろしいですか？\\n\\n' +
+        '［OK］ … 重複を承認して登録する\\n' +
+        '［キャンセル］ … 登録せず、この画面で内容を確認する';
+
+      if (window.confirm(msg)) {
+        form.submit();
+      }
+    })();
+  </script>
+{% endif %}
+{# ===== END PATCH: 重複行の警告＋自動確認 ===== #}
+
 {% endblock %}
-{# ===== END TEMPLATE: external_import.html T1 ===== #}
+
+{% block extra_js %}
+<!-- ここでは特別な JS は不要。必要なら後で追加可能 -->
+{% endblock %}
