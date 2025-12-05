@@ -96,6 +96,21 @@
           {% endif %}
         {% endwith %}
       </div>
+
+      {# ▼ 这里是新加的两行 #}
+      <div class="mt-1">
+        実際ETC 会社 → 運転手：
+        <span class="fw-bold">
+          ¥{{ report.actual_etc_company_to_driver|default:0|floatformat:0|intcomma }}
+        </span>
+      </div>
+      <div>
+        司机負担ETC（給与控除予定）：
+        <span class="fw-bold text-danger">
+          ¥-{{ report.etc_driver_cost|default:0|floatformat:0|intcomma }}
+        </span>
+      </div>
+      {# ▲ 新加结束 #}
     </div>
 
     <div class="small text-muted mt-2">
@@ -103,6 +118,7 @@
     </div>
   </div>
 </div>
+
 {% else %}
   {# 兜底：如果还没传 deposit_summary，就用旧卡片逻辑 #}
   <div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
@@ -119,6 +135,21 @@
           ¥{{ deposit_diff|floatformat:0|intcomma }}
         {% endif %}
       </div>
+
+      {# ▼ 新加两行 #}
+      <div class="mt-1 small">
+        実際ETC 会社 → 運転手：
+        <span class="fw-bold">
+          ¥{{ report.actual_etc_company_to_driver|default:0|floatformat:0|intcomma }}
+        </span>
+      </div>
+      <div class="small">
+        司机負担ETC（給与控除予定）：
+        <span class="fw-bold">
+          ¥-{{ report.etc_driver_cost|default:0|floatformat:0|intcomma }}
+        </span>
+      </div>
+      {# ▲ 新加结束 #}
     </div>
   </div>
 {% endif %}
