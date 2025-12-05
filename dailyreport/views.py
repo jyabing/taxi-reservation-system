@@ -1400,7 +1400,23 @@ def driver_dailyreport_month(request, driver_id):
         items = report.items.all()
         totals = _totals_of(items)
 
-        # 统计 3 类 Uber（仅非貸切、未“待入”）
+        # ① 先算原来的行程売上（メータ＋貸切） → 49,320
+        base_sales_total = int(totals.get('sales_total') or 0)
+
+        # ② 从明细里把“司机负担的ETC（自卡）”算出来
+        driver_etc_total = 0
+        for it in items:
+            # 乗車ETC 司机负担
+            if getattr(it, "etc_riding_charge_type", None) == "driver":
+                driver_etc_total += int(getattr(it, "etc_riding", 0) or 0)
+            # 空車ETC 司机负担
+            if getattr(it, "etc_empty_charge_type", None) == "driver":
+                driver_etc_total += int(getattr(it, "etc_empty", 0) or 0)
+
+        # ✅ 月视图上的「合計」= 行程売上 + 司机负担ETC
+        report.total_all = base_sales_total + driver_etc_total
+
+        # ③ 再算 “メータのみ” = 原来的 meter_only - Uber 预约/チップ/プロモ
         special_uber_sum = 0
         for it in items:
             if getattr(it, 'is_pending', False):
@@ -1410,8 +1426,6 @@ def driver_dailyreport_month(request, driver_id):
             if getattr(it, 'payment_method', '') in SPECIAL_UBER:
                 special_uber_sum += int(getattr(it, 'meter_fee', 0) or 0)
 
-        # 合计仍用原 totals；“メータのみ”= 原来的 meter_only - 3 类 Uber
-        report.total_all = totals['sales_total']
         base_meter_only = totals.get('meter_only_total', totals.get('meter_total', 0)) or 0
         report.meter_only_total = max(0, int(base_meter_only) - special_uber_sum)
 

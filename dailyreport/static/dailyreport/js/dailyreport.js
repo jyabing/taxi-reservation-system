@@ -1187,13 +1187,21 @@ function updateTotals() {
   (function renderOverShortBreakdown() {
     const holder = document.getElementById("difference-breakdown");
     if (!holder || !diffEl) return;
+
     const base = toInt(diffEl.getAttribute("data-base-over-short"), 0);
-    const etc = toInt(diffEl.getAttribute("data-etc-net"), 0);
+    const etc  = toInt(diffEl.getAttribute("data-etc-net"), 0);
     const total = base + etc;
 
     const etcAbs = Math.abs(etc);
     const etcDir = etc >= 0 ? "会社 → 運転手" : "運転手 → 会社";
     const etcCls = etc >= 0 ? "ob-pos" : "ob-neg";
+
+    // 👉 从「ETC 概要」卡片里取 司机負担ETC（工资扣除予定）
+    //    上面 HTML 里有：<span id="etc-driver-cost">{{ form.instance.etc_driver_cost }}</span>
+    const etcDriverCostEl = document.getElementById("etc-driver-cost");
+    const etcDriverCost = etcDriverCostEl
+      ? toInt(etcDriverCostEl.textContent || etcDriverCostEl.innerText, 0)
+      : 0;
 
     holder.innerHTML = `
       <div class="ob-line">
@@ -1205,10 +1213,20 @@ function updateTotals() {
         <span class="ob-mono ${etcCls}">${etc >= 0 ? "＋" : "－"}${etcAbs.toLocaleString()}</span>
       </div>
       <div class="ob-line">
+        <span class="ob-label">司机負担ETC（給与控除予定）</span>
+        <span class="ob-mono ob-neg">-<span id="deposit-etc-driver">0</span> 円</span>
+      </div>
+      <div class="ob-line">
         <span class="ob-label ob-total">合計</span>
         <span class="ob-mono ob-total">${total.toLocaleString()}</span>
       </div>
     `;
+
+    // 把实际的 司机負担ETC 金额写到入金卡片内的那一行
+    const driverSpan = document.getElementById("deposit-etc-driver");
+    if (driverSpan) {
+      driverSpan.textContent = etcDriverCost.toLocaleString();
+    }
   })();
 
   // 「過不足に ETC を含めているか」メモ
@@ -1217,7 +1235,8 @@ function updateTotals() {
     if (!warn) return;
     if (etcNet > 0) {
       warn.className = "small mt-1 text-primary";
-      warn.textContent = `過不足に 実際ETC（会社→運転手 返還）${etcNet.toLocaleString()} 円 を加算しています。`;
+      // 只说明“已反映 ETC”，不再重复金额
+      warn.textContent = "過不足には 実際ETC（会社→運転手 返還）を反映済みです。";
     } else {
       warn.textContent = "";
     }
@@ -1550,7 +1569,7 @@ function evaluateEmptyEtcDetailVisibility() {
 
   // 5) 初始计算 / 状态同步
   initFlatpickr(document);
-  ensureActualEtcIndicator();
+  // ensureActualEtcIndicator();
 
   updateDuration();
   updateRowNumbersAndIndexes();
@@ -1576,30 +1595,6 @@ function evaluateEmptyEtcDetailVisibility() {
   });
 })();
 
-
-// === 热修复：若模板里没有“実際ETC 会社 → 運転手”显示行，运行时自动插入 ===
-function ensureActualEtcIndicator(){
-  const depositInput = document.getElementById('deposit-input');
-  if (!depositInput) return;
-
-  // 已有就不重复加
-  if (document.getElementById('actual_etc_company_to_driver_view')) return;
-
-  const holder = depositInput.closest('div'); // 入金额卡片内层 div
-  if (!holder) return;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'small text-muted mt-1';
-  wrap.innerHTML = '実際ETC 会社 → 運転手：<span id="actual_etc_company_to_driver_view">0</span> 円';
-  holder.appendChild(wrap);
-
-  const hid = document.createElement('input');
-  hid.type = 'hidden';
-  hid.id = 'actual_etc_company_to_driver';
-  hid.name = 'actual_etc_company_to_driver';
-  hid.value = '0';
-  holder.appendChild(hid);
-}
 
 
 /// === BEGIN PATCH: ETC 立替者 select 强制补全选项 + 重命名 ===

@@ -400,9 +400,8 @@ input[type=number] {
             {{ form.deposit_difference.value|default:"--" }}
           </div>
           <div id="difference-breakdown" class="form-text small"></div>
-        </div>
+          </div>
 
-        
         <!-- …其余卡片保持原样… -->
       </div>
       <!-- ✅ 入金 + ETC 综合区域 结束-->
@@ -1214,6 +1213,35 @@ input[type=number] {
     }
   });
 </script>
+
+<script>
+  // 把「実際ETC 会社→運転手」「司机負担ETC」显示到入金額卡片
+  document.addEventListener('DOMContentLoaded', function () {
+    function getIntFromSpan(id) {
+      const el = document.getElementById(id);
+      if (!el) return 0;
+      const txt = (el.textContent || el.innerText || '0').replace(/[^0-9\-]/g, '');
+      const n = parseInt(txt || '0', 10);
+      return isNaN(n) ? 0 : n;
+    }
+
+    // ① 司机垫付 ETC 合计（行明細から集計された driver 分）
+    const driverEtcTotal = getIntFromSpan('etc-driver-total');   // 例: 3980
+    // ② 司机負担ETC（工资扣除予定）
+    const driverEtcCost  = getIntFromSpan('etc-driver-cost');    // 例: 200
+
+    // 会社 → 司机返还的 ETC = 垫付合计 − 最终司机负担
+    const refund = Math.max(0, driverEtcTotal - driverEtcCost);  // 例: 3780
+
+    // 写入入金額卡片里的两行
+    const refundSpan = document.getElementById('deposit-etc-refund');
+    const driverSpan = document.getElementById('deposit-etc-driver');
+
+    if (refundSpan) refundSpan.textContent = refund.toLocaleString();
+    if (driverSpan) driverSpan.textContent = driverEtcCost.toLocaleString();
+  });
+</script>
+
 
 
 {% endblock %}
