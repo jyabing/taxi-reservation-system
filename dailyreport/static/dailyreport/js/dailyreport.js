@@ -1208,17 +1208,34 @@ function updateTotals() {
         <span class="ob-label">基本（入金 − 現金 − 貸切）</span>
         <span class="ob-mono">${base.toLocaleString()}</span>
       </div>
+
       <div class="ob-line">
-        <span class="ob-label">実際ETC <span class="ob-chip" title="行明細ETCの合算で動的計算">${etcDir}</span></span>
-        <span class="ob-mono ${etcCls}">${etc >= 0 ? "＋" : "－"}${etcAbs.toLocaleString()}</span>
+        <span class="ob-label">
+          実際ETC
+          <span class="ob-chip" title="行明細ETCの合算で動的計算">${etcDir}</span>
+        </span>
+        <span class="ob-mono ${etcCls}">
+          ${etc >= 0 ? "＋" : "－"}${etcAbs.toLocaleString()}
+        </span>
       </div>
+
       <div class="ob-line">
-        <span class="ob-label">司机負担ETC（給与控除予定）</span>
-        <span class="ob-mono ob-neg">-<span id="deposit-etc-driver">0</span> 円</span>
-      </div>
-      <div class="ob-line">
-        <span class="ob-label ob-total">合計</span>
+        <span class="ob-label ob-total">合計（過不足）</span>
         <span class="ob-mono ob-total">${total.toLocaleString()}</span>
+      </div>
+
+      <hr class="my-1">
+
+      <div class="ob-line">
+        <span class="ob-label">
+          司机負担ETC（給与控除予定）
+          <span class="ob-chip" title="本日の入金過不足には含まれず、給与で精算されます。">
+            ※ 合計には含まれません
+          </span>
+        </span>
+        <span class="ob-mono ob-neg">
+          -<span id="deposit-etc-driver">0</span> 円
+        </span>
       </div>
     `;
 

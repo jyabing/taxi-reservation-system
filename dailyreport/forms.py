@@ -102,6 +102,12 @@ class ExternalDailyReportImportForm(forms.Form):
         return f
 # ===== END IMPORT_EXTERNAL_DAILYREPORT_FORM M1 =====
 
+# 放在 DriverDailyReportItemForm 前面
+ETC_CHARGE_CHOICES = [
+    ("company",  "会社（会社負担）"),
+    ("driver",   "ドライバー（立替→後日返還）"),
+    ("customer", "お客様（直接精算）"),
+]
 
 # --- 日报明细表单 ---
 class DriverDailyReportItemForm(forms.ModelForm):
@@ -118,15 +124,17 @@ class DriverDailyReportItemForm(forms.ModelForm):
         widget=forms.HiddenInput(),
     )
 
-    # 新字段：Select
-    etc_riding_charge_type = forms.CharField(
+    # 新字段：明确 ChoiceField（后端自带选项，不再靠 JS 填）
+    etc_riding_charge_type = forms.ChoiceField(
         required=False,
+        choices=ETC_CHARGE_CHOICES,
         widget=forms.Select(
             attrs={"class": "form-select form-select-sm etc-riding-charge-select"}
         ),
     )
-    etc_empty_charge_type = forms.CharField(
+    etc_empty_charge_type = forms.ChoiceField(
         required=False,
+        choices=ETC_CHARGE_CHOICES,
         widget=forms.Select(
             attrs={"class": "form-select form-select-sm etc-empty-charge-select"}
         ),
@@ -194,6 +202,22 @@ class DriverDailyReportItemForm(forms.ModelForm):
         except Exception:
             v = 0
         return max(0, v)
+
+    def clean(self):
+        cleaned = super().clean()
+
+        default_charge = "company"
+        ride = cleaned.get("etc_riding_charge_type") or default_charge
+        empty = cleaned.get("etc_empty_charge_type") or default_charge
+
+        # 强制写回，避免 None
+        cleaned["etc_riding_charge_type"] = ride
+        cleaned["etc_empty_charge_type"] = empty
+
+        # 旧字段始终跟乘車側负担同步（兼容你旧逻辑）
+        cleaned["etc_charge_type"] = ride
+
+        return cleaned
 
     # —— 负担类型：空/乱值一律回退到 'company' —— #
     def clean_etc_riding_charge_type(self):
