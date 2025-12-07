@@ -881,20 +881,21 @@ function updateTotals() {
   let uberPromotionTotal = 0, uberPromotionCount = 0;
   let specialUberSum = 0;          // Uber予約/チップ/プロモーション の合計
 
-  let etcCollectedTotal = 0;       // 「ETC 收取金额（円）」用于计入各支付方式合計
+  let etcCollectedTotal = 0;       // 「ETC 收取金额（円）」用于计入各支付方式合計（现已只做显示）
 
   // ---- 行レベル ETC 集計 ----
   let rideEtcSum = 0;          // 乗車ETC 合計
   let emptyEtcSum = 0;         // 空車ETC 合計
   let etcCompany = 0;          // 会社負担
-  let etcDriver = 0;           // ドライバー立替
+  let etcDriver = 0;           // ドライバー立替（乘车+空车）
   let etcCustomer = 0;         // お客様支払
   let actualEtcCompanyToDriver = 0; // 実際ETC（会社→運転手 返還額）
   let driverEmptyEtc = 0;      // ドライバー負担の空車ETC 合計（回程費でカバー判定用）
 
-  // 売上に含める「客付ETC」の合計（会社→運転手ではなく、客人が負担した ETC）
+  // 売上に含める「客付ETC」の合計（客が負担した ETC + B类司机垫→公司侧结算）
   let etcSalesTotal = 0;
 
+  // “公司侧结算”的支付方式（resolveJsPaymentMethod 后）
   const COMPANY_SIDE = new Set([
     "uber",
     "didi",
@@ -940,7 +941,6 @@ function updateTotals() {
     const charterPaySelect = row.querySelector(".charter-payment-method-select");
     const charterPayMethod = charterPaySelect ? charterPaySelect.value || "" : "";
 
-    // ===== 行レベル ETC 値の取得（class 名前と name の両方に対応） =====
     // ===== [PATCH ETC-CHARGE-FALLBACK] 行レベル ETC 値の取得 =====
     const rideEtcInput =
       row.querySelector(".etc-riding-input") ||
@@ -982,7 +982,7 @@ function updateTotals() {
     }
     // ===== [PATCH ETC-CHARGE-FALLBACK END] =====
 
-    // 集計
+    // 集計（公司 / 司机 / 客人）
     rideEtcSum += rideEtc;
     emptyEtcSum += emptyEtc;
 
@@ -997,14 +997,15 @@ function updateTotals() {
       else if (emptyCharge === "customer") etcCustomer += emptyEtc;
     }
     if (emptyEtc > 0 && emptyCharge === "driver") {
+      // 司机负担的空车ETC，用于后面“回程费覆盖”计算
       driverEmptyEtc += emptyEtc;
     }
 
-    // ====== PATCH: 本行の「売上に乗せる ETC」：ETC対照表 B / C 類 ======
+    // ====== 本行の「売上に乗せる ETC」：ETC対照表 B / C 類 ======
     let etcForSalesRow = 0;
     const paidBy = resolveJsPaymentMethod(paymentRaw);
 
-    // ① 乗車ETC
+    // ① 乘车ETC
     if (rideEtc > 0) {
       if (rideCharge === "customer") {
         // C 類：お客様が直接負担（現金 / アプリで精算）
@@ -1016,7 +1017,7 @@ function updateTotals() {
       }
     }
 
-    // ② 空車ETC：通常は客が乗っていないため売上には含めない
+    // ② 空车ETC：通常は客が乗っていないため売上には含めない
     if (emptyEtc > 0 && emptyCharge === "customer") {
       // 理論上ほぼ発生しないが、安全のため残しておく
       etcForSalesRow += emptyEtc;
@@ -1024,15 +1025,46 @@ function updateTotals() {
 
     // 売上用 ETC 合計
     etcSalesTotal += etcForSalesRow;
-    // ====== PATCH END ======
 
-    // 「実際ETC 会社→運転手」：乗車ETC で 立替者=ドライバー & 支払方法=会社側 の合計
-    if (rideEtc > 0) {
-      const paidBy = resolveJsPaymentMethod(paymentRaw);
-      if (rideCharge === "driver" && COMPANY_SIDE.has(paidBy)) {
+    // ===== 「実際ETC 会社→運転手」：乘车 + 空车（司机垫 + 公司侧结算） =====
+    (function calcActualEtcForRow() {
+      // 乘车部分：司机垫付 + 公司侧结算
+      const paidByForRide = resolveJsPaymentMethod(paymentRaw);
+      if (
+        rideEtc > 0 &&
+        rideCharge === "driver" &&
+        COMPANY_SIDE.has(paidByForRide)
+      ) {
         actualEtcCompanyToDriver += rideEtc;
       }
-    }
+
+      // 空车部分：优先使用“实际使用额”等专用字段
+      let emptyUsed = emptyEtc;
+      const emptyUsedInput =
+        row.querySelector(".etc-empty-used-input") ||
+        row.querySelector("input[name$='-etc_empty_used_amount']");
+      if (emptyUsedInput) {
+        emptyUsed = toInt(emptyUsedInput.value, emptyEtc);
+      }
+
+      let emptyPaidBy = paidByForRide;
+      const emptyPaySel =
+        row.querySelector(".etc-empty-pay-method-select") ||
+        row.querySelector("select[name$='-etc_empty_pay_method']");
+      if (emptyPaySel) {
+        emptyPaidBy = resolveJsPaymentMethod(
+          emptyPaySel.value || paymentRaw
+        );
+      }
+
+      if (
+        emptyUsed > 0 &&
+        emptyCharge === "driver" &&
+        COMPANY_SIDE.has(emptyPaidBy)
+      ) {
+        actualEtcCompanyToDriver += emptyUsed;
+      }
+    })();
 
     // ===== 支払方法ごとの売上集計 =====
     if (!isCharter) {
@@ -1084,13 +1116,9 @@ function updateTotals() {
     }
   });
 
-  
-
   // ====== 1) 売上系の表示 ======
 
-  // ① 「ETC 收取金额」面板は【表示用】にする：
-  //    - 行明細から計算した etcSalesTotal を「建议値」として自動反映
-  //    - ここでの入力値は売上計算には使わない（控え・照合用）
+  // ① 「ETC 收取金额」面板は【表示用】にする
   let etcCollectedPanel = 0;
   (function syncEtcCollectedPanel() {
     const etcInput = document.getElementById("id_etc_collected");
@@ -1106,7 +1134,6 @@ function updateTotals() {
       etcCollectedPanel = panelVal;
     }
 
-    // 若以后想显示详细拆分，可以在此写入某个 span
     const breakdownEl = document.getElementById("etc-collected-breakdown");
     if (breakdownEl) {
       breakdownEl.textContent =
@@ -1114,7 +1141,7 @@ function updateTotals() {
     }
   })();
 
-  // ② 売上合計：只看【メータ + 行明细からの売上用ETC + 特殊Uber + 貸切】
+  // ② 売上合計：メータ + 行明细からの売上用ETC + 特殊Uber + 貸切
   const salesTotal =
     meterOnlyTotal +
     etcSalesTotal +
@@ -1122,7 +1149,6 @@ function updateTotals() {
     charterCashTotal +
     charterUncollectedTotal;
 
-  // 这些展示逻辑保持不变
   idText("total_meter_only", meterOnlyTotal);
   idText("total_meter", salesTotal);
   idText("sales-total", salesTotal);
@@ -1146,7 +1172,7 @@ function updateTotals() {
   idText("etc-driver-total", etcDriver);
   idText("etc-customer-total", etcCustomer);
 
-  // 実際ETC 会社→運転手
+  // 実際ETC 会社→運転手（乘车 + 空车）
   idText("actual_etc_company_to_driver_view", actualEtcCompanyToDriver);
   const actualHidden = document.getElementById("actual_etc_company_to_driver");
   if (actualHidden) actualHidden.value = actualEtcCompanyToDriver;
@@ -1197,7 +1223,6 @@ function updateTotals() {
     const etcCls = etc >= 0 ? "ob-pos" : "ob-neg";
 
     // 👉 从「ETC 概要」卡片里取 司机負担ETC（工资扣除予定）
-    //    上面 HTML 里有：<span id="etc-driver-cost">{{ form.instance.etc_driver_cost }}</span>
     const etcDriverCostEl = document.getElementById("etc-driver-cost");
     const etcDriverCost = etcDriverCostEl
       ? toInt(etcDriverCostEl.textContent || etcDriverCostEl.innerText, 0)
@@ -1239,7 +1264,6 @@ function updateTotals() {
       </div>
     `;
 
-    // 把实际的 司机負担ETC 金额写到入金卡片内的那一行
     const driverSpan = document.getElementById("deposit-etc-driver");
     if (driverSpan) {
       driverSpan.textContent = etcDriverCost.toLocaleString();
@@ -1252,7 +1276,6 @@ function updateTotals() {
     if (!warn) return;
     if (etcNet > 0) {
       warn.className = "small mt-1 text-primary";
-      // 只说明“已反映 ETC”，不再重复金额
       warn.textContent = "過不足には 実際ETC（会社→運転手 返還）を反映済みです。";
     } else {
       warn.textContent = "";
@@ -1267,7 +1290,7 @@ function updateTotals() {
 
     let driverCost = etcDriver; // まず「ドライバー立替」全額からスタート
 
-    // ① 乘車ETC で 会社側決済された分（actualEtcCompanyToDriver）を引く
+    // ① 乗車ETC で 会社側決済された分（actualEtcCompanyToDriver）を引く
     driverCost -= actualEtcCompanyToDriver;
 
     // ② 回程費でカバーされた空車ETC を引く
@@ -1313,7 +1336,6 @@ function updateTotals() {
     } catch (e) {}
   }
 
-  // 行別ETC 明細テーブル再構築
   if (typeof rebuildEtcDetailTable === "function") {
     try {
       rebuildEtcDetailTable();
