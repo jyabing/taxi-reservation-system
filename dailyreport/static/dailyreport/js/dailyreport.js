@@ -759,6 +759,26 @@ function fillPaymentMethodOptions(root) {
 }
 
 
+// ===== ETC 立替者归一化（ドライバー / 会社 / お客様） =====
+function normalizeEtcCharge(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "company";
+
+  // 先看英文值
+  if (v === "driver")   return "driver";
+  if (v === "company")  return "company";
+  if (v === "customer") return "customer";
+
+  // 再看日文文案
+  if (v.includes("ドライバー")) return "driver";
+  if (v.includes("お客様"))     return "customer";
+  if (v.includes("会社"))       return "company";
+
+  // 兜底：当成公司负担
+  return "company";
+}
+
+
 // ====== 支付方式归一化（保留旧口径） ======
 function resolveJsPaymentMethod(raw) {
   if (!raw) return "";
@@ -887,9 +907,9 @@ function updateTotals() {
   let rideEtcSum = 0;          // 乗車ETC 合計
   let emptyEtcSum = 0;         // 空車ETC 合計
   let etcCompany = 0;          // 会社負担
-  let etcDriver = 0;           // ドライバー立替（乘车+空车）
+  let etcDriver = 0;           // 「driver負担」マークのETC 合計（乗車＋空車）
   let etcCustomer = 0;         // お客様支払
-  let actualEtcCompanyToDriver = 0; // 実際ETC（会社→運転手 返還額）
+  let actualEtcCompanyToDriver = 0; // 実際ETC（会社→運転手 返還額：後で集計）
   let driverEmptyEtc = 0;      // ドライバー負担の空車ETC 合計（回程費でカバー判定用）
 
   // 売上に含める「客付ETC」の合計（客が負担した ETC + B类司机垫→公司侧结算）
@@ -975,7 +995,7 @@ function updateTotals() {
       rideCharge = legacyChargeRaw || "company";
     }
 
-    // 空車負担：优先用行内 select，若无效 → 先沿用乘車负担，再兜底旧字段/company
+    // 空車負担：优先用行内 select，若无效 → 先沿用乘車負担，再兜底旧字段/company
     let emptyCharge = emptyChargeRaw;
     if (!emptyCharge || !ALLOWED_CHARGE.has(emptyCharge)) {
       emptyCharge = emptyChargeRaw || rideCharge || legacyChargeRaw || "company";
@@ -1026,46 +1046,8 @@ function updateTotals() {
     // 売上用 ETC 合計
     etcSalesTotal += etcForSalesRow;
 
-    // ===== 「実際ETC 会社→運転手」：乘车 + 空车（司机垫 + 公司侧结算） =====
-    (function calcActualEtcForRow() {
-      // 乘车部分：司机垫付 + 公司侧结算
-      const paidByForRide = resolveJsPaymentMethod(paymentRaw);
-      if (
-        rideEtc > 0 &&
-        rideCharge === "driver" &&
-        COMPANY_SIDE.has(paidByForRide)
-      ) {
-        actualEtcCompanyToDriver += rideEtc;
-      }
-
-      // 空车部分：优先使用“实际使用额”等专用字段
-      let emptyUsed = emptyEtc;
-      const emptyUsedInput =
-        row.querySelector(".etc-empty-used-input") ||
-        row.querySelector("input[name$='-etc_empty_used_amount']");
-      if (emptyUsedInput) {
-        emptyUsed = toInt(emptyUsedInput.value, emptyEtc);
-      }
-
-      let emptyPaidBy = paidByForRide;
-      const emptyPaySel =
-        row.querySelector(".etc-empty-pay-method-select") ||
-        row.querySelector("select[name$='-etc_empty_pay_method']");
-      if (emptyPaySel) {
-        emptyPaidBy = resolveJsPaymentMethod(
-          emptyPaySel.value || paymentRaw
-        );
-      }
-
-      if (
-        emptyUsed > 0 &&
-        emptyCharge === "driver" &&
-        COMPANY_SIDE.has(emptyPaidBy)
-      ) {
-        actualEtcCompanyToDriver += emptyUsed;
-      }
-    })();
-
+    // 👉 ここでは actualEtcCompanyToDriver を行単位では加算しない
+    // （集計はループ後の M1 ブロックで etcDriver / driverEmptyEtc から計算する）
     // ===== 支払方法ごとの売上集計 =====
     if (!isCharter) {
       if (fee > 0) {
@@ -1115,6 +1097,20 @@ function updateTotals() {
         charterUncollectedTotal += charterAmount;
     }
   });
+
+  // ===== BEGIN INSERT ETC-DRIVER-SUMMARY M1 =====
+  // 司机負担ETC（工资扣除予定）：ここでは「空車ETC＋driver負担」をベースとする
+  const driverEtcDeductionTotal = driverEmptyEtc;
+
+  // 実費ETC（会社 → 運転手）：
+  // 「driver負担」とマークされたETCのうち、
+  // ドライバー自身が最終的に負担すべき空車分（driverEmptyEtc）を除いた残りを
+  // 会社→運転手の返金とみなす（B類：乗車ETCを会社側が決済するケース）。
+  actualEtcCompanyToDriver = etcDriver - driverEmptyEtc;
+  if (actualEtcCompanyToDriver < 0) {
+    actualEtcCompanyToDriver = 0;
+  }
+  // ===== END INSERT ETC-DRIVER-SUMMARY M1 =====
 
   // ====== 1) 売上系の表示 ======
 
@@ -1288,10 +1284,8 @@ function updateTotals() {
     const driverCostHidden = document.getElementById("id_etc_driver_cost");
     if (!driverCostView && !driverCostHidden) return;
 
-    let driverCost = etcDriver; // まず「ドライバー立替」全額からスタート
-
-    // ① 乗車ETC で 会社側決済された分（actualEtcCompanyToDriver）を引く
-    driverCost -= actualEtcCompanyToDriver;
+    // ベース：ドライバー負担の空車ETC 全額
+    let driverCost = driverEtcDeductionTotal;
 
     // ② 回程費でカバーされた空車ETC を引く
     const emptyCard =
@@ -1307,6 +1301,8 @@ function updateTotals() {
 
     if (
       emptyCard === "own" &&
+      typeof ETC_COVERAGE !== "undefined" &&
+      ETC_COVERAGE.coverReturnMethods &&
       ETC_COVERAGE.coverReturnMethods.has(returnMeth)
     ) {
       const covered = Math.min(driverEmptyEtc, returnClaim);
@@ -1343,6 +1339,7 @@ function updateTotals() {
   }
 }
 /* ====== REPLACE TO HERE ====== */
+
 
 
 
@@ -1636,62 +1633,7 @@ function evaluateEmptyEtcDetailVisibility() {
 
 
 
-/// === BEGIN PATCH: ETC 立替者 select 强制补全选项 + 重命名 ===
-document.addEventListener('DOMContentLoaded', () => {
-  document
-    .querySelectorAll('.etc-riding-charge-select, .etc-empty-charge-select')
-    .forEach(sel => {
-      if (!sel) return;
 
-      // ⭐ NEW：从后端表单写入的 data-initial 里拿“原始选中值”
-      const initVal = sel.getAttribute('data-initial') || '';
-
-      // 1) 如果完全没有 option，就强制补上三条
-      let opts = sel.querySelectorAll('option');
-      if (!opts || opts.length === 0) {
-        const defs = [
-          ['company',  '会社（会社負担）'],
-          ['driver',   'ドライバー（立替→後日返還）'],
-          ['customer', 'お客様（直接精算）'],
-        ];
-
-        const currentVal = (sel.value || '').trim();
-        defs.forEach(([val, label]) => {
-          const op = document.createElement('option');
-          op.value = val;
-          op.textContent = label;
-          if (!currentVal && val === 'company') {
-            // 没有原始值时，默认选「会社」
-            op.selected = true;
-          } else if (currentVal && currentVal === val) {
-            op.selected = true;
-          }
-          sel.appendChild(op);
-        });
-
-        // 这里不再 return，让下面的“恢复 initVal”也有机会执行
-        // return;
-      }
-
-      // 2) 有 option 的情况，只是把文字改成统一说明版
-      sel.querySelectorAll('option').forEach(op => {
-        const v = (op.value || '').trim();
-        if (v === 'driver') {
-          op.textContent = 'ドライバー（立替→後日返還）';
-        } else if (v === 'company') {
-          op.textContent = '会社（会社負担）';
-        } else if (v === 'customer') {
-          op.textContent = 'お客様（直接精算）';
-        }
-      });
-
-      // 3) ⭐ NEW：如果后端提供了 data-initial，就最终以它为准恢复选中值
-      if (initVal) {
-        sel.value = initVal;
-      }
-    });
-});
-/// === END PATCH ===
 
 // =====================================================
 // 解决“返回后最后一行不保存”的问题：
