@@ -33,6 +33,7 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.core.mail import send_mail
 from dateutil.relativedelta import relativedelta
+from dailyreport.order_analysis import build_monthly_order_stats
 
 from carinfo.services.car_access import (
     get_all_active_cars,
@@ -61,6 +62,7 @@ from staffbook.models import Driver
 
 # ✅ 邮件通知工具
 from vehicles.utils import notify_admin_about_new_reservation
+
 
 def is_vehicles_admin(user):
     return user.is_authenticated and (user.is_superuser or getattr(user.userprofile, 'is_vehicles_admin', False))
@@ -109,6 +111,199 @@ def overlap_q(start_date, start_time, end_date, end_time):
 
 # 有效会参与冲突判断的状态（按你系统语义可调整）
 CONFLICT_STATUSES = [ReservationStatus.PENDING, ReservationStatus.BOOKED, ReservationStatus.OUT]
+
+# ===== BEGIN M-ORDER-STEP1: 单司机月度订单结构统计辅助 =====
+
+def _canon_payment_method_for_order(v: str) -> str:
+    """
+    订单分析用的支付方式归一化（与日报/Excel 的别名保持一致）。
+    """
+    if not v:
+        return ''
+    s = str(v).strip().lower()
+    aliases = {
+        "現金": "cash", "现金": "cash", "cash(現金)": "cash",
+        "uber現金": "uber_cash", "didi現金": "didi_cash", "go現金": "go_cash",
+        "バーコード": "qr", "barcode": "qr", "bar_code": "qr", "qr_code": "qr",
+        "company card": "credit", "company_card": "credit", "credit card": "credit", "会社カード": "credit",
+        "jp_cash": "jpy_cash", "jpy cash": "jpy_cash", "jpy-cash": "jpy_cash",
+        "人民幣現金": "rmb_cash", "人民币现金": "rmb_cash",
+        "自有微信": "self_wechat", "老板微信": "boss_wechat",
+        "公司回收": "to_company", "会社回収": "to_company", "公司结算": "to_company",
+        "銀行振込": "bank_transfer", "bank": "bank_transfer",
+        "uber予約": "uber_reservation", "ubertip": "uber_tip", "uber tip": "uber_tip",
+        "uberプロモーション": "uber_promotion",
+    }
+    return aliases.get(s, s)
+
+
+def _order_source_group(pm_canon: str, is_charter: bool, charter_pm_canon: str = "") -> str:
+    """
+    按“来源/类型”给订单分组：
+      - street_cash: 路上メータ現金（含平台现金别名）
+      - platform_uber / platform_didi / platform_go: 平台売上
+      - charter_cash: 貸切現金
+      - charter_uncol: 貸切未収（公司回收/振込等）
+      - other: 其他
+    """
+    if is_charter:
+        c = charter_pm_canon or pm_canon
+        if c in {"jpy_cash", "rmb_cash", "self_wechat", "boss_wechat", "cash", "jp_cash"}:
+            return "charter_cash"
+        elif c in {"to_company", "bank_transfer", ""}:
+            return "charter_uncol"
+        else:
+            return "other"
+
+    # 非貸切（メータ）
+    if pm_canon in {"cash", "jpy_cash", "uber_cash", "didi_cash", "go_cash"}:
+        return "street_cash"
+    if pm_canon in {"uber", "uber_reservation", "uber_tip", "uber_promotion"}:
+        return "platform_uber"
+    if pm_canon in {"didi"}:
+        return "platform_didi"
+    if pm_canon in {"go"}:
+        return "platform_go"
+    return "other"
+
+
+def build_driver_month_order_stats(driver, month_start, month_end):
+    """
+    统计某司机在某月的订单结构：
+      - total_trips / total_amount
+      - source_breakdown: 来源结构（路上现金 / Uber / DiDi / GO / 貸切等）
+      - size_breakdown: 单价段结构（~999 / 1000-1999 / ... / 5000+）
+      - time_breakdown: 时段结构（00-05 / 05-10 / ... / 20-24）
+    返回 dict，给模板/前端图表使用。
+    """
+    items_qs = (
+        DriverDailyReportItem.objects
+        .filter(
+            report__driver=driver,
+            report__date__gte=month_start,
+            report__date__lt=month_end,
+        )
+        .select_related("report")
+    )
+
+    total_trips = items_qs.count()
+    total_amount = 0
+
+    # 来源结构
+    source_map = defaultdict(lambda: {"trips": 0, "amount": 0})
+
+    # 单价段结构
+    size_buckets_def = [
+        ("~999", 0, 999),
+        ("1000-1999", 1000, 1999),
+        ("2000-2999", 2000, 2999),
+        ("3000-4999", 3000, 4999),
+        ("5000+", 5000, None),
+    ]
+    size_map = {label: {"trips": 0, "amount": 0} for (label, _, _) in size_buckets_def}
+
+    # 时段结构（按上车时间小时）
+    time_buckets_def = [
+        ("00-05", 0, 5),
+        ("05-10", 5, 10),
+        ("10-15", 10, 15),
+        ("15-20", 15, 20),
+        ("20-24", 20, 24),
+    ]
+    time_map = {label: {"trips": 0, "amount": 0} for (label, _, _) in time_buckets_def}
+
+    for it in items_qs:
+        is_charter = bool(getattr(it, "is_charter", False))
+        meter_fee = int(getattr(it, "meter_fee", 0) or 0)
+        charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
+        amount = charter_jpy if is_charter else meter_fee
+
+        if amount <= 0:
+            continue
+
+        total_amount += amount
+
+        pm_raw = getattr(it, "charter_payment_method", None) if is_charter else getattr(it, "payment_method", None)
+        pm_canon = _canon_payment_method_for_order(pm_raw)
+        charter_pm_canon = _canon_payment_method_for_order(getattr(it, "charter_payment_method", None))
+
+        # 1) 来源分组
+        grp = _order_source_group(pm_canon, is_charter, charter_pm_canon)
+        source_map[grp]["trips"] += 1
+        source_map[grp]["amount"] += amount
+
+        # 2) 单价段分组
+        for label, lo, hi in size_buckets_def:
+            if amount >= lo and (hi is None or amount <= hi):
+                size_map[label]["trips"] += 1
+                size_map[label]["amount"] += amount
+                break
+
+        # 3) 时段分组（基于 ride_time 字段）
+        ride_time = getattr(it, "ride_time", None)
+        hour = None
+        if ride_time:
+            if isinstance(ride_time, str):
+                try:
+                    hour = int(ride_time[0:2])
+                except Exception:
+                    hour = None
+            else:
+                try:
+                    hour = ride_time.hour
+                except Exception:
+                    hour = None
+
+        if hour is not None:
+            for label, h_start, h_end in time_buckets_def:
+                if h_start <= hour < h_end:
+                    time_map[label]["trips"] += 1
+                    time_map[label]["amount"] += amount
+                    break
+
+    def _map_to_list(map_obj, label_map=None):
+        res = []
+        trips_base = total_trips or 1
+        amount_base = total_amount or 1
+        for key, v in map_obj.items():
+            lbl = label_map.get(key, key) if label_map else key
+            trips = v["trips"]
+            amt = v["amount"]
+            res.append({
+                "key": key,
+                "label": lbl,
+                "trips": trips,
+                "amount": amt,
+                "trip_ratio": float(trips / trips_base) if trips_base else 0.0,
+                "amount_ratio": float(amt / amount_base) if amount_base else 0.0,
+            })
+        # 按金额降序，图表更直观
+        res.sort(key=lambda d: d["amount"], reverse=True)
+        return res
+
+    source_label_map = {
+        "street_cash": "路上現金（メータ）",
+        "platform_uber": "Uber",
+        "platform_didi": "DiDi",
+        "platform_go": "GO/アプリ",
+        "charter_cash": "貸切現金",
+        "charter_uncol": "貸切未収",
+        "other": "その他",
+    }
+
+    source_breakdown = _map_to_list(source_map, source_label_map)
+    size_breakdown = _map_to_list(size_map, None)
+    time_breakdown = _map_to_list(time_map, None)
+
+    return {
+        "total_trips": total_trips,
+        "total_amount": total_amount,
+        "source_breakdown": source_breakdown,
+        "size_breakdown": size_breakdown,
+        "time_breakdown": time_breakdown,
+    }
+
+# ===== END M-ORDER-STEP1 =====
 
 @login_required
 def recent_reservations_view(request, car_id):
@@ -1551,6 +1746,7 @@ def fetch_sales(user, start_date, end_date):
 def is_admin(user):
     return user.is_staff
 
+# ======= BEGIN REPLACE: admin_stats_view（月度后台 + 订单结构统计） =======
 @login_required
 @user_passes_test(is_admin)
 def admin_stats_view(request):
@@ -1558,8 +1754,9 @@ def admin_stats_view(request):
     month_str = request.GET.get('month')
     try:
         query_month = datetime.strptime(month_str, "%Y-%m") if month_str else datetime.now()
-    except:
+    except Exception:
         query_month = datetime.now()
+
     month_start = query_month.replace(day=1)
     next_month = (month_start + timedelta(days=32)).replace(day=1)
     month_end = next_month - timedelta(days=1)
@@ -1582,7 +1779,7 @@ def admin_stats_view(request):
             driver=driver,
             date__gte=month_start.date(),
             end_date__lte=month_end.date(),
-            status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT, ReservationStatus.DONE]
+            status__in=[ReservationStatus.BOOKED, ReservationStatus.OUT, ReservationStatus.DONE],
         )
 
         # 出入库总次数
@@ -1594,11 +1791,12 @@ def admin_stats_view(request):
             start_dt = datetime.combine(r.date, r.start_time)
             end_dt = datetime.combine(r.end_date, r.end_time)
             total_seconds += (end_dt - start_dt).total_seconds()
+
         total_hours = total_seconds // 3600
         total_days = total_seconds // 86400
         total_time_str = f"{int(total_days)}天, {int(total_hours % 24)}:{int((total_seconds % 3600) // 60):02d}"
 
-        # 売上与工资（示例：本地API或外部API获取）
+        # 売上与工资（暂时仍用现有 stub；后面如果要，也可以改成调用订单统计）
         sales = fetch_sales(driver, month_start.date(), month_end.date())
         salary = round(sales * 0.7, 2)
 
@@ -1610,19 +1808,37 @@ def admin_stats_view(request):
             "salary": salary,
         })
 
+    # ===== 新增：本月全员订单结构统计（使用 build_monthly_order_stats） =====
+    # 注意：build_monthly_order_stats 内部用 parse_date，所以这里传「YYYY-MM-DD」字符串
+    date_from_str = month_start.strftime("%Y-%m-%d")
+    date_to_str = month_end.strftime("%Y-%m-%d")
+
+    monthly_order_stats = build_monthly_order_stats(
+        date_from=date_from_str,
+        date_to=date_to_str,
+        driver=None,          # 全员
+    )
+    # 给模板用的 dict + JSON（方便前端 JS 做图表）
+    monthly_order_stats_dict = monthly_order_stats.as_dict()
+    monthly_order_stats_json = json.dumps(monthly_order_stats_dict, ensure_ascii=False)
+
     context = {
-         "page_obj": page_obj,
-         "stats_list": stats_list,
-       # "month": month_start.strftime("%Y-%m"),
-         "month": month_start.strftime("%Y-%m"),
-         "driver_id": driver_id or "all",
-         "drivers": DriverUser.objects.all(),
-         # ✅ 新增：精确月末与统一透传的起止日期
-         "month_end": month_end.strftime("%Y-%m-%d"),
-         "date_from": month_start.strftime("%Y-%m-01"),
-         "date_to": month_end.strftime("%Y-%m-%d"),
-     }
+        "page_obj": page_obj,
+        "stats_list": stats_list,
+        "month": month_start.strftime("%Y-%m"),
+        "driver_id": driver_id or "all",
+        "drivers": DriverUser.objects.all(),
+        # ✅ 精确月末与统一透传的起止日期（你原来就有）
+        "month_end": month_end.strftime("%Y-%m-%d"),
+        "date_from": month_start.strftime("%Y-%m-01"),
+        "date_to": month_end.strftime("%Y-%m-%d"),
+        # ✅ 新增：订单结构数据
+        "order_stats": monthly_order_stats,          # Python 对象（有属性）
+        "order_stats_dict": monthly_order_stats_dict,  # 普通 dict
+        "order_stats_json": monthly_order_stats_json,  # JSON 字符串（前端 JS 用）
+    }
     return render(request, "vehicles/admin_stats.html", context)
+# ======= END REPLACE: admin_stats_view（月度后台 + 订单结构统计） =======
 
 @csrf_exempt
 def upload_vehicle_image(request):
@@ -1928,7 +2144,7 @@ def my_dailyreports(request):
     })
 
 
-
+# ====== REPLACE FROM HERE: my_daily_report_detail ======
 @login_required
 def my_daily_report_detail(request, report_id):
     report = get_object_or_404(DriverDailyReport, id=report_id, driver__user=request.user)
@@ -1982,9 +2198,7 @@ def my_daily_report_detail(request, report_id):
     # ✅ 排序
     items = sorted(items_raw, key=parse_ride_datetime)
 
-        # === [同一时间 ↳ 标记 BEGIN] ===
-    # 规则：按当前 items 顺序（已按时间排好），若与上一条时间字符串完全一致，
-    #       则将 item._is_same_time_child = True（从第2条开始为 True）
+    # === [同一时间 ↳ 标记 BEGIN] ===
     last_time_str = None
     for it in items:
         rt = getattr(it, "ride_time", None)
@@ -1999,15 +2213,10 @@ def my_daily_report_detail(request, report_id):
                 cur = str(rt)
 
         is_child = (last_time_str is not None and cur == last_time_str and cur != "")
-
-        # 兼容旧代码（如果 Python 里有人用到“私有名”）
         setattr(it, "_is_same_time_child", is_child)
-        # 提供模板可用的“公开名”
         setattr(it, "is_same_time_child", is_child)
-
         last_time_str = cur
     # === [同一时间 ↳ 标记 END] ===
-
 
     # ✅ 金额统计 —— 先用统一口径拿合计
     totals = _totals_of(items)  # items 是我们已排序/去重后的列表
@@ -2016,14 +2225,12 @@ def my_daily_report_detail(request, report_id):
     # === 追加：在本页也按月视图口径计算「メータのみ」 ===
     SPECIAL_UBER = {'uber_reservation', 'uber_tip', 'uber_promotion'}
 
-    # ① 基础“メータのみ”= 非貸切 且 有支付方式 的メータ合计
     base_meter_only = sum(
         int(getattr(it, 'meter_fee', 0) or 0)
         for it in items
         if not getattr(it, 'is_charter', False) and getattr(it, 'payment_method', None)
     )
 
-    # ② 三类 Uber（予約/チップ/プロモ）总额（也只看非貸切）
     special_uber_sum = sum(
         int(getattr(it, 'meter_fee', 0) or 0)
         for it in items
@@ -2031,7 +2238,6 @@ def my_daily_report_detail(request, report_id):
         and getattr(it, 'payment_method', '') in SPECIAL_UBER
     )
 
-    # ③ 详情页用的「メータのみ」
     meter_only_total = max(0, base_meter_only - special_uber_sum)
     # === 追加结束 ===
 
@@ -2048,7 +2254,7 @@ def my_daily_report_detail(request, report_id):
     deposit_diff = deposit - total_cash
     is_deposit_exact = (deposit_diff == 0)
 
-    # ✅ 本月出勤日数
+    # ✅ 本月出勤日数（[当月1日, 下月1日)）
     month_start = report.date.replace(day=1)
     month_end   = month_start + relativedelta(months=1)
     attendance_days = (
@@ -2057,26 +2263,23 @@ def my_daily_report_detail(request, report_id):
         .values('date').distinct().count()
     )
 
-    # ✅ 新增：调用 _totals_of，得到正确的 sales_total 和 meter_only_total
+    # ✅ 新增：调用 _totals_of，得到正确的 meter_only_total（备用）
     totals = _totals_of(report.items.all())
     report.meter_only_total = totals.get("meter_only_total", 0)
 
-        # === 统一口径：「应入金 = ながし現金 + 貸切現金」 ===
+    # === 统一口径：「应入金 = ながし現金 + 貸切現金」 ===
     def _canon_pm(v: str) -> str:
         s = (v or "").strip().lower()
         aliases = {
             "現金": "cash", "现金": "cash", "cash(現金)": "cash",
             "uber現金": "uber_cash", "didi現金": "didi_cash", "go現金": "go_cash",
-            "バーコード":"qr","barcode":"qr","bar_code":"qr","qr_code":"qr",
-            "company card":"credit","company_card":"credit","credit card":"credit","会社カード":"credit",
-            "jp_cash":"jpy_cash","jpy cash":"jpy_cash","jpy-cash":"jpy_cash",
+            "バーコード": "qr", "barcode": "qr", "bar_code": "qr", "qr_code": "qr",
+            "company card": "credit", "company_card": "credit", "credit card": "credit", "会社カード": "credit",
+            "jp_cash": "jpy_cash", "jpy cash": "jpy_cash", "jpy-cash": "jpy_cash",
         }
         return aliases.get(s, s)
 
-    # 非貸切（メーター）の“ながし現金”口径：含平台现金别名
     NAGASHI_CASH_KEYS = {"cash", "uber_cash", "didi_cash", "go_cash"}
-
-    # 貸切的“現金”口径：含公司里常见的日元/人民币/微信等
     CHARTER_CASH_KEYS = {"jpy_cash", "rmb_cash", "self_wechat", "boss_wechat", "cash", "jp_cash"}
 
     nagashi_cash = sum(
@@ -2098,13 +2301,68 @@ def my_daily_report_detail(request, report_id):
     deposit_diff_unified = deposit_amount - expected_deposit
 
     deposit_summary = {
-        "nagashi_cash": nagashi_cash,            # ながし現金（含平台现金别名）
-        "charter_cash": charter_cash,            # 貸切現金
-        "expected_deposit": expected_deposit,    # 应入金
-        "deposit_amount": deposit_amount,        # 实入金（表头的入金）
-        "deposit_difference": deposit_diff_unified,  # 差額（实入金-应入金）
+        "nagashi_cash": nagashi_cash,
+        "charter_cash": charter_cash,
+        "expected_deposit": expected_deposit,
+        "deposit_amount": deposit_amount,
+        "deposit_difference": deposit_diff_unified,
     }
 
+    # ===== 新增：本月跑法结构，用于 doughnut 图 =====
+    month_structure = []
+    month_structure_data = {}
+
+    try:
+        # month_end 是“下月1日”，这里用当月最后一天做闭区间
+        stats_obj = build_monthly_order_stats(
+            date_from=month_start,
+            date_to=month_end - timedelta(days=1),
+            driver=report.driver,
+        )
+        s = stats_obj.as_dict()
+
+        meter_only = int(s.get("meter_only_total", 0) or 0)
+        charter_total = int(
+            (s.get("charter_cash_total", 0) or 0)
+            + (s.get("charter_uncollected_total", 0) or 0)
+            + (s.get("charter_unknown_total", 0) or 0)
+        )
+        platform_total = int(
+            (s.get("uber_total", 0) or 0)
+            + (s.get("didi_total", 0) or 0)
+            + (s.get("go_total", 0) or 0)
+        )
+        card_qr_total = int(
+            (s.get("credit_total", 0) or 0)
+            + (s.get("qr_total", 0) or 0)
+        )
+        ticket_total = int(
+            (s.get("kyokushin_total", 0) or 0)
+            + (s.get("omron_total", 0) or 0)
+            + (s.get("kyotoshi_total", 0) or 0)
+        )
+
+        month_structure = [
+            {"label": "路上メータ", "value": meter_only},
+            {"label": "貸切(现金+未收)", "value": charter_total},
+            {"label": "平台(Uber/DiDi/GO)", "value": platform_total},
+            {"label": "クレジット・QR", "value": card_qr_total},
+            {"label": "社券(京交信/オムロン/京都市他)", "value": ticket_total},
+        ]
+
+        # 过滤掉 0 金额的项目
+        month_structure = [x for x in month_structure if x["value"] > 0]
+
+        if month_structure:
+            month_structure_data = {
+                "labels": [x["label"] for x in month_structure],
+                "values": [int(x["value"]) for x in month_structure],
+            }
+        else:
+            month_structure_data = {}
+    except Exception:
+        month_structure = []
+        month_structure_data = {}
 
     return render(request, 'vehicles/my_daily_report_detail.html', {
         'report': report,
@@ -2113,18 +2371,22 @@ def my_daily_report_detail(request, report_id):
         'end_time': end_time,
         'duration': duration,
 
-        'total_cash': total_cash,            # 保留原字段（旧口径）
+        'total_cash': total_cash,
         'total_sales': total_sales,
         'meter_only_total': meter_only_total,
 
         'deposit': deposit,
-        'deposit_diff': deposit_diff,        # 保留原字段（旧口径）
+        'deposit_diff': deposit_diff,
         'is_deposit_exact': is_deposit_exact,
         'attendance_days': attendance_days,
 
-        'deposit_summary': deposit_summary,  # 👈 新增：统一口径用这个
-    })
+        'deposit_summary': deposit_summary,
 
+        # 👇 新增：本月跑法结构
+        'month_structure': month_structure,
+        'month_structure_data': month_structure_data,
+    })
+# ====== REPLACE END: my_daily_report_detail ======
 
 
 # 函数：生成到期提醒文案（提前5天～当天～延后5天）

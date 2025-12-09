@@ -52,4 +52,96 @@
   {% endif %}
 </div>
 <p><a href="{% url 'vehicles:vehicle_status' %}">← 返回状态页</a></p>
+
+
+{# ====== 新增：本月全员订单结构 摘要 + 饼图 ====== #}
+{% if order_stats %}
+  <hr>
+  <h3>本月全员订单结构（{{ month }}）</h3>
+
+  <div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-start;">
+    <div>
+      <table border="1">
+        <tr><th>项目</th><th>金额(円)</th></tr>
+        <tr><td>メーター（水揚）合計</td><td>{{ order_stats.meter_water_total }}</td></tr>
+        <tr><td>メータのみ合計</td><td>{{ order_stats.meter_only_total }}</td></tr>
+        <tr><td>現金合計</td><td>{{ order_stats.cash_total }}</td></tr>
+        <tr><td>Uber合計</td><td>{{ order_stats.uber_total }}</td></tr>
+        <tr><td>DiDi合計</td><td>{{ order_stats.didi_total }}</td></tr>
+        <tr><td>クレジット合計</td><td>{{ order_stats.credit_total }}</td></tr>
+        <tr><td>招待(QR/PayPay)合計</td><td>{{ order_stats.qr_total }}</td></tr>
+        <tr><td>京交信合計</td><td>{{ order_stats.kyokushin_total }}</td></tr>
+        <tr><td>オムロン合計</td><td>{{ order_stats.omron_total }}</td></tr>
+        <tr><td>京都市他合計</td><td>{{ order_stats.kyotoshi_total }}</td></tr>
+        <tr><td>貸切現金</td><td>{{ order_stats.charter_cash_total }}</td></tr>
+        <tr><td>貸切未収</td><td>{{ order_stats.charter_uncollected_total }}</td></tr>
+      </table>
+    </div>
+
+    <div style="flex:1; min-width:320px;">
+      <canvas id="monthlyOrderPie"></canvas>
+    </div>
+  </div>
+{% endif %}
+{# ====== 新增结束 ====== #}
+
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+{# ====== 新增：Chart.js 初始化脚本 ====== #}
+{% if order_stats_json %}
+<script>
+(function () {
+  const raw = '{{ order_stats_json|escapejs }}';
+  if (!raw || raw === "{}") return;
+
+  const stats = JSON.parse(raw);
+
+  const ctx = document.getElementById('monthlyOrderPie');
+  if (!ctx) return;
+
+  // 一个简单的“收入结构饼图”：现金+貸切現金 / Uber / DiDi / クレジット / 招待 / 车票系 / 貸切未収
+  const labels = [
+    '現金(メーター+貸切)',
+    'Uber',
+    'DiDi',
+    'クレジット',
+    '招待(QR/PayPay等)',
+    '京交信+オムロン+京都市他',
+    '貸切未収'
+  ];
+
+  const data = [
+    (stats.cash_total || 0) + (stats.charter_cash_total || 0),
+    stats.uber_total || 0,
+    stats.didi_total || 0,
+    stats.credit_total || 0,
+    stats.qr_total || 0,
+    (stats.kyokushin_total || 0) + (stats.omron_total || 0) + (stats.kyotoshi_total || 0),
+    stats.charter_uncollected_total || 0,
+  ];
+
+  new Chart(ctx, {
+    type: 'pie',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { position: 'right' },
+        title: {
+          display: true,
+          text: '{{ month }} 全员売上構成'
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+{# ====== 新增结束 ====== #}
+
 {% endblock %}

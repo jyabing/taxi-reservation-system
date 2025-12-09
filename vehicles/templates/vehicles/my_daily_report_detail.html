@@ -72,7 +72,7 @@
 
 {% if deposit_summary %}
 <!-- 入金（统一口径） = ながし現金 + 貸切現金 -->
-<div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
+<div class="card border-start border-4 border-success shadow-sm mt-3" style="min-width: 160px;">
   <div class="card-body py-2 px-3">
     <div class="small text-muted">入金（统一口径）</div>
 
@@ -97,7 +97,6 @@
         {% endwith %}
       </div>
 
-      {# ▼ 这里是新加的两行 #}
       <div class="mt-1">
         実際ETC 会社 → 運転手：
         <span class="fw-bold">
@@ -110,7 +109,6 @@
           ¥-{{ report.etc_driver_cost|default:0|floatformat:0|intcomma }}
         </span>
       </div>
-      {# ▲ 新加结束 #}
     </div>
 
     <div class="small text-muted mt-2">
@@ -120,40 +118,36 @@
 </div>
 
 {% else %}
-  {# 兜底：如果还没传 deposit_summary，就用旧卡片逻辑 #}
-  <div class="card border-start border-4 border-success shadow-sm" style="min-width: 160px;">
-    <div class="card-body py-2 px-3">
-      <div class="small text-muted">入金金額</div>
-      <div class="fw-bold">¥{{ deposit|floatformat:0|intcomma }}</div>
-      <div class="small text-muted mt-1">
-        （入金 − 現金） =
-        {% if is_deposit_exact %}
-          ¥0
-        {% elif deposit_diff > 0 %}
-          +¥{{ deposit_diff|floatformat:0|intcomma }}
-        {% else %}
-          ¥{{ deposit_diff|floatformat:0|intcomma }}
-        {% endif %}
-      </div>
+<div class="card border-start border-4 border-success shadow-sm mt-3" style="min-width: 160px;">
+  <div class="card-body py-2 px-3">
+    <div class="small text-muted">入金金額</div>
+    <div class="fw-bold">¥{{ deposit|floatformat:0|intcomma }}</div>
+    <div class="small text-muted mt-1">
+      （入金 − 現金） =
+      {% if is_deposit_exact %}
+        ¥0
+      {% elif deposit_diff > 0 %}
+        +¥{{ deposit_diff|floatformat:0|intcomma }}
+      {% else %}
+        ¥{{ deposit_diff|floatformat:0|intcomma }}
+      {% endif %}
+    </div>
 
-      {# ▼ 新加两行 #}
-      <div class="mt-1 small">
-        実際ETC 会社 → 運転手：
-        <span class="fw-bold">
-          ¥{{ report.actual_etc_company_to_driver|default:0|floatformat:0|intcomma }}
-        </span>
-      </div>
-      <div class="small">
-        司机負担ETC（給与控除予定）：
-        <span class="fw-bold">
-          ¥-{{ report.etc_driver_cost|default:0|floatformat:0|intcomma }}
-        </span>
-      </div>
-      {# ▲ 新加结束 #}
+    <div class="mt-1 small">
+      実際ETC 会社 → 運転手：
+      <span class="fw-bold">
+        ¥{{ report.actual_etc_company_to_driver|default:0|floatformat:0|intcomma }}
+      </span>
+    </div>
+    <div class="small">
+      司机負担ETC（給与控除予定）：
+      <span class="fw-bold">
+        ¥-{{ report.etc_driver_cost|default:0|floatformat:0|intcomma }}
+      </span>
     </div>
   </div>
+</div>
 {% endif %}
-
 
 <!-- 明细表 -->
 {% if items %}
@@ -172,7 +166,6 @@
         <tbody>
           {% for item in items %}
             <tr class="{% if item.note or item.is_flagged %}table-warning{% endif %}">
-              <!-- === [同一时间 ↳ 渲染 BEGIN] === -->
               <td class="{% if item.is_same_time_child %}same-time-child{% endif %}">
                 {% if item.is_same_time_child %}
                   <span class="same-time-prefix">↳</span> {{ item.ride_time }}
@@ -180,7 +173,6 @@
                   {{ item.ride_time }}
                 {% endif %}
               </td>
-              <!-- === [同一时间 ↳ 渲染 END] === -->
               <td>{{ item.ride_from }}</td>
               <td>{{ item.meter_fee }}</td>
               <td>{{ item.get_payment_method_display }}</td>
@@ -198,6 +190,38 @@
   <div class="text-muted mt-3">无行程明细</div>
 {% endif %}
 
+<!-- ===== 新增：本月跑法结构（环形图） ===== -->
+{% if month_structure_data.values %}
+  <div class="card shadow-sm mt-4">
+    <div class="card-body">
+      <h5 class="card-title mb-3">本月跑法结构（{{ report.date|date:"Y年m月" }}）</h5>
+      <div class="row">
+        <div class="col-md-6">
+          <canvas id="monthStructureChart" height="220"></canvas>
+        </div>
+        <div class="col-md-6 small">
+          <ul class="list-unstyled mb-0">
+            {% for item in month_structure %}
+              <li>
+                <span class="fw-bold">{{ item.label }}</span>：
+                ¥{{ item.value|floatformat:0|intcomma }}
+              </li>
+            {% endfor %}
+          </ul>
+          <div class="mt-2 text-muted">
+            ※ 以本月全部订单金额为基准，查看“路上 / 貸切 / 平台 / カード・QR / 社券”结构，
+            帮你判断今天的跑法是不是偏向“挣钱跑法”。
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# 把结构数据塞进隐藏 JSON script，供 Chart.js 使用 #}
+  {{ month_structure_data|json_script:"month-structure-data" }}
+{% endif %}
+<!-- ===== 新增结束 ===== -->
+
 <p class="mt-4">
   <a href="{% url 'vehicles:my_dailyreports' %}" class="btn btn-outline-secondary btn-sm">← 返回日报列表</a>
 </p>
@@ -207,5 +231,49 @@
   .same-time-prefix { display:inline-block; width:1.25em; margin-right:.25em; color:#6c757d; }
 </style>
 
+<!-- Chart.js & 绘图脚本 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function() {
+  const dataEl = document.getElementById('month-structure-data');
+  if (!dataEl) return;
+
+  const data = JSON.parse(dataEl.textContent || '{}');
+  if (!data.values || !data.values.length) return;
+
+  const ctx = document.getElementById('monthStructureChart');
+  if (!ctx) return;
+
+  const total = data.values.reduce(function(a, b) { return a + b; }, 0);
+
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.values,
+      }]
+    },
+    options: {
+      cutout: '60%',
+      plugins: {
+        legend: {
+          position: 'right',
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.label || '';
+              const value = context.raw || 0;
+              const pct = total ? (value / total * 100).toFixed(1) : 0;
+              return label + ': ¥' + value.toLocaleString() + ' (' + pct + '%)';
+            }
+          }
+        }
+      }
+    }
+  });
+})();
+</script>
 
 {% endblock %}
