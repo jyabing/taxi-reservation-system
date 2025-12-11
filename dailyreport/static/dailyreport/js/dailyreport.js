@@ -410,7 +410,35 @@ function bindRowEvents(row) {
     sync(); // 初始渲染一次
   })();
 
-    // === [PATCH C3] 行级 ETC 智能提示：怀疑“空車ETC 立替者”选错时给出提醒 ===
+    // === 「乗車ETC負担」「空車ETC負担」行内提示 ===
+  (function attachChargeHints(){
+    const rideSel  = row.querySelector('.etc-riding-charge-select');
+    const emptySel = row.querySelector('.etc-empty-charge-select');
+    const rideHint = row.querySelector('.js-ride-charge-hint');
+    const emptyHint= row.querySelector('.js-empty-charge-hint');
+
+    function textRide(v){
+      if (v === 'driver')   return '司机垫付：若本行款项进公司，将返还司机（仅对乘车有效）';
+      if (v === 'company')  return '公司承担：不计入返还';
+      if (v === 'customer') return '客人承担：已由客人结算';
+      return '';
+    }
+    function textEmpty(v){
+      if (v === 'driver')   return '司机自付：可按回程政策判断是否覆盖/报销';
+      if (v === 'company')  return '公司承担';
+      if (v === 'customer') return '（通常不选）';
+      return '';
+    }
+    function sync(){
+      if (rideHint && rideSel)  rideHint.textContent  = textRide(rideSel.value);
+      if (emptyHint && emptySel) emptyHint.textContent = textEmpty(emptySel.value);
+    }
+    if (rideSel)  rideSel.addEventListener('change', sync);
+    if (emptySel) emptySel.addEventListener('change', sync);
+    sync(); // 初始渲染一次
+  })();
+
+  // === [PATCH C3] 行级 ETC 智能提示：怀疑“空車ETC 立替者”选错时给出提醒 ===
   (function attachEtcSmartSuggestion(){
     const rideEtcInput   = row.querySelector('.etc-riding-input');
     const emptyEtcInput  = row.querySelector('.etc-empty-input');
@@ -508,6 +536,9 @@ function bindRowEvents(row) {
   })();
   // === [PATCH C3 END] ===
 
+  // === [PATCH ETC-HINT ROW BEGIN] 行级「ETC 未入力」引导提示 ===
+  attachEtcNeedInputHint(row);
+  // === [PATCH ETC-HINT ROW END] ===
 
   // 行级ETC 三字段（乗車ETC・空車ETC・各自の立替者）
   $all(
@@ -525,6 +556,7 @@ function bindRowEvents(row) {
     });
   });
 }
+
 
 // ====== 找到“明细行 items formset”的 TOTAL_FORMS 输入框（严格版） ======
 function findItemsTotalInput() {
@@ -803,6 +835,168 @@ function resolveJsPaymentMethod(raw) {
   return val;
 }
 
+// === [PATCH ETC-HINT FUNCTIONS BEGIN] 行级「ETC 未入力」引导逻辑 ===
+
+// 备注中出现这些关键词时，认为“很可能有高速/ETC”
+const ETC_HINT_KEYWORDS = [
+  "高速",
+  "有料道路",
+  "首都高",
+  "阪神高速",
+  "名神",
+  "京滋バイパス",
+  "第二京阪",
+  "高速代",
+  "ＥＴＣ",
+  "ETC"
+];
+
+// 这些支付方式下，经常附带高速（用 resolveJsPaymentMethod 归一化后的值）
+const ETC_HINT_SUSPECT_PAYS = new Set([
+  "uber",
+  "didi",
+  "go",
+  "credit",
+  "kyokushin",
+  "omron",
+  "kyotoshi",
+  "qr"
+]);
+
+/**
+ * 在单行内挂 ETC 提示：
+ * - 如果乘车/空车 ETC 都是 0
+ * - 且“备注命中关键词”或“支付方式属于容易有高速类型”
+ * → 在备注列下方显示一条“请确认/填写高速ETC”的提示，并给 ETC 输入框加醒目标记。
+ */
+function attachEtcNeedInputHint(row) {
+  if (!row) return;
+
+  const rideEtcInput =
+    row.querySelector(".etc-riding-input") ||
+    row.querySelector("input[name$='-etc_riding']");
+  const emptyEtcInput =
+    row.querySelector(".etc-empty-input") ||
+    row.querySelector("input[name$='-etc_empty']");
+
+  // 行中没有 ETC 输入就不处理
+  if (!rideEtcInput && !emptyEtcInput) return;
+
+  const paySel =
+    row.querySelector("select[name$='-payment_method']") ||
+    row.querySelector(".payment-method-select");
+
+  // 备注输入：优先找 textarea[name$='-note']，退一步找 .note-input
+  const noteInput =
+    row.querySelector("textarea[name$='-note']") ||
+    row.querySelector(".note-input");
+
+  // 提示容器塞在备注列底部；如果拿不到 .note-cell，就退回整行末尾
+  let noteCell = row.querySelector(".note-cell");
+  if (!noteCell) {
+    noteCell = (noteInput && noteInput.closest("td")) || row;
+  }
+
+  let hintBox = noteCell.querySelector(".js-etc-need-input-hint");
+  if (!hintBox) {
+    hintBox = document.createElement("div");
+    hintBox.className = "js-etc-need-input-hint mt-1 small";
+    noteCell.appendChild(hintBox);
+  }
+
+  function recomputeEtcNeedHint() {
+    const rideEtc = toInt(rideEtcInput && rideEtcInput.value, 0);
+    const emptyEtc = toInt(emptyEtcInput && emptyEtcInput.value, 0);
+    const etcSum = rideEtc + emptyEtc;
+
+    const noteText = noteInput && noteInput.value ? String(noteInput.value) : "";
+    const payRaw = paySel && paySel.value ? paySel.value : "";
+    const payNorm = resolveJsPaymentMethod(payRaw || "");
+
+    // === [PATCH ETC-AMOUNT-THRESHOLD BEGIN] 新增金额门槛：未满 10,000円 不提示 ===
+
+    // 取得金额（你的字段应该是 fare 或 meter_fee，根据模板自行确认 name）
+    const fareInput = row.querySelector("input[name$='-fare'], input[name$='-meter_fee']");
+    const fare = toInt(fareInput && fareInput.value, 0);
+
+    // 低于 10000 → 直接不提示（清除现有提示 + 退出）
+    if (fare < 10000) {
+        clearEtcNeedHint(hintBox, rideEtcInput, emptyEtcInput);
+        return;
+    }
+
+    // === [PATCH ETC-AMOUNT-THRESHOLD END] ===
+
+    // 已经填了任意一个 ETC，就不再提示
+    if (etcSum > 0) {
+      clearEtcNeedHint(hintBox, rideEtcInput, emptyEtcInput);
+      return;
+    }
+
+    const hasKeyword = ETC_HINT_KEYWORDS.some((kw) =>
+      noteText.indexOf(kw) !== -1
+    );
+    const isSuspectPay = payNorm && ETC_HINT_SUSPECT_PAYS.has(payNorm);
+
+    // 既没有关键词、支付方式也不敏感 → 不提示
+    if (!hasKeyword && !isSuspectPay) {
+      clearEtcNeedHint(hintBox, rideEtcInput, emptyEtcInput);
+      return;
+    }
+
+    // === [PATCH ETC-HINT UI BEGIN] 行级 ETC 提示改为小标签 + hover 详细说明 ===
+    hintBox.className = "js-etc-need-input-hint etc-hint-wrapper mt-1";
+    hintBox.innerHTML = `
+      <span class="etc-hint-badge">⚠ 高速？</span>
+      <div class="etc-hint-detail">
+        高速・ETC を利用した可能性があります。<br>
+        この行の乗車/空車 ETC 金額が未入力です。<br>
+        運転手が立替している場合は ETC 金額を入力してください。
+      </div>
+    `;
+    // === [PATCH ETC-HINT UI END] ===
+
+    [rideEtcInput, emptyEtcInput].forEach((inp) => {
+      if (inp) inp.classList.add("etc-need-warning");
+    });
+  }
+
+  // 绑定事件：备注 / 支払方法 / ETC 金额 任何变化都重新判断一次
+  if (noteInput) {
+    noteInput.addEventListener("input", recomputeEtcNeedHint);
+  }
+  if (paySel) {
+    paySel.addEventListener("change", recomputeEtcNeedHint);
+  }
+  if (rideEtcInput) {
+    rideEtcInput.addEventListener("input", recomputeEtcNeedHint);
+    rideEtcInput.addEventListener("change", recomputeEtcNeedHint);
+  }
+  if (emptyEtcInput) {
+    emptyEtcInput.addEventListener("input", recomputeEtcNeedHint);
+    emptyEtcInput.addEventListener("change", recomputeEtcNeedHint);
+  }
+
+  // 初始跑一遍
+  recomputeEtcNeedHint();
+}
+
+/**
+ * 清除单行的 ETC 提示与高亮
+ */
+function clearEtcNeedHint(hintBox, rideEtcInput, emptyEtcInput) {
+  if (hintBox) {
+    hintBox.textContent = "";
+    hintBox.className = "js-etc-need-input-hint mt-1 small";
+  }
+  [rideEtcInput, emptyEtcInput].forEach((inp) => {
+    if (inp) inp.classList.remove("etc-need-warning");
+  });
+}
+
+// === [PATCH ETC-HINT FUNCTIONS END] ===
+
+
 // ====== 合计（旧逻辑 + 行级ETC聚合 + 過不足含「実際ETC 会社→運転手」） ======
 // ===== 行別ETC 明細テーブルを再構築 =====
 function rebuildEtcDetailTable() {
@@ -914,6 +1108,11 @@ function updateTotals() {
 
   // 売上に含める「客付ETC」の合計（客が負担した ETC + B类司机垫→公司侧结算）
   let etcSalesTotal = 0;
+
+  // 支払方法別の高速・ETC 小計（売上には含めない・表示用）
+  let etcUber = 0;
+  let etcGo = 0;
+  let etcCash = 0;
 
   // “公司侧结算”的支付方式（resolveJsPaymentMethod 后）
   const COMPANY_SIDE = new Set([
@@ -1036,14 +1235,26 @@ function updateTotals() {
       }
     }
 
-    // ② 空车ETC：通常は客が乗っていないため売上には含めない
+    // ② 空車ETC：通常は客が乗っていないため売上には含めない
     if (emptyEtc > 0 && emptyCharge === "customer") {
       // 几乎不会发生，留作兜底
       etcForSalesRow += emptyEtc;
     }
 
-    // 売上用 ETC 合計
+    // 売上用 ETC 合計（※ 売上合計には今後含めないが、ETC 收取面板还会用到）
     etcSalesTotal += etcForSalesRow;
+
+    // 支払方法別の高速・ETC 小計（売上に乗せる ETC のみ、Uber内高速 等に出す）
+    if (etcForSalesRow > 0) {
+      if (paidBy === "uber") {
+        etcUber += etcForSalesRow;
+      } else if (paidBy === "go") {
+        etcGo += etcForSalesRow;
+      } else if (paidBy === "cash") {
+        etcCash += etcForSalesRow;
+      }
+    }
+
 
     // ===== 支払方法ごとの売上集計 =====
     if (!isCharter) {
@@ -1126,7 +1337,6 @@ function updateTotals() {
 
   const salesTotal =
     meterOnlyTotal +
-    etcSalesTotal +
     specialUberSum +
     charterCashTotal +
     charterUncollectedTotal;
@@ -1144,15 +1354,33 @@ function updateTotals() {
 
   Object.entries(totalMap).forEach(([k, v]) => idText(`total_${k}`, v));
 
+  // 支払方法ごとの売上（ETC除く）と高速・ETC 内訳
+  idText("uber-sales-total", (totalMap.uber || 0) - etcUber);
+  idText("uber-etc-total", etcUber);
+
+  idText("go-sales-total", (totalMap.go || 0) - etcGo);
+  idText("go-etc-total", etcGo);
+
+  idText("cash-sales-total", (totalMap.cash || 0) - etcCash);
+  idText("cash-etc-total", etcCash);
+
   idText("charter-cash-total", charterCashTotal);
   idText("charter-uncollected-total", charterUncollectedTotal);
 
   // ====== 2) ETC 概要 ======
+  const etcTotalOverall = rideEtcSum + emptyEtcSum;
+
   idText("ride-etc-total", rideEtcSum);
   idText("empty-etc-total", emptyEtcSum);
   idText("etc-company-total", etcCompany);
   idText("etc-driver-total", etcDriver);
   idText("etc-customer-total", etcCustomer);
+
+  // 高速・ETC 等立替（表示用：売上とは別の軸）
+  idText("etc-total-overall", etcTotalOverall);
+  idText("etc-uber-total", etcUber);
+  idText("etc-go-total", etcGo);
+  idText("etc-cash-total", etcCash);
 
   idText("actual_etc_company_to_driver_view", actualEtcCompanyToDriver);
   const actualHidden = document.getElementById("actual_etc_company_to_driver");

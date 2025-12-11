@@ -51,7 +51,8 @@
                 <p class="text-muted">（メータのみ: ￥{{ report.meter_only_total|default:0|intcomma }}）</p>
                 
                 <p class="text-muted small">
-                  ※ 売上合計 = メータのみ ＋ 貸切現金 ＋ 貸切未収 ＋ Uber予約/チップ/プロモ
+                  ※ 売上合計（高速・ETC除く）= メータのみ ＋ 貸切現金 ＋ 貸切未収 ＋ Uber予約/チップ/プロモ 等。<br>
+                  高速・ETC等の通行料金は売上に含めず、別途「ETC等立替」として管理します。
                   {% if report.charter_unknown_total and report.charter_unknown_total|floatformat:"0" != "0" %}
                     ＋ 未分類(￥{{ report.charter_unknown_total|floatformat:"0"|intcomma }})
                   {% endif %}

@@ -152,6 +152,99 @@ class DriverDailyReport(models.Model):
         blank=True,
     )
     # ===== [END PATCH] =====
+
+    # =============================
+    # 跑法判断：方案 1（结构）
+    # =============================
+    def calc_money_style(self):
+        """
+        判断今天是不是挣钱跑法（结构判断）
+        """
+        PLATFORM = {"uber", "didi", "go", "uber_reserve"}
+
+        today_items = self.items.all()
+
+        # 本月所有单（同司机，同年月）
+        month_items = DriverDailyReportItem.objects.filter(
+            report__driver=self.driver,
+            report__date__year=self.date.year,
+            report__date__month=self.date.month,
+        )
+
+        def split(items):
+            total = Decimal("0")
+            non_platform = Decimal("0")
+
+            for i in items:
+                amt = Decimal(i.amount)
+                total += amt
+                if i.payment_method not in PLATFORM:
+                    non_platform += amt
+            return total, non_platform
+
+        month_total, month_non = split(month_items)
+        today_total, today_non = split(today_items)
+
+        if month_total == 0 or today_total == 0:
+            return None
+
+        month_rate = month_non / month_total
+        today_rate = today_non / today_total
+        diff = today_rate - month_rate
+
+        if diff >= Decimal("0.10"):
+            return {
+                "label": "挣钱跑法 🟢",
+                "level": "profit",
+                "today": today_rate,
+                "month": month_rate,
+            }
+        elif diff <= Decimal("-0.10"):
+            return {
+                "label": "平台偏重 🔴",
+                "level": "platform",
+                "today": today_rate,
+                "month": month_rate,
+            }
+        else:
+            return {
+                "label": "结构正常 ⚪",
+                "level": "neutral",
+                "today": today_rate,
+                "month": month_rate,
+            }
+
+    # =============================
+    # 跑法判断：方案 2（挣钱指数）
+    # =============================
+    def calc_money_index(self):
+        """
+        净收益指数（考虑抽成）
+        """
+        WEIGHT = {
+            "cash": Decimal("1.00"),
+            "credit": Decimal("0.95"),
+            "qr": Decimal("0.95"),
+            "uber": Decimal("0.80"),
+            "didi": Decimal("0.80"),
+            "go": Decimal("0.80"),
+            "uber_reserve": Decimal("0.80"),
+            "ticket": Decimal("0.60"),
+        }
+
+        items = self.items.all()
+        total = Decimal("0")
+        weighted = Decimal("0")
+
+        for i in items:
+            amt = Decimal(i.amount)
+            total += amt
+            weighted += amt * WEIGHT.get(i.payment_method, Decimal("0.90"))
+
+        if total == 0:
+            return None
+
+        return weighted / total
     
     
     # ✅ 新增字段：ETC不足部分（多跑未补收）

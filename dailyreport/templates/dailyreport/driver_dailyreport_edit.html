@@ -100,6 +100,61 @@ input[type=number] {
 .badge-etc-pos{ color:#0d6efd; }  /* 公司→司机 */
 .badge-etc-neg{ color:#dc3545; }  /* 司机→公司 */
 
+/* ===== [PATCH ETC-HINT CSS BEGIN] 行级 ETC 提示的展示样式 ===== */
+
+/* 外层 wrapper：用于定位 hover 气泡 */
+.etc-hint-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-left: 4px;
+}
+
+/* 小标签本体：看起来像一个小灰色 badge */
+.etc-hint-badge {
+  display: inline-block;
+  padding: 1px 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  background-color: #f5f5f5;
+  color: #666;
+  cursor: help;
+  white-space: nowrap;
+}
+
+/* hover 时弹出的详细提示 */
+.etc-hint-detail {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  width: 240px;
+
+  font-size: 12px;
+  line-height: 1.4;
+  color: #333;
+  background-color: #fffbea;
+  border: 1px solid #f0d98c;
+  border-radius: 4px;
+  z-index: 20;
+  box-shadow: 0 2px 4px rgba(0,0,0,.08);
+}
+
+/* 鼠标移到 badge 上才显示详细提示 */
+.etc-hint-wrapper:hover .etc-hint-detail {
+  display: block;
+}
+
+/* ETC 输入框高亮（如果你之前已有 .etc-need-warning，可保留或略微调淡） */
+.etc-need-warning {
+  border-color: #ff9800 !important;
+  box-shadow: 0 0 0 1px rgba(255,152,0,.3);
+}
+
+/* ===== [PATCH ETC-HINT CSS END] ===== */
 
 </style>
 
@@ -296,22 +351,45 @@ input[type=number] {
     <div id="payment-summary-panel" class="d-flex flex-wrap gap-2 mb-3" style="justify-content: start;">
       {% for key, label in summary_keys %}
         <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
-          <div class="small text-muted">
-            {% if key == "meter" %}
-              <div class="small text-muted">売上合計</div>
-              <div>
-                <span id="total_meter">
-                  {{ totals.meter_total|default:0|intcomma }}  {# ← 应该显示收入合计，如 17,800 #}
-                </span>
-                <div class="small text-muted">
-                  <small>(メータのみ: <span id="total_meter_only">
-                    {{ totals.meter_only_total|default:0|intcomma }}
-                  </span>)</small>
+          <div class="text-center">
+            {# ===== 売上合計カード ===== #}
+              {% if key == "meter" %}
+                {# ===== 売上合計カード（排版整理版） ===== #}
+                <div class="small text-muted">売上合計</div>
+
+                <!-- 合計金额：独立一行，居中大号 -->
+                <div class="fw-bold" style="font-size:1.6rem;">
+                  <span id="total_meter">
+                    {{ total_sales|default:0|intcomma }}
+                  </span>
                 </div>
-                <div class="small text-muted">
-                  ※ 売上合計には、支払方法付きのデータのみが含まれます。
+
+                <!-- メータ等 + 高速合計 + 内訳：全部左对齐竖着排 -->
+                <div class="text-center">
+                  <div class="small text-muted">メータ等の売上：
+                    <span id="total_meter_only">
+                      {{ totals.meter_only_total|default:0|intcomma }}
+                    </span>
+                  </div>
+
+                  <div class="small text-muted">
+                    高速・ETC等立替：
+                    <span id="etc-total-overall">0</span>
+                  </div>
+
+                  <!--div class="ms-3 mt-1">
+                    <div>- Uber内高速：<span id="etc-uber-total">0</span></div>
+                    <div>- GO内高速：<span id="etc-go-total">0</span></div>
+                    <div>- 現金高速：<span id="etc-cash-total">0</span></div>
+                  </div-->
                 </div>
-              </div>
+
+                <!-- 说明文字：放在最底下，和上面内容拉开一点距离 -->
+                <div class="small text-muted mt-2 text-start">
+                  ※ 売上合計には、高速・ETC等の通行料金は含まれていません。<br>
+                  　高速料金は会社の立替費用として別途集計されます。
+                </div>
+
             {% else %}
               <div class="small text-muted">{{ label }} 合計</div>
               <div>
@@ -322,6 +400,24 @@ input[type=number] {
                   {{ totals|get_item:key|get_item:"bonus"|default:0|floatformat:"0" }}
                 </span>）
               </div>
+
+              {# 支払方法ごとの「売上 / 高速・ETC」—— Uber / GO / 現金 だけ #}
+              {% if key == "uber" %}
+                <div class="small text-muted mt-1 text-start">
+                  <div>売上：<span id="uber-sales-total">0</span></div>
+                  <div>高速・ETC：<span id="uber-etc-total">0</span></div>
+                </div>
+              {% elif key == "go" %}
+                <div class="small text-muted mt-1 text-start">
+                  <div>売上：<span id="go-sales-total">0</span></div>
+                  <div>高速・ETC：<span id="go-etc-total">0</span></div>
+                </div>
+              {% elif key == "cash" %}
+                <div class="small text-muted mt-1 text-start">
+                  <div>売上：<span id="cash-sales-total">0</span></div>
+                  <div>高速・ETC：<span id="cash-etc-total">0</span></div>
+                </div>
+              {% endif %}
             {% endif %}
           </div>
         </div>

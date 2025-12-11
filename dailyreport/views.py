@@ -43,6 +43,8 @@ from dailyreport.services.summary import (
 )
 from dailyreport.utils.debug import debug_print
 
+
+
 from staffbook.services import get_driver_info
 from staffbook.models import Driver
 from carinfo.models import Car
@@ -586,6 +588,8 @@ def dailyreport_edit(request, pk):
         'driver': getattr(report, 'driver', None),
         'is_edit': True,
     })
+
+    
 from django.views.decorators.http import require_POST, require_http_methods
 # 如果上面没引入 user_passes_test / 模型，也一并确认
 from .models import DriverDailyReportItem, Driver
@@ -1224,19 +1228,20 @@ def _normalize(val: str) -> str:
         return ''
     v = str(val).strip().lower()
     mapping = {
-        'jpy_cash':'jpy_cash','rmb_cash':'rmb_cash',
-        'self_wechat':'self_wechat','boss_wechat':'boss_wechat',
-        'to_company':'to_company','bank_transfer':'bank_transfer',
-        '--------':'','------':'','': '',
-        '現金':'jpy_cash','现金':'jpy_cash','日元現金':'jpy_cash','日元现金':'jpy_cash',
-        '人民幣現金':'rmb_cash','人民币现金':'rmb_cash',
-        '自有微信':'self_wechat','老板微信':'boss_wechat',
-        '公司回收':'to_company','会社回収':'to_company','公司结算':'to_company',
-        '銀行振込':'bank_transfer','bank':'bank_transfer',
+        'jpy_cash': 'jpy_cash', 'rmb_cash': 'rmb_cash',
+        'self_wechat': 'self_wechat', 'boss_wechat': 'boss_wechat',
+        'to_company': 'to_company', 'bank_transfer': 'bank_transfer',
+        '--------': '', '------': '', '': '',
+        '現金': 'jpy_cash', '现金': 'jpy_cash', '日元現金': 'jpy_cash', '日元现金': 'jpy_cash',
+        '人民幣現金': 'rmb_cash', '人民币现金': 'rmb_cash',
+        '自有微信': 'self_wechat', '老板微信': 'boss_wechat',
+        '公司回收': 'to_company', '会社回収': 'to_company', '公司结算': 'to_company',
+        '銀行振込': 'bank_transfer', 'bank': 'bank_transfer',
     }
     return mapping.get(v, v)
 
 def _totals_of(items):
+    """编辑页用的那套：メータのみ + 貸切现金/未収/不明 + sales_total"""
     meter_only = Decimal('0')
     charter_cash = Decimal('0')
     charter_uncol = Decimal('0')
@@ -1255,6 +1260,7 @@ def _totals_of(items):
             else:
                 charter_unknown += amt
         else:
+            # 只有有 payment_method 的才算メータのみ
             if getattr(it, 'payment_method', None):
                 meter_only += Decimal(it.meter_fee or 0)
 
@@ -1270,8 +1276,11 @@ def _totals_of(items):
 # ========= 月视图 =========
 @user_passes_test(is_dailyreport_admin)
 def driver_dailyreport_month(request, driver_id):
+    from decimal import Decimal  # 以防上面没导入
+
     driver = get_object_or_404(Driver, id=driver_id)
 
+    # 対象月
     month_str = request.GET.get("month", "")
     try:
         month = datetime.strptime(month_str, "%Y-%m").date().replace(day=1)
@@ -1283,63 +1292,87 @@ def driver_dailyreport_month(request, driver_id):
     reports_qs = (
         DriverDailyReport.objects
         .filter(driver=driver, date__year=month.year, date__month=month.month)
-        .order_by('-date')
-        .prefetch_related('items')
+        .order_by("-date")
+        .prefetch_related("items")
     )
 
     report_list = []
-    # 仅在本函数内声明，避免全局重复与缩进问题
-    SPECIAL_UBER = {'uber_reservation', 'uber_tip', 'uber_promotion'}
 
-    for report in reports_qs:
-        items = report.items.all()
-        totals = _totals_of(items)
+    def _amount_for_item(it):
+        """
+        与 Excel / JS 一致：
+          - 貸切行用 charter_amount_jpy
+          - それ以外は meter_fee
+        """
+        if getattr(it, "is_charter", False):
+            return Decimal(getattr(it, "charter_amount_jpy", 0) or 0)
+        return Decimal(getattr(it, "meter_fee", 0) or 0)
 
-        # ① 先算原来的行程売上（メータ＋貸切） → 49,320
-        base_sales_total = int(totals.get('sales_total') or 0)
+    for r in reports_qs:
+        items = list(r.items.all())
 
-        # ② 从明细里把“司机负担的ETC（自卡）”算出来
-        driver_etc_total = 0
+        # ① 用 _totals_of 算 メータのみ / 貸切現金 / 貸切未収 / 未分類
+        base_totals = _totals_of(items)
+
+        # ② Uber 予約 / チップ / プロモ
+        uber_resv = uber_tip = uber_promo = Decimal("0")
         for it in items:
-            # 乗車ETC 司机负担
-            if getattr(it, "etc_riding_charge_type", None) == "driver":
-                driver_etc_total += int(getattr(it, "etc_riding", 0) or 0)
-            # 空車ETC 司机负担
-            if getattr(it, "etc_empty_charge_type", None) == "driver":
-                driver_etc_total += int(getattr(it, "etc_empty", 0) or 0)
+            pm_alias = (getattr(it, "payment_method", "") or "").strip().lower()
+            cpm_alias = (getattr(it, "charter_payment_method", "") or "").strip().lower()
+            note = getattr(it, "note", "") or ""
+            comment = getattr(it, "comment", "") or ""
 
-        # ✅ 月视图上的「合計」= 行程売上 + 司机负担ETC
-        report.total_all = base_sales_total + driver_etc_total
+            if is_uber_resv(pm_alias, cpm_alias, note, comment):
+                uber_resv += _amount_for_item(it)
+            elif is_uber_tip(pm_alias, cpm_alias, note, comment):
+                uber_tip += _amount_for_item(it)
+            elif is_uber_promo(pm_alias, cpm_alias, note, comment):
+                uber_promo += _amount_for_item(it)
 
-        # ③ 再算 “メータのみ” = 原来的 meter_only - Uber 预约/チップ/プロモ
-        special_uber_sum = 0
-        for it in items:
-            if getattr(it, 'is_pending', False):
-                continue
-            if getattr(it, 'is_charter', False):
-                continue
-            if getattr(it, 'payment_method', '') in SPECIAL_UBER:
-                special_uber_sum += int(getattr(it, 'meter_fee', 0) or 0)
+        uber_total = uber_resv + uber_tip + uber_promo
 
-        base_meter_only = totals.get('meter_only_total', totals.get('meter_total', 0)) or 0
-        report.meter_only_total = max(0, int(base_meter_only) - special_uber_sum)
+        # ③ 売上合計（按 A 案）
+        # === BEGIN PATCH: 月一览の売上合計を編集ページと同じ口径に揃える ===
+        # _totals_of() からの値（ここには Uber予約/チップ/プロモ も含まれている）
+        meter_only_raw   = base_totals["meter_only_total"]
+        charter_cash     = base_totals["charter_cash_total"]
+        charter_uncol    = base_totals["charter_uncollected_total"]
+        charter_unknown  = base_totals["charter_unknown_total"]
+        base_sales_total = base_totals["sales_total"]  # = meter_only_raw + 貸切現金 + 貸切未収 + 未分類
 
-        report.charter_unknown_total = totals['charter_unknown_total']
-        report_list.append(report)
+        # 編集ページの表示に合わせて：
+        # 「メータのみ」は Uber予約/チップ/プロモ を差し引いた値にする
+        meter_only_without_uber = meter_only_raw - uber_total
+        if meter_only_without_uber < 0:
+            meter_only_without_uber = Decimal("0")
 
-    prev_month = (month - timedelta(days=1)).replace(day=1).strftime('%Y-%m')
-    next_month = (month.replace(day=28) + timedelta(days=4)).replace(day=1).strftime('%Y-%m')
+        # 月一览に渡す値をセット
+        r.meter_only_total          = meter_only_without_uber
+        r.charter_cash_total        = charter_cash
+        r.charter_uncollected_total = charter_uncol
+        r.charter_unknown_total     = charter_unknown
 
-    return render(request, 'dailyreport/driver_dailyreport_month.html', {
-        'driver': driver,
-        'month': month,
-        'reports': report_list,
-        'selected_month': month_str,
-        'selected_date': request.GET.get("date", ""),
-        'today': timezone.localdate(),
-        'prev_month': prev_month,
-        'next_month': next_month,
-    })
+        r.uber_reservation_total = uber_resv
+        r.uber_tip_total         = uber_tip
+        r.uber_promotion_total   = uber_promo
+
+        # 売上合計は _totals_of() の sales_total をそのまま使う
+        # （ここには既に Uber予約/チップ/プロモ が含まれているので、二重に足さない）
+        r.total_all = base_sales_total
+        # === END PATCH ===
+
+        report_list.append(r)
+
+    context = {
+        "driver": driver,
+        "reports": report_list,
+        "selected_month": month_str,
+        "selected_date": request.GET.get("date", ""),
+        "today": timezone.localdate(),
+        "month": month,
+    }
+    return render(request, "dailyreport/driver_dailyreport_month.html", context)
+
 
 # ========= 选择器 & 直接创建 =========
 @user_passes_test(is_dailyreport_admin)
