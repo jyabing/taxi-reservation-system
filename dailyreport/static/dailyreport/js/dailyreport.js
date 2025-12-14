@@ -555,7 +555,73 @@ function bindRowEvents(row) {
       evaluateEmptyEtcDetailVisibility();
     });
   });
+
+  // === [PATCH ETC-CHARGE-HINT BEGIN] ETC 金额填写时的立替者引导提示 ===
+  attachEtcChargeGuidance(row);
+  // === [PATCH ETC-CHARGE-HINT END] ===
 }
+
+
+// === [PATCH ETC-CHARGE-HINT FUNC BEGIN] ===
+function attachEtcChargeGuidance(row) {
+  if (!row) return;
+
+  const pairs = [
+    {
+      amount: row.querySelector(".etc-riding-input"),
+      charge: row.querySelector(".etc-riding-charge-select"),
+    },
+    {
+      amount: row.querySelector(".etc-empty-input"),
+      charge: row.querySelector(".etc-empty-charge-select"),
+    }
+  ];
+
+  pairs.forEach(({ amount, charge }) => {
+    if (!amount || !charge) return;
+
+    // 在 select 下方放一个提示容器
+    let hint = charge.parentElement.querySelector(".etc-charge-guidance");
+    if (!hint) {
+      hint = document.createElement("div");
+      hint.className = "etc-charge-guidance text-muted";
+      hint.style.fontSize = "11px";
+      hint.style.marginTop = "2px";
+      charge.parentElement.appendChild(hint);
+    }
+
+    function recompute() {
+      const v = toInt(amount.value, 0);
+      if (v <= 0) {
+        hint.textContent = "";
+        return;
+      }
+
+      switch (charge.value) {
+        case "driver":
+          hint.textContent =
+            "自己のETCカードで支払った場合はこちらが正しいです（後で返還対象）";
+          break;
+        case "company":
+          hint.textContent =
+            "会社ETCカードを使用した場合はこちらが正しいです";
+          break;
+        case "customer":
+          hint.textContent =
+            "高速料金が既にお客様精算に含まれている場合のみ選択してください";
+          break;
+        default:
+          hint.textContent =
+            "ETC料金を誰が立替したかに応じて選択してください";
+      }
+    }
+
+    amount.addEventListener("input", recompute);
+    charge.addEventListener("change", recompute);
+    recompute();
+  });
+}
+// === [PATCH ETC-CHARGE-HINT FUNC END] ===
 
 
 // ====== 找到“明细行 items formset”的 TOTAL_FORMS 输入框（严格版） ======
@@ -916,8 +982,11 @@ function attachEtcNeedInputHint(row) {
     // === [PATCH ETC-AMOUNT-THRESHOLD BEGIN] 新增金额门槛：未满 10,000円 不提示 ===
 
     // 取得金额（你的字段应该是 fare 或 meter_fee，根据模板自行确认 name）
-    const fareInput = row.querySelector("input[name$='-fare'], input[name$='-meter_fee']");
-    const fare = toInt(fareInput && fareInput.value, 0);
+    // === [PATCH ETC-AMOUNT SOURCE FIX BEGIN] ===
+    // 料金：只从本行的 meter_fee 输入框读取
+    const fareInput = row.querySelector('.meter-fee-input');
+    const fare = toInt(fareInput ? fareInput.value : 0, 0);
+    // === [PATCH ETC-AMOUNT SOURCE FIX END] ===
 
     // 低于 10000 → 直接不提示（清除现有提示 + 退出）
     if (fare < 10000) {
