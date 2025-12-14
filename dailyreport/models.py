@@ -38,6 +38,8 @@ PAYMENT_METHOD_CHOICES = [
     ('kyokushin', '京交信'),
     ('omron', 'オムロン（愛のタクシーチケット）'),
     ('kyotoshi', '京都市他'),
+
+    ('advance', '立替（会社用）'),
 ]
 
 
@@ -431,6 +433,15 @@ class DriverDailyReportItem(models.Model):
     num_female = models.IntegerField("女性", blank=True, null=True)
     meter_fee = models.DecimalField("メータ料金", max_digits=7, decimal_places=2, blank=True, null=True)
     is_charter = models.BooleanField(default=False)  # ✅ 添加 default
+
+    # === [PATCH ADVANCE AMOUNT BEGIN] 立替金额（円・司机为公司垫付） ===
+    advance_amount = models.PositiveIntegerField(
+        "立替金額（円）",
+        default=0,
+        blank=True,
+        help_text="司机为公司应急购买物品等的垫付金额（不计入売上/入金）",
+    )
+    # === [PATCH ADVANCE AMOUNT END] ===
 
     payment_method = models.CharField("支付方式", max_length=16, choices=PAYMENT_METHOD_CHOICES, blank=True)
 

@@ -395,6 +395,19 @@ input[type=number] {
                   　高速料金は会社の立替費用として別途集計されます。
                 </div>
 
+                <!-- === [PATCH ADVANCE CARDS BEGIN] 立替/給与計算用 合計（老板看的总数） === -->
+                <div class="mt-2 text-start small text-center">
+                  <div class="text-muted">
+                    立替合計：
+                    <span id="advance-total">0</span>
+                  </div>
+                  <div class="text-muted">
+                    給与計算用 合計：
+                    <span id="payroll-total">0</span>
+                  </div>
+                </div>
+                <!-- === [PATCH ADVANCE CARDS END] === -->
+
             {% else %}
               <div class="small text-muted">{{ label }} 合計</div>
               <div>
@@ -829,6 +842,10 @@ input[type=number] {
             pattern="[0-9]*"                               {# ← 只要 0-9 #}
             min="0"
           >
+
+          <!-- === [PATCH ADVANCE INPUT BEGIN] 立替金额（默认隐藏，JS 选 advance 时显示） === -->
+          {{ form.advance_amount|add_class:"form-control form-control-sm text-end advance-amount-input d-none"|attr:"placeholder:0" }}
+          <!-- === [PATCH ADVANCE INPUT END] === -->
         </td>
 
         <td style="min-width: 100px;">
@@ -973,6 +990,20 @@ input[type=number] {
             min="0"
             value="0"
           >
+
+          <!-- === [PATCH ADVANCE INPUT TEMPLATE BEGIN] === -->
+          <input
+            type="number"
+            name="form-__prefix__-advance_amount"
+            id="id_form-__prefix__-advance_amount"
+            class="form-control form-control-sm text-end advance-amount-input d-none"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            min="0"
+            value="0"
+          >
+          <!-- === [PATCH ADVANCE INPUT TEMPLATE END] === -->
+           
         </td>
 
         <!-- 支付方式（选项稍后用 JS 从第一行复制） -->

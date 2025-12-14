@@ -349,6 +349,18 @@ function bindRowEvents(row) {
   const amountInput = row.querySelector(".meter-fee-input");
   const methodSelect = row.querySelector("select[name$='-payment_method']");
   const pendingCb = row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox");
+  // === [PATCH ADVANCE UI CALL BEGIN] ===
+  // 初始化一次（页面加载 / 新行插入）
+  toggleAdvanceUI(row);
+
+  // 支付方式变化时，切换立替 UI
+  if (methodSelect) {
+    methodSelect.addEventListener("change", () => {
+      toggleAdvanceUI(row);
+      updateTotals();
+    });
+  }
+  // === [PATCH ADVANCE UI CALL END] ===
   const pendingHint = row.querySelector(".pending-mini-hint");
   const charterAmountInput = row.querySelector(".charter-amount-input");
   const charterCheckbox = row.querySelector("input[name$='-is_charter']");
@@ -560,6 +572,92 @@ function bindRowEvents(row) {
   attachEtcChargeGuidance(row);
   // === [PATCH ETC-CHARGE-HINT END] ===
 }
+
+// === [PATCH ADVANCE UI FUNC BEGIN] 立替 UI 保护与联动 ===
+function toggleAdvanceUI(row) {
+  if (!row) return;
+
+  const paymentSelect =
+    row.querySelector("select[name$='-payment_method']") ||
+    row.querySelector(".payment-method-select");
+
+  const meterInput =
+    row.querySelector("input[name$='-meter_fee']") ||
+    row.querySelector(".meter-fee-input");
+
+  const advanceInput =
+    row.querySelector("input[name$='-advance_amount']") ||
+    row.querySelector(".advance-amount-input");
+
+  // ETC
+  const etcRide = row.querySelector("input[name$='-etc_riding']");
+  const etcEmpty = row.querySelector("input[name$='-etc_empty']");
+  const etcRideSel = row.querySelector(".etc-riding-charge-select");
+  const etcEmptySel = row.querySelector(".etc-empty-charge-select");
+
+  // 貸切
+  const isCharter = row.querySelector("input[name$='-is_charter']");
+  const charterAmount = row.querySelector(".charter-amount-input");
+  const charterPay = row.querySelector(".charter-payment-method-select");
+
+  const isAdvance = paymentSelect && paymentSelect.value === "advance";
+
+  if (isAdvance) {
+    if (advanceInput) advanceInput.classList.remove("d-none");
+    if (meterInput) {
+      meterInput.classList.add("d-none");
+      meterInput.value = 0;
+    }
+
+    [etcRide, etcEmpty].forEach(inp => {
+      if (!inp) return;
+      inp.value = 0;
+      inp.disabled = true;
+      inp.classList.remove("etc-need-warning");
+    });
+    [etcRideSel, etcEmptySel].forEach(sel => {
+      if (!sel) return;
+      sel.value = "company";
+      sel.disabled = true;
+    });
+
+    if (isCharter) {
+      isCharter.checked = false;
+      isCharter.disabled = true;
+    }
+    if (charterAmount) {
+      charterAmount.value = 0;
+      charterAmount.disabled = true;
+    }
+    if (charterPay) {
+      charterPay.value = "";
+      charterPay.disabled = true;
+    }
+  } else {
+    if (advanceInput) {
+      advanceInput.classList.add("d-none");
+      advanceInput.value = 0;
+    }
+    if (meterInput) {
+      meterInput.classList.remove("d-none");
+      meterInput.disabled = false;
+    }
+
+    [etcRide, etcEmpty].forEach(inp => {
+      if (!inp) return;
+      inp.disabled = false;
+    });
+    [etcRideSel, etcEmptySel].forEach(sel => {
+      if (!sel) return;
+      sel.disabled = false;
+    });
+
+    if (isCharter) isCharter.disabled = false;
+    if (charterAmount) charterAmount.disabled = false;
+    if (charterPay) charterPay.disabled = false;
+  }
+}
+// === [PATCH ADVANCE UI FUNC END] ===
 
 
 // === [PATCH ETC-CHARGE-HINT FUNC BEGIN] ===
@@ -1156,6 +1254,7 @@ function updateTotals() {
   };
 
   let meterOnlyTotal = 0;          // メータ売上だけの合計
+  let advanceTotal = 0;            // ★立替合計（司机为公司垫付的支出）
   let charterCashTotal = 0;        // 貸切現金
   let charterUncollectedTotal = 0; // 貸切未収
 
@@ -1222,6 +1321,29 @@ function updateTotals() {
       row.querySelector("select[name$='-payment_method']") ||
       row.querySelector(".payment-method-select");
     const paymentRaw = paymentSelect ? paymentSelect.value || "" : "";
+
+    /* ===== [PATCH ADV-ROW BEGIN] 立替行は売上口径から除外して別集計 ===== */
+    const payText =
+      paymentSelect && paymentSelect.options && paymentSelect.selectedIndex >= 0
+        ? (paymentSelect.options[paymentSelect.selectedIndex]?.text || "")
+        : "";
+
+    const isAdvance =
+      String(paymentRaw || "").trim() === "advance" ||
+      String(payText || "").includes("立替");
+
+    if (isAdvance) {
+      // ★ 立替金额：只从 advance_amount 取值，不再用 meter_fee
+      const advInput =
+        row.querySelector("input[name$='-advance_amount']") ||
+        row.querySelector(".advance-amount-input");
+
+      const adv = toInt(advInput?.value, 0);
+      advanceTotal += adv;
+      return; // ← 立替行到此结束，不进入卖上
+    }
+    /* ===== [PATCH ADV-ROW END] ===== */
+
 
     // 貸切情報
     const charterAmountInput = row.querySelector(".charter-amount-input");
@@ -1413,6 +1535,12 @@ function updateTotals() {
   idText("total_meter_only", meterOnlyTotal);
   idText("total_meter", salesTotal);
   idText("sales-total", salesTotal);
+
+  /* ===== [PATCH ADV-CARD BEGIN] 立替合計 + 給与合計 ===== */
+  const payrollTotal = salesTotal + advanceTotal;
+  idText("advance-total", advanceTotal);
+  idText("payroll-total", payrollTotal);
+  /* ===== [PATCH ADV-CARD END] ===== */
 
   idText("uber-reservation-total", uberReservationTotal);
   idText("uber-reservation-count", uberReservationCount);
