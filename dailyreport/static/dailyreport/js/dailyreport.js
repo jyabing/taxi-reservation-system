@@ -349,24 +349,33 @@ function bindRowEvents(row) {
   const amountInput = row.querySelector(".meter-fee-input");
   const methodSelect = row.querySelector("select[name$='-payment_method']");
   const pendingCb = row.querySelector("input[name$='-is_pending']") || row.querySelector(".pending-checkbox");
-  // === [PATCH ADVANCE UI CALL BEGIN] ===
-  // 初始化一次（页面加载 / 新行插入）
-  toggleAdvanceUI(row);
-
-  // 支付方式变化时，切换立替 UI
-  if (methodSelect) {
-    methodSelect.addEventListener("change", () => {
-      toggleAdvanceUI(row);
-      updateTotals();
-    });
-  }
-  // === [PATCH ADVANCE UI CALL END] ===
+  
   const pendingHint = row.querySelector(".pending-mini-hint");
   const charterAmountInput = row.querySelector(".charter-amount-input");
   const charterCheckbox = row.querySelector("input[name$='-is_charter']");
   const rideTimeInput = row.querySelector("input[name$='-ride_time']") || row.querySelector(".time-input");
   if (amountInput) amountInput.addEventListener("input", () => updateTotals());
-  if (methodSelect) methodSelect.addEventListener("change", () => updateTotals());
+
+  
+
+  /* ===== [PATCH ADVANCE UI BIND BEGIN] 支払方法変更で立替UIを即時反映 ===== */
+  if (methodSelect) {
+    methodSelect.addEventListener("change", () => {
+      // ★ 立替(advance) のUI保護（隐藏メータ/禁用ETC/关闭貸切 等）
+      if (typeof toggleAdvanceUI === "function") {
+        toggleAdvanceUI(row);
+      }
+      updateTotals();
+      evaluateEmptyEtcDetailVisibility();
+    });
+
+    // 初次渲染也跑一次（避免页面加载时 advance 行没被禁用）
+    if (typeof toggleAdvanceUI === "function") {
+      toggleAdvanceUI(row);
+    }
+  }
+  /* ===== [PATCH ADVANCE UI BIND END] ===== */
+
   if (pendingCb) {
     pendingCb.addEventListener("change", () => {
       if (pendingHint) pendingHint.classList.toggle("d-none", !pendingCb.checked);
@@ -600,6 +609,9 @@ function toggleAdvanceUI(row) {
   const charterAmount = row.querySelector(".charter-amount-input");
   const charterPay = row.querySelector(".charter-payment-method-select");
 
+  // 立替灰字提示（模板里 advance-mini-hint）
+  const advanceHint = row.querySelector(".advance-mini-hint");
+
   const isAdvance = paymentSelect && paymentSelect.value === "advance";
 
   if (isAdvance) {
@@ -633,6 +645,9 @@ function toggleAdvanceUI(row) {
       charterPay.value = "";
       charterPay.disabled = true;
     }
+
+    if (advanceHint) advanceHint.classList.remove("d-none");
+
   } else {
     if (advanceInput) {
       advanceInput.classList.add("d-none");
@@ -655,6 +670,7 @@ function toggleAdvanceUI(row) {
     if (isCharter) isCharter.disabled = false;
     if (charterAmount) charterAmount.disabled = false;
     if (charterPay) charterPay.disabled = false;
+    if (advanceHint) advanceHint.classList.add("d-none");
   }
 }
 // === [PATCH ADVANCE UI FUNC END] ===

@@ -395,18 +395,38 @@ input[type=number] {
                   　高速料金は会社の立替費用として別途集計されます。
                 </div>
 
-                <!-- === [PATCH ADVANCE CARDS BEGIN] 立替/給与計算用 合計（老板看的总数） === -->
-                <div class="mt-2 text-start small text-center">
-                  <div class="text-muted">
-                    立替合計：
-                    <span id="advance-total">0</span>
+                <!-- ===== [PATCH ADVANCE CARD BEGIN] 立替合計 卡片文案整理 ===== -->
+                <div class="border rounded px-3 py-2 text-center" style="min-width: 160px;">
+                  <div class="small text-muted">
+                    立替合計
+                    <span
+                      class="ms-1 text-secondary"
+                      data-bs-toggle="tooltip"
+                      data-bs-placement="top"
+                      title="会社が一時的に立て替え、後で運転手へ返金する金額です。売上・入金には含まれません。"
+                      style="cursor: help;"
+                    >ⓘ</span>
                   </div>
-                  <div class="text-muted">
-                    給与計算用 合計：
-                    <span id="payroll-total">0</span>
+                  <div class="fw-bold">
+                    <span id="advance-total">0</span> 円
+                  </div>
+                  <div class="small text-muted mt-1 text-start">
+                    ※ 立替（会社→運転手の返金分）。売上・入金には含めません。
                   </div>
                 </div>
-                <!-- === [PATCH ADVANCE CARDS END] === -->
+                <!-- ===== [PATCH ADVANCE CARD END] ===== -->
+
+                <!-- ===== [PATCH PAYROLL CARD BEGIN] 給与計算用 合計 卡片文案整理 ===== -->
+                <div class="border rounded px-3 py-2 text-center" style="min-width: 180px;">
+                  <div class="small text-muted">給与計算用 合計</div>
+                  <div class="fw-bold" style="font-size:1.1rem;">
+                    <span id="payroll-total">0</span> 円
+                  </div>
+                  <div class="small text-muted mt-1 text-start">
+                    ※ 売上合計＋立替合計（支給額の目安）
+                  </div>
+                </div>
+                <!-- ===== [PATCH PAYROLL CARD END] ===== -->
 
             {% else %}
               <div class="small text-muted">{{ label }} 合計</div>
@@ -919,6 +939,12 @@ input[type=number] {
           {% endif %}
           {{ form.note }}
 
+          <!-- === [PATCH ADVANCE HINT BEGIN] 立替行灰字提示（JS 控制显示） === -->
+          <div class="small text-muted mt-1 advance-mini-hint d-none">
+            ※ 立替（会社が運転手へ返金）：売上・入金には含めず、「立替合計」にのみ集計されます。
+          </div>
+          <!-- === [PATCH ADVANCE HINT END] === -->
+
           <div class="alert alert-warning py-1 px-2 small mt-1 pending-mini-hint d-none">
             這些明細暫不計入売上合計。入帳後取消勾選即可立即納入核算
           </div>
@@ -1003,7 +1029,7 @@ input[type=number] {
             value="0"
           >
           <!-- === [PATCH ADVANCE INPUT TEMPLATE END] === -->
-           
+
         </td>
 
         <!-- 支付方式（选项稍后用 JS 从第一行复制） -->
@@ -1374,6 +1400,19 @@ input[type=number] {
   });
 </script>
 
+<!-- ===== [PATCH TOOLTIP INIT BEGIN] Bootstrap Tooltip 初始化（仅本页） ===== -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  if (typeof bootstrap === "undefined" || !bootstrap.Tooltip) return;
 
+  const tooltipTriggerList = [].slice.call(
+    document.querySelectorAll('[data-bs-toggle="tooltip"]')
+  );
+  tooltipTriggerList.forEach(function (el) {
+    new bootstrap.Tooltip(el);
+  });
+});
+</script>
+<!-- ===== [PATCH TOOLTIP INIT END] ===== -->
 
 {% endblock %}
