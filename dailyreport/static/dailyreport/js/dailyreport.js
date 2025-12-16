@@ -1552,10 +1552,9 @@ function updateTotals() {
   idText("total_meter", salesTotal);
   idText("sales-total", salesTotal);
 
-  /* ===== [PATCH ADV-CARD BEGIN] 立替合計 + 給与合計 ===== */
-  const payrollTotal = salesTotal + advanceTotal;
+  /* ===== [PATCH ADV-CARD BEGIN] 立替合計（給与合計は後段で確定） ===== */
   idText("advance-total", advanceTotal);
-  idText("payroll-total", payrollTotal);
+  // payroll-total 最终值要等入金/過不足/実際ETC算完后再写
   /* ===== [PATCH ADV-CARD END] ===== */
 
   idText("uber-reservation-total", uberReservationTotal);
@@ -1615,6 +1614,27 @@ function updateTotals() {
   const imbalanceBase = deposit - cashNagashi - charterCash;
   const etcNet = actualEtcCompanyToDriver; // 会社→運転手 返還分
   const imbalance = imbalanceBase + etcNet;
+
+  /* ===== [PATCH PAYROLL FINAL BEGIN] 給与計算用 合計（最終） ===== */
+  // 会社→運転手 の補填だけ加算（マイナスは運転手→会社なので給与に入れない）
+  const overShortToDriver = imbalanceBase > 0 ? imbalanceBase : 0;
+
+  // etcNet は「会社→運転手」の返還分口径なのでそのまま加算
+  const payrollFinal = salesTotal + advanceTotal + etcNet + overShortToDriver;
+
+  idText("payroll-total", payrollFinal);
+
+  if (typeof window.__refreshPayrollSummary === "function") window.__refreshPayrollSummary();
+
+  // （任意：明細表示用。span が無いなら idText が判空していれば無害）
+  idText("payroll-bd-sales", salesTotal);
+  idText("payroll-bd-advance", advanceTotal);
+  idText("payroll-bd-etc-refund", etcNet);
+  idText("payroll-bd-over-short", overShortToDriver);
+  // 参考表示：運転手→会社分（給与に加算しない）
+  const overShortToCompany = imbalanceBase < 0 ? Math.abs(imbalanceBase) : 0;
+  idText("payroll-bd-over-short-excl", overShortToCompany);
+  /* ===== [PATCH PAYROLL FINAL END] ===== */
 
   const diffEl =
     document.getElementById("difference-output") ||
@@ -2052,6 +2072,47 @@ function evaluateEmptyEtcDetailVisibility() {
   });
 })();
 
+/* ===== [PATCH PAYROLL DETAILS TOGGLE BEGIN] summary 文案切换 + 金额表示 ===== */
+(function initPayrollDetailsSummaryToggle() {
+  const yenText = () => {
+    const el = document.getElementById("payroll-total");
+    if (!el) return "--";
+    const t = (el.textContent || "").trim();
+    return t ? t : "--";
+  };
+
+  const setText = (detailsEl) => {
+    const summary = detailsEl?.querySelector("summary");
+    if (!summary) return;
+
+    const base = detailsEl.open ? "内訳を隠す" : "内訳を表示";
+    summary.textContent = `${base}（支給目安：${yenText()}円）`;
+  };
+
+  const bind = () => {
+    const detailsList = Array.from(
+      document.querySelectorAll("details.payroll-details")
+    );
+
+    // 公开一个全局刷新函数：updateTotals() 每次算完 payroll-total 后调用即可
+    window.__refreshPayrollSummary = () => {
+      detailsList.forEach((d) => setText(d));
+    };
+
+    // 初期表示
+    window.__refreshPayrollSummary();
+
+    // 开闭时刷新
+    detailsList.forEach((d) => d.addEventListener("toggle", () => setText(d)));
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+})();
+/* ===== [PATCH PAYROLL DETAILS TOGGLE END] ===== */
 
 
 

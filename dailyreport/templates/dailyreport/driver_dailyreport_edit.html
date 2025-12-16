@@ -163,6 +163,88 @@ input[type=number] {
 
 </style>
 
+<style>
+  /* ===== 給与計算用 合計：视觉强调 ===== */
+  .payroll-card {
+    background: #f1f8f4;              /* 很淡的绿色 */
+    border: 1px solid #cfe6da;
+  }
+  .payroll-card .payroll-amount {
+    color: #1e7e34;                   /* 稳重绿 */
+    font-weight: 700;
+  }
+  .payroll-card .small {
+    color: #4f6f5f;
+  }
+</style>
+
+<style>
+  /* ===== [PATCH PAYROLL DETAILS CSS BEGIN] ===== */
+  .payroll-details summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .2rem .5rem;
+    border: 1px solid #cfe6da;
+    border-radius: .5rem;
+    background: #ffffff;
+    color: #1e7e34;
+    font-size: .85rem;
+  }
+  .payroll-details summary::-webkit-details-marker { display: none; }
+
+  .payroll-details .bd {
+    margin-top: .5rem;
+    padding: .5rem .6rem;
+    border-radius: .6rem;
+    background: #ffffff;
+    border: 1px dashed #cfe6da;
+    font-size: .85rem;
+    line-height: 1.6;
+    text-align: left;
+  }
+  .payroll-details .bd .rowline{
+    display:flex;
+    justify-content: space-between;
+    gap:.6rem;
+    white-space: nowrap;
+  }
+  .payroll-details .bd .label{ color:#4f6f5f; }
+  .payroll-details .bd .val{ font-variant-numeric: tabular-nums; }
+
+
+  /* ===== [PATCH PAYROLL DETAILS CSS END] ===== */
+
+  /* ===== [PATCH PAYROLL BD STYLE BEGIN] 加算 / 参考 区分 ===== */
+.payroll-details .bd .rowline.add {
+  font-weight: 600;
+}
+.payroll-details .bd .rowline.add .label::before {
+  content: "＋ ";
+  color: #1e7e34;
+}
+.payroll-details .bd .rowline.ref {
+  opacity: 0.75;
+}
+.payroll-details .bd .rowline.ref .label::before {
+  content: "※ ";
+  color: #666;
+}
+.payroll-details .bd .note {
+  margin-top: .4rem;
+  font-size: .8rem;
+  opacity: .75;
+}
+/* ===== [PATCH PAYROLL BD STYLE END] ===== */
+
+
+
+</style>
+
+
 {% endblock %}
 {% block content %}
 <div class="container mt-4">
@@ -417,14 +499,57 @@ input[type=number] {
                 <!-- ===== [PATCH ADVANCE CARD END] ===== -->
 
                 <!-- ===== [PATCH PAYROLL CARD BEGIN] 給与計算用 合計 卡片文案整理 ===== -->
-                <div class="border rounded px-3 py-2 text-center" style="min-width: 180px;">
-                  <div class="small text-muted">給与計算用 合計</div>
-                  <div class="fw-bold" style="font-size:1.1rem;">
+                <div class="border rounded px-3 py-2 text-center payroll-card" style="min-width: 180px;">
+                  <div class="small text-muted">給与計算用 合計
+                    <span
+                      class="ms-1 text-secondary"
+                      title="【支給額の目安】売上＋立替返還＋ETC返還（会社→運転手）＋精算補填（過不足のうち会社→運転手分のみ）。※過不足がマイナス（運転手→会社）は含めません。入金額そのものも加算しません。"
+                      style="cursor: help;"
+                    >ⓘ</span>
+                  </div>
+                 
+                  <div class="fw-bold payroll-amount" style="font-size:1.1rem;">
                     <span id="payroll-total">0</span> 円
                   </div>
                   <div class="small text-muted mt-1 text-start">
                     ※ 売上合計＋立替合計（支給額の目安）
                   </div>
+
+                  <!-- ===== [PATCH PAYROLL DETAILS BEGIN] 給与内訳（折りたたみ） ===== -->
+                  <details class="payroll-details mt-2">
+                    <summary>内訳を表示</summary>
+
+                    <div class="bd">
+                      <div class="rowline">
+                        <span class="label">売上【司机当天业务收入】</span>
+                        <span class="val"><span id="payroll-bd-sales">0</span> 円</span>
+                      </div>
+                      <div class="rowline">
+                        <span class="label">立替返還【司机垫付，公司要还给司机】</span>
+                        <span class="val"><span id="payroll-bd-advance">0</span> 円</span>
+                      </div>
+                      <div class="rowline">
+                        <span class="label">ETC返還（会社→運転手）</span>
+                        <span class="val"><span id="payroll-bd-etc-refund">0</span> 円</span>
+                      </div>
+                      <div class="rowline">
+                        <span class="label">精算補填（過不足のうち会社→運転手分）【入金差额中公司应补给司机的部分（只取正数）】</span>
+                        <span class="val"><span id="payroll-bd-over-short">0</span> 円</span>
+                      </div>
+
+                      <!-- 追加：参考行（給与に加算しない） -->
+                      <div class="rowline ref">
+                        <span class="label">過不足（運転手→会社分・給与に含めない）</span>
+                        <span class="val">(<span id="payroll-bd-over-short-excl">0</span> 円)</span>
+                      </div>
+
+                      <div class="note">
+                        ※「入金額そのもの」は給与計算に加算しません。上の「ref」は参考表示のみです。
+                      </div>
+                    </div>
+                  </details>
+                  <!-- ===== [PATCH PAYROLL CARD END] ===== -->
+
                 </div>
                 <!-- ===== [PATCH PAYROLL CARD END] ===== -->
 
