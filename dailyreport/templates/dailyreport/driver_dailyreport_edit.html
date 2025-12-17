@@ -596,21 +596,12 @@ input[type=number] {
                 </span>）
               </div>
 
-              {# 支払方法ごとの「売上 / 高速・ETC」—— Uber / GO / 現金 だけ #}
-              {% if key == "uber" %}
-                <div class="small text-muted mt-1 text-start">
-                  <div>売上：<span id="uber-sales-total">0</span></div>
-                  <div>高速・ETC：<span id="uber-etc-total">0</span></div>
-                </div>
-              {% elif key == "go" %}
-                <div class="small text-muted mt-1 text-start">
-                  <div>売上：<span id="go-sales-total">0</span></div>
-                  <div>高速・ETC：<span id="go-etc-total">0</span></div>
-                </div>
-              {% elif key == "cash" %}
-                <div class="small text-muted mt-1 text-start">
-                  <div>売上：<span id="cash-sales-total">0</span></div>
-                  <div>高速・ETC：<span id="cash-etc-total">0</span></div>
+              {# 支払方法ごとの「売上 / 高速・ETC」—— meter 以外は全部表示 #}
+              {% if key != "meter" %}
+                <div id="{{ key }}-sales-etc-block"
+                    class="small text-muted mt-1 text-start">
+                  <div>売上：<span id="{{ key }}-sales-total">0</span></div>
+                  <div>高速・ETC：<span id="{{ key }}-etc-total">0</span></div>
                 </div>
               {% endif %}
             {% endif %}

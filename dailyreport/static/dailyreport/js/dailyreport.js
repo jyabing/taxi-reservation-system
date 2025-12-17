@@ -1251,23 +1251,71 @@ function rebuildEtcDetailTable() {
 }
 
 
+function renderPayMethodCards(totalMap, etcByPay) {
+  // 1) 写入売上（ETC除く）和 高速・ETC
+  Object.keys(etcByPay).forEach((k) => {
+    const etc = etcByPay[k] || 0;
+    const total = totalMap[k] || 0;
+
+    idText(`${k}-sales-total`, total - etc);
+    idText(`${k}-etc-total`, etc);
+
+    // 2) 高速・ETC が 0 の場合は、売上＋ETC ブロックを隠す
+    const block = document.getElementById(`${k}-sales-etc-block`);
+    if (!block) return;
+    block.style.display = (etc === 0) ? "none" : "";
+  });
+}
+
+
+
 /* ====== REPLACE FROM HERE: updateTotals() ====== */
 function updateTotals() {
   const table = document.querySelector("table.report-table");
   if (!table) return;
 
-  // ---- 支払方法ごとの合計（現金・Uber・Didi など） ----
-  const totalMap = {
-    cash: 0,
-    uber: 0,
-    didi: 0,
-    go: 0,
-    credit: 0,
-    kyokushin: 0,
-    omron: 0,
-    kyotoshi: 0,
-    qr: 0,
-  };
+  /* ===== [PATCH PAYMETHOD KEYS AUTO-DISCOVER BEGIN] ===== */
+
+// ① 从 DOM 自动发现支付方式 key：
+//   - total_XXX （卡片顶部总额）
+//   - XXX-sales-etc-block（卖上/高速ETC 两行块）
+function collectPayMethodKeysFromDom() {
+  const keys = new Set();
+
+  // total_xxx
+  document.querySelectorAll('[id^="total_"]').forEach(el => {
+    const id = el.id || "";
+    const k = id.replace(/^total_/, "").trim();
+    if (k) keys.add(k);
+  });
+
+  // xxx-sales-etc-block
+  document.querySelectorAll('[id$="-sales-etc-block"]').forEach(el => {
+    const id = el.id || "";
+    const k = id.replace(/-sales-etc-block$/, "").trim();
+    if (k) keys.add(k);
+  });
+
+  // meter 等特殊 key 不强制依赖，但留着也无害（找不到 element 就不会写）
+  return Array.from(keys);
+}
+
+// ② 兜底：就算模板漏了，也至少有这些
+const FALLBACK_PAY_KEYS = [
+  "cash","uber","didi","go","credit","kyokushin","omron","kyotoshi","qr"
+];
+
+// ③ 合并 keys（DOM 优先 + fallback）
+const payKeys = Array.from(new Set([
+  ...collectPayMethodKeysFromDom(),
+  ...FALLBACK_PAY_KEYS,
+]));
+
+// ---- 支払方法ごとの合計（現金・Uber・Didi など） 
+const totalMap = Object.fromEntries(payKeys.map(k => [k, 0]));
+
+/* ===== [PATCH PAYMETHOD KEYS AUTO-DISCOVER END] ===== */
+
 
   let meterOnlyTotal = 0;          // メータ売上だけの合計
   let advanceTotal = 0;            // ★立替合計（司机为公司垫付的支出）
@@ -1293,7 +1341,38 @@ function updateTotals() {
   // 売上に含める「客付ETC」の合計（客が負担した ETC + B类司机垫→公司侧结算）
   let etcSalesTotal = 0;
 
-  // 支払方法別の高速・ETC 小計（売上には含めない・表示用）
+  /**
+ * ===== ETC 表示ルール（最終確定）=====
+ *
+ * 1) 「乗車ETC（客負担・売上回収分）」は、明細行の payment_method に帰属する。
+ *    例）クレジ決済の乗車ETC → 「クレジ合計」の「高速・ETC」に加算
+ *        京交信チケットの乗車ETC → 「京交信合計」の「高速・ETC」に加算
+ *        QR決済の乗車ETC → 「扫码合計」の「高速・ETC」に加算
+ *        Uber/GO/Didi の乗車ETC → 各アプリ合計の「高速・ETC」に加算
+ *
+ *    ※ これは「回収経路（どこで売上として回収されるか）」の表示であり、給与精算とは無関係。
+ *
+ * 2) 「空車ETC（回程など運転手負担）」は、どの payment_method にも入れない。
+ *    → 「運転手→会社（精算）」にのみ表示（給与控除/精算の対象）
+ *
+ * 3) 「会社→運転手（返還）」は、運転手立替分の返還として別軸で表示する。
+ *
+ * 4) 「高速・ETC等（行明細集計）」は参考の総額（①+②+③の合計）であり、
+ *    「精算額」や「入金額」と同義ではない。
+ */
+
+
+  /* ===== [PATCH AUTO ETC BY PAY BEGIN] =====
+  * 支払方法別の高速・ETC 小計（表示用）
+  * - payKeys は DOM から自動収集（total_xxx / xxx-sales-etc-block）
+  * - 新しい支払方法を追加しても JS を触らなくてよい
+  */
+  const etcByPay = Object.fromEntries(
+    payKeys.map((k) => [k, 0])
+  );
+  /* ===== [PATCH AUTO ETC BY PAY END] ===== */
+
+  // 互換用（既存ID: etc-uber-total 等が残っていても動くように）
   let etcUber = 0;
   let etcGo = 0;
   let etcCash = 0;
@@ -1451,14 +1530,64 @@ function updateTotals() {
     // 売上用 ETC 合計（※ 売上合計には今後含めないが、ETC 收取面板还会用到）
     etcSalesTotal += etcForSalesRow;
 
-    // 支払方法別の高速・ETC 小計（売上に乗せる ETC のみ、Uber内高速 等に出す）
+
+    /* ===== [PATCH ETC PAY-GUARD BEGIN] 乗車ETC の回収経路未設定を警告 =====
+    * 発火条件：
+    *   etcForSalesRow > 0 なのに、paidBy（payment_method）が不明/想定外
+    * 挙動：
+    *   - 行を黄色にする
+    *   - 注釈セルに赤い警告を出す（重複作成しない）
+    *   - 修正したら自動で解除
+    */
+    (function guardEtcPaymentMethod() {
+      const isEtcNeedsCollection = etcForSalesRow > 0;
+
+      // totalMap は支払方法の正規キー集合（cash/uber/didi/go/credit/kyokushin/omron/kyotoshi/qr 等）
+      const isKnownPay =
+        paidBy && Object.prototype.hasOwnProperty.call(totalMap, paidBy);
+
+      const noteCell = row.querySelector(".note-cell");
+      const existingHint = noteCell?.querySelector(".etc-pay-missing-hint");
+
+      if (isEtcNeedsCollection && !isKnownPay) {
+        // 1) 行のハイライト
+        row.classList.add("table-warning");
+        row.setAttribute(
+          "title",
+          "乗車ETC（回収対象）があるのに支払方法が未設定/不明です（回収経路を選択してください）"
+        );
+
+        // 2) 注釈セルに警告表示
+        if (noteCell && !existingHint) {
+          const div = document.createElement("div");
+          div.className = "alert alert-danger py-1 px-2 small mt-1 etc-pay-missing-hint";
+          div.textContent =
+            "⚠ 乗車ETC（回収対象）があるのに支払方法が未設定/不明です。回収経路（現金/クレジ/京交信/QR/Uber/GO/Didi…）を選択してください。";
+          noteCell.appendChild(div);
+        }
+
+        // 3) console 警告（デバッグ用）
+        console.warn("[ETC PAY-GUARD] payment_method missing/unknown for ETC", {
+          paidBy,
+          paymentRaw,
+          etcForSalesRow,
+          rideEtc,
+          rideCharge,
+        });
+      } else {
+        // 修正されたら解除
+        row.classList.remove("table-warning");
+        row.removeAttribute("title");
+        if (existingHint) existingHint.remove();
+      }
+    })();
+    /* ===== [PATCH ETC PAY-GUARD END] ===== */
+
+
+    // 支払方法別の高速・ETC 小計（売上に乗せる ETC のみ）
     if (etcForSalesRow > 0) {
-      if (paidBy === "uber") {
-        etcUber += etcForSalesRow;
-      } else if (paidBy === "go") {
-        etcGo += etcForSalesRow;
-      } else if (paidBy === "cash") {
-        etcCash += etcForSalesRow;
+      if (Object.prototype.hasOwnProperty.call(etcByPay, paidBy)) {
+        etcByPay[paidBy] += etcForSalesRow;
       }
     }
 
@@ -1564,17 +1693,26 @@ function updateTotals() {
   idText("uber-promotion-total", uberPromotionTotal);
   idText("uber-promotion-count", uberPromotionCount);
 
-  Object.entries(totalMap).forEach(([k, v]) => idText(`total_${k}`, v));
+  /* ===== [PATCH PAYMETHOD SALES/ETC RENDER BEGIN] ===== */
 
-  // 支払方法ごとの売上（ETC除く）と高速・ETC 内訳
-  idText("uber-sales-total", (totalMap.uber || 0) - etcUber);
-  idText("uber-etc-total", etcUber);
+// 各支払方法の合計（金額ラベル）
+Object.entries(totalMap).forEach(([k, v]) => idText(`total_${k}`, v));
 
-  idText("go-sales-total", (totalMap.go || 0) - etcGo);
-  idText("go-etc-total", etcGo);
+// 各支払方法カードの「売上 / 高速・ETC」描画（ETC=0 は自動非表示）
+renderPayMethodCards(totalMap, etcByPay);
 
-  idText("cash-sales-total", (totalMap.cash || 0) - etcCash);
-  idText("cash-etc-total", etcCash);
+// 貸切関連（既存処理）
+idText("charter-cash-total", charterCashTotal);
+idText("charter-uncollected-total", charterUncollectedTotal);
+
+/* ===== [PATCH PAYMETHOD SALES/ETC RENDER END] ===== */
+  /* ===== [PATCH END] ===== */
+
+
+  // 互換用（既存ID: etc-uber-total / etc-go-total / etc-cash-total）
+  etcUber = etcByPay.uber || 0;
+  etcGo = etcByPay.go || 0;
+  etcCash = etcByPay.cash || 0;
 
   idText("charter-cash-total", charterCashTotal);
   idText("charter-uncollected-total", charterUncollectedTotal);
