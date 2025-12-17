@@ -1579,25 +1579,60 @@ function updateTotals() {
   idText("charter-cash-total", charterCashTotal);
   idText("charter-uncollected-total", charterUncollectedTotal);
 
-  // ====== 2) ETC 概要 ======
+    // ====== 2) ETC 概要 ======
+
+  // 行明細集計（参考）
   const etcTotalOverall = rideEtcSum + emptyEtcSum;
-
-  idText("ride-etc-total", rideEtcSum);
-  idText("empty-etc-total", emptyEtcSum);
-  idText("etc-company-total", etcCompany);
-  idText("etc-driver-total", etcDriver);
-  idText("etc-customer-total", etcCustomer);
-
-  // 高速・ETC 等立替（表示用：売上とは別の軸）
   idText("etc-total-overall", etcTotalOverall);
-  idText("etc-uber-total", etcUber);
-  idText("etc-go-total", etcGo);
-  idText("etc-cash-total", etcCash);
 
-  idText("actual_etc_company_to_driver_view", actualEtcCompanyToDriver);
+  // ─────────────────────────────
+  // 【三桶拆分】ETC のお金の行き先（最終確定版）
+  // ─────────────────────────────
+
+  // ① 客人负担（参考显示）
+  const etcCustomerRecovery = etcCustomer || 0;
+  idText("etc-customer-recovery-view", etcCustomerRecovery);
+
+  // ② 公司 → 司机（返还）
+  // = 乘车 ETC 中「司机垫付 + 公司侧结算」的部分
+  const etcCompanyToDriver = actualEtcCompanyToDriver || 0;
+  idText("actual_etc_company_to_driver_view", etcCompanyToDriver);
+
+  // ③ 司机 → 公司（精算）
+  // = 司机立替 ETC − 公司已返还给司机的 ETC
+  let etcDriverToCompany = etcDriver - etcCompanyToDriver;
+
+  // 防御：不允许负数
+  if (etcDriverToCompany < 0) {
+    etcDriverToCompany = 0;
+  }
+
+  idText("etc-driver-to-company-view", etcDriverToCompany);
+
+  // ─────────────────────────────
+  // 【防呆】ETCがあるのに三桶が全部0は異常
+  // ─────────────────────────────
+  if (
+    etcTotalOverall > 0 &&
+    etcCustomerRecovery === 0 &&
+    etcCompanyToDriver === 0 &&
+    etcDriverToCompany === 0
+  ) {
+    console.warn("[ETC GUARD] ETC exists but all buckets are zero", {
+      etcTotalOverall,
+      etcCustomerRecovery,
+      etcCompanyToDriver,
+      etcDriverToCompany,
+    });
+  }
+
+  /* ===== [GUARD ETC DIR END] ===== */
+
+  // hidden（既存）
   const actualHidden = document.getElementById("actual_etc_company_to_driver");
   if (actualHidden) actualHidden.value = actualEtcCompanyToDriver;
 
+  // 空車未収（既存）
   const emptyInput = document.getElementById("id_etc_uncollected");
   if (emptyInput) {
     const current = toInt(emptyInput.value, 0);
@@ -1605,6 +1640,7 @@ function updateTotals() {
       emptyInput.value = String(emptyEtcSum);
     }
   }
+
 
   // ====== 3) 入金・過不足（実際ETC を含む） ======
   const deposit = _yen(document.getElementById("deposit-input")?.value || 0);

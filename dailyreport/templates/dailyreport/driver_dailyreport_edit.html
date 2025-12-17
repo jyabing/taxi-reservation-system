@@ -459,10 +459,42 @@ input[type=number] {
                     </span>
                   </div>
 
-                  <div class="small text-muted">
-                    高速・ETC等立替：
+                  <!-- ===== [PATCH ETC LABEL+DIR BEGIN] 高速・ETC 説明付き表示 ===== -->
+
+                  <div class="small text-muted"
+                      title="当日すべてのETC通行料金の合計です。負担者別の内訳は下段を参照してください。">
+                    高速・ETC等（行明細集計）：
                     <span id="etc-total-overall">0</span>
                   </div>
+
+                  <div class="small text-muted text-start mt-1" style="line-height:1.6;">
+
+                    ・乗車ETC（客負担・売上回収分）：
+                    <span id="etc-customer-recovery-view"
+                          title="乗車中に発生したETC料金のうち、最終的にお客様が負担する金額です。会社の売上回収対象であり、運転手の精算には含まれません。">
+                      0
+                    </span> 円<br>
+
+                    ・会社→運転手（返還）：
+                    <span id="actual_etc_company_to_driver_view"
+                          title="運転手が立替で支払ったETC料金のうち、会社から返還される金額です。">
+                      0
+                    </span> 円<br>
+
+                    ・運転手→会社（精算）：
+                    <span id="etc-driver-to-company-view"
+                          title="回程（空車）など、運転手個人の使用によって発生したETC料金です。会社へ精算（給与控除等）の対象となります。">
+                      0
+                    </span> 円
+                  </div>
+
+                  <div class="small text-muted mt-1 text-start">
+                    ※ ETC通行料金は売上合計・入金額には含まれません。<br>
+                    　負担者別に、回収・返還・精算の参考情報として表示しています。
+                  </div>
+
+                  <!-- ===== [PATCH ETC LABEL+DIR END] ===== -->
+
 
                   <!--div class="ms-3 mt-1">
                     <div>- Uber内高速：<span id="etc-uber-total">0</span></div>
