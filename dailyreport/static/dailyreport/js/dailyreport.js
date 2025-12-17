@@ -1280,39 +1280,31 @@ function updateTotals() {
 //   - total_XXX （卡片顶部总额）
 //   - XXX-sales-etc-block（卖上/高速ETC 两行块）
 function collectPayMethodKeysFromDom() {
-  const keys = new Set();
+    const keys = new Set();
 
-  // total_xxx
-  document.querySelectorAll('[id^="total_"]').forEach(el => {
-    const id = el.id || "";
-    const k = id.replace(/^total_/, "").trim();
-    if (k) keys.add(k);
-  });
+    // xxx-sales-etc-block
+    document.querySelectorAll('[id$="-sales-etc-block"]').forEach(el => {
+      const id = el.id || "";
+      const k = id.replace(/-sales-etc-block$/, "").trim();
+      if (k) keys.add(k);
+    });
 
-  // xxx-sales-etc-block
-  document.querySelectorAll('[id$="-sales-etc-block"]').forEach(el => {
-    const id = el.id || "";
-    const k = id.replace(/-sales-etc-block$/, "").trim();
-    if (k) keys.add(k);
-  });
+    return Array.from(keys);
+  }
 
-  // meter 等特殊 key 不强制依赖，但留着也无害（找不到 element 就不会写）
-  return Array.from(keys);
-}
+  // ✅ 兜底：模板万一漏了 block，也至少有这些
+  const FALLBACK_PAY_KEYS = [
+    "cash","uber","didi","go","credit","kyokushin","omron","kyotoshi","qr"
+  ];
 
-// ② 兜底：就算模板漏了，也至少有这些
-const FALLBACK_PAY_KEYS = [
-  "cash","uber","didi","go","credit","kyokushin","omron","kyotoshi","qr"
-];
+  // ✅ 合并 keys（DOM 优先 + fallback）
+  const payKeys = Array.from(new Set([
+    ...collectPayMethodKeysFromDom(),
+    ...FALLBACK_PAY_KEYS,
+  ]));
 
-// ③ 合并 keys（DOM 优先 + fallback）
-const payKeys = Array.from(new Set([
-  ...collectPayMethodKeysFromDom(),
-  ...FALLBACK_PAY_KEYS,
-]));
-
-// ---- 支払方法ごとの合計（現金・Uber・Didi など） 
-const totalMap = Object.fromEntries(payKeys.map(k => [k, 0]));
+  // ---- 支払方法ごとの合計（現金・Uber・Didi など）
+  const totalMap = Object.fromEntries(payKeys.map(k => [k, 0]));
 
 /* ===== [PATCH PAYMETHOD KEYS AUTO-DISCOVER END] ===== */
 
@@ -1371,11 +1363,6 @@ const totalMap = Object.fromEntries(payKeys.map(k => [k, 0]));
     payKeys.map((k) => [k, 0])
   );
   /* ===== [PATCH AUTO ETC BY PAY END] ===== */
-
-  // 互換用（既存ID: etc-uber-total 等が残っていても動くように）
-  let etcUber = 0;
-  let etcGo = 0;
-  let etcCash = 0;
 
   // “公司侧结算”的支付方式（resolveJsPaymentMethod 后）
   const COMPANY_SIDE = new Set([
@@ -1700,10 +1687,6 @@ Object.entries(totalMap).forEach(([k, v]) => idText(`total_${k}`, v));
 
 // 各支払方法カードの「売上 / 高速・ETC」描画（ETC=0 は自動非表示）
 renderPayMethodCards(totalMap, etcByPay);
-
-// 貸切関連（既存処理）
-idText("charter-cash-total", charterCashTotal);
-idText("charter-uncollected-total", charterUncollectedTotal);
 
 /* ===== [PATCH PAYMETHOD SALES/ETC RENDER END] ===== */
   /* ===== [PATCH END] ===== */
