@@ -1781,6 +1781,31 @@ renderPayMethodCards(totalMap, etcByPay);
 
   idText("payroll-total", payrollFinal);
 
+  /* ===== [PATCH PAYROLL HIDDEN WRITEBACK BEGIN] =====
+ * 編集画面で算出した給与値を hidden に書き戻す（POSTでviewsへ渡す）
+ * ※ 計算ロジックは変更しない（表示→保存の橋渡しのみ）
+ */
+(function writePayrollHidden() {
+  const setHiddenInt = (id, v) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const n = toInt(v, 0);
+    el.value = String(n);
+  };
+
+  setHiddenInt("id_payroll_total", payrollFinal);
+  setHiddenInt("id_payroll_bd_sales", salesTotal);
+  setHiddenInt("id_payroll_bd_advance", advanceTotal);
+  setHiddenInt("id_payroll_bd_etc_refund", etcNet);
+  setHiddenInt("id_payroll_bd_over_short_to_driver", overShortToDriver);
+
+  // 参考表示：運転手→会社分（給与に加算しない）
+  const overShortToCompany = imbalanceBase < 0 ? Math.abs(imbalanceBase) : 0;
+  setHiddenInt("id_payroll_bd_over_short_to_company", overShortToCompany);
+})();
+/* ===== [PATCH PAYROLL HIDDEN WRITEBACK END] ===== */
+
+
   if (typeof window.__refreshPayrollSummary === "function") window.__refreshPayrollSummary();
 
   // （任意：明細表示用。span が無いなら idText が判空していれば無害）

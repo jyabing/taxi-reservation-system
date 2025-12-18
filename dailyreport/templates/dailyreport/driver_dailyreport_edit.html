@@ -542,9 +542,20 @@ input[type=number] {
                  
                   <div class="fw-bold payroll-amount" style="font-size:1.1rem;">
                     <span id="payroll-total">0</span> 円
+                    <!-- ===== [PATCH PAYROLL HIDDEN BEGIN] 給与計算用（POST用 hidden） ===== -->
+                    <input type="hidden" name="payroll_total" id="id_payroll_total" value="{{ report.payroll_total|default:0 }}">
+
+                    <input type="hidden" name="payroll_bd_sales" id="id_payroll_bd_sales" value="{{ report.payroll_bd_sales|default:0 }}">
+                    <input type="hidden" name="payroll_bd_advance" id="id_payroll_bd_advance" value="{{ report.payroll_bd_advance|default:0 }}">
+                    <input type="hidden" name="payroll_bd_etc_refund" id="id_payroll_bd_etc_refund" value="{{ report.payroll_bd_etc_refund|default:0 }}">
+                    <input type="hidden" name="payroll_bd_over_short_to_driver" id="id_payroll_bd_over_short_to_driver" value="{{ report.payroll_bd_over_short_to_driver|default:0 }}">
+                    <input type="hidden" name="payroll_bd_over_short_to_company" id="id_payroll_bd_over_short_to_company" value="{{ report.payroll_bd_over_short_to_company|default:0 }}">
+                    <!-- ===== [PATCH PAYROLL HIDDEN END] ===== -->
+
                   </div>
                   <div class="small text-muted mt-1 text-start">
-                    ※ 売上合計＋立替合計（支給額の目安）
+                    ※ 【支給額の目安】売上＋立替返還＋ETC返還（会社→運転手）＋精算補填（過不足のうち会社→運転手分のみ）。<br>
+                    ※過不足がマイナス（運転手→会社）は含めません。入金額そのものも加算しません。
                   </div>
 
                   <!-- ===== [PATCH PAYROLL DETAILS BEGIN] 給与内訳（折りたたみ） ===== -->

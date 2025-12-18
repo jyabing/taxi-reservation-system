@@ -42,8 +42,18 @@ class DriverDailyReportForm(forms.ModelForm):
         model = DriverDailyReport
         # ⚠️ Django 不允许同时设置 fields="__all__" 和 exclude
         # 二选一；如果想排除 driver：
-        exclude = ["driver"]          # ✅ 推荐只保留这个
-        # fields = "__all__"
+        exclude = ["driver",         # ✅ 推荐只保留这个
+
+            # ===== [PATCH PAYROLL EXCLUDE BEGIN] 給与計算用（表示専用・システム管理） =====
+            "payroll_total",
+            "payroll_bd_sales",
+            "payroll_bd_advance",
+            "payroll_bd_etc_refund",
+            "payroll_bd_over_short_to_driver",
+            "payroll_bd_over_short_to_company",
+            # ===== [PATCH PAYROLL EXCLUDE END] =====
+        ]
+        # fields = "__all__" # 不能和 exclude 一起用
 
         widgets = {
             "etc_rider_payer": forms.Select(

@@ -6,10 +6,6 @@
 {% block content %}
 
 <style>
-  .debug-tag{
-    position:absolute; top:10px; right:14px; font-size:.8rem; color:#999;
-    font-family:ui-monospace, Menlo, Consolas, monospace;
-  }
   .page-container{ position:relative; }
 
   /* 桌面端表格样式 */
@@ -23,23 +19,26 @@
   .mono{ font-family:ui-monospace, Menlo, Consolas, monospace; }
   .subtext{ font-size:.84rem; color:#6c757d; }
   .muted-rule{ border-color:#eee; }
-  .totals{ font-weight:700; font-size:1.1rem; }
+  .totals{ font-weight:800; font-size:1.25rem; }
+
+  /* 月汇总卡片 */
+  .sum-title{ font-weight:800; }
+  .sum-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:.25rem 0; }
+  .sum-row .label{ color:#495057; }
+  .sum-row .value{ text-align:right; white-space:nowrap; }
+  .sum-note{ color:#6c757d; font-size:.84rem; }
+  .sum-hr{ border-color:#eee; margin:.6rem 0; }
 
   /* 移动端细节微调 */
   @media (max-width: 768px) {
-    .debug-tag{ display:none; }
     .subtext{ font-size:.75rem; }
-    .totals{ font-size:1rem; }
+    .totals{ font-size:1.1rem; }
     .mobile-card .mono{ font-size:.95rem; }
     .mobile-card .title{ font-weight:700; }
   }
 </style>
 
 <div class="page-container">
-
-  <div class="debug-tag d-none d-md-block">
-    DEBUG: qs_count={{ debug_text|default_if_none:'' }} ｜ reports_len={{ reports|length }}
-  </div>
 
   <h2 class="page-title mb-3">{{ selected_year }}年{{ selected_month }}月 的日報明細</h2>
 
@@ -61,6 +60,13 @@
       </div>
       <button class="btn btn-outline-secondary btn-sm">查询</button>
     </form>
+    <button type="button" id="btn-filter-payroll-missing" class="btn btn-outline-danger btn-sm">
+      給与未保存のみ
+    </button>
+    <button type="button" id="btn-filter-reset" class="btn btn-outline-secondary btn-sm d-none">
+      表示を戻す
+    </button>
+    <span id="payroll-missing-counter" class="small text-muted ms-2"></span>
   </div>
 
   {# ---------- 桌面端：表格 ---------- #}
@@ -81,11 +87,14 @@
           </thead>
           <tbody>
             {% for report in reports %}
-              <tr>
+              <tr data-payroll-missing="{% if report.sales_total|default:0 > 0 and report.payroll_total|default:0 == 0 %}1{% else %}0{% endif %}">
                 <td class="td-date">{{ report.date|date:"Y年n月j日" }}</td>
                 <td class="td-money">
                   <div class="fw-bold mono">￥&thinsp;{{ report.sales_total|default:0|intcomma }}</div>
                   <div class="subtext mono">（メータのみ: ￥&thinsp;{{ report.meter_only_total|default:0|intcomma }}）</div>
+                  {% if report.sales_total|default:0 > 0 and report.payroll_total|default:0 == 0 %}
+                    <div class="subtext text-danger">給与未保存（編集画面で保存してください）</div>
+                  {% endif %}
                 </td>
                 <td class="td-ops">
                   <a class="btn btn-link p-0" href="{% url 'vehicles:my_daily_report_detail' report.id %}">查看明細</a>
@@ -112,35 +121,189 @@
           {% if report.note %}
             <div class="text-muted small mt-1">備注：{{ report.note }}</div>
           {% endif %}
-          <a class="btn btn-sm btn-outline-primary mt-2" href="{% url 'vehicles:my_daily_report_detail' report.id %}">查看明細</a>
+          <a class="btn btn-sm btn-outline-primary mt-2"
+            href="{% url 'vehicles:my_daily_report_detail' report.id %}">
+            查看明細
+          </a>
         </div>
-      </div>
-    {% empty %}
-      <div class="card">
-        <div class="card-body text-center subtext">暂无日报</div>
       </div>
     {% endfor %}
   </div>
 
-  {# ---------- 月度汇总 ---------- #}
+  {# ---------- 月度汇总（売上 + 給与計算用） ---------- #}
   <div class="card mt-3">
     <div class="card-body">
-      <div class="mb-2 mono">
-        <strong>本月売上合計：</strong> ￥{{ monthly_sales_total|default:0|intcomma }} 円
+      <div class="sum-title mb-2">月度汇总</div>
+
+      <div class="sum-row mono">
+        <div class="label"><strong>本月売上合計</strong></div>
+        <div class="value"><strong>￥{{ monthly_sales_total|default:0|intcomma }}</strong> 円</div>
       </div>
 
-      <div class="mb-2 mono">
-        <strong>本月メータのみ合計：</strong> ￥{{ monthly_meter_only_total|default:0|intcomma }} 円
-        <span class="text-muted small">
-          （原始メータ料金合計：￥{{ total_raw|floatformat:0|intcomma }} ｜ 分成後：￥{{ total_split|floatformat:0|intcomma }}）
-        </span>
+      <div class="sum-row mono">
+        <div class="label"><strong>本月メータのみ合計</strong></div>
+        <div class="value">￥{{ monthly_meter_only_total|default:0|intcomma }} 円</div>
       </div>
+      <div class="sum-note mono">
+        （原始メータ料金合計：￥{{ total_raw|floatformat:0|intcomma }} ｜ 分成後：￥{{ total_split|floatformat:0|intcomma }}）
+      </div>
+
+      <hr class="sum-hr">
+
+      <div class="sum-row mono">
+        <div class="label"><strong>本月 給与計算用 合計</strong></div>
+        <div class="value totals text-success">￥{{ monthly_payroll_total|default:0|intcomma }} 円</div>
+      </div>
+      <div class="sum-note">※ 纯展示用：口径与编辑页「給与計算用 合計」一致</div>
+
+      <div class="mt-2">
+        <div class="sum-row mono">
+          <div class="label">売上（司机当日业务收入）</div>
+          <div class="value">￥{{ monthly_payroll_bd_sales|default:0|intcomma }} 円</div>
+        </div>
+
+        <div class="sum-row mono">
+          <div class="label">立替返还（司机垫付，公司应还司机）</div>
+          <div class="value">￥{{ monthly_payroll_bd_advance|default:0|intcomma }} 円</div>
+        </div>
+
+        <div class="sum-row mono">
+          <div class="label">ETC返还（会社→運転手）</div>
+          <div class="value">￥{{ monthly_payroll_bd_etc_refund|default:0|intcomma }} 円</div>
+        </div>
+
+        <div class="sum-row mono">
+          <div class="label">精算补填（過不足のうち会社→運転手分）</div>
+          <div class="value">￥{{ monthly_payroll_bd_over_short_to_driver|default:0|intcomma }} 円</div>
+        </div>
+
+        <div class="sum-row mono">
+          <div class="label text-muted">※ 過不足（運転手→会社分・給与に含めない）</div>
+          <div class="value text-muted">（￥{{ monthly_payroll_bd_over_short_excl|default:0|intcomma }} 円）</div>
+        </div>
+      </div>
+
+      <hr class="sum-hr">
 
       <div class="fw-semibold">出勤日数：{{ attendance_days }} 日</div>
-      <div class="text-muted small mt-2">※ 有日报明细的日期计 1 天</div>
+      <div class="text-muted small mt-1">※ 有日报明细的日期计 1 天</div>
     </div>
   </div>
 
   <p class="mt-3"><a href="{% url 'profile' %}">← 返回我的资料</a></p>
 </div>
+
+
+<script>
+(function () {
+  function $(id){ return document.getElementById(id); }
+
+  const btnFilter = $("btn-filter-payroll-missing");
+  const btnReset  = $("btn-filter-reset");
+  const counterEl = $("payroll-missing-counter");
+  if (!btnFilter || !btnReset) return;
+
+  function getTargets() {
+    const desktopRows = Array.from(document.querySelectorAll("tr[data-payroll-missing]"));
+    const mobileCards = Array.from(document.querySelectorAll(".mobile-card[data-payroll-missing]"));
+    return { desktopRows, mobileCards };
+  }
+
+  function getEmptyPlaceholders() {
+    // 桌面端“暂无日报”行
+    const emptyRows = Array.from(
+      document.querySelectorAll("tr td")
+    ).filter(td => td.textContent.trim() === "暂无日报")
+     .map(td => td.closest("tr"));
+
+    // 手机端“暂无日报”卡片
+    const emptyCards = Array.from(
+      document.querySelectorAll(".card .card-body")
+    ).filter(el => el.textContent.trim() === "暂无日报")
+     .map(el => el.closest(".card"));
+
+    return { emptyRows, emptyCards };
+  }
+
+  function countMissing() {
+    const { desktopRows, mobileCards } = getTargets();
+    const useDesktop = window.matchMedia("(min-width: 768px)").matches;
+    const list = useDesktop ? desktopRows : mobileCards;
+    return list.filter(el => el.getAttribute("data-payroll-missing") === "1").length;
+  }
+
+  function countVisibleMissingAfterFilter() {
+    const { desktopRows, mobileCards } = getTargets();
+    const useDesktop = window.matchMedia("(min-width: 768px)").matches;
+    const list = useDesktop ? desktopRows : mobileCards;
+
+    return list.filter(el =>
+      el.getAttribute("data-payroll-missing") === "1" &&
+      el.style.display !== "none"
+    ).length;
+  }
+
+  function updateCounter(filtered) {
+    if (!counterEl) return;
+    const totalMissing = countMissing();
+    if (!filtered) {
+      counterEl.textContent = `給与未保存：${totalMissing}日`;
+    } else {
+      const visible = countVisibleMissingAfterFilter();
+      counterEl.textContent = `給与未保存：${totalMissing}日（表示中：${visible}日）`;
+    }
+  }
+
+  function toggleEmptyPlaceholders(hide) {
+    const { emptyRows, emptyCards } = getEmptyPlaceholders();
+    [...emptyRows, ...emptyCards].forEach(el => {
+      if (!el) return;
+      el.style.display = hide ? "none" : "";
+    });
+  }
+
+  function setFilter(enabled) {
+    // desktop rows
+    document.querySelectorAll("tr[data-payroll-missing]").forEach(tr => {
+      const miss = tr.getAttribute("data-payroll-missing") === "1";
+      tr.style.display = (!enabled || miss) ? "" : "none";
+    });
+
+    // mobile cards
+    document.querySelectorAll(".mobile-card[data-payroll-missing]").forEach(card => {
+      const miss = card.getAttribute("data-payroll-missing") === "1";
+      card.style.display = (!enabled || miss) ? "" : "none";
+    });
+
+    // 隐藏 / 恢复 “暂无日报”
+    toggleEmptyPlaceholders(enabled);
+
+    // toggle buttons
+    if (enabled) {
+      btnFilter.classList.add("d-none");
+      btnReset.classList.remove("d-none");
+    } else {
+      btnFilter.classList.remove("d-none");
+      btnReset.classList.add("d-none");
+    }
+
+    updateCounter(enabled);
+  }
+
+  // 初期
+  updateCounter(false);
+
+  btnFilter.addEventListener("click", () => setFilter(true));
+  btnReset.addEventListener("click", () => setFilter(false));
+
+  window.addEventListener("resize", () => {
+    const filtered = !btnReset.classList.contains("d-none");
+    updateCounter(filtered);
+  });
+})();
+</script>
+
+
+
+
 {% endblock %}

@@ -265,6 +265,20 @@ class DriverDailyReport(models.Model):
 
     etc_note = models.CharField(max_length=255, blank=True, verbose_name="ETC备注")
 
+    
+
+    # ===== [PATCH PAYROLL FIELDS BEGIN] 給与計算用（表示専用・落庫） =====
+    # 編集ページ（dailyreport.js）で算出した「給与計算用 合計」と内訳をDBに保存し、
+    # 司机の月预览页は「再計算」せずに「日次結果の合計」として表示する。
+    # ===== [PATCH PAYROLL FIELDS BEGIN] 給与計算用（保存済みDB集計） =====
+    payroll_total = models.IntegerField(default=0, blank=True, help_text="編集画面で算出した給与合計（表示専用）")
+    payroll_bd_sales = models.IntegerField(default=0, blank=True, help_text="売上（内訳）")
+    payroll_bd_advance = models.IntegerField(default=0, blank=True, help_text="立替返還（内訳）")
+    payroll_bd_etc_refund = models.IntegerField(default=0, blank=True, help_text="ETC返還（内訳）")
+    payroll_bd_over_short_to_driver = models.IntegerField(default=0, blank=True, help_text="精算補填（会社→運転手）（内訳）")
+    payroll_bd_over_short_to_company = models.IntegerField(default=0, blank=True, help_text="過不足（運転手→会社）（給与に含めない/参考）（内訳）")
+    # ===== [PATCH PAYROLL FIELDS END] =====
+
     @property
     def etc_collected_total(self) -> int:
         """

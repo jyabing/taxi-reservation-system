@@ -2086,6 +2086,29 @@ def my_dailyreports(request):
         .order_by('-date')
         .prefetch_related('items')
     )
+    # ===== [PATCH MONTH PAYROLL AGG BEGIN] 本月給与（DB集計・表示専用） =====
+    from django.db.models import Sum
+
+    payroll_month = qs.aggregate(
+        payroll_total=Sum("payroll_total"),
+        bd_sales=Sum("payroll_bd_sales"),
+        bd_advance=Sum("payroll_bd_advance"),
+        bd_etc_refund=Sum("payroll_bd_etc_refund"),
+        bd_over_short_to_driver=Sum("payroll_bd_over_short_to_driver"),
+        bd_over_short_to_company=Sum("payroll_bd_over_short_to_company"),
+    )
+    # None -> 0
+    payroll_month = {k: (v or 0) for k, v in payroll_month.items()}
+
+    # テンプレート用（monthly_payroll_* に合わせる）
+    monthly_payroll_total = payroll_month["payroll_total"]
+    monthly_payroll_bd_sales = payroll_month["bd_sales"]
+    monthly_payroll_bd_advance = payroll_month["bd_advance"]
+    monthly_payroll_bd_etc_refund = payroll_month["bd_etc_refund"]
+    monthly_payroll_bd_over_short_to_driver = payroll_month["bd_over_short_to_driver"]
+    # 参考（給与に含めない）：運転手→会社
+    monthly_payroll_bd_over_short_excl = payroll_month["bd_over_short_to_company"]
+    # ===== [PATCH MONTH PAYROLL AGG END] =====
 
     # ========== 口径 ==========
     SPECIAL_UBER = {'uber_reservation', 'uber_tip', 'uber_promotion'}
@@ -2121,6 +2144,9 @@ def my_dailyreports(request):
             'note':             rpt.note,
             'sales_total':      sales_total,        # 売上合計
             'meter_only_total': meter_only_total,   # メータのみ
+            # ===== [PATCH PAYROLL FLAG BEGIN] =====
+            'payroll_total':    int(getattr(rpt, 'payroll_total', 0) or 0),
+            # ===== [PATCH PAYROLL FLAG END] =====
         })
 
     # 分成后的显示
@@ -2141,6 +2167,16 @@ def my_dailyreports(request):
             qs.filter(items__isnull=False).values('date').distinct().count()
         ),
         'debug_text': f'qs_count={qs.count()} | reports_len={len(reports_data)}',
+        'payroll_month': payroll_month,
+
+        # ===== [PATCH MONTH PAYROLL CONTEXT BEGIN] =====
+        'monthly_payroll_total': monthly_payroll_total,
+        'monthly_payroll_bd_sales': monthly_payroll_bd_sales,
+        'monthly_payroll_bd_advance': monthly_payroll_bd_advance,
+        'monthly_payroll_bd_etc_refund': monthly_payroll_bd_etc_refund,
+        'monthly_payroll_bd_over_short_to_driver': monthly_payroll_bd_over_short_to_driver,
+        'monthly_payroll_bd_over_short_excl': monthly_payroll_bd_over_short_excl,
+        # ===== [PATCH MONTH PAYROLL CONTEXT END] =====
     })
 
 

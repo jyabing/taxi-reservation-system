@@ -563,11 +563,63 @@ def dailyreport_edit(request, pk):
         if form.is_valid() and formset.is_valid():
             inst = form.save(commit=False)
             inst.edited_by = request.user
+
+                        # ===== [PATCH PAYROLL SAVE-GUARD BEGIN] =====
+            # payroll_* は JS が hidden に書き込むが、
+            # POST欠落/空送信でも None を入れない & 既存値を守る
+            PAYROLL_FIELDS = [
+                "payroll_total",
+                "payroll_bd_sales",
+                "payroll_bd_advance",
+                "payroll_bd_etc_refund",
+                "payroll_bd_over_short_to_driver",
+                "payroll_bd_over_short_to_company",
+            ]
+
+            for f in PAYROLL_FIELDS:
+                # POSTに含まれていなければ「既存値を保持」
+                if f not in request.POST:
+                    setattr(inst, f, getattr(report, f, 0) or 0)
+                    continue
+
+                # POSTにあるが form が None を作った場合は既存値/0に寄せる
+                if getattr(inst, f, None) is None:
+                    setattr(inst, f, getattr(report, f, 0) or 0)
+            # ===== [PATCH PAYROLL SAVE-GUARD END] =====
+
+
             inst.save()
 
             # 关键：一句话就够了（增/改/删 都在这里完成）
             formset.instance = inst
             formset.save()   # ✅ 会自动删除勾选 DELETE 的旧行
+
+            # ===== [PATCH PAYROLL SAVE BEGIN] 給与計算用（表示）を落庫 =====
+            def _to_int0(v):
+                try:
+                    return int(v)
+                except (TypeError, ValueError):
+                    return 0
+
+            # JSが hidden に書き込んだ値を保存する（無ければ 0）
+            inst.payroll_total = _to_int0(request.POST.get("payroll_total"))
+
+            inst.payroll_bd_sales = _to_int0(request.POST.get("payroll_bd_sales"))
+            inst.payroll_bd_advance = _to_int0(request.POST.get("payroll_bd_advance"))
+            inst.payroll_bd_etc_refund = _to_int0(request.POST.get("payroll_bd_etc_refund"))
+            inst.payroll_bd_over_short_to_driver = _to_int0(request.POST.get("payroll_bd_over_short_to_driver"))
+            inst.payroll_bd_over_short_to_company = _to_int0(request.POST.get("payroll_bd_over_short_to_company"))
+
+            inst.save(update_fields=[
+                "payroll_total",
+                "payroll_bd_sales",
+                "payroll_bd_advance",
+                "payroll_bd_etc_refund",
+                "payroll_bd_over_short_to_driver",
+                "payroll_bd_over_short_to_company",
+            ])
+            # ===== [PATCH PAYROLL SAVE END] =====
+
 
             messages.success(request, "保存成功！")
             return redirect('dailyreport:dailyreport_edit', pk=inst.pk)
