@@ -1,7 +1,7 @@
 import subprocess, os, logging
 from django.db import models
 from django.utils.encoding import force_str
-from django.contrib import admin
+from django.contrib import admin, messages
 import datetime as _dt
 from rangefilter.filters import DateRangeFilter
 from django.http import HttpResponse
@@ -173,6 +173,10 @@ class DriverDailyReportAdmin(DailyReportAdminPermissionMixin, admin.ModelAdmin):
     form = DriverDailyReportAdminForm
     inlines = [DriverDailyReportItemInline]
 
+    # ===== [BEGIN PATCH] Admin Action: 批量重算当月給与 =====
+    actions = ["action_recalc_payroll_current_month"]
+    # ===== [END PATCH] Admin Action: 批量重算当月給与 =====
+
     # ✅ 通杀守门器：所有 POST 值入表单解析前强制变成 str（inline 也覆盖）
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         if request.method == "POST":
@@ -221,6 +225,77 @@ class DriverDailyReportAdmin(DailyReportAdminPermissionMixin, admin.ModelAdmin):
             # 预填失败不影响正常保存
             pass
         super().save_model(request, obj, form, change)
+
+    # ===== [BEGIN PATCH] Admin Action: 批量重算当月給与 =====
+    @admin.action(description="🧾 批量重算：当月 給与計算用（payroll_*）")
+    def action_recalc_payroll_current_month(self, request, queryset):
+        """
+        选中任意几条日报 → 以“选中中最早日期”的月份作为目标月份
+        对该月份内、选中涉及司机的所有日报，批量重算 payroll_* 并写回 DB。
+        """
+        if not queryset.exists():
+            self.message_user(request, "未选中任何日报。", level=messages.WARNING)
+            return
+
+        # 以选中中最早日期的那条日报确定目标月份
+        first = queryset.order_by("date").first()
+        month_start = first.date.replace(day=1)
+        if month_start.month == 12:
+            next_month = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month = month_start.replace(month=month_start.month + 1)
+
+        # 仅对“这次选中涉及到的司机集合”做当月重算（避免误伤全员）
+        driver_ids = list(queryset.values_list("driver_id", flat=True).distinct())
+
+        qs = (
+            queryset.model.objects
+            .filter(driver_id__in=driver_ids, date__gte=month_start, date__lt=next_month)
+            .prefetch_related("items")
+        )
+
+        updated = 0
+        for rpt in qs.iterator():
+            self._recalc_one_report_payroll(rpt)
+            updated += 1
+
+        self.message_user(
+            request,
+            f"完成：{month_start.strftime('%Y-%m')} 月 payroll_* 已重算并保存（{updated} 条）。"
+        )
+
+    def _recalc_one_report_payroll(self, report):
+        """
+        第一版：先保证月汇总不再全是 0
+        - payroll_bd_sales：按 items 合计 meter_fee +（貸切なら charter_amount_jpy）
+        - payroll_total：先用现有 bd 字段（若没填则 0）拼出一个可用合计
+        后续 Step B3 我们再把编辑页 dailyreport.js 的口径逐条对齐进来。
+        """
+        def _i(v):
+            try:
+                return int(v or 0)
+            except Exception:
+                return 0
+
+        sales = 0
+        for it in report.items.all():
+            sales += _i(getattr(it, "meter_fee", 0))
+            if getattr(it, "is_charter", False):
+                sales += _i(getattr(it, "charter_amount_jpy", 0))
+
+        # 其他拆分先保留现状（避免破坏你现有已保存数据）
+        bd_advance = _i(getattr(report, "payroll_bd_advance", 0))
+        bd_etc_refund = _i(getattr(report, "payroll_bd_etc_refund", 0))
+        bd_os_driver = _i(getattr(report, "payroll_bd_over_short_to_driver", 0))
+        # 公司→司机分（你月汇总块里作为“精算补填”显示）
+        bd_os_company = _i(getattr(report, "payroll_bd_over_short_to_company", 0))
+
+        payroll_total = sales + bd_advance + bd_etc_refund + bd_os_company
+
+        report.payroll_bd_sales = sales
+        report.payroll_total = payroll_total
+        report.save(update_fields=["payroll_bd_sales", "payroll_total"])
+    # ===== [END PATCH] Admin Action: 批量重算当月給与 =====
 
     @staticmethod
     def _soft_prefill_from_reservations(obj):

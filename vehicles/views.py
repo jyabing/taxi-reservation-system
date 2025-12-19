@@ -2117,6 +2117,7 @@ def my_dailyreports(request):
     total_raw = Decimal('0')            # 本月メータ料金合計（未分成，所有明细 meter_fee 总和）
     monthly_sales_total = 0             # 本月売上合計（列表口径）
     monthly_meter_only_total = 0        # 本月メータのみ合計
+    monthly_etc_driver_cost_total = 0  # 本月 司机負担ETC（給与控除予定）合计（通常为负数）
 
     for rpt in qs:
         # 原始合计（底部“本月メータ料金合計”用）
@@ -2127,6 +2128,7 @@ def my_dailyreports(request):
         totals = _totals_of(rpt.items.all())
         sales_total = int(totals.get('sales_total', 0) or 0)
         monthly_sales_total += sales_total   # ✅ 只加一次
+        monthly_etc_driver_cost_total += int(getattr(rpt, "etc_driver_cost", 0) or 0)
 
         # 列表用「メータのみ」
         meter_only_total = sum(
@@ -2147,6 +2149,7 @@ def my_dailyreports(request):
             # ===== [PATCH PAYROLL FLAG BEGIN] =====
             'payroll_total':    int(getattr(rpt, 'payroll_total', 0) or 0),
             # ===== [PATCH PAYROLL FLAG END] =====
+            'monthly_etc_driver_cost_total': monthly_etc_driver_cost_total,
         })
 
     # 分成后的显示
