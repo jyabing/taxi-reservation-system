@@ -2074,113 +2074,158 @@ def my_dailyreports(request):
     # 2) 年月
     today = timezone.localdate()
     try:
-        year = int(request.GET.get('year', today.year))
-        month = int(request.GET.get('month', today.month))
+        year = int(request.GET.get("year", today.year))
+        month = int(request.GET.get("month", today.month))
     except ValueError:
         year, month = today.year, today.month
 
-    # 3) 本月该司机的日报
+    # 3) 本月范围（推荐用范围，不用 date__year/month，避免索引不走）
+    month_start = timezone.datetime(year, month, 1).date()
+    month_end = (month_start + relativedelta(months=1))
+
+    # 4) 本月日报（预取 items）
     qs = (
         DriverDailyReport.objects
-        .filter(driver=driver, date__year=year, date__month=month)
-        .order_by('-date')
-        .prefetch_related('items')
+        .filter(driver=driver, date__gte=month_start, date__lt=month_end)
+        .order_by("-date")
+        .prefetch_related("items")
     )
-    # ===== [PATCH MONTH PAYROLL AGG BEGIN] 本月給与（DB集計・表示専用） =====
-    from django.db.models import Sum
 
-    payroll_month = qs.aggregate(
-        payroll_total=Sum("payroll_total"),
-        bd_sales=Sum("payroll_bd_sales"),
-        bd_advance=Sum("payroll_bd_advance"),
-        bd_etc_refund=Sum("payroll_bd_etc_refund"),
-        bd_over_short_to_driver=Sum("payroll_bd_over_short_to_driver"),
-        bd_over_short_to_company=Sum("payroll_bd_over_short_to_company"),
+    # ✅ 只有有关联明细的日报才算出勤 1 天（你原来逻辑保持）
+    attendance_days = (
+        qs.filter(items__isnull=False)
+          .values("date").distinct().count()
     )
-    # None -> 0
-    payroll_month = {k: (v or 0) for k, v in payroll_month.items()}
 
-    # テンプレート用（monthly_payroll_* に合わせる）
-    monthly_payroll_total = payroll_month["payroll_total"]
-    monthly_payroll_bd_sales = payroll_month["bd_sales"]
-    monthly_payroll_bd_advance = payroll_month["bd_advance"]
-    monthly_payroll_bd_etc_refund = payroll_month["bd_etc_refund"]
-    monthly_payroll_bd_over_short_to_driver = payroll_month["bd_over_short_to_driver"]
-    # 参考（給与に含めない）：運転手→会社
-    monthly_payroll_bd_over_short_excl = payroll_month["bd_over_short_to_company"]
-    # ===== [PATCH MONTH PAYROLL AGG END] =====
+    # ========== 月合计（売上 + メータのみ + 給与計算用 内訳） ==========
+    SPECIAL_UBER = {"uber_reservation", "uber_tip", "uber_promotion"}
 
-    # ========== 口径 ==========
-    SPECIAL_UBER = {'uber_reservation', 'uber_tip', 'uber_promotion'}
+    total_raw = Decimal("0")     # 原始 meter_fee 月总（用于你“原始/分成后”展示）
+    monthly_sales_total = 0
+    monthly_meter_only_total = 0
+
+    # —— 你要的「内訳」月汇总（现算，不依赖 payroll_* 存库字段）——
+    monthly_payroll_bd_sales = 0
+    monthly_payroll_bd_advance = 0
+    monthly_payroll_bd_etc_refund = 0
+    monthly_payroll_bd_over_short_to_driver = 0
+    monthly_payroll_bd_over_short_excl = 0  # 参考：運転手→会社（給与に含めない）
 
     reports_data = []
-    total_raw = Decimal('0')            # 本月メータ料金合計（未分成，所有明细 meter_fee 总和）
-    monthly_sales_total = 0             # 本月売上合計（列表口径）
-    monthly_meter_only_total = 0        # 本月メータのみ合計
-    monthly_etc_driver_cost_total = 0  # 本月 司机負担ETC（給与控除予定）合计（通常为负数）
 
     for rpt in qs:
-        # 原始合计（底部“本月メータ料金合計”用）
-        raw = sum(Decimal(getattr(it, 'meter_fee', 0) or 0) for it in rpt.items.all())
+        items = list(rpt.items.all())
+
+        # ① 原始メータ料金合計（未分成）
+        raw = sum(Decimal(getattr(it, "meter_fee", 0) or 0) for it in items)
         total_raw += raw
 
-        # 与详情页一致的売上合計
-        totals = _totals_of(rpt.items.all())
-        sales_total = int(totals.get('sales_total', 0) or 0)
-        monthly_sales_total += sales_total   # ✅ 只加一次
-        monthly_etc_driver_cost_total += int(getattr(rpt, "etc_driver_cost", 0) or 0)
+        # ② 与详情页一致的売上合計（你现在就这么算）
+        totals = _totals_of(items)
+        sales_total = int(totals.get("sales_total", 0) or 0)
+        monthly_sales_total += sales_total
 
-        # 列表用「メータのみ」
+        # ③ 列表用「メータのみ」
         meter_only_total = sum(
-            int(getattr(it, 'meter_fee', 0) or 0)
-            for it in rpt.items.all()
-            if (not getattr(it, 'is_charter', False))
-            and getattr(it, 'payment_method', None)
-            and getattr(it, 'payment_method') not in SPECIAL_UBER
+            int(getattr(it, "meter_fee", 0) or 0)
+            for it in items
+            if (not getattr(it, "is_charter", False))
+            and getattr(it, "payment_method", None)
+            and getattr(it, "payment_method") not in SPECIAL_UBER
         )
         monthly_meter_only_total += meter_only_total
 
+        # ========== ④ 給与計算用 内訳（日次→月次加算） ==========
+        # 売上（司机当日业务收入）
+        bd_sales = sales_total
+
+        # 立替返还（司机垫付，公司应还司机）= 行明细 advance_amount 求和
+        bd_advance = sum(int(getattr(it, "advance_amount", 0) or 0) for it in items)
+
+        # ETC返还（会社→運転手）
+        # 行级：负担=driver 的 riding/empty 合计（driver 立替 → 公司返还）
+        etc_refund = 0
+        for it in items:
+            riding = int(getattr(it, "etc_riding", 0) or 0)
+            empty = int(getattr(it, "etc_empty", 0) or 0)
+
+            # 优先用 resolved_*（你模型有 property），没有就回退到字段
+            riding_burden = getattr(it, "resolved_riding_burden", None)
+            if callable(riding_burden):
+                riding_burden = it.resolved_riding_burden
+            riding_burden = riding_burden or getattr(it, "etc_riding_charge_type", None) or getattr(it, "etc_charge_type", None) or "company"
+
+            empty_burden = getattr(it, "resolved_empty_burden", None)
+            if callable(empty_burden):
+                empty_burden = it.resolved_empty_burden
+            empty_burden = empty_burden or getattr(it, "etc_empty_charge_type", None) or getattr(it, "etc_charge_type", None) or "company"
+
+            if riding_burden == "driver":
+                etc_refund += riding
+            if empty_burden == "driver":
+                etc_refund += empty
+
+        bd_etc_refund = etc_refund
+
+        # 精算补填（過不足のうち会社→運転手分）
+        # deposit_difference > 0 视作公司要补给司机；<0 视作司机要返公司（只做参考不计入合计）
+        dep_diff = int(getattr(rpt, "deposit_difference", 0) or 0)
+        bd_over_short_to_driver = dep_diff if dep_diff > 0 else 0
+        bd_over_short_to_company = (-dep_diff) if dep_diff < 0 else 0
+
+        # 月累加
+        monthly_payroll_bd_sales += bd_sales
+        monthly_payroll_bd_advance += bd_advance
+        monthly_payroll_bd_etc_refund += bd_etc_refund
+        monthly_payroll_bd_over_short_to_driver += bd_over_short_to_driver
+        monthly_payroll_bd_over_short_excl += bd_over_short_to_company
+
+        # 列表数据
         reports_data.append({
-            'id':               rpt.id,
-            'date':             rpt.date,
-            'note':             rpt.note,
-            'sales_total':      sales_total,        # 売上合計
-            'meter_only_total': meter_only_total,   # メータのみ
-            # ===== [PATCH PAYROLL FLAG BEGIN] =====
-            'payroll_total':    int(getattr(rpt, 'payroll_total', 0) or 0),
-            # ===== [PATCH PAYROLL FLAG END] =====
-            'monthly_etc_driver_cost_total': monthly_etc_driver_cost_total,
+            "id": rpt.id,
+            "date": rpt.date,
+            "note": rpt.note,
+            "sales_total": sales_total,
+            "meter_only_total": meter_only_total,
         })
 
-    # 分成后的显示
-    coef = Decimal('0.9091')
-    total_split = (total_raw * coef).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    # ⑤ 分成后的显示（你原逻辑保留）
+    coef = Decimal("0.9091")
+    total_split = (total_raw * coef).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
 
-    return render(request, 'vehicles/my_dailyreports.html', {
-        'reports': reports_data,
-        'selected_year': year,
-        'selected_month': month,
+    # ⑥ 本月 給与計算用 合計（和模板内訳口径一致）
+    monthly_payroll_total = (
+        monthly_payroll_bd_sales
+        + monthly_payroll_bd_advance
+        + monthly_payroll_bd_etc_refund
+        + monthly_payroll_bd_over_short_to_driver
+    )
 
-        'monthly_sales_total': monthly_sales_total,               # ✅ 修正后不再翻倍
-        'monthly_meter_only_total': monthly_meter_only_total,     # ✅
+    print("HIT vehicles.views.my_dailyreports")
 
-        'total_raw': total_raw,                                   # 原始 meter_fee 月总
-        'total_split': total_split,                               # 分成后
-        'attendance_days': (
-            qs.filter(items__isnull=False).values('date').distinct().count()
-        ),
-        'debug_text': f'qs_count={qs.count()} | reports_len={len(reports_data)}',
-        'payroll_month': payroll_month,
 
-        # ===== [PATCH MONTH PAYROLL CONTEXT BEGIN] =====
-        'monthly_payroll_total': monthly_payroll_total,
-        'monthly_payroll_bd_sales': monthly_payroll_bd_sales,
-        'monthly_payroll_bd_advance': monthly_payroll_bd_advance,
-        'monthly_payroll_bd_etc_refund': monthly_payroll_bd_etc_refund,
-        'monthly_payroll_bd_over_short_to_driver': monthly_payroll_bd_over_short_to_driver,
-        'monthly_payroll_bd_over_short_excl': monthly_payroll_bd_over_short_excl,
-        # ===== [PATCH MONTH PAYROLL CONTEXT END] =====
+    return render(request, "vehicles/my_dailyreports.html", {
+        "driver": driver,
+        "reports": reports_data,
+        "selected_year": year,
+        "selected_month": month,
+
+        "monthly_sales_total": monthly_sales_total,
+        "monthly_meter_only_total": monthly_meter_only_total,
+
+        "total_raw": total_raw,
+        "total_split": total_split,
+        "attendance_days": attendance_days,
+
+        # ===== 月度内訳（模板正在用这些变量名）=====
+        "monthly_payroll_total": monthly_payroll_total,
+        "monthly_payroll_bd_sales": monthly_payroll_bd_sales,
+        "monthly_payroll_bd_advance": monthly_payroll_bd_advance,
+        "monthly_payroll_bd_etc_refund": monthly_payroll_bd_etc_refund,
+        "monthly_payroll_bd_over_short_to_driver": monthly_payroll_bd_over_short_to_driver,
+        "monthly_payroll_bd_over_short_excl": monthly_payroll_bd_over_short_excl,
     })
+
 
 
 # ====== REPLACE FROM HERE: my_daily_report_detail ======

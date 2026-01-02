@@ -6,7 +6,26 @@ from django.dispatch import receiver
 
 from vehicles.models import Reservation
 from dailyreport.models import DriverDailyReport
-from dailyreport.signals import _Guard, _in_guard, _get_actual_out_in  # 复用
+
+
+# ===== 延迟导入 dailyreport.signals，彻底切断循环/残留依赖 =====
+
+def _drs():
+    from dailyreport import signals as drs
+    return drs
+
+def _Guard(name=None):
+    return _drs()._Guard(name)
+
+def _in_guard(name=None):
+    return _drs()._in_guard(name)
+
+def _get_actual_out_in(obj):
+    drs = _drs()
+    if hasattr(drs, "_get_actual_out_in"):
+        return drs._get_actual_out_in(obj)
+    return None, None
+
 
 
 def _pick_report_for_reservation(res: Reservation) -> Optional[DriverDailyReport]:
