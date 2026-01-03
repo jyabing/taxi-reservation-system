@@ -2065,7 +2065,8 @@ def admin_list(request):
     return render(request, 'vehicles/admin_list.html')
 
 
-
+# ⚠️ 司机个人【月度】日报汇总唯一入口
+# ⚠️ 所有司机月度金额以内訳为准，禁止在别处重复计算
 @login_required
 def my_dailyreports(request):
     # 1) 当前司机

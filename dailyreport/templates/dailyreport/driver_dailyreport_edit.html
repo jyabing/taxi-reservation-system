@@ -558,6 +558,77 @@ input[type=number] {
                     ※過不足がマイナス（運転手→会社）は含めません。入金額そのものも加算しません。
                   </div>
 
+                  <!-- ================== 这里插入「給油」 ================== -->
+
+                  <!-- ===== 給油 ===== -->
+                  <div class="card mt-2">
+                    <div class="card-header py-2">
+                      <strong>給油</strong>
+                      <span class="text-muted ms-2" style="font-size:12px;">
+                        ※ 過不足には含めません
+                      </span>
+                    </div>
+
+                    <div class="card-body py-2">
+                      <div class="row g-2 align-items-end">
+
+                        <!-- 給油金額 -->
+                        <div class="col-auto">
+                          <label class="form-label mb-0 small text-muted">給油金額（円）</label>
+                          <input
+                            type="number"
+                            name="fuel_amount"
+                            class="form-control form-control-sm text-end"
+                            min="0"
+                            step="1"
+                            value="{{ report.fuel_amount|default:0 }}"
+                          >
+                        </div>
+
+                        <!-- 給油負担 -->
+                        <div class="col-auto">
+                          <label class="form-label mb-0 small text-muted">給油負担</label>
+                          <select name="fuel_paid_by" class="form-select form-select-sm">
+                            <option value="company_cash"
+                              {% if report.fuel_paid_by == "company_cash" or not report.fuel_paid_by %}
+                                selected
+                              {% endif %}
+                            >
+                              会社支払（売上現金／ながし）
+                            </option>
+                            <option value="driver"
+                              {% if report.fuel_paid_by == "driver" %}
+                                selected
+                              {% endif %}
+                            >
+                              運転手立替（後で返還）
+                            </option>
+                          </select>
+                        </div>
+
+                        <!-- 返還額（只读） -->
+                        <div class="col-auto">
+                          <label class="form-label mb-0 small text-muted">返還（会社→運転手）</label>
+                          <input
+                            type="text"
+                            class="form-control form-control-sm text-end"
+                            value="￥{{ report.payroll_bd_fuel_refund|default:0 }}"
+                            readonly
+                          >
+                        </div>
+
+                      </div>
+
+                      <div class="mt-2 text-muted" style="font-size:12px; line-height:1.6;">
+                        <div>・売上現金(ながし)で給油し、入金が減る場合：<b>会社支払</b>（給与への影響なし）</div>
+                        <div>・入金が減らない場合：<b>運転手立替</b> → 後日返還</div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- ===== 給油 END ===== -->
+
+                  <!-- ================== 插入结束 ================== -->
+
                   <!-- ===== [PATCH PAYROLL DETAILS BEGIN] 給与内訳（折りたたみ） ===== -->
                   <details class="payroll-details mt-2">
                     <summary>内訳を表示</summary>

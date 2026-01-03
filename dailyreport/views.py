@@ -2027,67 +2027,18 @@ def driver_dailyreport_add_unassigned(request, driver_id):
 
     return redirect("dailyreport:driver_dailyreport_edit", driver_id=driver.id, report_id=report.id)
 
-# ========= 我的日报 =========
-# vehicles/views.py
+
+# ===== [DISABLE LEGACY ENDPOINT BEGIN] =====
+from django.http import Http404
 
 @login_required
 def my_dailyreports(request):
-    driver = get_object_or_404(Driver, user=request.user)
-
-    # 🟢 调试打印：用户 & driver
-    print("DEBUG my_dailyreports -> request.user =", request.user, "id=", request.user.id)
-    print("DEBUG my_dailyreports -> driver =", driver, "id=", driver.id)
-
-    # 获取年月参数
-    year = int(request.GET.get("year", timezone.localdate().year))
-    month = int(request.GET.get("month", timezone.localdate().month))
-    print("DEBUG my_dailyreports -> selected year, month =", year, month)
-
-    # 计算当月范围
-    month_start = date(year, month, 1)
-    month_end = (month_start + relativedelta(months=1))
-    print("DEBUG my_dailyreports -> month_start =", month_start, "month_end =", month_end)
-
-    # 查询日报
-    reports_qs = (
-        DriverDailyReport.objects
-        .filter(driver=driver, date__gte=month_start, date__lt=month_end)
-        .order_by('-date')
-    )
-
-    print("DEBUG my_dailyreports -> reports.count() =", reports_qs.count())
-    for r in reports_qs[:5]:
-        print("   report.id =", r.id, "date =", r.date)
-
-    # 计算合计
-    total_raw = 0
-    total_split = 0
-    # ✅ 只有有关联明细的日报才算出勤 1 天
-    attendance_days = (
-        reports_qs.filter(items__isnull=False)
-                .values("date").distinct().count()
-    )
-
-    report_list = []
-    for report in reports_qs:
-        totals = _totals_of(report.items.all())
-        report.total_all = totals.get("sales_total", 0)
-        report.meter_only_total = totals.get("meter_only_total", 0)
-        total_raw += report.total_all
-        total_split += report.meter_only_total
-        report_list.append(report)
-
-    print("DEBUG my_dailyreports -> total_raw =", total_raw, "total_split =", total_split)
-
-    return render(request, "vehicles/my_dailyreports.html", {
-        "driver": driver,
-        "reports": report_list,
-        "selected_year": year,
-        "selected_month": month,
-        "total_raw": total_raw,
-        "total_split": total_split,
-        "attendance_days": attendance_days,
-    })
+    """
+    ⚠️ 旧入口已停用
+    司机个人月度页请使用 vehicles.views.my_dailyreports ( /vehicles/my_dailyreports/ )
+    """
+    raise Http404("This endpoint is deprecated. Use /vehicles/my_dailyreports/.")
+# ===== [DISABLE LEGACY ENDPOINT END] =====
 
 
 # ========= 批量补账号 =========

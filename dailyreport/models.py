@@ -279,6 +279,35 @@ class DriverDailyReport(models.Model):
     payroll_bd_over_short_to_company = models.IntegerField(default=0, blank=True, help_text="過不足（運転手→会社）（給与に含めない/参考）（内訳）")
     # ===== [PATCH PAYROLL FIELDS END] =====
 
+    # ===== [PATCH FUEL FIELDS BEGIN] 給油（字段化・规则冻结） =====
+    FUEL_PAID_BY_CHOICES = (
+        ("company_cash", "会社支払（売上現金/ながしで給油）"),
+        ("driver", "運転手立替（後で会社→運転手で返還）"),
+    )
+
+    fuel_amount = models.PositiveIntegerField(
+        "給油金額（円）",
+        default=0,
+        help_text="給油に使用した金額。過不足判定から除外するための基準値。",
+    )
+
+    fuel_paid_by = models.CharField(
+        "給油負担区分",
+        max_length=20,
+        choices=FUEL_PAID_BY_CHOICES,
+        default="company_cash",
+        blank=True,
+    )
+
+    # 給油が「運転手立替」の場合のみ使用（内訳・月次集計用）
+    payroll_bd_fuel_refund = models.IntegerField(
+        default=0,
+        blank=True,
+        help_text="給油返還（会社→運転手）（内訳・月次集計用）",
+    )
+    # ===== [PATCH FUEL FIELDS END] =====
+
+
     @property
     def etc_collected_total(self) -> int:
         """
