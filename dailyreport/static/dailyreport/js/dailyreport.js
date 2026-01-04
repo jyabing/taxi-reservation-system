@@ -1578,6 +1578,7 @@ function updateTotals() {
 
   // ===== [PATCH FUEL EXCLUDE FROM IMBALANCE ONLY BEGIN] =====
   let imbalanceAdjusted = imbalanceBase + etcNet;
+  let displayImbalance = imbalanceBase + etcNet;
 
   const fuelAmount = toInt(
     document.querySelector("input[name='fuel_amount']")?.value,
