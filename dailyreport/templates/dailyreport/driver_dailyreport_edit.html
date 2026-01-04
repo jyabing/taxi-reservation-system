@@ -691,6 +691,20 @@ input[type=number] {
         </div>
       {% endfor %}
 
+      <!-- ===== [BEGIN INSERT] 乗客人数 统计 ===== -->
+      <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
+        <div class="small text-muted">乗客人数</div>
+        <div class="fw-bold">
+          👨 <span id="total-male">0</span>
+          &nbsp;👩 <span id="total-female">0</span>
+        </div>
+        <div class="small text-muted mt-1">
+          合計：<span id="total-passengers">0</span> 人
+        </div>
+      </div>
+      <!-- ===== [END INSERT] ===== -->
+
+
       <!-- >>> 追加: Uber予約 / Uberチップ / Uberプロモーション 合計カード start -->
       <div class="border rounded px-3 py-2 text-center" style="min-width: 140px;">
         <div class="small text-muted">Uber予約 合計</div>
@@ -1001,6 +1015,12 @@ input[type=number] {
           <th style="white-space: nowrap;">乗車地</th>
           <th style="white-space: nowrap;">料金</th>
           <th style="white-space: nowrap;">支付</th>
+
+          <!-- ====== 【INSERT】男性 / 女性 ====== -->
+          <th class="text-center" style="white-space: nowrap;">男性</th>
+          <th class="text-center" style="white-space: nowrap;">女性</th>
+          <!-- ====== 【INSERT END】 ====== -->
+
           <!-- ======= BEGIN FIXED: 行级ETC 表头三列（加 class，便于显隐） ======= -->
           <th class="text-center col-etc-riding"         style="white-space: nowrap;">乗車ETC</th>
           <!-- 乗車ETC負担 -->
@@ -1104,6 +1124,16 @@ input[type=number] {
           {% endif %}
           {{ form.payment_method|add_class:"form-select form-select-sm payment-method-select" }}
         </td>
+
+        <!-- ====== 【INSERT】男性 / 女性 输入 ====== -->
+        <td class="text-center" style="min-width: 60px;">
+          {{ form.num_male|add_class:"form-control form-control-sm text-end"|attr:"min:0"|attr:"step:1" }}
+        </td>
+
+        <td class="text-center" style="min-width: 60px;">
+          {{ form.num_female|add_class:"form-control form-control-sm text-end"|attr:"min:0"|attr:"step:1" }}
+        </td>
+        <!-- ====== 【INSERT END】 ====== -->
 
         <!-- ======= BEGIN PATCH: 每行的 ETC 4格 ======= -->
         <td class="col-etc-riding" style="min-width: 80px;">
@@ -1271,6 +1301,24 @@ input[type=number] {
           </select>
         </td>
 
+        <!-- ====== 【INSERT】男性 / 女性（空模板） ====== -->
+        <td class="text-center">
+          <input type="number"
+                name="form-__prefix__-num_male"
+                id="id_form-__prefix__-num_male"
+                class="form-control form-control-sm text-end"
+                min="0" step="1" value="0">
+        </td>
+
+        <td class="text-center">
+          <input type="number"
+                name="form-__prefix__-num_female"
+                id="id_form-__prefix__-num_female"
+                class="form-control form-control-sm text-end"
+                min="0" step="1" value="0">
+        </td>
+        <!-- ====== 【INSERT END】 ====== -->
+
         <!-- ======= 空模板的 ETC 4格（选项也用 JS 复制） ======= -->
         <td class="col-etc-riding">
           <input type="number"
@@ -1402,6 +1450,73 @@ input[type=number] {
   <!-- 只保留这一处外链脚本。加个版本号防缓存 -->
 {% now 'U' as cache_bust %}
   <script src="{% static 'dailyreport/js/dailyreport.js' %}?v={{ cache_bust }}"></script>
+
+  <!-- ===== [BEGIN PATCH] 男 / 女 人数实时统计（仅前台显示） ===== -->
+  <script>
+  (function () {
+    function toInt(v) {
+      var n = parseInt(v, 10);
+      return isNaN(n) ? 0 : n;
+    }
+
+    function recalcPassengerTotals() {
+      var male = 0;
+      var female = 0;
+
+      // 统计男性
+      document.querySelectorAll('input[name$="-num_male"]').forEach(function (el) {
+        // 跳过模板行 / 已隐藏行
+        var tr = el.closest('tr');
+        if (!tr || tr.closest('#empty-form-template')) return;
+        male += toInt(el.value);
+      });
+
+      // 统计女性
+      document.querySelectorAll('input[name$="-num_female"]').forEach(function (el) {
+        var tr = el.closest('tr');
+        if (!tr || tr.closest('#empty-form-template')) return;
+        female += toInt(el.value);
+      });
+
+      var total = male + female;
+
+      var maleEl = document.getElementById('total-male');
+      var femaleEl = document.getElementById('total-female');
+      var totalEl = document.getElementById('total-passengers');
+
+      if (maleEl) maleEl.textContent = male;
+      if (femaleEl) femaleEl.textContent = female;
+      if (totalEl) totalEl.textContent = total;
+    }
+
+    // 页面初次加载
+    document.addEventListener('DOMContentLoaded', recalcPassengerTotals);
+
+    // 任意输入变化即重算（含新增行）
+    document.addEventListener('input', function (e) {
+      if (!e.target) return;
+      if (
+        e.target.name &&
+        (e.target.name.endsWith('-num_male') ||
+        e.target.name.endsWith('-num_female'))
+      ) {
+        recalcPassengerTotals();
+      }
+    });
+
+    // 兼容你已有的「➕下に挿入 / 移除」按钮（DOM 变化后再算一次）
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('.insert-below') ||
+          e.target.closest('.remove-row') ||
+          e.target.closest('.js-delete-item')) {
+        // 稍等 DOM 更新
+        setTimeout(recalcPassengerTotals, 0);
+      }
+    });
+  })();
+  </script>
+  <!-- ===== [END PATCH] ===== -->
+
 
   <!-- 可留的高亮样式（CSS 不会冲突） -->
   <style>
