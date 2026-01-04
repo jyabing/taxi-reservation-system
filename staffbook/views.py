@@ -50,10 +50,6 @@ from decimal import Decimal, ROUND_HALF_UP
 
 # ===== BEGIN SAFE IMPORTS (留存代码-开始) =====
 # 这些模型在你的项目中 app 名可能不同；先做容错导入，避免整个视图崩溃
-try:
-    from reports.models import DriverDailyReportItem  # 出勤/日报明细
-except Exception:
-    DriverDailyReportItem = None  # 兼容：后续指标函数会判空
 
 try:
     from reservations.models import Reservation      # 预约/派单记录
@@ -2624,7 +2620,7 @@ def driver_education_edit(request, driver_id):
 def driver_health_info(request, driver_id):
     driver = get_object_or_404(Driver, pk=driver_id)
     # 筛选出该司机的“健康”保险记录
-    health_insurances = Insurance.objects.filter(driver=driver, kind='health')
+    health_insurances = DriverInsurance.objects.filter(driver=driver, kind='health')
     return render(request, 'staffbook/driver_health_info.html', {
         'driver': driver,
         'insurances': health_insurances,
