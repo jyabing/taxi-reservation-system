@@ -1843,12 +1843,17 @@ def export_vehicle_csv(request, year, month):
         vehicle__isnull=False
     ).select_related('vehicle')
 
+    # ====== 车辆维度聚合容器 ======
     data = defaultdict(lambda: {
         '出勤日数': 0,
         '走行距離': 0,
         '実車距離': 0,
         '乗車回数': 0,
-        '人数': 0,
+
+        '男性': 0,
+        '女性': 0,
+        '人数': 0,   # 男 + 女
+
         '水揚金額': 0,
         '車名': '',
         '車牌': '',
@@ -1867,13 +1872,31 @@ def export_vehicle_csv(request, year, month):
         total_fee = float(r.total_meter_fee or 0)
         boarding_count = r.items.count()
 
-        if r.items.filter(start_time__isnull=False, end_time__isnull=False).exists():
+        # ===== 出勤日数判定（基于当前模型字段）=====
+        # 只要当天存在至少一条 ride_time 不为空的明细，即计 1 天
+        if r.items.filter(ride_time__isnull=False).exists():
             data[key]['出勤日数'] += 1
 
+        # ===== 距离 / 次数 =====
         data[key]['走行距離'] += mileage
         data[key]['実車距離'] += mileage * 0.75
         data[key]['乗車回数'] += boarding_count
-        data[key]['人数'] += boarding_count * 2
+
+        # ===== 真实乘客人数（男 / 女）=====
+        items = r.items.all()
+        agg = items.aggregate(
+            male=Sum('num_male'),
+            female=Sum('num_female'),
+        )
+        male = agg['male'] or 0
+        female = agg['female'] or 0
+        total_people = male + female
+
+        data[key]['男性'] += male
+        data[key]['女性'] += female
+        data[key]['人数'] += total_people
+
+        # ===== 金额 & 车辆信息 =====
         data[key]['水揚金額'] += total_fee
         data[key]['車名'] = car.name
         data[key]['車牌'] = car.license_plate
@@ -1881,36 +1904,106 @@ def export_vehicle_csv(request, year, month):
         data[key]['使用者名'] = getattr(car, 'user_company_name', '')
         data[key]['所有者名'] = getattr(car, 'owner_company_name', '')
 
+    # ===== CSV 输出 =====
     response = HttpResponse(content_type='text/csv')
     filename = f"{year}年{month}月_車両運輸実績表.csv"
     response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
 
-    response.write(u'\ufeff'.encode('utf8'))
+    response.write(u'\ufeff'.encode('utf8'))  # BOM
     writer = csv.writer(response)
 
-    headers = ['車名', '車牌', '部門', '使用者名', '所有者名',
-               '出勤日数', '走行距離', '実車距離', '乗車回数', '人数', '水揚金額']
+    # ====== 【PATCH】headers 加 人均売上 BEGIN ======
+    headers = [
+        '車名', '車牌', '部門', '使用者名', '所有者名',
+        '出勤日数', '走行距離', '実車距離', '乗車回数',
+        '男性', '女性', '人数',
+        '平均每趟人数',
+        '水揚金額',
+        '人均売上',
+    ]
+    # ====== 【PATCH】END ======
     writer.writerow(headers)
 
-    total_row = [0] * 6
+    # ===== 行数据 + 合计 =====
+    total = {
+        '出勤日数': 0,
+        '走行距離': 0,
+        '実車距離': 0,
+        '乗車回数': 0,
+        '男性': 0,
+        '女性': 0,
+        '人数': 0,
+        '水揚金額': 0,
+    }
+
     for info in data.values():
+        # ====== 【PATCH】平均每趟人数 计算 BEGIN ======
+        avg_per_trip = (
+            info['人数'] / info['乗車回数']
+            if info['乗車回数'] > 0 else 0
+        )
+        # ====== 【PATCH】END ======
+        # ====== 【PATCH】人均売上 计算 BEGIN ======
+        sales_per_person = (
+            info['水揚金額'] / info['人数']
+            if info['人数'] > 0 else 0
+        )
+        # ====== 【PATCH】END ======
+
         row = [
-            info['車名'], info['車牌'], info['部門'],
-            info['使用者名'], info['所有者名'],
-            info['出勤日数'], info['走行距離'],
+            info['車名'],
+            info['車牌'],
+            info['部門'],
+            info['使用者名'],
+            info['所有者名'],
+            info['出勤日数'],
+            info['走行距離'],
             round(info['実車距離'], 2),
-            info['乗車回数'], info['人数'],
+            info['乗車回数'],
+            info['男性'],
+            info['女性'],
+            info['人数'],
+            round(avg_per_trip, 2),
             round(info['水揚金額'], 2),
+            round(sales_per_person, 2),
         ]
         writer.writerow(row)
-        for i in range(5, 11):
-            total_row[i - 5] += row[i]
+
+        total['出勤日数'] += info['出勤日数']
+        total['走行距離'] += info['走行距離']
+        total['実車距離'] += info['実車距離']
+        total['乗車回数'] += info['乗車回数']
+        total['男性'] += info['男性']
+        total['女性'] += info['女性']
+        total['人数'] += info['人数']
+        total['水揚金額'] += info['水揚金額']
+
+    # ====== 【PATCH】合计 平均每趟人数 BEGIN ======
+    total_avg = (
+        total['人数'] / total['乗車回数']
+        if total['乗車回数'] > 0 else 0
+    )
+    # ====== 【PATCH】合计 人均売上 BEGIN ======
+    total_sales_per_person = (
+        total['水揚金額'] / total['人数']
+        if total['人数'] > 0 else 0
+    )
+    # ====== 【PATCH】END ======
 
     writer.writerow([
         '合計', '', '', '', '',
-        total_row[0], total_row[1], round(total_row[2], 2),
-        total_row[3], total_row[4], round(total_row[5], 2),
+        total['出勤日数'],
+        total['走行距離'],
+        round(total['実車距離'], 2),
+        total['乗車回数'],
+        total['男性'],
+        total['女性'],
+        total['人数'],
+        round(total_avg, 2),
+        round(total['水揚金額'], 2),
+        round(total_sales_per_person, 2),
     ])
+    # ====== 【PATCH】END ======
 
     return response
 
