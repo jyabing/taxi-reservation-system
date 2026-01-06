@@ -704,32 +704,20 @@ def _filter_by_driver_id(qs, request):
 
 @user_passes_test(is_dailyreport_admin)
 def export_dailyreports_excel(request, year, month):
+    """
+    FINAL: Excel 导出（3类Sheet固定存在）
+      Sheet① 索引
+      Sheet② 每日明细（每天一个sheet）
+      Sheet③ 集計（区间/月份按司机汇总 + 总出勤时长）
+    """
+    from collections import defaultdict
+    from datetime import datetime, timedelta, date, time as dtime
+    from decimal import Decimal, ROUND_HALF_UP
+    from io import BytesIO
+    from urllib.parse import quote
 
-    # ========= EXPENSE COLUMNS DEFINITION =========
-    EXPENSE_COLUMNS = [
-        {
-            "key": "advance_total",
-            "label": "立替合計",
-            "model_field": "advance_amount",
-        },
-        {
-            "key": "wash_total",
-            "label": "洗車代",
-            "model_field": "wash_amount",
-        },
-        {
-            "key": "repair_total",
-            "label": "修理代",
-            "model_field": "repair_amount",
-        },
-        {
-            "key": "parking_total",
-            "label": "駐車代",
-            "model_field": "parking_amount",
-        },
-    ]
-
-
+    from django.db.models import Case, When, F, DateField, ExpressionWrapper
+    from django.http import FileResponse, HttpResponse
 
     try:
         import xlsxwriter
@@ -740,41 +728,23 @@ def export_dailyreports_excel(request, year, month):
         )
 
     # =========================================================
-    # 费用列抽象（★★★以后只改这里★★★）
+    # 参数
     # =========================================================
-    EXPENSE_COLUMNS = [
-        {
-            "key": "advance_total",
-            "label": "立替合計",
-            "model_field": "advance_amount",
-        },
-        # 下面这些字段如果模型里还没有，会自动当 0
-        {
-            "key": "wash_total",
-            "label": "洗車代",
-            "model_field": "wash_amount",
-        },
-        {
-            "key": "repair_total",
-            "label": "修理代",
-            "model_field": "repair_amount",
-        },
-        {
-            "key": "parking_total",
-            "label": "駐車代",
-            "model_field": "parking_amount",
-        },
-    ]
-
     FEE_RATE = Decimal("0.05")
+
+    def fee_calc(x: int) -> int:
+        if not x:
+            return 0
+        return int((Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    # ながし現金：非貸切 + 现金类 payment_method
+    NAGASHI_CASH_METHODS = {"cash", "uber_cash", "didi_cash", "go_cash"}
 
     # =========================================================
     # 区间导出支持
     # =========================================================
     q_from = (request.GET.get("from") or "").strip()
     q_to   = (request.GET.get("to") or "").strip()
-
-    date_from = date_to = None
     date_range = None
     if q_from and q_to:
         try:
@@ -805,219 +775,286 @@ def export_dailyreports_excel(request, year, month):
         .prefetch_related("items")
     )
 
-    qs, selected_driver = _filter_by_driver_id(qs, request)
-
     if date_range:
-        reports = qs.filter(date__range=date_range).order_by("date", "driver__name")
+        reports = qs.filter(date__range=date_range).order_by("work_date", "driver__name")
+        range_from, range_to = date_range
     else:
-        reports = qs.filter(
-            work_date__year=year,
-            work_date__month=month
-        ).order_by("work_date", "driver__name")
+        reports = qs.filter(work_date__year=year, work_date__month=month).order_by("work_date", "driver__name")
+        range_from = date(year, month, 1)
+        range_to = (range_from.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
 
+    # =========================================================
+    # 按日期分组（Sheet②）
+    # =========================================================
     by_date = defaultdict(list)
     for r in reports:
-        key_date = r.date if date_range else (getattr(r, "work_date", None) or r.date)
-        by_date[key_date].append(r)
+        by_date[getattr(r, "work_date", None) or r.date].append(r)
 
     # =========================================================
-    # 行计算
-    # =========================================================
-    def compute_row(r):
-        meter_only = 0
-        nagashi_cash = 0
-        charter_cash = 0
-        charter_uncol = 0
-
-        amt = {
-            "kyokushin": 0,
-            "omron": 0,
-            "kyotoshi": 0,
-            "uber": 0,
-            "credit": 0,
-            "paypay": 0,
-            "didi": 0,
-        }
-
-        for it in r.items.all():
-            is_charter = bool(getattr(it, "is_charter", False))
-            meter_fee = int(getattr(it, "meter_fee", 0) or 0)
-            charter_jpy = int(getattr(it, "charter_amount_jpy", 0) or 0)
-
-            if not is_charter:
-                meter_only += meter_fee
-                if it.payment_method in {"cash", "uber_cash", "didi_cash", "go_cash"}:
-                    nagashi_cash += meter_fee
-                if it.payment_method in amt:
-                    amt[it.payment_method] += meter_fee
-            else:
-                if it.charter_payment_method in {
-                    "cash", "jpy_cash", "jp_cash",
-                    "rmb_cash", "self_wechat", "boss_wechat"
-                }:
-                    charter_cash += charter_jpy
-                else:
-                    charter_uncol += charter_jpy
-                if it.charter_payment_method in amt:
-                    amt[it.charter_payment_method] += charter_jpy
-
-        fee_calc = lambda x: int(
-            (Decimal(x) * FEE_RATE).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        ) if x else 0
-
-        uber_fee   = fee_calc(amt["uber"])
-        credit_fee = fee_calc(amt["credit"])
-        paypay_fee = fee_calc(amt["paypay"])
-        didi_fee   = fee_calc(amt["didi"])
-
-        water_total = meter_only + charter_cash + charter_uncol
-        tax_ex = int((Decimal(water_total) / Decimal("1.1")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-        tax = water_total - tax_ex
-
-        # ===== 抽象费用读取 =====
-        expense_values = {}
-        for col in EXPENSE_COLUMNS:
-            expense_values[col["key"]] = int(
-                getattr(r, col["model_field"], 0) or 0
-            )
-
-        return {
-            "driver_code": getattr(r.driver, "driver_code", "") or "",
-            "driver": r.driver.name if r.driver else "",
-            "clock_in": r.clock_in.strftime("%H:%M") if r.clock_in else "",
-            "clock_out": r.clock_out.strftime("%H:%M") if r.clock_out else "",
-
-            "nagashi_cash": nagashi_cash,
-            "charter_cash": charter_cash,
-            "charter_uncol": charter_uncol,
-
-            "etc_ride_total": int(getattr(r, "etc_collected", 0) or 0),
-            "etc_empty_total": int(getattr(r, "etc_uncollected", 0) or 0),
-
-            "kyokushin": amt["kyokushin"],
-            "omron": amt["omron"],
-            "kyotoshi": amt["kyotoshi"],
-            "uber": amt["uber"],
-            "uber_fee": uber_fee,
-            "credit": amt["credit"],
-            "credit_fee": credit_fee,
-            "paypay": amt["paypay"],
-            "paypay_fee": paypay_fee,
-            "didi": amt["didi"],
-            "didi_fee": didi_fee,
-
-            "uncol_total": (
-                amt["uber"] + amt["didi"] + amt["credit"]
-                + amt["kyokushin"] + amt["omron"]
-                + amt["kyotoshi"] + amt["paypay"]
-            ),
-            "fee_total": uber_fee + credit_fee + paypay_fee + didi_fee,
-
-            "water_total": water_total,
-            "tax_ex": tax_ex,
-            "tax": tax,
-
-            **expense_values,
-
-            # ★ 过不足只读 DB（方案 A）
-            "deposit_diff": int(r.deposit_difference or 0),
-
-            "gas_l": float(r.gas_volume or 0),
-            "km": float(r.mileage or 0),
-        }
-
-    # =========================================================
-    # Excel 写入
+    # Excel 初始化
     # =========================================================
     output = BytesIO()
     wb = xlsxwriter.Workbook(output, {"in_memory": True})
 
-    fmt_header = wb.add_format({
-        "bold": True, "align": "center", "valign": "vcenter",
-        "bg_color": "#DDDDDD", "border": 1
-    })
+    fmt_header = wb.add_format({"bold": True, "align": "center", "valign": "vcenter", "border": 1, "bg_color": "#DDDDDD"})
     fmt_border = wb.add_format({"border": 1})
     fmt_yen = wb.add_format({"border": 1, "align": "right", "num_format": "¥#,##0"})
-    fmt_yen_tot = wb.add_format({
-        "bold": True, "bg_color": "#FFF2CC",
-        "border": 1, "align": "right", "num_format": "¥#,##0"
-    })
-    fmt_num2 = wb.add_format({"border": 1, "align": "right", "num_format": "#,##0.00"})
+    fmt_hour = wb.add_format({"border": 1, "align": "right", "num_format": "#,##0.00"})
+    fmt_note = wb.add_format({"italic": True, "font_color": "#555555"})
+    fmt_ng = wb.add_format({"border": 1, "bg_color": "#FFC7CE", "font_color": "#9C0006"})
 
-    expense_headers = [c["label"] for c in EXPENSE_COLUMNS]
+    # =========================================================
+    # Sheet① 索引
+    # =========================================================
+    ws_index = wb.add_worksheet("索引")
+    ws_index.write_row(0, 0, ["日期", "件数"], fmt_header)
+    idx_r = 1
+    for d, reps in sorted(by_date.items()):
+        ws_index.write(idx_r, 0, d.strftime("%Y-%m-%d"), fmt_border)
+        ws_index.write_number(idx_r, 1, len(reps), fmt_border)
+        idx_r += 1
 
-    row1 = [
-        "社員番号","従業員","出勤時刻","退勤時刻",
-        "1.ながし現金","2.貸切現金",
-        "3.ETC","空車ETC","貸切未収",
-        "京交信","オムロン","京都市他",
-        "Uber","手数料","クレジット","手数料",
-        "PayPay","手数料","DiDi","手数料",
-        "未収合計","手数料合計",
-        "水揚合計","税抜収入","消費税",
-        "ガソリン(L)","距離(KM)",
-        *expense_headers,
-        "過不足",
+    # =========================================================
+    # Sheet② 每日明细（事实账）— 每天一个sheet（不可删除）
+    # =========================================================
+    headers_daily = [
+        "社員番号","従業員","出勤","退勤",
+        "ながし現金","貸切現金","ETC",
+        "入金予定","実入金額","給油","CHECK","NG原因",
+        "貸切未収",
+        "Uber","手数料",
+        "PayPay","手数料",
+        "DiDi","手数料",
+        "水揚合計","税抜","消費税","過不足",
     ]
 
-    ws = wb.add_worksheet("DATA")
-    ws.write_row(0, 0, row1, fmt_header)
-    ws.freeze_panes(1, 4)
+    def compute_daily_row(r):
+        nagashi_cash = 0
+        charter_cash = 0
+        charter_uncol = 0
 
-    # money 列自动识别
-    MONEY_COLS = set()
-    for idx, label in enumerate(row1):
-        if label not in {"社員番号","従業員","出勤時刻","退勤時刻"}:
-            MONEY_COLS.add(idx)
+        amt = {"uber": 0, "paypay": 0, "didi": 0}
 
-    r = 1
-    totals = defaultdict(int)
+        for it in r.items.all():
+            meter = int(getattr(it, "meter_fee", 0) or 0)
+            is_charter = bool(getattr(it, "is_charter", False))
 
-    for day, reps in sorted(by_date.items()):
-        for rep in reps:
-            data = compute_row(rep)
-            row_vals = [
-                data["driver_code"], data["driver"],
-                data["clock_in"], data["clock_out"],
-                data["nagashi_cash"], data["charter_cash"],
-                data["etc_ride_total"], data["etc_empty_total"], data["charter_uncol"],
-                data["kyokushin"], data["omron"], data["kyotoshi"],
-                data["uber"], data["uber_fee"],
-                data["credit"], data["credit_fee"],
-                data["paypay"], data["paypay_fee"],
-                data["didi"], data["didi_fee"],
-                data["uncol_total"], data["fee_total"],
-                data["water_total"], data["tax_ex"], data["tax"],
-                data["gas_l"], data["km"],
-                *[data[c["key"]] for c in EXPENSE_COLUMNS],
-                data["deposit_diff"],
-            ]
-
-            for c, v in enumerate(row_vals):
-                if c in MONEY_COLS:
-                    ws.write_number(r, c, float(v or 0), fmt_yen)
+            if not is_charter:
+                if getattr(it, "payment_method", "") in NAGASHI_CASH_METHODS:
+                    nagashi_cash += meter
+            else:
+                charter_amt = int(getattr(it, "charter_amount_jpy", 0) or 0)
+                if getattr(it, "charter_payment_method", "") == "cash":
+                    charter_cash += charter_amt
                 else:
-                    ws.write(r, c, v, fmt_border)
+                    charter_uncol += charter_amt
 
-                if isinstance(v, (int, float)):
-                    totals[c] += v
-            r += 1
+            pm = getattr(it, "payment_method", "")
+            if pm in amt:
+                amt[pm] += meter
 
-    # 合计行
-    ws.write(r, 0, "合計", fmt_yen_tot)
-    for c, v in totals.items():
-        ws.write_number(r, c, float(v), fmt_yen_tot)
+        uber_fee   = fee_calc(amt["uber"])
+        paypay_fee = fee_calc(amt["paypay"])
+        didi_fee   = fee_calc(amt["didi"])
+
+        expected = nagashi_cash + charter_cash + int(getattr(r, "etc_collected", 0) or 0)
+        deposit  = int(getattr(r, "deposit_amount", 0) or 0)
+        diff     = int(getattr(r, "deposit_difference", 0) or 0)
+
+        calc_delta = deposit - expected   # ✅ 就是这一行
+        check    = "OK" if (deposit - expected) == diff else "NG"
+        # ===== NG原因 =====
+        if check == "OK":
+            ng_reason = ""
+        elif calc_delta < 0:
+            ng_reason = f"入金不足（{calc_delta}）"
+        else:
+            ng_reason = f"入金过多（+{calc_delta}）"
+
+        water = nagashi_cash + charter_cash + charter_uncol
+        tax_ex = int((Decimal(water) / Decimal("1.1")).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if water else 0
+        tax = water - tax_ex
+
+        return [
+            getattr(getattr(r, "driver", None), "driver_code", "") or "",
+            getattr(getattr(r, "driver", None), "name", "") or "",
+            r.clock_in.strftime("%H:%M") if getattr(r, "clock_in", None) else "",
+            r.clock_out.strftime("%H:%M") if getattr(r, "clock_out", None) else "",
+            nagashi_cash,
+            charter_cash,
+            int(getattr(r, "etc_collected", 0) or 0),
+            expected,
+            deposit,
+            int(getattr(r, "fuel_amount", 0) or 0),
+            check,
+            ng_reason,      # ✅ 现在会写内容
+            charter_uncol,
+            amt["uber"], uber_fee,
+            amt["paypay"], paypay_fee,
+            amt["didi"], didi_fee,
+            water,
+            tax_ex,
+            tax,
+            diff,
+        ]
+
+    for d, reps in sorted(by_date.items()):
+        ws = wb.add_worksheet(d.strftime("%Y-%m-%d"))
+        ws.merge_range(
+            0, 0, 0, len(headers_daily) - 1,
+            "※ 入金予定 = ながし現金 + 貸切現金 + 実際ETC（給油は含めない）",
+            fmt_note
+        )
+        ws.write_row(1, 0, headers_daily, fmt_header)
+        ws.freeze_panes(2, 4)
+
+        row = 2
+        for rep in reps:
+            vals = compute_daily_row(rep)
+            for c, v in enumerate(vals):
+                if isinstance(v, int):
+                    ws.write_number(row, c, v, fmt_yen)
+                else:
+                    ws.write(row, c, v, fmt_border)
+            row += 1
+
+        check_col = headers_daily.index("CHECK")
+        if row - 1 >= 2:
+            ws.conditional_format(
+                2, check_col, row - 1, check_col,
+                {"type": "text", "criteria": "containing", "value": "NG", "format": fmt_ng}
+            )
+
+    # =========================================================
+    # Sheet③ 集計（按司机 / 只 SUM + 总出勤时长）
+    # =========================================================
+    summary = defaultdict(lambda: {
+        "days": set(),
+        "work_minutes": 0,
+        "nagashi": 0,
+        "charter_cash": 0,
+        "charter_uncol": 0,
+        "etc": 0,
+        "fuel": 0,
+        "deposit": 0,
+        "diff_pos": 0,
+        "diff_neg": 0,
+        "uber": 0, "uber_fee": 0,
+        "paypay": 0, "paypay_fee": 0,
+        "didi": 0, "didi_fee": 0,
+    })
+
+    for r in reports:
+        s = summary[r.driver_id]
+        base_date = getattr(r, "work_date", None) or r.date
+        s["days"].add(base_date)
+
+        # 出勤分钟（time不能直接相减，必须先拼 datetime）
+        if r.clock_in and r.clock_out:
+            dt_in = datetime.combine(base_date, r.clock_in)
+            dt_out = datetime.combine(base_date, r.clock_out)
+            if dt_out < dt_in:
+                dt_out += timedelta(days=1)  # 跨日
+            minutes = int((dt_out - dt_in).total_seconds() // 60)
+            s["work_minutes"] += max(minutes, 0)
+
+        s["etc"] += int(getattr(r, "etc_collected", 0) or 0)
+        s["fuel"] += int(getattr(r, "fuel_amount", 0) or 0)
+        s["deposit"] += int(getattr(r, "deposit_amount", 0) or 0)
+
+        diff = int(getattr(r, "deposit_difference", 0) or 0)
+        if diff > 0:
+            s["diff_pos"] += diff
+        elif diff < 0:
+            s["diff_neg"] += abs(diff)
+
+        for it in r.items.all():
+            meter = int(getattr(it, "meter_fee", 0) or 0)
+            is_charter = bool(getattr(it, "is_charter", False))
+
+            if not is_charter:
+                if getattr(it, "payment_method", "") in NAGASHI_CASH_METHODS:
+                    s["nagashi"] += meter
+            else:
+                charter_amt = int(getattr(it, "charter_amount_jpy", 0) or 0)
+                if getattr(it, "charter_payment_method", "") == "cash":
+                    s["charter_cash"] += charter_amt
+                else:
+                    s["charter_uncol"] += charter_amt
+
+            pm = getattr(it, "payment_method", "")
+            if pm == "uber":
+                s["uber"] += meter
+                s["uber_fee"] += fee_calc(meter)
+            elif pm == "paypay":
+                s["paypay"] += meter
+                s["paypay_fee"] += fee_calc(meter)
+            elif pm == "didi":
+                s["didi"] += meter
+                s["didi_fee"] += fee_calc(meter)
+
+    ws_sum = wb.add_worksheet(f"{range_from}~{range_to}(集計)")
+    sum_headers = [
+        "社員番号","従業員","日数","総出勤時間(H)",
+        "ながし","貸切現金","貸切未収",
+        "ETC","給油","入金額",
+        "過不足＋","過不足−",
+        "Uber","手数料",
+        "PayPay","手数料",
+        "DiDi","手数料",
+    ]
+    ws_sum.write_row(0, 0, sum_headers, fmt_header)
+    ws_sum.freeze_panes(1, 2)
+
+    col_days = sum_headers.index("日数")
+    col_hours = sum_headers.index("総出勤時間(H)")
+
+    row = 1
+    for driver_id, s in summary.items():
+        # 注意：vals 必须无条件定义，且只在本循环内使用（防 UnboundLocalError）
+        drv = Driver.objects.get(id=driver_id)
+
+        vals = [
+            getattr(drv, "driver_code", "") or "",
+            getattr(drv, "name", "") or "",
+            len(s["days"]),
+            round(s["work_minutes"] / 60, 2),
+            s["nagashi"],
+            s["charter_cash"],
+            s["charter_uncol"],
+            s["etc"],
+            s["fuel"],
+            s["deposit"],
+            s["diff_pos"],
+            s["diff_neg"],
+            s["uber"], s["uber_fee"],
+            s["paypay"], s["paypay_fee"],
+            s["didi"], s["didi_fee"],
+        ]
+
+        for c, v in enumerate(vals):
+            if c == col_days:
+                ws_sum.write_number(row, c, int(v), fmt_border)   # 日数：非金额
+            elif c == col_hours:
+                ws_sum.write_number(row, c, float(v), fmt_hour)   # 工时：非金额
+            elif isinstance(v, int):
+                ws_sum.write_number(row, c, int(v), fmt_yen)      # 金额
+            else:
+                ws_sum.write(row, c, v, fmt_border)
+
+        row += 1
 
     wb.close()
     output.seek(0)
 
-    filename = f"{year}年{month}月_全員毎日集計.xlsx"
+    filename = f"{range_from}~{range_to}_全員毎日集計.xlsx"
     return FileResponse(
         output,
         as_attachment=True,
         filename=quote(filename),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
 
 
 
