@@ -775,6 +775,16 @@ def export_dailyreports_excel(request, year, month):
         .prefetch_related("items")
     )
 
+    q_driver_id = (request.GET.get("driver_id") or "").strip()
+    q_driver    = (request.GET.get("driver") or "").strip()
+
+    # ====== ★司机过滤（核心） ======
+    if q_driver_id:
+        qs = qs.filter(driver_id=q_driver_id)
+    elif q_driver:
+        qs = qs.filter(driver__name=q_driver)
+    # ================================
+
     if date_range:
         reports = qs.filter(date__range=date_range).order_by("work_date", "driver__name")
         range_from, range_to = date_range
