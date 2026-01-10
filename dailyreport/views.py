@@ -902,7 +902,7 @@ def export_dailyreports_excel(request, year, month):
         if diff < 0:
             ng_reason = f"过不足 {diff}，油钱为 {fuel}"
         elif diff > 0:
-            ng_reason = f"过不足 +{diff}，油钱为 {fuel}"
+            ng_reason = f"入金过多：{diff}"
         else:
             ng_reason = ""
         # ====== 新增结束 ======
@@ -1048,11 +1048,8 @@ def export_dailyreports_excel(request, year, month):
             ]
 
             for c, v in enumerate(vals):
-                if c == check_col_idx:
-                    if v == "NG":
-                        ws.write(r, c, v, fmt_ng_cell)
-                    else:
-                        ws.write(r, c, v, fmt_ok_cell)
+                if c == check_col_idx and v == "NG":
+                    ws.write(r, c, v, fmt_ng_cell)
                 else:
                     ws.write(r, c, v, fmt_y if isinstance(v, int) else fmt)
 
