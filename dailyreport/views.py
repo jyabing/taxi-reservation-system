@@ -825,6 +825,11 @@ def export_dailyreports_excel(request, year, month):
             p = pm.lower()
             is_charter = bool(getattr(it, "is_charter", False))
 
+            # ====== ながし現金（最优先） ======
+            if not is_charter and ("現金" in pm or "cash" in p or "genkin" in p):
+                nagashi_cash += meter
+                continue
+
             # 貸切
             if is_charter:
                 amt = int(getattr(it, "charter_amount_jpy", 0) or 0)
@@ -908,10 +913,7 @@ def export_dailyreports_excel(request, year, month):
 
 
 
-            # ====== 最后才判断 ながし現金 ======
-            if not is_charter and ("現金" in pm or "cash" in p or "genkin" in p):
-                nagashi_cash += meter
-                continue
+            
 
         etc_amt = int(getattr(r, "etc_collected", 0) or 0)
         fuel = int(getattr(r, "fuel_amount", 0) or 0)
@@ -1092,7 +1094,7 @@ def export_dailyreports_excel(request, year, month):
     ]
 
     # Sheet 名：选择的日期范围
-    ws_s = wb.add_worksheet(f"{range_from}~{range_to}")
+    ws_s = wb.add_worksheet(f"{range_from}~{range_to}（集計）")
     ws_s.write_row(0, 0, headers_summary, fmt_h)
 
     from collections import defaultdict
