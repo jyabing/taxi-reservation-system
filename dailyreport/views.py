@@ -825,11 +825,6 @@ def export_dailyreports_excel(request, year, month):
             p = pm.lower()
             is_charter = bool(getattr(it, "is_charter", False))
 
-            # ながし現金
-            if not is_charter and ("現金" in pm or "cash" in p or "genkin" in p):
-                nagashi_cash += meter
-                continue
-
             # 貸切
             if is_charter:
                 amt = int(getattr(it, "charter_amount_jpy", 0) or 0)
@@ -841,16 +836,28 @@ def export_dailyreports_excel(request, year, month):
 
             # Uber 细分
             if "uber" in p:
-                if "予約" in pm or "reserve" in p:
+                # ====== Uber 予約 ======
+                if any(k in p for k in [
+                    "予約", "reserve", "reservation", "booking", "advance"
+                ]):
                     uber_resv += meter
+
+                # ====== Uber チップ ======
                 elif "チップ" in pm or "tip" in p:
                     uber_tip += meter
+
+                # ====== Uber プロモ ======
                 elif "プロモ" in pm or "promo" in p:
                     uber_promo += meter
+
+                # ====== Uber メーター売上 ======
                 else:
                     uber_meter += meter
                     uber_fee += fee_calc(meter)
+
                 continue
+
+
 
             # PayPay
             if "paypay" in p:
@@ -881,15 +888,30 @@ def export_dailyreports_excel(request, year, month):
                 scan += meter
                 continue
 
-            # チケット
-            if "ticket" in p:
-                if "ai" in p:
+            # チケット（愛・京交信・オムロン・京都市他・其他）
+            if any(k in p for k in [
+                "ticket",
+                "チケット",
+                "omron",
+                "オムロン",
+                "京都市",      # ← 关键补充
+            ]):
+                if "ai" in p or "愛" in pm:
                     ticket_ai += meter
-                elif "kyokushin" in p:
+                elif "kyokushin" in p or "京交信" in pm:
                     ticket_kyo += meter
                 else:
                     ticket_other += meter
+
                 ticket_fee += fee_calc(meter)
+                continue
+
+
+
+            # ====== 最后才判断 ながし現金 ======
+            if not is_charter and ("現金" in pm or "cash" in p or "genkin" in p):
+                nagashi_cash += meter
+                continue
 
         etc_amt = int(getattr(r, "etc_collected", 0) or 0)
         fuel = int(getattr(r, "fuel_amount", 0) or 0)
