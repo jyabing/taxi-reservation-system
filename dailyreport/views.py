@@ -1056,30 +1056,126 @@ def export_dailyreports_excel(request, year, month):
             r += 1
 
     # ---------- Sheet③ 集計 ----------
-    ws_s = wb.add_worksheet("集計")
-    ws_s.write_row(0, 0, headers, fmt_h)
-
-    total = defaultdict(int)
-    for x in daily_rows:
-        for k, v in x.items():
-            if isinstance(v, int):
-                total[k] += v
-
-    vals = [
-        "", "合計", "", "",
-        total["nagashi"], total["charter_cash"], total["etc"], total["expected"], total["deposit"], total["fuel"], "", "", total["charter_uncol"],
-        total["uber_meter"], total["uber_resv"], total["uber_tip"], total["uber_promo"], total["uber_fee"],
-        total["paypay"], total["paypay_fee"],
-        total["didi"], total["didi_fee"],
-        total["go"], total["go_fee"],
-        total["credit"], total["credit_fee"],
-        total["scan"],
-        total["ticket_ai"], total["ticket_kyo"], total["ticket_other"], total["ticket_fee"],
-        total["water"], total["tax_ex"], total["tax"], total["diff"], total["uncol"],
+    headers_summary = [
+        "社員番号","従業員","総出勤日数","総出勤時間",
+        "ながし現金","貸切現金","ETC","入金予定","実入金額","給油","CHECK","NG原因","貸切未収",
+        "Uber売上(メーター)","Uber予約","Uberチップ","Uberプロモーション","Uber手数料",
+        "PayPay売上","PayPay手数料",
+        "DiDi売上","DiDi手数料",
+        "GO売上","GO手数料",
+        "クレジット売上","クレジット手数料",
+        "扫码売上",
+        "チケット(愛)","チケット(京交信)","チケット(其他)","チケット手数料",
+        "水揚合計","税抜","消費税","過不足","未收合计"
     ]
 
-    for c, v in enumerate(vals):
-        ws_s.write(1, c, v, fmt_y if isinstance(v, int) else fmt)
+    # Sheet 名：选择的日期范围
+    ws_s = wb.add_worksheet(f"{range_from}~{range_to}")
+    ws_s.write_row(0, 0, headers_summary, fmt_h)
+
+    from collections import defaultdict
+
+    # summary：按司机汇总
+    summary = defaultdict(lambda: {
+        "code": "",
+        "name": "",
+        "work_days": set(),
+        "work_minutes": 0,
+        "total": defaultdict(int),
+    })
+
+    # ====== 按司机累计 ======
+    for x in daily_rows:
+        key = x["code"] or "__unknown__"
+        s = summary[key]
+
+        s["code"] = x["code"]
+        s["name"] = x["name"]
+
+        # 金额类字段汇总
+        for k, v in x.items():
+            if isinstance(v, int):
+                s["total"][k] += v
+
+        # 出勤日数（按日期去重）
+        if x.get("date"):
+            s["work_days"].add(x["date"])
+
+        # 出勤时间（分钟累计）
+        if x.get("in") and x.get("out"):
+            try:
+                t_in = datetime.strptime(x["in"], "%H:%M")
+                t_out = datetime.strptime(x["out"], "%H:%M")
+
+                # ====== 跨日处理（关键）======
+                if t_out <= t_in:
+                    t_out = t_out + timedelta(days=1)
+                # ====== 结束 ======
+
+                minutes = int((t_out - t_in).total_seconds() // 60)
+                if minutes > 0:
+                    s["work_minutes"] += minutes
+            except Exception:
+                pass
+
+    # ====== 写入 Sheet③（每个司机一行） ======
+    row_idx = 1
+
+    for s in summary.values():
+        hours = s["work_minutes"] // 60
+        minutes = s["work_minutes"] % 60
+        total_work_time = f"{hours:02d}:{minutes:02d}"
+
+        vals = [
+            s["code"],                 # 社員番号
+            s["name"],                 # 従業員
+            len(s["work_days"]),       # 総出勤日数（天）
+            total_work_time,           # 総出勤時間
+            s["total"]["nagashi"],
+            s["total"]["charter_cash"],
+            s["total"]["etc"],
+            s["total"]["expected"],
+            s["total"]["deposit"],
+            s["total"]["fuel"],
+            "", "",                    # CHECK / NG原因（集計不显示）
+            s["total"]["charter_uncol"],
+            s["total"]["uber_meter"],
+            s["total"]["uber_resv"],
+            s["total"]["uber_tip"],
+            s["total"]["uber_promo"],
+            s["total"]["uber_fee"],
+            s["total"]["paypay"],
+            s["total"]["paypay_fee"],
+            s["total"]["didi"],
+            s["total"]["didi_fee"],
+            s["total"]["go"],
+            s["total"]["go_fee"],
+            s["total"]["credit"],
+            s["total"]["credit_fee"],
+            s["total"]["scan"],
+            s["total"]["ticket_ai"],
+            s["total"]["ticket_kyo"],
+            s["total"]["ticket_other"],
+            s["total"]["ticket_fee"],
+            s["total"]["water"],
+            s["total"]["tax_ex"],
+            s["total"]["tax"],
+            s["total"]["diff"],
+            s["total"]["uncol"],
+        ]
+
+        for c, v in enumerate(vals):
+            # 総出勤日数：显示为“X天”，不用金额格式
+            if c == 2:
+                ws_s.write(row_idx, c, f"{v}天", fmt)
+            # 金额类
+            elif isinstance(v, int):
+                ws_s.write(row_idx, c, v, fmt_y)
+            else:
+                ws_s.write(row_idx, c, v, fmt)
+
+        row_idx += 1
+
 
     wb.close()
     output.seek(0)
