@@ -554,6 +554,8 @@ ReportItemFormSet = inlineformset_factory(
 
 
 def dailyreport_edit(request, pk):
+    print("🚨 HIT dailyreport_edit VIEW 🚨")
+
     report = get_object_or_404(DriverDailyReport, pk=pk)
 
     if request.method == 'POST':
@@ -564,7 +566,7 @@ def dailyreport_edit(request, pk):
             inst = form.save(commit=False)
             inst.edited_by = request.user
 
-                        # ===== [PATCH PAYROLL SAVE-GUARD BEGIN] =====
+            # ===== [PATCH PAYROLL SAVE-GUARD BEGIN] =====
             # payroll_* は JS が hidden に書き込むが、
             # POST欠落/空送信でも None を入れない & 既存値を守る
             PAYROLL_FIELDS = [
@@ -577,22 +579,53 @@ def dailyreport_edit(request, pk):
             ]
 
             for f in PAYROLL_FIELDS:
-                # POSTに含まれていなければ「既存値を保持」
                 if f not in request.POST:
                     setattr(inst, f, getattr(report, f, 0) or 0)
                     continue
-
-                # POSTにあるが form が None を作った場合は既存値/0に寄せる
                 if getattr(inst, f, None) is None:
                     setattr(inst, f, getattr(report, f, 0) or 0)
             # ===== [PATCH PAYROLL SAVE-GUARD END] =====
 
 
-            inst.save()
+            # ===== [PATCH DEPOSIT DIFFERENCE BEGIN] =====
+            # 后台权威：过不足 = 入金 − ながし現金 − 貸切現金 − 公司卡空车ETC
+            def _to_int0(v):
+                try:
+                    return int(v)
+                except (TypeError, ValueError):
+                    return 0
 
-            # 关键：一句话就够了（增/改/删 都在这里完成）
+            # 入金
+            deposit = _to_int0(inst.deposit_amount)
+
+            # ながし現金 / 貸切現金
+            # ⚠️ 前提：本 view 前面已有 cash_total / charter_cash_total
+            cash_nagashi = _to_int0(locals().get("cash_total", 0))
+            charter_cash = _to_int0(locals().get("charter_cash_total", 0))
+
+            # 公司卡空车ETC（若字段不存在则为 0）
+            etc_company_empty = _to_int0(getattr(inst, "etc_company_empty", 0))
+
+            inst.deposit_difference = (
+                deposit
+                - cash_nagashi
+                - charter_cash
+                - etc_company_empty
+            )
+
+            # 🔍 DEBUG：确认写库前的最终值
+            print("DEBUG deposit_difference BEFORE save:", inst.deposit_difference)
+            # ===== [PATCH DEPOSIT DIFFERENCE END] =====
+
+
+            # 🔒 关键：显式只保存该字段，避免被 ModelForm 覆盖
+            inst.save(update_fields=["deposit_difference", "edited_by"])
+
+
+            # ===== 保存明细行（增 / 改 / 删）=====
             formset.instance = inst
-            formset.save()   # ✅ 会自动删除勾选 DELETE 的旧行
+            formset.save()
+
 
             # ===== [PATCH PAYROLL SAVE BEGIN] 給与計算用（表示）を落庫 =====
             def _to_int0(v):
@@ -601,14 +634,16 @@ def dailyreport_edit(request, pk):
                 except (TypeError, ValueError):
                     return 0
 
-            # JSが hidden に書き込んだ値を保存する（無ければ 0）
             inst.payroll_total = _to_int0(request.POST.get("payroll_total"))
-
             inst.payroll_bd_sales = _to_int0(request.POST.get("payroll_bd_sales"))
             inst.payroll_bd_advance = _to_int0(request.POST.get("payroll_bd_advance"))
             inst.payroll_bd_etc_refund = _to_int0(request.POST.get("payroll_bd_etc_refund"))
-            inst.payroll_bd_over_short_to_driver = _to_int0(request.POST.get("payroll_bd_over_short_to_driver"))
-            inst.payroll_bd_over_short_to_company = _to_int0(request.POST.get("payroll_bd_over_short_to_company"))
+            inst.payroll_bd_over_short_to_driver = _to_int0(
+                request.POST.get("payroll_bd_over_short_to_driver")
+            )
+            inst.payroll_bd_over_short_to_company = _to_int0(
+                request.POST.get("payroll_bd_over_short_to_company")
+            )
 
             inst.save(update_fields=[
                 "payroll_total",
@@ -623,16 +658,16 @@ def dailyreport_edit(request, pk):
 
             messages.success(request, "保存成功！")
             return redirect('dailyreport:dailyreport_edit', pk=inst.pk)
+
         else:
-            # 🔥 调试：把错误打到控制台 或 log
             print("【DEBUG】日报主表错误：", form.errors)
             print("【DEBUG】明细行错误：", formset.errors)
             messages.error(request, "保存失败，请检查输入内容")
+
     else:
         form = DriverDailyReportForm(instance=report)
-        formset = ReportItemFormSet(instance=report, prefix=PREFIX)  # ✅ GET 同样用 prefix
+        formset = ReportItemFormSet(instance=report, prefix=PREFIX)
 
-    # 模板需要的其它上下文按你现有的来，这里只保证能渲染
     return render(request, 'dailyreport/driver_dailyreport_edit.html', {
         'form': form,
         'formset': formset,
@@ -640,6 +675,8 @@ def dailyreport_edit(request, pk):
         'driver': getattr(report, 'driver', None),
         'is_edit': True,
     })
+
+
 
     
 from django.views.decorators.http import require_POST, require_http_methods
@@ -1478,7 +1515,7 @@ def dailyreport_create_for_driver(request, driver_id):
             cash_total = sum(
                 item.cleaned_data.get('meter_fee') or 0
                 for item in formset.forms
-                if item.cleaned_data.get('payment_method') == 'cash'
+                if item.cleaned_data.get('payment_method') in ["cash", "uber_cash", "didi_cash", "go_cash"]
                 and not item.cleaned_data.get('DELETE', False)
             )
             deposit = dailyreport.deposit_amount or 0
@@ -1716,7 +1753,7 @@ def dailyreport_edit_for_driver(request, driver_id, report_id):
             cash_total = sum(
                 (it.cleaned_data.get('meter_fee') or 0)
                 for it in formset.forms
-                if it.cleaned_data.get('payment_method') == 'cash'
+                if it.cleaned_data.get('payment_method')  in ['cash', 'uber_cash', 'didi_cash', 'go_cash']
                 and not it.cleaned_data.get('DELETE', False)
             )
             charter_cash_total = sum(
@@ -2342,7 +2379,11 @@ def dailyreport_overview(request):
     totals['meter_only_total'] = meter_sum_non_charter
 
     ALIASES = {
-        'cash':      {'normal': ['cash'],                 'charter': ['jpy_cash']},
+        'cash': {
+            'normal': ['cash', 'uber_cash', 'didi_cash', 'go_cash'],
+            'charter': ['jpy_cash']
+        },
+
         'credit':    {'normal': ['credit', 'credit_card'],'charter': ['credit','credit_card']},
         'uber':      {'normal': ['uber'],                 'charter': ['uber']},
         'didi':      {'normal': ['didi'],                 'charter': ['didi']},

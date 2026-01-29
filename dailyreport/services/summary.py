@@ -14,8 +14,8 @@ from dailyreport.utils import normalize
 CASH_METHODS = ["cash", "uber_cash", "didi_cash", "go_cash"]
 
 def is_cash(payment_method: str) -> bool:
-    # 后端只认 'cash'；平台现金前端已并入 cash，这里不要再出现 *_cash 枚举
-    return payment_method == "cash"
+    # 后端只认 'cash'；平台现金前端已并入 cash，这里不要再出现 *_cash 枚举,平台现金也属于现金
+    return payment_method in CASH_METHODS
 
 def calculate_totals_from_formset(data_iter):
     raw_totals = defaultdict(Decimal)
@@ -175,11 +175,14 @@ def build_month_aggregates(items_qs):
     # ✅ 普通現金合計（明确排除貸切）
     cash_total = (
         items_qs.filter(
-            is_charter=False,
-            payment_method__in=CASH_METHODS
+            is_charter=False
+        ).filter(
+            Q(payment_method="cash") |
+            Q(payment_method__in=["uber", "didi", "go"])  # 平台现金也算现金
         ).aggregate(total=Sum("meter_fee"))["total"]
         or Decimal("0")
     )
+
 
     # ✅ 貸切現金 合計
     charter_cash_total = (
