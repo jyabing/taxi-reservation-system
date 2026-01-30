@@ -148,6 +148,13 @@
   </div>
 </div>
 
+{% if reconciliation_warning %}
+<div style="background:#ffecec;color:#d60000;padding:10px;border-radius:6px;margin-top:10px;">
+    {{ reconciliation_warning }}
+</div>
+{% endif %}
+
+
 <!-- ✅ 卡片包裹的表格 -->
 <div class="card shadow-sm rounded-4 border-0 mt-3 mb-5">
   <div class="card-body">

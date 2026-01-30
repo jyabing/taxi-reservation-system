@@ -2344,7 +2344,13 @@ def dailyreport_overview(request):
     totals = defaultdict(Decimal)
     counts = defaultdict(int)
 
+        # ====== 对账报警变量（必须先定义，避免 NameError） ======
+    reconciliation_warning = None
+
+
     # === Uber 派生：予約 / チップ / プロモーション（严格匹配版）===
+
+    
 
     # 显式字段别名（你上面已对 items_norm 做了 Lower/Trim）
     UBER_RESV_ALIASES  = {'uber_reservation', 'uber_resv', 'uber予約'}
@@ -2520,6 +2526,7 @@ def dailyreport_overview(request):
         'totals': totals,
         'totals_all': totals_all,
         'etc_shortage_total': etc_shortage_total,
+        'reconciliation_warning': reconciliation_warning,
         'drivers': drivers,
         'page_obj': page_obj,
         'counts': counts,
